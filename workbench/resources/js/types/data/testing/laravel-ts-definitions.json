@@ -13549,7 +13549,7 @@
                 },
                 {
                     "name": "pairs",
-                    "type": "[number, string][]",
+                    "type": "[string, number][]",
                     "optional": false
                 },
                 {

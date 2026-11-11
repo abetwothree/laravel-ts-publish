@@ -818,7 +818,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->seedVarBindings($method, $stmts, $passed);
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $method);
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $method, filtered: $this->reading->filtersBodyOf($this->scope));
 
         if (! $this->isInertiaShare($method)) {
             $this->applyTsCastsFromMethod($method, $analysis);
@@ -1302,7 +1302,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $ownMethod, keepsUnresolvedNames: false, fillsPositions: ! $this->docblockOutranksBody());
+        resolve(ReturnShapeRefiner::class)->refine(
+            $analysis,
+            $ownMethod,
+            keepsUnresolvedNames: false,
+            fillsPositions: ! $this->docblockOutranksBody(),
+            filtered: $this->reading->filtersBodyOf($this->scope),
+        );
 
         // InertiaSharedDataAnalyzer lays the casts of each share() it reads over the props itself, with the `?`.
         if (! $this->isInertiaShare($ownMethod)) {

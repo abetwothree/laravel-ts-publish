@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ReviewOutOfOrderPairsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthorEditorRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsResource;
@@ -35,6 +36,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportsR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusWrapBesideBareRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
+use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
 use Workbench\App\Http\Resources\RecipientSettingsResource;
@@ -487,14 +489,20 @@ test('a mapped key keeps the open mark its value moves with and pairs keys by th
     ], ['User']],
 ]);
 
-// The resource re-indexes a row keyed 0 to n-1, so a row whose values no rule types takes the declared tuple (GH-154).
-test('a mapped key whose rows are keyed 0 to n-1 out of order with no value typed takes the declared tuple', function () {
+// `filter()` re-lists a row keyed only by ints in the order it holds them, so a row whose values no rule types takes
+// each key's declared element in its key order; json_encode() alone keeps the keys (GH-154).
+test('a mapped key whose rows are keyed 0 to n-1 out of order with no value typed takes the declared tuple in key order', function () {
     $data = new ResourceTransformer(ReviewOutOfOrderPairsResource::class)->data();
+    $event = new BroadcastEventTransformer(ReviewOutOfOrderPairsEvent::class)->data();
 
     expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
-        'pairs' => '[number, string][]',
-        'maybe' => '([number, string] | null)[]',
-    ])->and($data->typeImports)->toBe([]);
+        'pairs' => '[string, number][]',
+        'maybe' => '([string, number] | null)[]',
+    ])->and($data->typeImports)->toBe([])
+        ->and(array_map(fn (array $property): string => $property['type'], $event->properties))->toBe([
+            'pairs' => '{ "1": unknown; "0": unknown }[]',
+            'pair' => '{ "1": unknown; "0": unknown }',
+        ]);
 });
 
 // R20: the merged signature type-checks, where a member its pattern covers beside it unwidened is TS2411.

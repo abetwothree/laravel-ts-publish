@@ -40,13 +40,14 @@ final class ReturnShapeRefiner
      * Only a spread helper keeps a bare name no class answers to: the analyzed method's may be a class never imported.
      *
      * A key the body typed merges with its member at every position (merged()), unless $fillsPositions says the caller
-     * lays the docblock over every key itself.
+     * lays the docblock over every key itself; $filtered says `JsonResource::filter()` runs over the body.
      */
     public function refine(
         MethodAnalysis $analysis,
         ReflectionMethod $method,
         bool $keepsUnresolvedNames = true,
         bool $fillsPositions = true,
+        bool $filtered = false,
     ): void {
         $shape = LaravelTsPublish::docblockReturnShapeInfos($method);
         $valueType = $shape === [] ? $this->recordValueType($method) : null;
@@ -81,7 +82,7 @@ final class ReturnShapeRefiner
                     $property['fillType'] = $property['type'];
                 }
             } elseif (! $isSignature && $fillsPositions) {
-                [$property['type'], $brought, $resolved] = $this->merged($analysis, $name, $property['type'], $doc);
+                [$property['type'], $brought, $resolved] = $this->merged($analysis, $name, $property['type'], $doc, $filtered);
                 $imports[] = $brought;
             }
 
@@ -140,7 +141,7 @@ final class ReturnShapeRefiner
      * @return array{string, TypesImportMap, ShapeTypeInfo|null} the type, the imports it brings, and a fill to lay over
      *                                                           the key's channels as a cast is
      */
-    private function merged(MethodAnalysis $analysis, string $name, string $type, ?array $doc): array
+    private function merged(MethodAnalysis $analysis, string $name, string $type, ?array $doc, bool $filtered): array
     {
         $member = $doc === null ? null : LaravelTsPublish::shapeMemberForKey($doc);
 
@@ -162,7 +163,7 @@ final class ReturnShapeRefiner
             ValueResult::enumTypeName($written),
             'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
         );
-        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $analysis->openReadings[$name] ?? [])->merge(
+        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $analysis->openReadings[$name] ?? [], $filtered)->merge(
             [$read, $this->readSlots($analysis, $name, $read, $names)],
             [$member['type'], TokenSlots::declaredSlots($member['type'], $declaredSlots, $names)],
         );

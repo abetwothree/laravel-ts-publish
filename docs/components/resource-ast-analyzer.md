@@ -147,8 +147,9 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 only an exact `unknown`.
 
 A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
-- a shape keyed `0` to n-1 in any order, every value `unknown`, takes a declared n-tuple, the body's `null` kept, as it
-  is the `unknown[]` an API resource re-indexes it into (`DeclaredTypeMerge::isUntypedTupleUnder()`);
+- where `filter()` runs over the body (`Reading::filtersBodyOf()`), a shape keyed `0` to n-1, every value `unknown`,
+  takes a declared n-tuple's elements in its own key order, as `filter()` re-lists it, the body's `null` kept
+  (`DeclaredTypeMerge::relistedTuple()`); `json_encode()` alone sends the keys, so an unfiltered shape keeps them;
 - where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
   does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
   only `null` takes a vague member, or any member where a union kept that `null` beside an arm no rule types;

@@ -39,11 +39,14 @@ final readonly class DeclaredTypeMerge
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
      * @param  list<string>  $openReadings  each reading the body leaves open, as ValueResult `openReadings` spells it:
      *                                      its path from the position merged, a NUL, and its type
+     * @param  bool  $filtered  whether `JsonResource::filter()` runs over the value, which re-lists an array keyed only
+     *                          by ints in the order it holds them
      */
     public function __construct(
         private array $names,
         private array $bodyWraps = [],
         private array $openReadings = [],
+        private bool $filtered = false,
     ) {}
 
     /**
@@ -162,28 +165,6 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * Whether the body reads one shape keyed 0 to n-1 in any order with every value `unknown`, and the declaration
-     * one n-tuple, each beside a `null` or not.
-     */
-    private static function isUntypedTupleUnder(string $body, string $declared): bool
-    {
-        $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body), ['null']));
-        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']));
-        $members = count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : [];
-
-        if ($members === [] || count($tuples) !== 1 || ! TsTypeShape::isWrapped($tuples[0], '[', ']')) {
-            return false;
-        }
-
-        $indexes = array_map(static fn (array $member): ?int => PhpArrayKey::listIndex(self::keyName($member[0])), $members);
-        sort($indexes);
-
-        return $indexes === range(0, count($members) - 1)
-            && array_all($members, static fn (array $member): bool => $member[1] === 'unknown')
-            && count(TsTypeShape::tupleElements($tuples[0])) === count($members);
-    }
-
-    /**
      * merge() of a reading no union left an untyped arm out of.
      *
      * @param  Typed  $body
@@ -192,9 +173,10 @@ final readonly class DeclaredTypeMerge
      */
     private function mergeReading(array $body, array $declared, string $at): array
     {
-        // An API resource re-indexes such a shape into an `unknown[]`, which the declared tuple tells more of.
-        if (self::isUntypedTupleUnder($body[0], $declared[0])) {
-            return [TsTypeString::withNullArmOf($body[0], $declared[0]), $declared[1]];
+        $relisted = $this->relistedTuple($body, $declared);
+
+        if ($relisted !== null) {
+            return $relisted;
         }
 
         $told = [self::tells($body[0]), self::tells($declared[0])];
@@ -243,6 +225,59 @@ final readonly class DeclaredTypeMerge
         }
 
         return $this->joined($merged, $body);
+    }
+
+    /**
+     * A filtered body shape keyed 0 to n-1 with every value `unknown` as the list `filter()` re-lists it into, typed by
+     * a declared n-tuple: each key's element in the shape's key order, optional where the key is, and the body's
+     * `null` kept; null for a value not filtered or any other pair.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared
+     * @return Typed|null
+     */
+    private function relistedTuple(array $body, array $declared): ?array
+    {
+        $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body[0]), ['null']));
+        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared[0]), ['null']));
+        $members = $this->filtered && count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : [];
+
+        if ($members === [] || count($tuples) !== 1 || ! TsTypeShape::isWrapped($tuples[0], '[', ']')) {
+            return null;
+        }
+
+        $elements = TsTypeShape::tupleElements($tuples[0]);
+        $indexes = array_map(static fn (array $member): int => PhpArrayKey::listIndex(self::keyName($member[0])) ?? -1, $members);
+        $optional = array_map(static fn (array $member): bool => str_ends_with($member[0], '?'), $members);
+        [$sortedIndexes, $sortedOptional] = [$indexes, $optional];
+        sort($sortedIndexes);
+        sort($sortedOptional);
+
+        // Past a key left out, array_values() moves each later value up a place, so only the last keys may be.
+        if ($sortedIndexes !== range(0, count($members) - 1) || $optional !== $sortedOptional || count($elements) !== count($members)
+            || ! array_all($members, static fn (array $member): bool => $member[1] === 'unknown')
+            || array_any($elements, static fn (array $element): bool => str_starts_with($element[0], '...'))) {
+            return null;
+        }
+
+        $slots = [];
+        $from = 0;
+
+        foreach ($elements as [$element]) {
+            $slots[] = array_slice($declared[1], $from, $this->count($element));
+            $from += $this->count($element);
+        }
+
+        $printed = array_map(
+            static fn (int $index, bool $isOptional): string => $isOptional ? TsTypeShape::postfixOperand($elements[$index][0]).'?' : $elements[$index][0],
+            $indexes,
+            $optional,
+        );
+
+        return [
+            TsTypeString::withNullArmOf($body[0], '['.implode(', ', $printed).']'),
+            array_merge([], ...array_map(static fn (int $index): array => $slots[$index], $indexes)),
+        ];
     }
 
     /**

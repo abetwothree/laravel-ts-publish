@@ -170,17 +170,21 @@ test('a vague container takes the declared one, and another kind merges its cont
     'a record under a list' => ['Record<string, { n: unknown }>', '{ n: number }[]', 'Record<string, { n: number }>'],
 ]);
 
-// A shape keyed 0 to n-1 that types no value is the `unknown[]` an API resource re-indexes it into, so a declared
-// n-tuple types it as it types that list (GH-154).
-test('a shape keyed 0 to n-1 with every value unknown takes a declared n-tuple', function (string $body, string $declared, string $expected) {
-    expect(mergedType($body, $declared))->toBe($expected);
+// `filter()` re-lists an array keyed only by ints in the order it holds them, so a filtered shape keyed 0 to n-1 that
+// types no value takes each key's declared element in its key order (GH-154).
+test('a filtered shape keyed 0 to n-1 with every value unknown takes the declared tuple in its key order', function (string $body, string $declared, string $expected) {
+    expect(new DeclaredTypeMerge([], filtered: true)->merge([$body, []], [$declared, []])[0])->toBe($expected);
 })->with([
-    'keys out of order' => ['{ "1": unknown; "0": unknown }', '[number, string]', '[number, string]'],
     'keys in order' => ['{ "0": unknown; "1": unknown }', '[number, string]', '[number, string]'],
-    'keys spelled bare' => ['{ 1: unknown; 0: unknown }', '[number, string]', '[number, string]'],
-    'an optional key' => ['{ "0": unknown; "1"?: unknown }', '[number, string?]', '[number, string?]'],
-    'the body\'s null' => ['{ "1": unknown; "0": unknown } | null', '[number, string]', '[number, string] | null'],
-    'a declared null' => ['{ "1": unknown; "0": unknown }', '[number, string] | null', '[number, string] | null'],
+    'keys out of order' => ['{ "1": unknown; "0": unknown }', '[number, string]', '[string, number]'],
+    'keys spelled bare' => ['{ 1: unknown; 0: unknown }', '[number, string]', '[string, number]'],
+    'three keys' => ['{ "2": unknown; "0": unknown; "1": unknown }', '[number, string, boolean]', '[boolean, number, string]'],
+    'the body\'s null' => ['{ "1": unknown; "0": unknown } | null', '[number, string]', '[string, number] | null'],
+    'a declared null the body never sends' => ['{ "1": unknown; "0": unknown }', 'null | [number, string]', '[string, number]'],
+    'an optional key last' => ['{ "1": unknown; "0"?: unknown }', '[number | null, string]', '[string, (number | null)?]'],
+    'a declared optional element the body sends' => ['{ "1": unknown; "0": unknown }', '[number, string?]', '[string, number]'],
+    'an optional key before a sent one' => ['{ "0"?: unknown; "1": unknown }', '[number, string]', '{ "0"?: unknown; "1": unknown }'],
+    'a rest element' => ['{ "1": unknown; "0": unknown }', '[number, ...string[]]', '{ "1": unknown; "0": unknown }'],
     'a 3-tuple' => ['{ "1": unknown; "0": unknown }', '[number, string, boolean]', '{ "1": unknown; "0": unknown }'],
     'a declared shape' => ['{ "1": unknown; "0": unknown }', '{ 0: number; 1: string }', '{ 1: string; 0: number }'],
     'a declared list' => ['{ "1": unknown; "0": unknown }', 'number[]', '{ "1": number; "0": number }'],
@@ -190,6 +194,19 @@ test('a shape keyed 0 to n-1 with every value unknown takes a declared n-tuple',
     'a named key' => ['{ a: unknown; "0": unknown }', '[number, string]', '{ a: unknown; "0": unknown }'],
     'a key with a leading zero' => ['{ "01": unknown; "0": unknown }', '[number, string]', '{ "01": unknown; "0": unknown }'],
 ]);
+
+test('an unfiltered shape keyed 0 to n-1 keeps its keys under a declared tuple, as json_encode() sends them', function (string $body) {
+    expect(mergedType($body, '[number, string]'))->toBe($body);
+})->with(['{ "1": unknown; "0": unknown }', '{ "0": unknown; "1": unknown }', '{ "1": unknown; "0": unknown } | null']);
+
+test('a filtered tuple keeps each declared element\'s class beside it in its key order', function () {
+    $merge = new DeclaredTypeMerge(['User', 'Post'], filtered: true);
+
+    expect($merge->merge(['{ "1": unknown; "0": unknown }', []], ['[User, Post]', [User::class, Post::class]]))
+        ->toBe(['[Post, User]', [Post::class, User::class]])
+        ->and($merge->merge(['{ "1": unknown; "0": unknown } | null', []], ['[User | null, Post]', [CrmUser::class, Post::class]]))
+        ->toBe(['[Post, User | null] | null', [Post::class, CrmUser::class]]);
+});
 
 // R12, R15 and R19: a member only the declaration has is kept where it may be left out, and dropped where it must be
 // sent from a shape whose every key the body names; a shape open at its path keeps it as declared.
