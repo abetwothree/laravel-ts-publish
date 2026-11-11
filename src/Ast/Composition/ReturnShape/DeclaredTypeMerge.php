@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
@@ -146,7 +147,7 @@ final readonly class DeclaredTypeMerge
             $byKey = [];
 
             foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
-                $byKey[rtrim($key, '?')] = $value;
+                $byKey[self::keyName($key)] = $value;
             }
 
             return $byKey;
@@ -161,6 +162,28 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
+     * Whether the body reads one shape keyed 0 to n-1 in any order with every value `unknown`, and the declaration
+     * one n-tuple, each beside a `null` or not.
+     */
+    private static function isUntypedTupleUnder(string $body, string $declared): bool
+    {
+        $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body), ['null']));
+        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']));
+        $members = count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : [];
+
+        if ($members === [] || count($tuples) !== 1 || ! TsTypeShape::isWrapped($tuples[0], '[', ']')) {
+            return false;
+        }
+
+        $indexes = array_map(static fn (array $member): ?int => PhpArrayKey::listIndex(self::keyName($member[0])), $members);
+        sort($indexes);
+
+        return $indexes === range(0, count($members) - 1)
+            && array_all($members, static fn (array $member): bool => $member[1] === 'unknown')
+            && count(TsTypeShape::tupleElements($tuples[0])) === count($members);
+    }
+
+    /**
      * merge() of a reading no union left an untyped arm out of.
      *
      * @param  Typed  $body
@@ -169,6 +192,11 @@ final readonly class DeclaredTypeMerge
      */
     private function mergeReading(array $body, array $declared, string $at): array
     {
+        // An API resource re-indexes such a shape into an `unknown[]`, which the declared tuple tells more of.
+        if (self::isUntypedTupleUnder($body[0], $declared[0])) {
+            return [TsTypeString::withNullArmOf($body[0], $declared[0]), $declared[1]];
+        }
+
         $told = [self::tells($body[0]), self::tells($declared[0])];
 
         // A body reading only `null` tells less than a container.

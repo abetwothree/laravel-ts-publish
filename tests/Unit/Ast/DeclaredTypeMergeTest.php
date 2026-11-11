@@ -111,6 +111,15 @@ test('a member pairs with the declared member of the key it names, a numeric key
     'a key only the declaration has' => ['{ "0": number }', '{ 0: number; 1?: string }', '{ 0: number; 1?: string }'],
 ]);
 
+// R28: a body shape pairs with the declared shape holding the keys it names, however either spells them.
+test('pairs a body shape with a declared one by the key it decodes to', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a quoted numeric key' => ['{ "0": unknown }', '{ 0: number; z: string } | { 1: string }', '{ 0: number }'],
+    'a quoted name' => ['{ "a": unknown }', '{ a: number; z: string } | { b: string }', '{ "a": number }'],
+    'a single-quoted name' => ["{ 'a': unknown }", '{ b: string } | { a: number; z: string }', "{ 'a': number }"],
+]);
+
 // R29: an intersection of objects, as a spread beside keys prints, merges as the one object it sends.
 test('an intersection of objects merges as the one object it sends', function () {
     $open = new DeclaredTypeMerge([], [], ["[]\0Omit<{ by: unknown }, 'n'> & { n: number }"]);
@@ -159,6 +168,27 @@ test('a vague container takes the declared one, and another kind merges its cont
     'a list under a record' => ['{ by: unknown }[]', 'Record<string, { by: number }>', '{ by: number }[]'],
     'a shape under a record' => ['{ a: unknown; b: number }', 'Record<string, number>', '{ a: number; b: number }'],
     'a record under a list' => ['Record<string, { n: unknown }>', '{ n: number }[]', 'Record<string, { n: number }>'],
+]);
+
+// A shape keyed 0 to n-1 that types no value is the `unknown[]` an API resource re-indexes it into, so a declared
+// n-tuple types it as it types that list (GH-154).
+test('a shape keyed 0 to n-1 with every value unknown takes a declared n-tuple', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'keys out of order' => ['{ "1": unknown; "0": unknown }', '[number, string]', '[number, string]'],
+    'keys in order' => ['{ "0": unknown; "1": unknown }', '[number, string]', '[number, string]'],
+    'keys spelled bare' => ['{ 1: unknown; 0: unknown }', '[number, string]', '[number, string]'],
+    'an optional key' => ['{ "0": unknown; "1"?: unknown }', '[number, string?]', '[number, string?]'],
+    'the body\'s null' => ['{ "1": unknown; "0": unknown } | null', '[number, string]', '[number, string] | null'],
+    'a declared null' => ['{ "1": unknown; "0": unknown }', '[number, string] | null', '[number, string] | null'],
+    'a 3-tuple' => ['{ "1": unknown; "0": unknown }', '[number, string, boolean]', '{ "1": unknown; "0": unknown }'],
+    'a declared shape' => ['{ "1": unknown; "0": unknown }', '{ 0: number; 1: string }', '{ 1: string; 0: number }'],
+    'a declared list' => ['{ "1": unknown; "0": unknown }', 'number[]', '{ "1": number; "0": number }'],
+    'a tuple beside another arm' => ['{ "1": unknown; "0": unknown }', '[number, string] | string', '{ "1": unknown; "0": unknown }'],
+    'a typed value' => ['{ "1": string; "0": unknown }', '[number, string]', '{ "1": string; "0": unknown }'],
+    'a key past n-1' => ['{ "2": unknown; "0": unknown }', '[number, string]', '{ "2": unknown; "0": unknown }'],
+    'a named key' => ['{ a: unknown; "0": unknown }', '[number, string]', '{ a: unknown; "0": unknown }'],
+    'a key with a leading zero' => ['{ "01": unknown; "0": unknown }', '[number, string]', '{ "01": unknown; "0": unknown }'],
 ]);
 
 // R12, R15 and R19: a member only the declaration has is kept where it may be left out, and dropped where it must be

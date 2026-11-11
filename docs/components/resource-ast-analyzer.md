@@ -147,6 +147,8 @@ but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`T
 only an exact `unknown`.
 
 A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
+- a shape keyed `0` to n-1 in any order, every value `unknown`, takes a declared n-tuple, the body's `null` kept, as it
+  is the `unknown[]` an API resource re-indexes it into (`DeclaredTypeMerge::isUntypedTupleUnder()`);
 - where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
   does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
   only `null` takes a vague member, or any member where a union kept that `null` beside an arm no rule types;
@@ -159,7 +161,7 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
   it is optional or the shape is open, and goes where the body never sends it;
 - a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
   declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
-  both spell first, then the keys both hold (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
+  both spell first, then the keys both name (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
 - the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
   within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
   member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a

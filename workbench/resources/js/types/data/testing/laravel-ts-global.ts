@@ -3473,7 +3473,7 @@ declare global {
             contacts: ({ email: string | null } | null)[];
             rows: { name: string | null; locale: string }[];
             branches: { name: string | null; locale: string }[];
-            pairs: unknown[][];
+            pairs: [number, string][];
             summary: { label: string; count: number | null };
         }
         /**

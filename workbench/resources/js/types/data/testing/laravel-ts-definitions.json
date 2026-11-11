@@ -13549,7 +13549,7 @@
                 },
                 {
                     "name": "pairs",
-                    "type": "unknown[][]",
+                    "type": "[number, string][]",
                     "optional": false
                 },
                 {

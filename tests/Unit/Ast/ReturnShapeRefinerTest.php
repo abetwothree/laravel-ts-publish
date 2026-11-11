@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOutOfOrderPairsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewShapesResource;
@@ -485,6 +486,16 @@ test('a mapped key keeps the open mark its value moves with and pairs keys by th
         'twice' => '{ by: User; [key: `x_${string}`]: number | undefined | string; [key: `${string}_y`]: string | undefined | number; x_y: number | undefined | string }[]',
     ], ['User']],
 ]);
+
+// The resource re-indexes a row keyed 0 to n-1, so a row whose values no rule types takes the declared tuple (GH-154).
+test('a mapped key whose rows are keyed 0 to n-1 out of order with no value typed takes the declared tuple', function () {
+    $data = new ResourceTransformer(ReviewOutOfOrderPairsResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+        'pairs' => '[number, string][]',
+        'maybe' => '([number, string] | null)[]',
+    ])->and($data->typeImports)->toBe([]);
+});
 
 // R20: the merged signature type-checks, where a member its pattern covers beside it unwidened is TS2411.
 test('a member an index signature covers publishes a type tsc accepts', function () {
