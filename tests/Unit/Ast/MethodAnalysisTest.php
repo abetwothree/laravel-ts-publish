@@ -88,6 +88,25 @@ it('appends inlineEnumFqcns per property WITHOUT deduping, same as inlineModelFq
     ]);
 });
 
+// A key the target holds is replaced by the source's value, whose own tokens alone the queue then describes; a target
+// holding no such key is a join's accumulator, whose queue still reads every branch.
+it('replaces the inline enum queue of a key the target holds and the source sets again', function (bool $holds, array $queue) {
+    $target = new MethodAnalysis(
+        properties: $holds ? [['name' => 'row', 'type' => '{ s: StatusType }', 'optional' => false, 'description' => '']] : [],
+        inlineEnumFqcns: ['row' => ['App\\Status'], 'kept' => ['App\\Kept']],
+    );
+    $target->merge(new MethodAnalysis(
+        properties: [['name' => 'row', 'type' => '{ c: StatusType }', 'optional' => false, 'description' => '']],
+        inlineEnumFqcns: ['row' => ['Crm\\Status']],
+    ));
+
+    expect($target->inlineEnumFqcns['row'])->toBe($queue)
+        ->and($target->inlineEnumFqcns['kept'])->toBe(['App\\Kept']);
+})->with([
+    'held by the target' => [true, ['Crm\\Status']],
+    'held by no property of the target' => [false, ['App\\Status', 'Crm\\Status']],
+]);
+
 it('appends inlineEnumResourceFqcns per property WITHOUT deduping, same as inlineModelFqcns', function () {
     $target = new MethodAnalysis(inlineEnumResourceFqcns: ['status' => ['App\\Enum1', 'App\\Enum2']]);
     $source = new MethodAnalysis(inlineEnumResourceFqcns: ['status' => ['App\\Enum2', 'App\\Enum3']]);

@@ -306,9 +306,12 @@ class MethodAnalysis
      * `properties` appends; the class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings`
      * replace-merge, the source winning, a key it sets with none losing its own; the inline maps append undeduped, as
      * read by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
+     *
+     * A key this analysis already holds takes the source's inline enum queue alone, as the source's value replaces it.
      */
     public function merge(self $source): void
     {
+        $held = array_flip(array_column($this->properties, 'name'));
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
@@ -332,6 +335,12 @@ class MethodAnalysis
             }
 
             unset($this->closedToDottedKeys[$property['name']], $this->openReadings[$property['name']]);
+
+            // The source's value replaces the key, so the old value's enums would lead its tokens' queue; a join's
+            // accumulator holds no key, so each branch's queue stays.
+            if (isset($held[$property['name']])) {
+                unset($this->inlineEnumFqcns[$property['name']]);
+            }
         }
 
         // A spread would renumber a numeric cast key.

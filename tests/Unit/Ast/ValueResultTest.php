@@ -290,7 +290,7 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
         ],
     ]);
 
-    // An arm's own wraps lead its text, which no count here places, so their bare tokens need the enum queue's imports.
+    // No rewrite can place an arm's own wraps inside a wider union, so they read bare and are queued like bare reads.
     test('queues the enums an arm wraps on its own, in arm order', function (array $branches, array $union) {
         expect(ValueResult::unionResults($branches))->toBe($union);
     })->with([

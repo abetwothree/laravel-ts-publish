@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BracketedReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedItemsPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchRowsOfSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
@@ -113,6 +114,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ScopedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SearchedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverHeldEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResource;
@@ -2033,6 +2035,32 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
             '{ first: CrmStatusType; subject: WorkbenchStatusType | RoleType | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
         ],
     ]);
+
+    // A later spread replaces each key, so the enums the replaced value read must not lead the key's alias queue.
+    test('a key a later spread replaces reads its own enum, not those the replaced value held', function (bool $tolki) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(SpreadOverHeldEnumsResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'row' => '{ c: StatusType }',
+            'subject' => '{ c: StatusType }',
+            'bare' => '{ c: StatusType }',
+        ])
+            ->and($data->typeImports)->toBe(['../../../../../../workbench/crm/enums' => ['StatusType']])
+            ->and($data->valueImports)->toBe([]);
+    })->with(['tolki on' => [true], 'tolki off' => [false]]);
+
+    // A branch join merges each branch into one holder of no key, so every branch's enums stay queued.
+    test('a key two branches return keeps each branch\'s enum', function () {
+        $data = new ResourceTransformer(BranchRowsOfSameNamedEnumsResource::class)->data();
+
+        expect($data->properties['row']['type'])->toBe('{ c: CrmStatusType } | { s: WorkbenchStatusType }')
+            ->and($data->typeImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+                '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+            ]);
+    });
 });
 
 describe('ResourceTransformer resolveMultiEnumAccessorFqcns() overlap guard', function () {
