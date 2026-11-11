@@ -17,11 +17,11 @@ use PhpParser\Node\Expr\ArrayItem;
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
- * @phpstan-type MapArm = array{value: ValueExpressionResult, checksKeys: bool}
+ * @phpstan-type MapArm = array{value: ValueExpressionResult, checksKeys: bool, mayBeEmpty: bool}
  * @phpstan-type PrintedArm = array{arm: InlineSpreadArm|ObjectSpreadArm, map: MapArm|null}
  *
- * A MapArm is a map's: the value it may write under any key, and whether each key the fold writes must fit that value,
- * as for a map after another item.
+ * A MapArm is a map's: the value it may write under any key, whether each key the fold writes must fit that value, as
+ * for a map after another item, and whether the spread may be `[]`, which prints only joined into another map's.
  *
  * @internal
  */

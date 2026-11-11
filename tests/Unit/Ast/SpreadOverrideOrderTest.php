@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldReturns
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldUnionValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLiteralBesideArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMapThenMapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeEmptyMapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMergeJoinResource;
@@ -214,6 +215,7 @@ it('publishes two map spreads in a row as one map of both values', function () {
         'row' => 'Record<string, string | number>',
         'deep' => '{ in: Record<string, string | number> }',
         'keyed' => "Omit<Record<string, string | number>, 'by'> & { by: string | number }",
+        // The map's signature still covers the arm's keys, so this type rejects the nulls the arm sends: a follow-up.
         'armed' => 'Omit<Record<string, string | number>, keyof UserResource> & UserResource',
         'three' => 'Record<string, string | number | boolean>',
     ])->and(analyzedImportNames(SpreadMapThenMapResource::class))->toBe(['UserResource'])
@@ -225,6 +227,31 @@ it('publishes two map spreads in a row as one map of both values', function () {
             .'"row":{"k":"v","by":2,"c":1},"deep":{"in":{"k":"v","by":2,"c":1}},"keyed":{"by":2,"k":"v","c":1},'
             .'"armed":{"k":"v","by":2,"c":1,"id":null,"name":"Ada","email":null,"role":null},'
             .'"three":{"k":"v","by":2,"c":1,"f":true}}');
+});
+
+// A map that may be `[]` writes the keys the map writes, or none; with no map to join it prints no arm, as before.
+it('joins a map spread that may be empty into the map beside it', function () {
+    expect(publishedResourceKeyTypes(SpreadMaybeEmptyMapResource::class, Post::class))->toBe([
+        'coalesced' => 'Record<string, string | number>',
+        'or_empty' => 'Record<string, string | number>',
+        'empty_first' => 'Record<string, number | string>',
+        'before_two' => 'Record<string, boolean | string | number>',
+        'keyed' => "Omit<Record<string, string | number>, 'by'> & { by: string | number }",
+        'alone' => 'Record<string, unknown>',
+        'before_arm' => 'UserResource',
+    ])->and(spreadValueSent(SpreadMaybeEmptyMapResource::class, [
+        'labels' => ['k' => 'v'],
+        'counts' => ['c' => 1],
+        'maybe' => ['m' => 2],
+        'flags' => ['f' => true],
+        'flagged' => '1',
+    ]))->toBe('{"coalesced":{"k":"v","m":2},"or_empty":{"k":"v","c":1},"empty_first":{"c":1,"k":"v"},'
+        .'"before_two":{"f":true,"k":"v","c":1},"keyed":{"by":"hi","k":"v","c":1},"alone":{"m":2},'
+        .'"before_arm":{"m":2,"id":null,"name":"Ada","email":null,"role":null}}')
+        ->and(spreadValueSent(SpreadMaybeEmptyMapResource::class, ['labels' => ['k' => 'v'], 'counts' => ['c' => 1]]))
+        ->toBe('{"coalesced":{"k":"v"},"or_empty":{"k":"v"},"empty_first":{"k":"v"},'
+            .'"before_two":{"k":"v","c":1},"keyed":{"by":"hi","k":"v"},"alone":[],'
+            .'"before_arm":{"id":null,"name":"Ada","email":null,"role":null}}');
 });
 
 it('publishes two map spreads of classes in a row as one map, importing each class once', function () {

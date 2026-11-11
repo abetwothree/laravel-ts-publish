@@ -130,7 +130,8 @@ it('resolves an inline array with a nested key and a model spread arm to an Omit
 });
 
 /**
- * An engine that types `$arm` as a resource, `$obj` and any literal as `{ a: number }`, and `$map` as a string map.
+ * An engine that types `$arm` as a resource, `$obj` and any literal as `{ a: number }`, `$map` as a string map, and
+ * `$maybe` and `$maybeObj` as a number map or `{ a: number }` beside `[]`.
  */
 function inlineArrayHandlerArmEngine(): ExpressionEngine
 {
@@ -141,6 +142,8 @@ function inlineArrayHandlerArmEngine(): ExpressionEngine
             return match (true) {
                 $expr instanceof Variable && $expr->name === 'arm' => ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class],
                 $expr instanceof Variable && $expr->name === 'map' => ['type' => 'Record<string, string>', 'optional' => false],
+                $expr instanceof Variable && $expr->name === 'maybe' => ['type' => 'Record<string, number> | never[]', 'optional' => false],
+                $expr instanceof Variable && $expr->name === 'maybeObj' => ['type' => '{ a: number } | never[]', 'optional' => false],
                 default => ['type' => '{ a: number }', 'optional' => false],
             };
         }
@@ -171,7 +174,8 @@ it('plans the spreads a nested literal prints as arms, by item, with each map\'s
 
     expect($plan->items)->toHaveCount($items)
         ->and(array_map(static fn (array $arm): string => ($arm['arm']['type'] ?? $arm['arm']['fqcn'])
-            .($arm['map'] === null ? '' : ($arm['map']['checksKeys'] ? ' fits ' : ' holds ').$arm['map']['value']['type']), $plan->printed))
+            .($arm['map'] === null ? '' : ($arm['map']['checksKeys'] ? ' fits ' : ' holds ').$arm['map']['value']['type'])
+            .(($arm['map']['mayBeEmpty'] ?? false) ? ' or none' : ''), $plan->printed))
         ->toBe($printed);
 })->with([
     'a value an arm follows' => ['[...$obj, ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
@@ -181,6 +185,8 @@ it('plans the spreads a nested literal prints as arms, by item, with each map\'s
     'a map after a key' => ['["b" => 2, ...$map]', 2, [1 => 'Record<string, string> fits string']],
     'a map first' => ['[...$map, "b" => 2]', 2, [0 => 'Record<string, string> holds string']],
     'a map after a map' => ['[...$map, ...$map]', 2, [0 => 'Record<string, string> holds string', 1 => 'Record<string, string> fits string']],
+    'a map or [] before a map, as the map' => ['[...$maybe, ...$map]', 2, [0 => 'Record<string, number> holds number or none', 1 => 'Record<string, string> fits string']],
+    'an object or [], no arm' => ['[...$maybeObj, "b" => 2]', 2, []],
     'a helper the item loop flattens' => ['[...$this->helper(), ...$arm]', 2, [1 => UserResource::class]],
 ]);
 

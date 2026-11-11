@@ -35,19 +35,20 @@ function foldedKeys(MethodAnalysis $analysis): array
 }
 
 /**
- * A map's printed arm: `Record<string, $value>`, the spread's $wide data on its result, and $value as the map's value.
+ * A map's printed arm: `Record<string, $value>`, the spread's $wide data on its result, and $value as the map's value;
+ * with $mayBeEmpty, a spread that may be `[]`.
  *
  * @param  array<string, mixed>  $extra  more of the value's result
  * @param  array<string, mixed>  $wide  the spread's custom imports and carried classes
  * @return array{arm: array{type: string, result: array<string, mixed>}, map: array<string, mixed>}
  */
-function literalMapArm(string $value, bool $checksKeys, array $extra = [], array $wide = []): array
+function literalMapArm(string $value, bool $checksKeys, array $extra = [], array $wide = [], bool $mayBeEmpty = false): array
 {
     $type = 'Record<string, '.$value.'>';
 
     return [
         'arm' => ['type' => $type, 'result' => ['type' => $type, 'optional' => false, ...$extra, ...$wide]],
-        'map' => ['value' => ['type' => $value, 'optional' => false, ...$extra], 'checksKeys' => $checksKeys],
+        'map' => ['value' => ['type' => $value, 'optional' => false, ...$extra], 'checksKeys' => $checksKeys, 'mayBeEmpty' => $mayBeEmpty],
     ];
 }
 
@@ -212,6 +213,27 @@ it('joins a map whose value is unknown into an unknown map, keeping each spread\
         'type' => 'Record<string, unknown>',
         'result' => ['type' => 'Record<string, unknown>', 'optional' => false, 'openReadings' => ["{}\0{ a: string }"]],
     ]]);
+});
+
+// Printed alone, a signature would also cover the keys of a resource's arm beside it.
+it('prints a map that may be empty only joined into a map that may not', function () {
+    $resource = ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false];
+    $alone = new LiteralWrites;
+    $alone->recordArm(literalMapArm('number', checksKeys: false, mayBeEmpty: true));
+    $alone->recordArm(['arm' => $resource, 'map' => null]);
+    $joined = new LiteralWrites;
+    $joined->recordArm(literalMapArm('number', checksKeys: false, mayBeEmpty: true));
+    $joined->recordArm(literalMapArm('string', checksKeys: true));
+    $both = new LiteralWrites;
+    $both->recordArm(literalMapArm('number', checksKeys: false, mayBeEmpty: true));
+    $both->recordArm(literalMapArm('string', checksKeys: true, mayBeEmpty: true));
+
+    expect(foldedInto($alone)->spreadArms())->toBe([$resource])
+        ->and(foldedInto($joined)->spreadArms())->toBe([[
+            'type' => 'Record<string, number | string>',
+            'result' => ['type' => 'Record<string, number | string>', 'optional' => false],
+        ]])
+        ->and(foldedInto($both)->spreadArms())->toBe([]);
 });
 
 it('carries each joined map\'s custom imports and carried classes on the joined arm', function () {

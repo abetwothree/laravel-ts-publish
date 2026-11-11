@@ -692,10 +692,11 @@ writes a value Laravel may remove (`removed`), and whether a merge call wrote it
 reconcile, [`LiteralFold`](../../src/Ast/Analysis/Fold/LiteralFold.php) decides each key once as PHP builds the literal
 and, where `Reading::filtersBodyOf()` holds, as `filter()` lifts each merge over the keys after it; `applyTo()` writes
 the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept, beside the arms its
-print keeps: every map's joined into the last map's, which a map after another item keeps only where every key fits
-its value. A merged literal is read through the same loop. A key's slot sits where its first write landed on each path, so a first write that may not
-land lets a merge before the next one win there; the fold test replays what the real `resolve()` sent for 7380
-sequences (`tests/Unit/Ast/Fixtures/fold-oracle.php`).
+print keeps. The last map's arm takes in every earlier map's value, a map that may be `[]` prints only so joined, and a
+map's arm after another item stays only where every key fits its value. A merged literal is read through the same loop.
+A key's slot sits where its first write landed on each path, so a first write that may not land lets a merge before the
+next one win there; the fold test replays what the real `resolve()` sent for 7380 sequences
+(`tests/Unit/Ast/Fixtures/fold-oracle.php`).
 
 ## Resource classes a value names
 

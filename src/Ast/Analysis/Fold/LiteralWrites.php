@@ -296,9 +296,10 @@ final class LiteralWrites
         ))));
         unset($result['openReadings']);
 
+        // The joined map stands where the last map does, after another item, so every key must fit its value.
         return [
             'arm' => ['type' => $type, 'result' => $readings === [] ? $result : [...$result, 'openReadings' => $readings]],
-            'map' => ['value' => $value, 'checksKeys' => array_any($maps, static fn (array $map): bool => $map['map']['checksKeys'])],
+            'map' => ['value' => $value, 'checksKeys' => true, 'mayBeEmpty' => false],
         ];
     }
 
@@ -371,6 +372,9 @@ final class LiteralWrites
      * The recorded arms with every map's taken into the last map's, in its place: `keyof` a map is every key, so the
      * print would keep the last map alone, though a key an earlier map wrote holds either map's value.
      *
+     * A map that may be `[]` prints only joined into a map that is not: printed alone, its signature would also cover
+     * the keys of a resource's arm beside it.
+     *
      * @return array<int, PrintedArm>
      */
     private function joinedArms(): array
@@ -381,6 +385,10 @@ final class LiteralWrites
             if ($arm['map'] !== null) {
                 $maps[$index] = $arm;
             }
+        }
+
+        if (array_all($maps, static fn (array $map): bool => $map['map']['mayBeEmpty'])) {
+            return array_diff_key($this->arms, $maps);
         }
 
         if (count($maps) < 2) {

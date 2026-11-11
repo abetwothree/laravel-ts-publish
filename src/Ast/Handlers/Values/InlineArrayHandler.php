@@ -49,8 +49,9 @@ use PhpParser\Node\Scalar\String_;
  * @phpstan-import-type KeyedValues from ObjectMembers
  *
  * @phpstan-type ReadArm = array{
- *     arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, map: ValueExpressionResult|null,
+ *     arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, map: ValueExpressionResult|null, mayBeEmpty: bool,
  * }
+ * @phpstan-type ClassifiedSpread = array{arm: InlineSpreadArm|ObjectSpreadArm|null, value: ValueExpressionResult|null}
  *
  * @internal
  */
@@ -67,38 +68,7 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     public static function classifySpreadArm(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        $modelFqcn = self::spreadModelToArrayFqcn($expr, $scope);
-
-        if ($modelFqcn !== null) {
-            return ['fqcn' => $modelFqcn, 'isModel' => true, 'isCollection' => false];
-        }
-
-        $collectionFqcn = self::spreadCollectionToArrayFqcn($expr, $scope);
-
-        if ($collectionFqcn !== null) {
-            return ['fqcn' => $collectionFqcn, 'isModel' => true, 'isCollection' => true];
-        }
-
-        $chain = self::spreadRelationChainFqcn($expr, $scope);
-
-        if ($chain !== null) {
-            return ['fqcn' => $chain['fqcn'], 'isModel' => true, 'isCollection' => $chain['isCollection']];
-        }
-
-        $spreadResult = $engine->resolve($expr);
-
-        if (isset($spreadResult['resourceFqcn'])
-            && $spreadResult['type'] === TsNaming::resourceTypeName($spreadResult['resourceFqcn'])) {
-            return ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false];
-        }
-
-        // Spreading null throws, so a null arm sets no key. A class no generated file exports would be a token with no
-        // import behind it. A resolved resource's restated keys are one object, though an intersection.
-        $type = TsTypeString::withoutNullArm($spreadResult['type']);
-
-        return (self::isObjectType($type) || isset($spreadResult['resolvedFqcn'])) && ValueResult::namesOnlyExportedClasses($spreadResult)
-            ? ['type' => $type, 'result' => $spreadResult]
-            : null;
+        return self::classifiedSpread($expr, $scope, $engine)['arm'];
     }
 
     /**
@@ -303,7 +273,11 @@ final class InlineArrayHandler implements ExpressionHandler
             // After another item, the fold leaves a map's arm out where a key does not fit its value.
             $printed[$index] = [
                 'arm' => $spread['arm'],
-                'map' => $spread['map'] === null ? null : ['value' => $spread['map'], 'checksKeys' => $index > 0],
+                'map' => $spread['map'] === null ? null : [
+                    'value' => $spread['map'],
+                    'checksKeys' => $index > 0,
+                    'mayBeEmpty' => $spread['mayBeEmpty'],
+                ],
             ];
         }
 
@@ -472,6 +446,68 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
+     * classifySpreadArm()'s arm for a spread's value, beside the value it resolved the spread to, where it resolved it.
+     *
+     * @return ClassifiedSpread
+     */
+    private static function classifiedSpread(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        $modelFqcn = self::spreadModelToArrayFqcn($expr, $scope);
+
+        if ($modelFqcn !== null) {
+            return ['arm' => ['fqcn' => $modelFqcn, 'isModel' => true, 'isCollection' => false], 'value' => null];
+        }
+
+        $collectionFqcn = self::spreadCollectionToArrayFqcn($expr, $scope);
+
+        if ($collectionFqcn !== null) {
+            return ['arm' => ['fqcn' => $collectionFqcn, 'isModel' => true, 'isCollection' => true], 'value' => null];
+        }
+
+        $chain = self::spreadRelationChainFqcn($expr, $scope);
+
+        if ($chain !== null) {
+            return ['arm' => ['fqcn' => $chain['fqcn'], 'isModel' => true, 'isCollection' => $chain['isCollection']], 'value' => null];
+        }
+
+        $spreadResult = $engine->resolve($expr);
+
+        if (isset($spreadResult['resourceFqcn'])
+            && $spreadResult['type'] === TsNaming::resourceTypeName($spreadResult['resourceFqcn'])) {
+            return ['arm' => ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false], 'value' => $spreadResult];
+        }
+
+        // Spreading null throws, so a null arm sets no key. A class no generated file exports would be a token with no
+        // import behind it. A resolved resource's restated keys are one object, though an intersection.
+        $type = TsTypeString::withoutNullArm($spreadResult['type']);
+        $arm = (self::isObjectType($type) || isset($spreadResult['resolvedFqcn'])) && ValueResult::namesOnlyExportedClasses($spreadResult)
+            ? ['type' => $type, 'result' => $spreadResult]
+            : null;
+
+        return ['arm' => $arm, 'value' => $spreadResult];
+    }
+
+    /**
+     * The arm of a spread whose value is one map beside `[]`, which writes no key: the map's own, for a map beside it
+     * to join; null for any other value.
+     *
+     * @param  ValueExpressionResult|null  $value  the spread's value
+     * @return ObjectSpreadArm|null
+     */
+    private static function maybeEmptyMapArm(Expr $expr, ?array $value, AnalysisScope $scope): ?array
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $map = self::spreadObject($value);
+
+        return $map !== null && ValueResult::namesOnlyExportedClasses($value) && self::spreadSignature($expr, $value, $scope) !== null
+            ? ['type' => $map, 'result' => [...$value, 'type' => $map]]
+            : null;
+    }
+
+    /**
      * How the item loop reads a spread a print may keep as an arm, read once: the arm it classifies as, whether its
      * keys are written in place, and else the value a map it holds may write under any key.
      *
@@ -479,11 +515,12 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     private static function readArm(ArrayItem $item, AnalysisScope $scope, ExpressionEngine $engine): array
     {
-        $arm = self::classifySpreadArm($item->value, $scope, $engine);
+        $classified = self::classifiedSpread($item->value, $scope, $engine);
+        $arm = $classified['arm'] ?? self::maybeEmptyMapArm($item->value, $classified['value'], $scope);
         $inPlace = isset($arm['result']) && self::spreadKeys($item->value, $arm['result'], $scope) !== null;
         $map = isset($arm['result']) && ! $inPlace ? self::spreadSignature($item->value, $arm['result'], $scope) : null;
 
-        return ['arm' => $arm, 'inPlace' => $inPlace, 'map' => $map];
+        return ['arm' => $arm, 'inPlace' => $inPlace, 'map' => $map, 'mayBeEmpty' => $classified['arm'] === null && $arm !== null];
     }
 
     /**
