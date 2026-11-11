@@ -159,16 +159,10 @@ final class CastChannels
             $wraps = $this->wrapsOf($analysis, $name);
 
             $cast = $analysis->casts[$name] ?? null;
-            $leftOut = isset($analysis->leftOutValues[$name]);
             $analysis->forgetChannels($name);
 
             if ($cast !== null) {
                 $analysis->casts[$name] = $cast;
-            }
-
-            // A text retypes the key's value, never whether that value may be left out; a refiner fill is read further.
-            if ($leftOut) {
-                $analysis->leftOutValues[$name] = true;
             }
 
             $named = $declared === null ? null : $this->byKind(array_values(array_filter($declared)));

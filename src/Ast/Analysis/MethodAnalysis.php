@@ -60,8 +60,16 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     bodyType?: string,
  *     fillType?: string,
  *     keepsKeys?: bool,
+ *     absent?: bool,
+ *     removed?: bool,
  * }
  * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
+ * @phpstan-type PresenceFacts = array{absent?: true, removed?: true}
+ * @phpstan-type Presence = array{optional: bool, absent: bool, removed: bool}
+ *
+ * A row's `optional` is its printed `?`. Two facts of the body say why, each set only where true: `absent`, the key
+ * is missing on some path, where a value held before it survives; `removed`, its value may be removed, as a `when()`
+ * MissingValue or an Inertia `optional()` prop is, which no held value survives. A declared `?` sets neither.
  *
  * @internal
  */
@@ -105,15 +113,6 @@ class MethodAnalysis
      * @var array<array-key, HeldNulls>
      */
     public array $heldObjectKeys = [];
-
-    /**
-     * Property name => true where a value addProperty() gave the key may be left out by itself, as an Inertia deferred
-     * prop or a `when()` value may, beside a key whose only absence is a write that may not run. Merges and joins keep
-     * every branch's.
-     *
-     * @var array<array-key, true>
-     */
-    public array $leftOutValues = [];
 
     /**
      * Property name => true where the value addProperty() last gave the key is an object Inertia replaces before a
@@ -200,15 +199,43 @@ class MethodAnalysis
     }
 
     /**
+     * A row with its printed `?` and its two presence facts set.
+     *
+     * @param  AnalyzedProperty  $property
+     * @return AnalyzedProperty
+     */
+    public static function withPresence(array $property, bool $optional, bool $absent, bool $removed): array
+    {
+        unset($property['absent'], $property['removed']);
+
+        return [...$property, 'optional' => $optional, ...self::presenceFacts($absent, $removed)];
+    }
+
+    /**
+     * The presence facts a row keeps: each only where true.
+     *
+     * @return PresenceFacts
+     */
+    public static function presenceFacts(bool $absent, bool $removed): array
+    {
+        return [...($absent ? ['absent' => true] : []), ...($removed ? ['removed' => true] : [])];
+    }
+
+    /**
      * Record one resolved value as a property and route every FQCN channel it carries.
      *
      * The one place a value becomes a property: a channel added here reaches every collector,
      * where a hand-rolled collector had to be found and updated one at a time.
      *
+     * $optional says the key may be absent, as a write that may not run leaves it; a value's own `optional` says it
+     * may be removed, unless its `absent` says it is a key its writer may leave out.
+     *
      * @param  ValueExpressionResult  $result
      */
     public function addProperty(string $name, array $result, bool $optional = false, string $description = ''): void
     {
+        $absent = $result['absent'] ?? false;
+
         // A class no generated file exports would be a token with no import behind it.
         if (! ValueResult::namesOnlyExportedClasses($result)) {
             $result = [...ValueResult::unknown(), 'optional' => $result['optional']];
@@ -226,6 +253,7 @@ class MethodAnalysis
             'optional' => $optional || $result['optional'],
             'description' => $description,
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ...self::presenceFacts($optional || ($result['optional'] && $absent), $result['optional'] && ! $absent),
         ];
 
         $held = ValueResult::heldNullsOf($result);
@@ -234,12 +262,6 @@ class MethodAnalysis
             unset($this->heldObjectKeys[$name]);
         } else {
             $this->heldObjectKeys[$name] = $held;
-        }
-
-        if ($result['optional']) {
-            $this->leftOutValues[$name] = true;
-        } else {
-            unset($this->leftOutValues[$name]);
         }
 
         if (ValueResult::closedToDottedKeys($result)) {
@@ -297,7 +319,7 @@ class MethodAnalysis
 
     /**
      * Write a key a merge call before it already wrote: Laravel sends the merged value wherever the merge ran, so the
-     * key holds either value, and is left out only where both may be.
+     * key holds either value; it is left out only where both may be, and there the later value is removed.
      *
      * @param  ValueExpressionResult  $result
      */
@@ -312,9 +334,11 @@ class MethodAnalysis
         }
 
         $optional = $held['optional'] && $result['optional'];
+        $absent = $optional && ($result['absent'] ?? false);
+        $presence = ['optional' => $optional, 'absent' => $absent, 'removed' => $optional && ! $absent];
 
-        if (! $this->joinHeldKey($held, $result, $optional)) {
-            $this->setOptional($name, $optional);
+        if (! $this->joinHeldKey($held, $result, $presence)) {
+            $this->setPresence($name, $presence);
         }
     }
 
@@ -347,7 +371,7 @@ class MethodAnalysis
      *
      * The class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings` replace-merge, the source
      * winning, a key it sets with none losing its own; the inline maps append undeduped, as read by position.
-     * `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
+     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      *
      * A held key takes the source's inline enum queue alone where the source's value replaces it.
      */
@@ -366,7 +390,6 @@ class MethodAnalysis
         $this->modelFqcns = array_replace($this->modelFqcns, $source->modelFqcns);
         $this->multiEnumResourceFqcns = array_replace($this->multiEnumResourceFqcns, $source->multiEnumResourceFqcns);
         $this->enumResourceArmShapes = array_replace($this->enumResourceArmShapes, $source->enumResourceArmShapes);
-        $this->leftOutValues = array_replace($this->leftOutValues, $source->leftOutValues);
 
         foreach ($source->properties as $property) {
             if (! isset($source->casts[$property['name']])) {
@@ -447,7 +470,6 @@ class MethodAnalysis
         $this->carried = $source->carried;
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
         $this->heldObjectKeys = $source->heldObjectKeys;
-        $this->leftOutValues = $source->leftOutValues;
         $this->closedToDottedKeys = $source->closedToDottedKeys;
         $this->openReadings = $source->openReadings;
         $this->flatTypeAlias = $source->flatTypeAlias;
@@ -725,7 +747,6 @@ class MethodAnalysis
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
             $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
-            $this->leftOutValues[$name],
         );
     }
 
@@ -761,12 +782,7 @@ class MethodAnalysis
             unset($this->properties[$index]['bodyType'], $this->properties[$index]['fillType']);
         }
 
-        $leftOut = isset($this->leftOutValues[$name]);
         $this->forgetChannels($name);
-
-        if ($leftOut) {
-            $this->leftOutValues[$name] = true;
-        }
 
         // A literal's spelling binds no import, so only a read token elsewhere keeps one.
         $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
@@ -905,7 +921,7 @@ class MethodAnalysis
 
         foreach (array_column($this->properties, null, 'name') as $name => $held) {
             if (! JsEmitter::isIndexSignatureKey((string) $name)) {
-                $joined = $this->joinHeldKey($held, [...$signature, 'optional' => true]) || $joined;
+                $joined = $this->joinHeldKey($held, [...$signature, 'optional' => true, 'absent' => true]) || $joined;
             }
         }
 
@@ -940,7 +956,6 @@ class MethodAnalysis
         $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
-        $this->leftOutValues = TopLevelRenumbering::rekey($this->leftOutValues, $names);
         $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
         $this->openReadings = TopLevelRenumbering::rekey($this->openReadings, $names);
     }
@@ -1029,6 +1044,41 @@ class MethodAnalysis
         }
 
         return $queues;
+    }
+
+    /**
+     * The printed `?` and the two presence facts of a row.
+     *
+     * @param  AnalyzedProperty  $property
+     * @return Presence
+     */
+    private static function presenceOf(array $property): array
+    {
+        return [
+            'optional' => $property['optional'],
+            'absent' => $property['absent'] ?? false,
+            'removed' => $property['removed'] ?? false,
+        ];
+    }
+
+    /**
+     * The presence of a held key a merge's value may leave out joins: a removed value removes it, and one that may be
+     * unset, or that a declaration marks so, leaves the held one there.
+     *
+     * @param  AnalyzedProperty  $held
+     * @param  AnalyzedProperty  $written
+     * @return Presence
+     */
+    private static function presenceOver(array $held, array $written): array
+    {
+        $removed = $written['removed'] ?? false;
+        $keepsHeld = ($written['absent'] ?? false) || ! $removed;
+
+        return [
+            'optional' => $held['optional'] || $removed,
+            'absent' => $keepsHeld && ($held['absent'] ?? false),
+            'removed' => $removed || ($keepsHeld && ($held['removed'] ?? false)),
+        ];
     }
 
     /**
@@ -1122,13 +1172,14 @@ class MethodAnalysis
 
     /**
      * Write a key a spread may leave out as the value it held or the spread's, each keeping the classes behind its
-     * tokens, and say whether its type changed; joinedType() says where the held value stays. The key is optional as
-     * the held one is, or as $optional says.
+     * tokens, and say whether its type changed; joinedType() says where the held value stays. The key's presence is
+     * the held one's, or $presence.
      *
      * @param  AnalyzedProperty  $held
      * @param  ValueExpressionResult  $written
+     * @param  Presence|null  $presence
      */
-    private function joinHeldKey(array $held, array $written, ?bool $optional = null): bool
+    private function joinHeldKey(array $held, array $written, ?array $presence = null): bool
     {
         $name = $held['name'];
         $holdsClass = $this->hasFqcnChannel($name);
@@ -1146,13 +1197,15 @@ class MethodAnalysis
             $this->forgetChannels($name);
         }
 
+        $presence ??= self::presenceOf($held);
         $this->addProperty($name, [
             ...$written,
             'type' => $type,
-            'optional' => $optional ?? $held['optional'],
+            'optional' => $presence['optional'],
             ...($openReadings === [] ? [] : ['openReadings' => $openReadings]),
         ]);
         $this->keepLastWriteOf($name);
+        $this->setPresence($name, $presence);
 
         return true;
     }
@@ -1177,8 +1230,8 @@ class MethodAnalysis
 
     /**
      * The source of a merge with each value it may leave out of a key this holds joined with the held one, or left out
-     * where the held one stays; and each key it joins. A value left out by itself, as a when() value is, is a
-     * MissingValue PHP filters out with the key, so the key may be left out too.
+     * where the held one stays; and each key it joins. A removed value, as a when() value is, is a MissingValue PHP
+     * filters out with the key, so the key may be left out too.
      *
      * @return array{self, array<array-key, true>}
      */
@@ -1197,25 +1250,25 @@ class MethodAnalysis
             }
 
             $type = $this->joinedType($holds, $written['type'], $source->hasFqcnChannel($name));
-            $optional = $holds['optional'] || isset($source->leftOutValues[$name]);
+            $presence = self::presenceOver($holds, $written);
             $kept->properties = array_values(array_filter($kept->properties, static fn (array $property): bool => $property['name'] !== $name));
 
             if ($type === null) {
                 $kept->forgetChannels($name);
                 unset($kept->closedToDottedKeys[$name], $kept->openReadings[$name]);
-                $this->setOptional($name, $optional);
+                $this->setPresence($name, $presence);
 
                 continue;
             }
 
             $joined[$name] = true;
-            $kept->properties[] = [
+            $kept->properties[] = self::withPresence([
                 'name' => $name,
                 'type' => $type,
-                'optional' => $optional,
+                'optional' => false,
                 'description' => $written['description'],
                 ...(($written['keepsKeys'] ?? false) && ($holds['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-            ];
+            ], ...$presence);
             $readings = [...$this->openReadings[$name] ?? [], ...$source->openReadings[$name] ?? []];
 
             if ($readings !== []) {
@@ -1231,13 +1284,15 @@ class MethodAnalysis
     }
 
     /**
-     * Mark every entry of a key optional or required.
+     * Set the printed `?` and the presence facts of every entry of a key.
+     *
+     * @param  Presence  $presence
      */
-    private function setOptional(string $name, bool $optional): void
+    private function setPresence(string $name, array $presence): void
     {
         foreach ($this->properties as $index => $property) {
             if ($property['name'] === $name) {
-                $this->properties[$index]['optional'] = $optional;
+                $this->properties[$index] = self::withPresence($property, ...$presence);
             }
         }
     }

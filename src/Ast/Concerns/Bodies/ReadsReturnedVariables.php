@@ -102,7 +102,7 @@ trait ReadsReturnedVariables
     /** @var WeakMap<MethodAnalysis, list<UntypedKeyWrite>>|null each walked or literal branch's untyped key writes */
     private ?WeakMap $branchNotes = null;
 
-    /** @var array<string, true> each key the walk under way gave a value that may be left out itself, as `when()` is */
+    /** @var array<string, true> each key the walk under way gave a value that may be removed, as `when()`'s is */
     private array $optionalValueKeys = [];
 
     /**
@@ -1068,14 +1068,24 @@ trait ReadsReturnedVariables
             );
 
             if ($index === false) {
-                $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
+                $properties[] = MethodAnalysis::withPresence(
+                    $prop,
+                    optional: $isConditional || $prop['optional'],
+                    absent: $isConditional || ($prop['absent'] ?? false),
+                    removed: $prop['removed'] ?? false,
+                );
 
                 continue;
             }
 
             $into->forgetChannels($prop['name']);
-            $optional = $prop['optional'] || ($isConditional && $properties[$index]['optional']);
-            $properties[$index] = [...$prop, 'optional' => $optional];
+            $held = $properties[$index];
+            $properties[$index] = MethodAnalysis::withPresence(
+                $prop,
+                optional: $prop['optional'] || ($isConditional && $held['optional']),
+                absent: ($prop['absent'] ?? false) || ($isConditional && ($held['absent'] ?? false)),
+                removed: ($prop['removed'] ?? false) || ($isConditional && ($held['removed'] ?? false)),
+            );
         }
 
         $into->merge($write);
@@ -1520,20 +1530,26 @@ trait ReadsReturnedVariables
             $this->optionalValueKeys[$keyName] = true;
         }
 
-        $heldType = $existingIndex === null ? null : $into->properties[$existingIndex]['type'];
+        $held = $existingIndex === null ? null : $into->properties[$existingIndex];
+        $heldType = $held['type'] ?? null;
         $this->recordWrite($keyName, $isConditional, $heldType, false, ValueResult::heldNullsOf($result), $result['type']);
         $appendedIndex = count($into->properties);
+        $value = $this->reading()->arrayValue($result);
 
-        $into->addProperty($keyName, $this->reading()->arrayValue($result), $isConditional || $result['optional']);
+        $into->addProperty($keyName, $value, $isConditional || $result['optional']);
 
-        // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one was
-        // absent.
-        if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
-            $appended = $into->properties[$appendedIndex];
-            $appended['optional'] = $result['optional']
-                || ($isConditional && $into->properties[$existingIndex]['optional']);
+        // A key is missing where its new value vanishes, or where this write is skipped and no key, or a missing one,
+        // was held.
+        if (isset($into->properties[$appendedIndex])) {
+            $into->properties[$existingIndex ?? $appendedIndex] = MethodAnalysis::withPresence(
+                $into->properties[$appendedIndex],
+                optional: $result['optional'] || ($isConditional && ($held === null || $held['optional'])),
+                absent: $isConditional && ($held === null || ($held['absent'] ?? false)),
+                removed: $value['optional'] || ($isConditional && ($held['removed'] ?? false)),
+            );
+        }
 
-            $into->properties[$existingIndex] = $appended;
+        if ($existingIndex !== null) {
             array_splice($into->properties, $appendedIndex, 1);
         }
     }
@@ -1577,7 +1593,12 @@ trait ReadsReturnedVariables
         $kept = clone $into;
         $kept->properties = array_map(
             fn (array $property): array => $property['name'] === $keyName
-                ? [...$property, 'type' => $keptType, 'optional' => false]
+                ? MethodAnalysis::withPresence(
+                    [...$property, 'type' => $keptType],
+                    optional: false,
+                    absent: false,
+                    removed: $property['removed'] ?? false,
+                )
                 : $property,
             $into->properties,
         );
@@ -1601,11 +1622,12 @@ trait ReadsReturnedVariables
 
         // A value left out itself may still be on each path the default does not land, as a `when()` holding null is.
         $joined->properties = array_map(
-            fn (array $property): array => $property['name'] === $keyName ? [
-                ...$property,
-                'type' => $untyped ? 'unknown' : $property['type'],
-                'optional' => $property['optional'] || ($leftOut && $held['optional']),
-            ] : $property,
+            fn (array $property): array => $property['name'] === $keyName ? MethodAnalysis::withPresence(
+                [...$property, 'type' => $untyped ? 'unknown' : $property['type']],
+                optional: $property['optional'] || ($leftOut && $held['optional']),
+                absent: $property['absent'] ?? false,
+                removed: ($property['removed'] ?? false) || ($leftOut && $held['optional']),
+            ) : $property,
             $joined->properties,
         );
 
@@ -1696,6 +1718,7 @@ trait ReadsReturnedVariables
     private function noteOptionalValues(MethodAnalysis $write): void
     {
         foreach ($write->properties as $property) {
+            // The printed `?`, not `removed`: a seed's `?` may be a removed value, which no `??=` fills.
             if ($property['optional']) {
                 $this->optionalValueKeys[$property['name']] = true;
             }
@@ -1772,7 +1795,9 @@ trait ReadsReturnedVariables
 
                 $into->properties = array_map(
                     fn (array $property): array => $property['name'] === $key
-                        ? [...$property, 'optional' => true]
+                        ? MethodAnalysis::withPresence(
+                            $property, optional: true, absent: true, removed: $property['removed'] ?? false,
+                        )
                         : $property,
                     $into->properties,
                 );
@@ -1795,7 +1820,9 @@ trait ReadsReturnedVariables
     private function loosenHeldKeys(MethodAnalysis $into, bool $bringsKeys): void
     {
         $into->properties = array_map(
-            fn (array $property): array => [...$property, 'optional' => true],
+            fn (array $property): array => MethodAnalysis::withPresence(
+                $property, optional: true, absent: true, removed: $property['removed'] ?? false,
+            ),
             $into->properties,
         );
 

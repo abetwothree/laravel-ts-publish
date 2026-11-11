@@ -96,9 +96,12 @@ final class ObjectMembers
             $holdsObject = TsTypeShape::holdsKeyedObject($type);
             $readings = self::memberReadings($value, $name);
 
+            $optional = str_ends_with($key, '?');
             $members[] = [$name, [
                 'type' => $type,
-                'optional' => str_ends_with($key, '?'),
+                // A printed `?` cannot tell an unset key from a removed value: read as unset, where a held value stays.
+                'optional' => $optional,
+                ...($optional ? ['absent' => true] : []),
                 ...self::memberChannel($models->take($type), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
                 ...self::memberChannel($resources->take($type), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
                 ...self::memberChannel($enums->take($type), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
@@ -139,14 +142,17 @@ final class ObjectMembers
     }
 
     /**
-     * The same keys, each one its writer may leave out.
+     * The same keys, each one its writer may leave unset.
      *
      * @param  KeyedValues  $keys
      * @return KeyedValues
      */
     public static function eachOptional(array $keys): array
     {
-        return array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys);
+        return array_map(
+            static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true, 'absent' => true]],
+            $keys,
+        );
     }
 
     /**

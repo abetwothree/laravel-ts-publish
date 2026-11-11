@@ -664,7 +664,7 @@ class InertiaPageAnalyzer
      * The props a walked local or a `+` holds, once for each count of the int keys it may lack before a later int key.
      *
      * Such a key moves every later one down; lacking the first n of them puts each key on every number lacking any n
-     * would. A key an arm keeps is sent there, unless its own value may be left out, as a deferred prop's is.
+     * would. A key an arm keeps is sent there, unless its value may be removed, as a deferred prop's is.
      *
      * @return non-empty-list<ResourceAnalysis>
      */
@@ -696,8 +696,10 @@ class InertiaPageAnalyzer
                     continue;
                 }
 
-                $sent = in_array($property['name'], $shifting, true) && ! isset($analysis->leftOutValues[$property['name']]);
-                $arm->properties[] = $sent ? [...$property, 'optional' => false] : $property;
+                $sent = in_array($property['name'], $shifting, true) && ! ($property['removed'] ?? false);
+                $arm->properties[] = $sent
+                    ? MethodAnalysis::withPresence($property, optional: false, absent: false, removed: false)
+                    : $property;
             }
 
             foreach ($absent as $name) {
@@ -878,7 +880,12 @@ class InertiaPageAnalyzer
         }
 
         $present = clone $left;
-        $present->properties = array_map(fn (array $prop): array => [...$prop, 'optional' => false], $left->properties);
+        $present->properties = array_map(
+            fn (array $prop): array => MethodAnalysis::withPresence(
+                $prop, optional: false, absent: false, removed: $prop['removed'] ?? false,
+            ),
+            $left->properties,
+        );
         $absent = clone $left;
         $absent->properties = [];
 

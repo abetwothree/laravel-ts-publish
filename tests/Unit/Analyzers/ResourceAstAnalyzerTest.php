@@ -7060,6 +7060,29 @@ test('mergeReturnBranches() unions the body values beside the types, and keeps t
         ->and($plain->properties[0])->not->toHaveKey('bodyType');
 });
 
+// A key a branch lacks leaves a held value there, while a value any branch removes takes the key with it.
+test('mergeReturnBranches() marks a key a branch lacks absent, and keeps a value a branch removes removed', function () {
+    $entry = fn (string $name, array $facts = []): array => [
+        'name' => $name, 'type' => 'string', 'optional' => $facts !== [], 'description' => '', ...$facts,
+    ];
+    $merged = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->mergeReturnBranches([
+        new ResourceAnalysis(properties: [
+            $entry('both'), $entry('one'), $entry('when', ['removed' => true]), $entry('[key: string]', ['removed' => true]),
+        ]),
+        new ResourceAnalysis(properties: [$entry('both'), $entry('when', ['absent' => true]), $entry('[key: string]')]),
+    ]);
+
+    expect(array_map(
+        static fn (array $property): array => array_intersect_key($property, ['optional' => true, 'absent' => true, 'removed' => true]),
+        array_column($merged->properties, null, 'name'),
+    ))->toBe([
+        'both' => ['optional' => false],
+        'one' => ['optional' => true, 'absent' => true],
+        'when' => ['optional' => true, 'absent' => true, 'removed' => true],
+        '[key: string]' => ['optional' => false],
+    ]);
+});
+
 /**
  * Branches setting `either`, each a type and the token slots a declaration recorded for it, if any.
  *

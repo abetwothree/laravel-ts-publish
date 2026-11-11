@@ -347,8 +347,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Merge branch analyses: a key some branch lacks is optional, channels merge as MethodAnalysis::merge() does, a
-     * cast survives only where every branch setting its key casts it alike, and flatTypeAlias is the first non-null.
+     * Merge branch analyses: a key some branch lacks is optional and absent, a value any branch may remove stays so,
+     * channels merge as MethodAnalysis::merge() does, a cast survives only where every branch setting its key casts it
+     * alike, and flatTypeAlias is the first non-null.
      *
      * Public for `Inertia::render()`. A spread helper and a merge call drop an untyped branch ($dropsUntypedBranches);
      * only a merge call keeps the `null` left alone ($keepsLoneNull).
@@ -436,7 +437,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
             // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
             // error — regardless of whether every branch produced it.
-            $optional = ! JsEmitter::isIndexSignatureKey($name) && (! $presentInAll || $anyOptional);
+            $signature = JsEmitter::isIndexSignatureKey($name);
+            $optional = ! $signature && (! $presentInAll || $anyOptional);
+            $absent = ! $presentInAll || array_any($entries, fn (array $e): bool => $e['absent'] ?? false);
+            $removed = array_any($entries, fn (array $e): bool => $e['removed'] ?? false);
 
             // Use the first non-empty description found
             $description = '';
@@ -457,6 +461,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
                 ...($fillType === null ? [] : ['fillType' => $fillType]),
                 ...($keepsKeys ? ['keepsKeys' => true] : []),
+                ...MethodAnalysis::presenceFacts(! $signature && $absent, ! $signature && $removed),
             ];
         }
 
@@ -481,7 +486,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $merged->readsCompletely = $channels->readsCompletely;
         $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $merged->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
-        $merged->leftOutValues = $channels->leftOutValues;
         $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
         $merged->openReadings = array_map(static fn (array $shapes): array => array_values(array_unique($shapes)), array_filter($openReadings));
         $merged->declaredTokenFqcns = $slots;
@@ -1824,7 +1828,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $written = new InlineObjectResult()->of($writes);
         // A member no queue can read, such as an enum wrap, still says which keys the arm always writes.
         $keys = ObjectMembers::members($written) ?? array_map(
-            static fn (array $property): array => [$property['name'], ['type' => 'unknown', 'optional' => $property['optional']]],
+            static fn (array $property): array => [$property['name'], [
+                'type' => 'unknown',
+                'optional' => $property['optional'],
+                ...($property['optional'] && ! ($property['removed'] ?? false) ? ['absent' => true] : []),
+            ]],
             $writes->writtenProperties(),
         );
 
@@ -2000,6 +2008,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         foreach ($names as $column) {
             $override = $tsCasts['overrides'][$column] ?? null;
+            // A declared optional column reads as one it may leave unset, as a printed `?` does.
             $optional = $tsCasts['optionalOverrides'][$column] ?? false;
 
             if ($override !== null) {
@@ -2018,9 +2027,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 $analysis->addProperty($column, [
                     'type' => $override,
-                    'optional' => $optional,
+                    'optional' => false,
                     ...($customImports !== [] ? ['customImports' => $customImports] : []),
-                ]);
+                ], $optional);
 
                 continue;
             }
@@ -2037,9 +2046,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $keepsKeys = ($tsInfo['keepsKeys'] ?? false) && ! $resolver->serializesAsArray($modelFqcn, $column);
 
             $analysis->addProperty($column, ValueResult::withAttributeChannels(
-                ['type' => $tsInfo['type'], 'optional' => $optional],
+                ['type' => $tsInfo['type'], 'optional' => false],
                 [...$tsInfo, 'keepsKeys' => $keepsKeys],
-            ));
+            ), $optional);
         }
 
         return $analysis;
@@ -2494,7 +2503,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $skipped->dropKeysHeldBy($merged);
 
         foreach ($skipped->properties as $index => $property) {
-            $skipped->properties[$index]['optional'] = ! JsEmitter::isIndexSignatureKey($property['name']);
+            $named = ! JsEmitter::isIndexSignatureKey($property['name']);
+            $skipped->properties[$index] = MethodAnalysis::withPresence(
+                $property, optional: $named, absent: $named, removed: $property['removed'] ?? false,
+            );
         }
 
         $merged->merge($skipped);

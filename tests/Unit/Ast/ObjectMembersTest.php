@@ -200,8 +200,14 @@ it('hands out each member as the value it holds, with the classes behind its own
 
     expect(ObjectMembers::members($value))->toBe([
         ['author', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]],
-        ['note', ['type' => 'string', 'optional' => true]],
+        ['note', ['type' => 'string', 'optional' => true, 'absent' => true]],
     ])->and(ObjectMembers::members(['type' => '{ [key: string]: string }', 'optional' => false]))->toBeNull();
+});
+
+// A writer that may leave a key unset keeps the value held before it there, unlike a removed value.
+it('marks each key one its writer may leave unset', function () {
+    expect(ObjectMembers::eachOptional([['a', ['type' => 'number', 'optional' => false]]]))
+        ->toBe([['a', ['type' => 'number', 'optional' => true, 'absent' => true]]]);
 });
 
 // A member written where its object stood keeps what its own value leaves open, under its own path.

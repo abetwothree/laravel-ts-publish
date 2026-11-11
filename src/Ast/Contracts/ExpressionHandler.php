@@ -21,6 +21,7 @@ use PhpParser\Node\Expr;
  * @phpstan-type ValueExpressionResult = array{
  *      type: string,
  *      optional: bool,
+ *      absent?: bool,
  *      enumFqcn?: class-string,
  *      directEnumFqcn?: class-string,
  *      resourceFqcn?: class-string,
@@ -58,6 +59,9 @@ use PhpParser\Node\Expr;
  *
  * `heldProp` says every such object is an Inertia prop, which Inertia resolves even where a callable it called returned
  * it, unlike a callable; `returnsCallable` says a callable's call may return a callable.
+ *
+ * `optional` says the value may be removed, as a MissingValue or an Inertia `optional()` prop is; with `absent` it says
+ * instead that the key the value is written under may be unset on some path, as a spread member may be.
  *
  * `absentKeys` says each optional member of the value's object arms is a key PHP leaves out, never a `MissingValue`,
  * so a read of one throws or gives the member, as preg_match()'s matches leave out the groups that did not take part.

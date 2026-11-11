@@ -850,6 +850,11 @@ types, and only the generated TypeScript shows the missing import or alias.
 The row also keeps the result's `keepsKeys`: the value is an object, such as a `Collection`, whose keys `json_encode()`
 writes as they are, so a resource's re-index skips it.
 
+A row's `optional` is its printed `?`. Two facts on the row say why, each kept only where true: `absent`, the key is
+missing on some path and a value held before it survives there (a write that may not run, a spread member, a branch
+lacking the key), and `removed`, its value may be removed (a `when()` MissingValue, an Inertia `optional()` prop) and
+no held value survives. A declared `?` sets neither; a `?` read back from a printed type reads as `absent`.
+
 Never deduplicate the four inline queues, `inlineEnumFqcns`, `inlineModelFqcns`, `inlineResourceFqcns` and
 `inlineEnumResourceFqcns`. `addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return
 branches and a spread parent alike. `TsTypeString::aliasPropertyType()`, or `aliasTypeofConst()` for

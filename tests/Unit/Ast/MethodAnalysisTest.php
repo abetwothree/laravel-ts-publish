@@ -62,7 +62,9 @@ it('joins a key the source writes as a value it may leave out, which may leave t
 
     $target->merge($source);
 
-    expect($target->properties)->toBe([['name' => 'by', 'type' => 'number | string', 'optional' => true, 'description' => '']]);
+    expect($target->properties)->toBe([[
+        'name' => 'by', 'type' => 'number | string', 'optional' => true, 'description' => '', 'removed' => true,
+    ]]);
 });
 
 it('keeps a key a merge call wrote where a later key writes it, which wins only where the merge did not run', function () {
@@ -222,21 +224,24 @@ it('merges declared token slots as it merges casts', function () {
 it('reads a key as untyped: unknown, with no channel, and no custom import only its text spelled', function () {
     $analysis = new MethodAnalysis(
         properties: [
-            ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => '', 'fillType' => 'User | User'],
+            [
+                'name' => 'either', 'type' => 'User | User', 'optional' => true, 'description' => '',
+                'fillType' => 'User | User', 'removed' => true,
+            ],
             ['name' => 'chart', 'type' => 'UiNode', 'optional' => false, 'description' => ''],
         ],
         customImports: ['@js/types/ui' => ['User', 'UiNode'], '@js/types/other' => ['User as Owner']],
         inlineModelFqcns: ['either' => ['Workbench\\App\\Models\\User']],
     );
     $analysis->declaredTokenFqcns = ['either' => [null, 'Workbench\\App\\Models\\User']];
-    $analysis->leftOutValues = ['either' => true];
 
     $analysis->untype('either');
 
-    expect($analysis->properties[0])->toBe(['name' => 'either', 'type' => 'unknown', 'optional' => false, 'description' => ''])
+    expect($analysis->properties[0])->toBe([
+        'name' => 'either', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true,
+    ])
         ->and($analysis->inlineModelFqcns)->toBe([])
         ->and($analysis->declaredTokenFqcns)->toBe([])
-        ->and($analysis->leftOutValues)->toBe(['either' => true])
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode'], '@js/types/other' => ['User as Owner']]);
 });
 
@@ -470,7 +475,6 @@ it('takes over every field of another analysis, both flags included', function (
     $source->holdsUnnamedKeys = true;
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
-    $source->leftOutValues = ['a' => true];
     $source->closedToDottedKeys = ['a' => true];
     $source->openReadings = ['a' => ['{ b: number }']];
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
@@ -486,22 +490,77 @@ it('takes over every field of another analysis, both flags included', function (
         ->and(get_object_vars($target))->toBe(get_object_vars($source));
 });
 
-it('notes a key whose own value may be left out, apart from a key a write may skip, through merges', function () {
+/**
+ * Each key's presence facts, by name.
+ *
+ * @return array<string, array{optional?: bool, absent?: bool, removed?: bool}>
+ */
+function presenceFactsOf(MethodAnalysis $analysis): array
+{
+    return array_map(
+        static fn (array $property): array => array_intersect_key($property, ['optional' => true, 'absent' => true, 'removed' => true]),
+        array_column($analysis->writtenProperties(), null, 'name'),
+    );
+}
+
+// No held value survives a removed value, as one survives a key left unset.
+it('tells a key whose value may be removed from one a write or a spread member may leave unset, through merges', function () {
     $analysis = new MethodAnalysis;
     $analysis->addProperty('deferred', ['type' => 'string', 'optional' => true]);
     $analysis->addProperty('skipped', ['type' => 'string', 'optional' => false], optional: true);
+    $analysis->addProperty('member', ['type' => 'string', 'optional' => true, 'absent' => true]);
     $analysis->addProperty('reset', ['type' => 'string', 'optional' => true]);
-    $analysis->addProperty('reset', ['type' => 'number', 'optional' => false]);
+    $analysis->overwriteProperty('reset', ['type' => 'number', 'optional' => false]);
     $other = new MethodAnalysis;
     $other->addProperty('when', ['type' => 'string', 'optional' => true]);
     $analysis->merge($other);
-
-    expect($analysis->leftOutValues)->toBe(['deferred' => true, 'when' => true]);
-
     $analysis->forgetChannels('when');
+    $analysis->renameKeys(['deferred' => 'later']);
 
-    expect($analysis->leftOutValues)->toBe(['deferred' => true]);
+    expect(presenceFactsOf($analysis))->toBe([
+        'later' => ['optional' => true, 'removed' => true],
+        'skipped' => ['optional' => true, 'absent' => true],
+        'member' => ['optional' => true, 'absent' => true],
+        'reset' => ['optional' => false],
+        'when' => ['optional' => true, 'removed' => true],
+    ]);
 });
+
+// The source's removed value removes the key wherever it runs; one it may leave unset keeps the held one there.
+it('joins a held key with the presence of the value a merge may leave out', function (array $held, array $written, array $facts) {
+    $target = new MethodAnalysis;
+    $target->addProperty('k', ['type' => 'number', ...$held]);
+    $source = new MethodAnalysis;
+    $source->addProperty('k', ['type' => 'string', ...$written]);
+
+    $target->merge($source);
+
+    expect(presenceFactsOf($target)['k'])->toBe($facts);
+})->with([
+    'removed over required' => [['optional' => false], ['optional' => true], ['optional' => true, 'removed' => true]],
+    'unset over required' => [['optional' => false], ['optional' => true, 'absent' => true], ['optional' => false]],
+    'unset over removed' => [
+        ['optional' => true], ['optional' => true, 'absent' => true], ['optional' => true, 'removed' => true],
+    ],
+    'unset over unset' => [
+        ['optional' => true, 'absent' => true], ['optional' => true, 'absent' => true],
+        ['optional' => true, 'absent' => true],
+    ],
+]);
+
+// A merge call's value wins where it ran; a later key's removed value leaves the key out where it did not.
+it('keeps a merge call\'s key removed only where a later key\'s value may be removed too', function (bool $merged, bool $later, array $facts) {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('k', ['type' => 'number', 'optional' => $merged]);
+
+    $analysis->writeUnderMerged('k', ['type' => 'string', 'optional' => $later]);
+
+    expect(presenceFactsOf($analysis)['k'])->toBe($facts);
+})->with([
+    'both may be removed' => [true, true, ['optional' => true, 'removed' => true]],
+    'only the merged one' => [true, false, ['optional' => false]],
+    'only the later one' => [false, true, ['optional' => false]],
+]);
 
 it('drops the queued classes and custom imports a branch of a join only repeats from another', function () {
     $entry = fn (string $name, string $type): array => ['name' => $name, 'type' => $type, 'optional' => false, 'description' => ''];
@@ -618,7 +677,7 @@ describe('MethodAnalysis::addProperty()', function () {
         ], optional: true, description: 'doc');
 
         expect($analysis->properties)->toBe([[
-            'name' => 'status', 'type' => 'StatusType | null', 'optional' => true, 'description' => 'doc',
+            'name' => 'status', 'type' => 'StatusType | null', 'optional' => true, 'description' => 'doc', 'absent' => true,
         ]])
             ->and($analysis->enumResources)->toBe(['status' => 'Workbench\App\Enums\Status'])
             ->and($analysis->directEnumFqcns)->toBe([
@@ -653,7 +712,7 @@ describe('MethodAnalysis::addProperty()', function () {
         $analysis->addProperty('user', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
 
         expect($analysis->properties)->toBe([
-            ['name' => 'post', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+            ['name' => 'post', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
             ['name' => 'user', 'type' => 'User', 'optional' => false, 'description' => ''],
         ])
             ->and($analysis->modelFqcns)->toBe(['user' => 'Workbench\App\Models\User']);
@@ -775,7 +834,7 @@ it('writes a key over every entry held under its name, where the first stood, wi
     $analysis->overwriteProperty('at', ['type' => 'number', 'optional' => false]);
 
     expect($analysis->properties)->toBe([
-        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
+        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => '', 'absent' => true],
         ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
         ['name' => 'at', 'type' => 'number', 'optional' => false, 'description' => ''],
     ])->and($analysis->modelFqcns)->toBe([]);

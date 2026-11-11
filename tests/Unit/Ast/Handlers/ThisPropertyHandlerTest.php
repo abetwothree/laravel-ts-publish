@@ -126,7 +126,7 @@ it('extractPropertiesFromArray() resolves each keyed item through the engine, fo
 
     expect($analysis)->toBeInstanceOf(ResourceAnalysis::class)
         ->and($analysis->properties)->toBe([
-            ['name' => 'name', 'type' => 'string', 'optional' => true, 'description' => ''],
+            ['name' => 'name', 'type' => 'string', 'optional' => true, 'description' => '', 'absent' => true],
         ]);
 });
 

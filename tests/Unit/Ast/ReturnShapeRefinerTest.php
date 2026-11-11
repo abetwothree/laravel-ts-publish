@@ -129,16 +129,15 @@ test('a filled key queues the model its member names, as a cast naming it does',
         ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
 });
 
-test('a fill keeps a key whose value may be left out so, and a fill naming no class declares no slots', function () {
+test('a fill keeps a key whose value may be removed so, and a fill naming no class declares no slots', function () {
     $analysis = new MethodAnalysis(properties: [
-        ['name' => 'owner', 'type' => 'unknown', 'optional' => true, 'description' => ''],
-        ['name' => 'chart', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+        ['name' => 'owner', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
+        ['name' => 'chart', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
     ]);
-    $analysis->leftOutValues = ['owner' => true, 'chart' => true];
 
     resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overridden'));
 
-    expect($analysis->leftOutValues)->toEqual(['owner' => true, 'chart' => true])
+    expect(array_column($analysis->properties, 'removed', 'name'))->toBe(['owner' => true, 'chart' => true])
         ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
 });
 
