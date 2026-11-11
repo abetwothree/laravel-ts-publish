@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
@@ -86,9 +87,9 @@ class TsTypeString
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         // A key goes with its optional `?`, no token separator, or `name?` would read as a value. A quoted key (`"1"`,
-        // from an int or constant array key) and a generated index signature are keys too, and nothing imports them.
+        // from an int or constant array key), a generated index signature and the open marker are keys too.
         $withoutKeys = (string) preg_replace(
-            '/(?:'.IndexSignatureKey::PATTERN.'|\b\w+)\s*\??\s*:/',
+            '/(?:'.IndexSignatureKey::PATTERN.'|'.preg_quote(VisibleGaps::MARKER_KEY, '/').'|\b\w+)\s*\??\s*:/',
             '',
             $this->withoutQuotedKeys($type),
         );
@@ -104,6 +105,11 @@ class TsTypeString
 
         foreach ($tokens as $token) {
             if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {
+                continue;
+            }
+
+            // A gap is stripped before a type is published, so it is never imported.
+            if (VisibleGaps::isGap($token)) {
                 continue;
             }
 
@@ -130,7 +136,8 @@ class TsTypeString
 
     /**
      * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
-     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left.
+     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left
+     * that is no gap arm.
      *
      * @return list<string>
      */
@@ -148,7 +155,9 @@ class TsTypeString
                 trim($part),
             );
 
-            if (in_array($name, self::TS_PRIMITIVES, true) || preg_match($identifier, $name) !== 1) {
+            $named = ! in_array($name, self::TS_PRIMITIVES, true) && ! VisibleGaps::isGap($name);
+
+            if (! $named || preg_match($identifier, $name) !== 1) {
                 continue;
             }
 
@@ -382,13 +391,15 @@ class TsTypeString
     }
 
     /**
-     * The type without its top-level `null` arms, `unknown` when no other arm is left; a nested `null` stays.
+     * The type without its top-level `null` arms, `unknown` when no arm or only gap arms are left; a nested `null`
+     * stays.
      */
     public function withoutNullArm(string $type): string
     {
         $arms = array_values(array_diff($this->splitTopLevelUnion($type), ['null']));
+        $onlyGaps = VisibleGaps::holds($type) && array_all($arms, VisibleGaps::isGap(...));
 
-        return $arms === [] ? 'unknown' : implode(' | ', $arms);
+        return $arms === [] || $onlyGaps ? 'unknown' : implode(' | ', $arms);
     }
 
     /**

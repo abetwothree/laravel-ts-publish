@@ -390,6 +390,11 @@ describe('extractImportableTypes', function () {
         expect($this->service->extractImportableTypes('string | number | boolean | null'))
             ->toBeEmpty();
     });
+
+    test('extractImportableTypes never reads a gap arm as a name', function () {
+        expect($this->service->extractImportableTypes('string | $gap1'))->toBe([])
+            ->and($this->service->extractImportableTypes('User | $gap1 | null'))->toBe(['User']);
+    });
 });
 
 describe('TS_PRIMITIVES', function () {
@@ -1177,6 +1182,16 @@ describe('shapeValueHasUnimportableToken', function () {
         'a number signature' => ['{ [key: number]: string }', false],
         'a class as the signature\'s value' => ['{ [key: `${string}_tag`]: User | undefined }', true],
     ]);
+
+    test('a gap arm and the open marker need no import, and a class beside them does', function (string $type, bool $expected) {
+        expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
+    })->with([
+        'a gap arm and the marker' => ['{ a: string | $gap1; #$open: unknown }', false],
+        'a nested marker' => ['{ a: { b: number; #$open: unknown }[] }', false],
+        'a class beside a gap arm' => ['User | $gap1', true],
+        'a class beside the marker' => ['{ a: User; #$open: unknown }', true],
+        'a key spelled `$gap1`' => ['{ $gap1: User }', true],
+    ]);
 });
 
 describe('importsCover', function () {
@@ -1290,6 +1305,9 @@ describe('withoutNullArm', function () {
         'null inside a shape' => ['{ a: string | null } | null', '{ a: string | null }'],
         'null in template text' => ['`a | null` | null', '`a | null`'],
         'no null arm' => ['string', 'string'],
+        'null beside a gap, which leaves nothing known' => ['null | $gap1', 'unknown'],
+        'only gaps' => ['$gap1 | $gap2', 'unknown'],
+        'a gap beside a type' => ['string | null | $gap1', 'string | $gap1'],
     ]);
 });
 

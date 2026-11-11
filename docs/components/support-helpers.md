@@ -74,6 +74,13 @@ The helpers and the test that pins them live in these files:
   spellings of a list whose keys left `0..n-1`, the value each element of an arm holds, and the element of a one-armed
   list. Static and `@internal`; an arm walk or a list's element is read here rather than re-wrapping
   `TsTypeShape::elementType()`.
+- [`Support\TypeStrings\TypeRewriter`](../../src/Support/TypeStrings/TypeRewriter.php): a type string rewritten arm by
+  arm and member by member at every depth, through unions, intersections, parentheses, lists, tuples, objects and
+  generic arguments, with literal text and arrows read whole. Text no callback changes comes back byte for byte, and a
+  changed list prints through `TsTypeShape::listType()`. Static and `@internal`.
+- [`Support\TypeStrings\VisibleGaps`](../../src/Support/TypeStrings/VisibleGaps.php): the spelling of a visible gap,
+  a `$gapN` union arm and the open marker `#$open: unknown`, and the readers that set gaps aside, carry them over a
+  read, read an object without its marker, and strip both at any depth through `TypeRewriter`. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -102,6 +109,8 @@ Ask what the helper's input domain is, not what calls it:
 | Which published names collide inside one namespace? | `NamespaceNameCollisions` |
 | What is the list type of these element types? | `TsTypeShape::listType()` |
 | Which arm of an array's type is an array or keyed, what do `array_values()`, `values()`, `array_keys()`, `array_filter()` and `array_map()` make of it, how is a list whose keys left `0..n-1` spelled, what does each element of it hold, and what is a one-armed list's element? | `ArrayArms` |
+| How do I rewrite a type string arm by arm and member by member? | `TypeRewriter` |
+| Which arm of this type is a gap, where does the open marker go, and what does the type read with them set aside or stripped? | `VisibleGaps` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | Does a docblock's type replace this declared one? | `TsTypeString::documentedWins()` |
 | Does this type have a top-level `null` arm, and what is it with one, without one, or with another type's? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()`, `withNullArmOf()` |
@@ -173,10 +182,12 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
-`TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`
-and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`. That one-way
-dependency is what made the class safe to lift out. A new member that wants `toTsType()` is not a type-string helper,
-and would be in the same bind as the
+`TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
+`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`) and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`,
+`PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and `TsTypeShape`. That one-way dependency is
+what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and
+`withoutNullArm()` reads gap arms alone as `unknown`, so no lone gap reaches its callers. A new member that wants
+`toTsType()` is not a type-string helper, and would be in the same bind as the
 [docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
