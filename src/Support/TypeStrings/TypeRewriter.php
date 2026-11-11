@@ -12,13 +12,14 @@ use Closure;
  * parentheses, `T[]`, tuples, object members, `keyof` and every generic argument. Literal text, an arrow type and an
  * indexed access are read whole.
  *
- * Text no callback changes comes back byte for byte. A part a callback changed is printed again, a list through
- * TsTypeShape::listType() and an object with its own member separator.
+ * Text no callback changes comes back byte for byte. An object or an intersection keeps every part a callback left
+ * alone, its separators and its padding as written; a changed list prints through TsTypeShape::listType().
  *
  * @phpstan-import-type TupleElement from TsTypeShape
  *
  * @phpstan-type ArmRewrite = Closure(string): ?string
  * @phpstan-type MemberRewrite = Closure(string, string): ?array{string, string}
+ * @phpstan-type Part = array{string, int, int}
  *
  * @internal
  */
@@ -43,18 +44,6 @@ final class TypeRewriter
     public static function rewrite(string $type, ?Closure $arm = null, ?Closure $member = null): string
     {
         return $arm === null && $member === null ? $type : self::union($type, $arm, $member);
-    }
-
-    /**
-     * The separator an object literal's members print with: `, ` where its top-level separators are all commas,
-     * as an Inertia page's props print, else `; `.
-     */
-    public static function memberSeparator(string $object): string
-    {
-        $inner = substr($object, 1, -1);
-        $commas = count(TsTypeShape::splitTopLevel($inner, [','])) > 1;
-
-        return $commas && count(TsTypeShape::splitTopLevel($inner, [';'])) === 1 ? ', ' : '; ';
     }
 
     /**
@@ -118,6 +107,9 @@ final class TypeRewriter
     /**
      * One union arm with its inside rewritten: each part of an intersection, or the arm as one operand.
      *
+     * A part the rewrite emptied to `{}`, as an open marker's own part is once the marker goes, leaves the
+     * intersection while another part remains; a `{}` written as one stays.
+     *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
      */
@@ -128,15 +120,23 @@ final class TypeRewriter
             return $text;
         }
 
-        $parts = TsTypeShape::splitTopLevel($text, ['&']);
+        $parts = self::parts($text, ['&']);
 
         if (count($parts) < 2) {
             return self::operand($text, $arm, $member);
         }
 
-        $rewritten = array_map(static fn (string $part): string => self::operand($part, $arm, $member), $parts);
+        $rewritten = array_map(static function (array $part) use ($arm, $member): ?string {
+            $operand = self::operand($part[0], $arm, $member);
 
-        return $rewritten === $parts ? $text : implode(' & ', $rewritten);
+            return $operand === '{}' && $part[0] !== '{}' ? null : $operand;
+        }, $parts);
+
+        return match (true) {
+            $rewritten === array_column($parts, 0) => $text,
+            array_filter($rewritten, is_string(...)) === [] => '{}',
+            default => self::spliced($text, $parts, $rewritten),
+        };
     }
 
     /**
@@ -247,24 +247,43 @@ final class TypeRewriter
     private static function object(string $object, ?Closure $arm, ?Closure $member): string
     {
         $members = TsTypeShape::members($object);
-        $printed = [];
-        $changed = false;
+        $inner = substr($object, 1, -1);
+        $parts = self::parts($inner, [';', ',']);
 
-        foreach ($members ?? [] as [$key, $value]) {
-            $rewritten = self::union($value, $arm, $member);
-            $kept = $member === null ? [$key, $rewritten] : $member($key, $rewritten);
-            $changed = $changed || $kept === null || $kept[0] !== $key || $kept[1] !== $value;
+        if ($members === null || $parts === []) {
+            return $object;
+        }
 
-            if ($kept !== null) {
-                $printed[] = $kept[0].': '.$kept[1];
-            }
+        $rewritten = [];
+
+        foreach ($members as $index => [$key, $value]) {
+            $rewritten[] = self::member($parts[$index][0], $key, $value, $arm, $member);
         }
 
         return match (true) {
-            ! $changed => $object,
-            $printed === [] => '{}',
-            default => '{ '.implode(self::memberSeparator($object), $printed).' }',
+            $rewritten === array_column($parts, 0) => $object,
+            array_filter($rewritten, is_string(...)) === [] => '{}',
+            default => '{'.self::spliced($inner, $parts, $rewritten).'}',
         };
+    }
+
+    /**
+     * One object member's text with its value rewritten and then the member, or null where the member is dropped.
+     *
+     * @param  ArmRewrite|null  $arm
+     * @param  MemberRewrite|null  $member
+     */
+    private static function member(string $text, string $key, string $value, ?Closure $arm, ?Closure $member): ?string
+    {
+        $rewritten = self::union($value, $arm, $member);
+        $kept = $member === null ? [$key, $rewritten] : $member($key, $rewritten);
+
+        if ($kept === null || $kept === [$key, $value]) {
+            return $kept === null ? null : $text;
+        }
+
+        // A member is its key, its colon and its value, so the text between them keeps its spacing.
+        return $kept[0].substr($text, strlen($key), strlen($text) - strlen($key) - strlen($value)).$kept[1];
     }
 
     /**
@@ -284,8 +303,58 @@ final class TypeRewriter
         }
 
         $arguments = TsTypeShape::splitTopLevel(substr($text, $open + 1, -1), [',']);
-        $rewritten = array_map(static fn (string $argument): string => self::union($argument, $arm, $member), $arguments);
+        $rewritten = array_map(
+            static fn (string $argument): string => self::union($argument, $arm, $member),
+            $arguments,
+        );
 
         return $rewritten === $arguments ? $text : substr($text, 0, $open).'<'.implode(', ', $rewritten).'>';
+    }
+
+    /**
+     * Each part between a text's depth-0 separators, as TsTypeShape::splitTopLevel() reads it, with where it stands.
+     *
+     * @param  list<string>  $separators
+     * @return list<Part>
+     */
+    private static function parts(string $text, array $separators): array
+    {
+        $parts = [];
+        $end = 0;
+
+        foreach (TsTypeShape::splitTopLevel($text, $separators) as $part) {
+            // Only separators and space stand before a part, so its first occurrence past the last part is the part.
+            $start = (int) strpos($text, $part, $end);
+            $parts[] = [$part, $start, $end = $start + strlen($part)];
+        }
+
+        return $parts;
+    }
+
+    /**
+     * The text with each part replaced by its rewritten text, a dropped part leaving with the separator after it, or
+     * before it where no kept part follows; what stands before the first part and after the last stays.
+     *
+     * @param  non-empty-list<Part>  $parts
+     * @param  list<string|null>  $rewritten
+     */
+    private static function spliced(string $text, array $parts, array $rewritten): string
+    {
+        $last = array_key_last(array_filter($rewritten, is_string(...)));
+        $printed = substr($text, 0, $parts[0][1]);
+
+        foreach ($rewritten as $index => $part) {
+            if ($part === null) {
+                continue;
+            }
+
+            $printed .= $part;
+
+            if ($index !== $last) {
+                $printed .= substr($text, $parts[$index][2], $parts[$index + 1][1] - $parts[$index][2]);
+            }
+        }
+
+        return $printed.substr($text, $parts[array_key_last($parts)][2]);
     }
 }

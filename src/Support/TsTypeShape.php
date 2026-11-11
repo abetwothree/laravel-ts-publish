@@ -142,6 +142,18 @@ final class TsTypeShape
     }
 
     /**
+     * The separator one object literal's members print with: `, ` where its top-level separators are all commas, as
+     * an Inertia page's props print, else `; `.
+     */
+    public static function memberSeparator(string $object): string
+    {
+        $inner = substr($object, 1, -1);
+        $commas = count(self::splitTopLevel($inner, [','])) > 1;
+
+        return $commas && count(self::splitTopLevel($inner, [';'])) === 1 ? ', ' : '; ';
+    }
+
+    /**
      * Each part of a type that is an intersection of object literals, each maybe `Omit<>`'d against quoted keys or an
      * object literal's `keyof`, as the object, the names of the keys it drops and the part as printed; null for any
      * other type.

@@ -238,6 +238,19 @@ describe('members', function () {
     ]);
 });
 
+describe('memberSeparator', function () {
+    test('reads the separator an object literal prints its members with', function (string $object, string $separator) {
+        expect(TsTypeShape::memberSeparator($object))->toBe($separator);
+    })->with([
+        'semicolons' => ['{ a: string; b: number }', '; '],
+        'commas, as an Inertia page prints its props' => ['{ a: string, b: number }', ', '],
+        'both' => ['{ a: string, b: number; c: boolean }', '; '],
+        'one member' => ['{ a: string }', '; '],
+        'none' => ['{}', '; '],
+        'commas inside a member only' => ['{ a: Record<string, number> }', '; '],
+    ]);
+});
+
 describe('intersectedObjects', function () {
     test('reads each object of an intersection beside the keys its Omit<> drops', function (string $type, ?array $parts) {
         expect(TsTypeShape::intersectedObjects($type))->toBe($parts);

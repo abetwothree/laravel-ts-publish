@@ -15,6 +15,11 @@ use Closure;
  * A gap is read only as a whole union arm, so a PHP key or a string literal spelled `$gap1` stays, and `#$open` is no
  * index signature and no key a printer writes. Each reader returns its input as it is when holds() is false.
  *
+ * @phpstan-type SetAside = array{0: string, 1: list<string>}
+ * @phpstan-type Member = array{string, string}
+ * @phpstan-type MarkedMembers = array{0: list<Member>, 1: bool}
+ * @phpstan-type Stripped = array{0: string, 1: list<int>}
+ *
  * @internal
  */
 final class VisibleGaps
@@ -79,7 +84,7 @@ final class VisibleGaps
      * The type without its own top-level gap arms, its other arms joined as printed or `unknown` when none is left,
      * and those gap arms.
      *
-     * @return array{0: string, 1: list<string>}
+     * @return SetAside
      */
     public static function aside(string $type): array
     {
@@ -137,7 +142,7 @@ final class VisibleGaps
     /**
      * One object literal's members without the open marker, and whether it had the marker; null for any other type.
      *
-     * @return array{0: list<array{string, string}>, 1: bool}|null
+     * @return MarkedMembers|null
      */
     public static function members(string $object): ?array
     {
@@ -153,7 +158,8 @@ final class VisibleGaps
     }
 
     /**
-     * One object literal with the open marker as its last member; any other type as it is.
+     * One object literal with the open marker as its last member, the rest of its text as written; any other type as
+     * it is.
      */
     public static function withMarker(string $object): string
     {
@@ -163,11 +169,14 @@ final class VisibleGaps
             return $object;
         }
 
-        $named = trim(rtrim(trim(substr($object, 1, -1)), ';,'));
+        if ($members === []) {
+            return '{ '.self::MARKER.' }';
+        }
 
-        return $named === ''
-            ? '{ '.self::MARKER.' }'
-            : '{ '.$named.TypeRewriter::memberSeparator($object).self::MARKER.' }';
+        // A member ends with its value, never with a separator or a space, so the last one ends where those stop.
+        $end = strlen(rtrim(substr($object, 0, -1), " \t\n\r\0\x0B;,"));
+
+        return substr($object, 0, $end).TsTypeShape::memberSeparator($object).self::MARKER.substr($object, $end);
     }
 
     /**
@@ -182,7 +191,7 @@ final class VisibleGaps
      * The type with every gap arm and open marker at any depth removed, exactly as the reader prints it with no gap
      * shown, and the id of each gap removed, in order, each once.
      *
-     * @return array{0: string, 1: list<int>}
+     * @return Stripped
      */
     public static function stripped(string $type): array
     {

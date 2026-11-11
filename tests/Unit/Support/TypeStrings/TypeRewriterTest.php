@@ -212,15 +212,53 @@ describe('members', function () {
     ]);
 });
 
-describe('memberSeparator', function () {
-    test('reads the separator an object literal prints its members with', function (string $object, string $separator) {
-        expect(TypeRewriter::memberSeparator($object))->toBe($separator);
+describe('intersections', function () {
+    test('drops a part the rewrite emptied while another part remains', function (string $type, string $expected) {
+        expect(TypeRewriter::rewrite($type, member: static fn (string $key, string $value): ?array => $key === 'x' ? null : [$key, $value]))
+            ->toBe($expected);
     })->with([
-        'semicolons' => ['{ a: string; b: number }', '; '],
-        'commas' => ['{ a: string, b: number }', ', '],
-        'both' => ['{ a: string, b: number; c: boolean }', '; '],
-        'one member' => ['{ a: string }', '; '],
-        'none' => ['{}', '; '],
-        'commas inside a member only' => ['{ a: Record<string, number> }', '; '],
+        'a last part' => ['A & B & { x: number }', 'A & B'],
+        'a first part' => ['{ x: number } & A', 'A'],
+        'a middle part' => ['A & { x: number } & B', 'A & B'],
+        'a part in a group' => ['{ a: (A & { x: number }) | null }', '{ a: A | null }'],
+        'a part in a list' => ['(A & B & { x: number })[]', '(A & B)[]'],
+        'every part' => ['{ x: number } & { x: string }', '{}'],
+        'a part left with a member' => ['A & { x: number; y: string }', 'A & { y: string }'],
     ]);
+
+    test('keeps an empty object part the rewrite left alone', function () {
+        expect(TypeRewriter::rewrite('A & {} | Y', droppingY()))->toBe('A & {}')
+            ->and(TypeRewriter::rewrite('{} & A', droppingY()))->toBe('{} & A');
+    });
+
+    test('keeps the spacing around the parts left', function () {
+        expect(TypeRewriter::rewrite('A&{ x: number }&B', member: static fn (string $key, string $value): ?array => null))
+            ->toBe('A&B');
+    });
+});
+
+describe('object text', function () {
+    test('keeps the members a rewrite left alone, and the object\'s padding, as written', function (string $type, string $expected) {
+        expect(TypeRewriter::rewrite($type, droppingY()))->toBe($expected);
+    })->with([
+        'a compact object' => ['{a:string; b: X | Y}', '{a:string; b: X}'],
+        'unpadded commas' => ['Record<string, {title: string | Y, content: string}>', 'Record<string, {title: string, content: string}>'],
+        'padding and a trailing separator' => ['{  a: X | Y ;  b:Y|Z ; }', '{  a: X ;  b:Z ; }'],
+        'spacing around the colon' => ['{ a :X | Y }', '{ a :X }'],
+    ]);
+
+    test('drops a member with the separator after it, or before it where it is the last', function (string $type, string $expected) {
+        expect(TypeRewriter::rewrite($type, member: static fn (string $key, string $value): ?array => $key === 'x' ? null : [$key, $value]))
+            ->toBe($expected);
+    })->with([
+        'the last' => ['{title: string, x: number}', '{title: string}'],
+        'the first' => ['{ x: number; a: string }', '{ a: string }'],
+        'a middle one' => ['{a:string,x:number,b:string}', '{a:string,b:string}'],
+        'the only one' => ['{x:number}', '{}'],
+    ]);
+
+    test('renames a key keeping the spacing around its colon', function () {
+        expect(TypeRewriter::rewrite('{a :string}', member: static fn (string $key, string $value): array => ['b?', $value]))
+            ->toBe('{b? :string}');
+    });
 });

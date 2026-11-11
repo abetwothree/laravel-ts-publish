@@ -76,8 +76,9 @@ The helpers and the test that pins them live in these files:
   `TsTypeShape::elementType()`.
 - [`Support\TypeStrings\TypeRewriter`](../../src/Support/TypeStrings/TypeRewriter.php): a type string rewritten arm by
   arm and member by member at every depth, through unions, intersections, parentheses, lists, tuples, objects and
-  generic arguments, with literal text and arrows read whole. Text no callback changes comes back byte for byte, and a
-  changed list prints through `TsTypeShape::listType()`. Static and `@internal`.
+  generic arguments, with literal text and arrows read whole. Text no callback changes comes back byte for byte: an
+  object or an intersection keeps the parts a callback left alone, its separators and its padding, and a part emptied
+  to `{}` leaves its intersection. A changed list prints through `TsTypeShape::listType()`. Static and `@internal`.
 - [`Support\TypeStrings\VisibleGaps`](../../src/Support/TypeStrings/VisibleGaps.php): the spelling of a visible gap,
   a `$gapN` union arm and the open marker `#$open: unknown`, and the readers that set gaps aside, carry them over a
   read, read an object without its marker, and strip both at any depth through `TypeRewriter`. Static and `@internal`.
@@ -111,6 +112,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which arm of an array's type is an array or keyed, what do `array_values()`, `values()`, `array_keys()`, `array_filter()` and `array_map()` make of it, how is a list whose keys left `0..n-1` spelled, what does each element of it hold, and what is a one-armed list's element? | `ArrayArms` |
 | How do I rewrite a type string arm by arm and member by member? | `TypeRewriter` |
 | Which arm of this type is a gap, where does the open marker go, and what does the type read with them set aside or stripped? | `VisibleGaps` |
+| Which separator do this object literal's members print with? | `TsTypeShape::memberSeparator()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | Does a docblock's type replace this declared one? | `TsTypeString::documentedWins()` |
 | Does this type have a top-level `null` arm, and what is it with one, without one, or with another type's? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()`, `withNullArmOf()` |

@@ -1190,6 +1190,7 @@ describe('shapeValueHasUnimportableToken', function () {
         'a nested marker' => ['{ a: { b: number; #$open: unknown }[] }', false],
         'a class beside a gap arm' => ['User | $gap1', true],
         'a class beside the marker' => ['{ a: User; #$open: unknown }', true],
+        // The key pattern leaves a `$`-led key's `$` behind as a token, so this reads true whatever its value is (F28).
         'a key spelled `$gap1`' => ['{ $gap1: User }', true],
     ]);
 });

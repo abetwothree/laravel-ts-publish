@@ -123,6 +123,20 @@ describe('stripped', function () {
         'the marker' => ['{ a: number; #$open: unknown }', '{ a: number }', []],
         'a nested marker beside a gap' => ['{ a: { b: number; #$open: unknown } | $gap2 }', '{ a: { b: number } }', [2]],
         'the marker alone' => ['{ #$open: unknown }', '{}', []],
+        'a marker part after an Omit and a class' => [
+            'Omit<{ name: number }, keyof Recipient> & Recipient & { #$open: unknown }',
+            'Omit<{ name: number }, keyof Recipient> & Recipient',
+            [],
+        ],
+        'a marker part in a group' => ['{ a: (A & B & { #$open: unknown }) | null }', '{ a: (A & B) | null }', []],
+        'a marker part in a list' => ['(A & B & { #$open: unknown })[]', '(A & B)[]', []],
+        'an empty object part beside a gap' => ['A & {} | $gap1', 'A & {}', [1]],
+        'a gap in a compact object' => ['{a:string; b: X | $gap1}', '{a:string; b: X}', [1]],
+        'a gap in an unpadded object' => [
+            'Record<string, {title: string | $gap2, content: string}>',
+            'Record<string, {title: string, content: string}>',
+            [2],
+        ],
     ]);
 
     test('leaves a type that spells neither as it is', function (string $type) {
@@ -197,6 +211,9 @@ describe('marker', function () {
         'the empty object' => ['{}', '{ #$open: unknown }', []],
         'a nested object' => ['{ a: { b: number } }', '{ a: { b: number }; #$open: unknown }', [['a', '{ b: number }']]],
         'an object with commas' => ['{ a: number, b: string }', '{ a: number, b: string, #$open: unknown }', [['a', 'number'], ['b', 'string']]],
+        'an unpadded object' => ['{title: string, content: string}', '{title: string, content: string, #$open: unknown}', [['title', 'string'], ['content', 'string']]],
+        'a compact object' => ['{a:string}', '{a:string; #$open: unknown}', [['a', 'string']]],
+        'a trailing separator' => ['{ a: number; }', '{ a: number; #$open: unknown; }', [['a', 'number']]],
     ]);
 
     test('marks an object inside a type, and strips it back out', function () {
