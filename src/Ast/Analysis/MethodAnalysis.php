@@ -411,7 +411,7 @@ class MethodAnalysis
 
     /**
      * Take over every key, channel, cast and flag of another analysis, as a returned variable's walk does where
-     * exclusive branches join.
+     * exclusive branches join. A nested literal's spread arms stay behind, as they print beside that literal alone.
      */
     public function replaceWith(self $source): void
     {

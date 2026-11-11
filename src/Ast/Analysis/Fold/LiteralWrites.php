@@ -223,6 +223,7 @@ final class LiteralWrites
         }
 
         $target->merge($this->wide);
+        // The keys before a map's spread joined the map's value, which the arm's signature would narrow back.
         $target->setSpreadArms(array_values(array_map(
             static fn (array $arm): array => $arm['arm'],
             array_filter(

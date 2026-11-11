@@ -48,6 +48,8 @@ use PhpParser\Node\Scalar\String_;
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  * @phpstan-import-type KeyedValues from ObjectMembers
  *
+ * @phpstan-type ReadArm = array{arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, mapValue: string|null}
+ *
  * @internal
  */
 final class InlineArrayHandler implements ExpressionHandler
@@ -296,8 +298,7 @@ final class InlineArrayHandler implements ExpressionHandler
                 continue;
             }
 
-            // A map's arm after another item is left out where a key the fold writes does not fit its value: the item
-            // loop joined the keys before it with that value, which the arm's signature would narrow back.
+            // A map's arm after another item carries its value: the fold leaves it out where a key does not fit it.
             $printed[$index] = ['arm' => $spread['arm'], 'mapValue' => $index > 0 ? $spread['mapValue'] : null];
         }
 
@@ -469,7 +470,7 @@ final class InlineArrayHandler implements ExpressionHandler
      * How the item loop reads a spread a print may keep as an arm, read once: the arm it classifies as, whether its
      * keys are written in place, and else the value a map it holds may write under any key.
      *
-     * @return array{arm: InlineSpreadArm|ObjectSpreadArm|null, inPlace: bool, mapValue: string|null}
+     * @return ReadArm
      */
     private static function readArm(ArrayItem $item, AnalysisScope $scope, ExpressionEngine $engine): array
     {

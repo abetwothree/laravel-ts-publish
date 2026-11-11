@@ -40,6 +40,9 @@ interface ExpressionEngine
      * Analyze an array literal's items into properties, spreads, and FQCN maps — the same
      * return-position array machinery a resource's own toArray() return uses. $topLevel means
      * "this literal IS the whole return shape" (Inertia props, a delegated return), not AST depth.
+     *
+     * A nested literal's analysis also hands back the spreads its print keeps as arms (MethodAnalysis::spreadArms());
+     * where an engine plans none, the inline array prints its keys with no arm.
      */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis;
 
