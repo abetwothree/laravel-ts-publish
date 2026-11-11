@@ -299,7 +299,8 @@ final class InlineObjectResult
      * spells them, then each enum keyed by its own FQCN, which no member owns.
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
-     * order; with `$withWraps`, a member's `EnumResource` enums join its own, for type imports.
+     * order. A member's `EnumResource` enums join its own for type imports: its one wrap with `$withWraps`, and its
+     * several wraps always, since nothing spells them `AsEnum`.
      *
      * @return list<class-string>
      */
@@ -316,6 +317,7 @@ final class InlineObjectResult
                 $fqcns,
                 ...($direct !== null ? [$direct] : []),
                 ...($wrapped !== null ? [$wrapped] : []),
+                ...($analysis->multiEnumResourceFqcns[$memberName] ?? []),
                 ...($analysis->inlineEnumFqcns[$memberName] ?? []),
                 ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
             );

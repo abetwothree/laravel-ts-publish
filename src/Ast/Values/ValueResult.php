@@ -897,6 +897,11 @@ final class ValueResult
                 }
             }
 
+            // No rewrite can place an arm's own wraps inside this union, so their tokens read bare and need importing.
+            if (isset($inner['multiEnumResourceFqcns'])) {
+                array_push($embeddedEnumFqcns, ...$inner['multiEnumResourceFqcns']);
+            }
+
             if (isset($inner['embeddedEnumFqcns'])) {
                 array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
             }

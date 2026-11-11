@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 it('reads every member a fill typed class-less, keeping a value written in place', function () {
     $analysis = new MethodAnalysis;
@@ -32,3 +35,16 @@ it('reads a fill class-less whatever its siblings', function () {
     expect(array_column($analysis->properties, 'type', 'name'))->toBe(['filled' => 'unknown'])
         ->and($analysis->hasFqcnChannel('filled'))->toBeFalse();
 });
+
+it('queues the enums a member wraps on the object\'s enum queue, as their tokens read bare', function (bool $tolki) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('first', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => CrmStatus::class]);
+    $analysis->addProperty('subject', ['type' => 'StatusType | RoleType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Role::class]]);
+
+    $result = new InlineObjectResult()->of($analysis);
+
+    expect($result['type'])->toBe('{ first: StatusType; subject: StatusType | RoleType }')
+        ->and($result['embeddedEnumFqcns'] ?? [])->toBe([CrmStatus::class, Status::class, Role::class])
+        ->and($result)->not->toHaveKey('embeddedEnumResourceFqcns');
+})->with(['tolki on' => [true], 'tolki off' => [false]]);

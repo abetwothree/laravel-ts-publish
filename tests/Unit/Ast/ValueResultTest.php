@@ -289,6 +289,35 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
             ['type' => 'StatusType | VisibilityType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, Visibility::class]],
         ],
     ]);
+
+    // An arm's own wraps lead its text, which no count here places, so their bare tokens need the enum queue's imports.
+    test('queues the enums an arm wraps on its own, in arm order', function (array $branches, array $union) {
+        expect(ValueResult::unionResults($branches))->toBe($union);
+    })->with([
+        'after an arm naming no enum' => [
+            [
+                ['type' => '{ c: unknown }[]', 'optional' => false],
+                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
+            ],
+            [
+                'type' => '{ c: unknown }[] | StatusType | VisibilityType',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+        'after an arm wrapping one enum' => [
+            [
+                ['type' => 'PriorityType', 'optional' => false, 'enumFqcn' => Priority::class],
+                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
+            ],
+            [
+                'type' => 'PriorityType | StatusType | VisibilityType',
+                'optional' => false,
+                'enumFqcn' => Priority::class,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+    ]);
 });
 
 // A Collection reaches JSON with its keys, so a union keeps them only when no arm is an array the filter re-indexes.
