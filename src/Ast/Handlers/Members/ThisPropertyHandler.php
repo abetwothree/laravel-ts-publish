@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgT
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
@@ -72,8 +73,12 @@ final class ThisPropertyHandler implements ExpressionHandler
     {
         $analysis = new ResourceAnalysis;
 
-        foreach ($array->items as $item) {
+        foreach (InlineArrayHandler::withNamedLiteralSpreadsInlined($array->items) as $item) {
             if ($item->key === null) {
+                if ($item->unpack && InlineArrayHandler::readsSpreadByValue($item->value, $scope)) {
+                    InlineArrayHandler::writeSpread($analysis, $item->value, $engine->resolve($item->value), $scope, $optional);
+                }
+
                 continue;
             }
 

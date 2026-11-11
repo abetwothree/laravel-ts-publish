@@ -191,3 +191,51 @@ it('seeds nothing where a member would lose its text', function (array $value, b
         ['type' => '{ status: StatusType }', 'optional' => false, 'directEnumFqcn' => Status::class], false, [],
     ],
 ]);
+
+it('hands out each member as the value it holds, with the classes behind its own tokens', function () {
+    $value = new InlineObjectResult()->of(analysisOf([
+        'author' => ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class],
+        'note' => ['type' => 'string', 'optional' => true],
+    ]));
+
+    expect(ObjectMembers::members($value))->toBe([
+        ['author', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]],
+        ['note', ['type' => 'string', 'optional' => true]],
+    ])->and(ObjectMembers::members(['type' => '{ [key: string]: string }', 'optional' => false]))->toBeNull();
+});
+
+// A member written where its object stood keeps what its own value leaves open, under its own path.
+it('hands each member the readings its value leaves open, and leaves the object\'s own to it', function () {
+    $value = ['type' => '{ "a-b": { x: number | null }; c: string }', 'optional' => false, 'openReadings' => [
+        "\0{ \"a-b\": { x: number | null }; c: string }",
+        ".\"a-b\"\0{ x: number | null }",
+        ".\"a-b\".x\0number | null",
+        ".c2\0string",
+    ]];
+
+    expect(ObjectMembers::members($value))->toBe([
+        ['a-b', ['type' => '{ x: number | null }', 'optional' => false, 'openReadings' => ["\0{ x: number | null }", ".x\0number | null"]]],
+        ['c', ['type' => 'string', 'optional' => false]],
+    ])->and(ObjectMembers::analysis($value)?->openReadings)->toBe([]);
+});
+
+it('hands out the members a seed would start with, and none where a member would lose its text', function () {
+    $value = ['type' => '{ a: User }', 'optional' => false, 'modelFqcn' => User::class];
+
+    expect(ObjectMembers::seededMembers($value, carriesImports: true))->toBe([['a', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]]])
+        ->and(ObjectMembers::seededMembers($value, carriesImports: false))->toBeNull()
+        ->and(ObjectMembers::seededMembers(['type' => '{ a: string }', 'optional' => false], carriesImports: false))
+        ->toBe([['a', ['type' => 'string', 'optional' => false]]]);
+});
+
+// Openness is a fact of the value, never of a mark: a marked object still names every key it holds.
+it('reads a value as open where it may hold a key its type does not name', function (array $value, bool $open) {
+    expect(ObjectMembers::isOpen($value))->toBe($open);
+})->with([
+    'a closed object' => [['type' => '{ a: string }', 'optional' => false], false],
+    'a literal holding a key no name names' => [['type' => '{ a: string }', 'optional' => false, 'unnamedKeys' => true], true],
+    'a signature beside a named key' => [['type' => '{ [key: string]: string; a: string }', 'optional' => false], true],
+    'a lone signature, which is a map' => [['type' => '{ [key: string]: string }', 'optional' => false], false],
+    'a Record' => [['type' => 'Record<string, string>', 'optional' => false], false],
+    'an object a mark says is open' => [['type' => '{ a: string }', 'optional' => false, 'openReadings' => ["\0{ a: string }"]], false],
+]);

@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
@@ -874,3 +875,18 @@ it('binds a default to the value PHP evaluates it to, and one the evaluator cann
         'date' => 'string',
     ]);
 });
+
+// No PHP variable can be named `@…`, so a read of the alias reaches only the keys the walk binds to it.
+it('names a walked variable\'s alias with a name no PHP variable has', function () {
+    expect(AnalysisScope::walkAlias('data'))->toBe('@data')
+        ->and(AnalysisScope::walkAlias('row'))->not->toBe(AnalysisScope::walkAlias('data'));
+});
+
+it('tells the walk\'s alias from a variable PHP reads', function (Expr $value, bool $alias) {
+    expect(AnalysisScope::isWalkAlias($value))->toBe($alias);
+})->with([
+    'the alias' => [fn (): Expr => new Variable(AnalysisScope::walkAlias('data')), true],
+    'the variable it stands for' => [fn (): Expr => new Variable('data'), false],
+    'a variable variable' => [fn (): Expr => new Variable(new Variable('name')), false],
+    'a read of the alias\'s key' => [fn (): Expr => new ArrayDimFetch(new Variable(AnalysisScope::walkAlias('data'))), false],
+]);

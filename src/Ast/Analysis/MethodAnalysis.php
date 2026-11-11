@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -771,6 +772,85 @@ class MethodAnalysis
     }
 
     /**
+     * Write the keys a spread sets where it stands, as PHP does: one it always sets replaces the key held before it, as
+     * a later key does, and one it may leave out joins the value held before, which stays where it is left out.
+     *
+     * @param  list<array{string, ValueExpressionResult}>  $keys  each key and its value, no custom import on it
+     * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes its keys use
+     */
+    public function writeSpreadKeys(array $keys, array $value): void
+    {
+        $held = array_column($this->properties, null, 'name');
+
+        foreach ($keys as [$name, $result]) {
+            if ($result['optional'] && isset($held[$name])) {
+                $this->joinHeldKey($held[$name], $result);
+
+                continue;
+            }
+
+            $this->forgetChannels($name);
+            $this->addProperty($name, $result);
+        }
+
+        $this->carryImportsOf($value);
+    }
+
+    /**
+     * Give up each held key a spread kept as an arm always writes, and join one it may write with the value held: the
+     * arm prints that key over the keys before it, and under any later arm.
+     *
+     * @param  list<array{string, ValueExpressionResult}>  $keys  each key and its value, no custom import on it
+     * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes its keys use
+     */
+    public function yieldToSpreadArm(array $keys, array $value): void
+    {
+        $held = array_flip(array_column($this->properties, 'name'));
+        $written = new self;
+        $joined = [];
+
+        foreach ($keys as $key) {
+            if (! isset($held[$key[0]])) {
+                continue;
+            }
+
+            if ($key[1]['optional']) {
+                $joined[] = $key;
+            } else {
+                $written->addProperty(...$key);
+            }
+        }
+
+        $this->dropKeysHeldBy($written);
+
+        if ($joined !== []) {
+            $this->writeSpreadKeys($joined, $value);
+        }
+    }
+
+    /**
+     * Join each named key held with the value a spread of a map may write over it; the keys only the map writes stay
+     * unnamed.
+     *
+     * @param  ValueExpressionResult  $signature  the value the map holds under any key, no custom import on it
+     * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes it spells
+     */
+    public function joinHeldKeys(array $signature, array $value): void
+    {
+        $joined = false;
+
+        foreach (array_column($this->properties, null, 'name') as $name => $held) {
+            if (! JsEmitter::isIndexSignatureKey((string) $name)) {
+                $joined = $this->joinHeldKey($held, [...$signature, 'optional' => true]) || $joined;
+            }
+        }
+
+        if ($joined) {
+            $this->carryImportsOf($value);
+        }
+    }
+
+    /**
      * Rename properties, with every import channel, cast and held-object entry kept under their names, at once.
      *
      * @param  array<array-key, string>  $names  each name => its new name; a name it lacks keeps its own
@@ -974,5 +1054,61 @@ class MethodAnalysis
         }
 
         return array_values(array_unique($wrapped));
+    }
+
+    /**
+     * Write a key a spread may leave out as the value it held or the spread's, each keeping the classes behind its
+     * tokens, and say whether its type changed. Where both name classes, which one key's channels cannot queue apart,
+     * the held value stays, as before; an untyped held value stays too, while an untyped written one drops out.
+     *
+     * @param  AnalyzedProperty  $held
+     * @param  ValueExpressionResult  $written
+     */
+    private function joinHeldKey(array $held, array $written): bool
+    {
+        // PHP may still send the untyped value held, which a typed one beside it would hide.
+        if ($held['type'] === 'unknown') {
+            return false;
+        }
+
+        $name = $held['name'];
+        $holdsClass = $this->hasFqcnChannel($name);
+        $writes = new self;
+        $writes->addProperty($name, $written);
+        $writesClass = $writes->hasFqcnChannel($name);
+        $type = BranchJoin::branchUnion([$held['type'], $written['type']], dropsUntypedBranches: true, keepsLoneNull: false);
+
+        if (($holdsClass && $writesClass) || $type === $held['type']) {
+            return false;
+        }
+
+        $openReadings = [...$this->openReadings[$name] ?? [], ...$written['openReadings'] ?? []];
+
+        if (! $holdsClass) {
+            $this->forgetChannels($name);
+        }
+
+        $this->addProperty($name, [
+            ...$written,
+            'type' => $type,
+            'optional' => $held['optional'],
+            ...($openReadings === [] ? [] : ['openReadings' => $openReadings]),
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Carry the custom imports and displaced classes a spread's value brings, once, beside the keys it wrote.
+     *
+     * @param  ValueExpressionResult  $value
+     */
+    private function carryImportsOf(array $value): void
+    {
+        foreach ($value['customImports'] ?? [] as $path => $types) {
+            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
+        }
+
+        $this->carry($value['carriedFqcns'] ?? []);
     }
 }

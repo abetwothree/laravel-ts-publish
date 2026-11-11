@@ -50,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -75,6 +76,7 @@ use LogicException;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
@@ -115,6 +117,8 @@ use ReflectionMethod;
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type PassedBinding from ParameterBinder
  * @phpstan-import-type TsCastMap from TsCasts
+ * @phpstan-import-type InlineSpreadArm from InlineObjectResult
+ * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  *
  * @internal
  */
@@ -298,7 +302,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): ResourceAnalysis
     {
-        return $this->analyzeReturnArray($array, $topLevel);
+        return $this->analyzeReturnArray($array, $topLevel, printsArms: ! $topLevel);
     }
 
     /**
@@ -669,15 +673,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * $topLevel gates the top-level-only resolve()/toArray() spread flatten (A24): true when this
      * literal IS a whole return shape (a resource's own, or an opted-in caller like Inertia's props);
      * false — one value's own inline type — threads down through every method this recurses into.
+     *
+     * $printsArms is true only for that value's own literal, whose arms InlineArrayHandler prints beside its keys.
      */
-    protected function analyzeReturnArray(Array_ $array, bool $topLevel = true): ResourceAnalysis
+    protected function analyzeReturnArray(Array_ $array, bool $topLevel = true, bool $printsArms = false): ResourceAnalysis
     {
         // Laravel maps the keyless names of the array a JSON:API toAttributes() returns, never of one nested in it.
         $readsAttributeNames = $this->readsKeylessAttributeNames;
         $this->readsKeylessAttributeNames = false;
 
         try {
-            $analysis = $this->analyzeReturnArrayItems($array, $topLevel, $readsAttributeNames);
+            $analysis = $this->analyzeReturnArrayItems($array, $topLevel, $readsAttributeNames, $printsArms);
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
         }
@@ -1608,12 +1614,19 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Analyze the items of an array literal analyzeReturnArray() reads. With $readsAttributeNames, a keyless string
      * reads the model attribute it names, `$this->resource->{name}`, and `...parent::toAttributes()` what it returns.
+     * With $printsArms, a spread a later arm follows stays an arm, which InlineArrayHandler prints before these keys.
      */
-    private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames): ResourceAnalysis
+    private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames, bool $printsArms): ResourceAnalysis
     {
         $analysis = new ResourceAnalysis;
+        $arms = $printsArms && array_any($array->items, static fn (ArrayItem $item): bool => $item->unpack)
+            ? new InlineArrayHandler
+            : null;
+        // A spread of a literal writes its keys where it stands, overriding an earlier key as a later one overrides it.
+        $items = InlineArrayHandler::withNamedLiteralSpreadsInlined($array->items, $arms === null ? null
+            : fn (int $index): bool => $arms->armFollows(array_values($array->items), $index, $this->scope, $this));
 
-        foreach ($array->items as $item) {
+        foreach ($items as $index => $item) {
             if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
                 $analysis->forgetChannels($item->value->value);
                 $analysis->addProperty($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)));
@@ -1704,7 +1717,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
                 } else {
                     UnreadSpreads::record();
-                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys || ! $this->spreadsClosedShape($item->value);
+                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys
+                        || ! $this->spreadsClosedShape($this->analyzeValueExpression($item->value));
                 }
 
                 continue;
@@ -1721,6 +1735,22 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
             }
 
+            $spread = $item->key === null && $item->unpack ? $this->analyzeValueExpression($item->value) : null;
+
+            if ($spread !== null) {
+                $spreadKeys = $arms === null ? null : InlineArrayHandler::spreadKeys($item->value, $spread, $this->scope);
+
+                // A printed arm stands before every key, so a spread a later arm follows stays an arm, over the keys
+                // before it.
+                if ($arms !== null && $spreadKeys !== null && $arms->armFollows($items, $index, $this->scope, $this)) {
+                    $analysis->yieldToSpreadArm($spreadKeys, $spread);
+                } elseif (InlineArrayHandler::writeSpread($analysis, $item->value, $spread, $this->scope)) {
+                    continue;
+                } elseif ($arms !== null) {
+                    $this->yieldToNamedArm($analysis, $item->value);
+                }
+            }
+
             // Handle $this->merge([...]) or $this->mergeWhen(condition, [...]); no arm reads a spread reaching here.
             if ($item->key === null && $item->value instanceof MethodCall) {
                 if ($item->unpack) {
@@ -1728,7 +1758,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
 
                 $mergeResult = $this->analyzeMergeExpression($item->value);
-                $mergeResult->holdsUnnamedKeys = $mergeResult->holdsUnnamedKeys || ($item->unpack && ! $this->spreadsClosedShape($item->value));
+                $mergeResult->holdsUnnamedKeys = $mergeResult->holdsUnnamedKeys || ($spread !== null && ! $this->spreadsClosedShape($spread));
 
                 // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
                 $mergeResult->dropKeysHeldBy($analysis);
@@ -1738,9 +1768,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             if ($item->key === null) {
-                if ($item->unpack) {
+                if ($spread !== null) {
                     UnreadSpreads::record();
-                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys || ! $this->spreadsClosedShape($item->value);
+                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys || ! $this->spreadsClosedShape($spread);
                 }
 
                 continue;
@@ -1769,6 +1799,34 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         return $analysis;
+    }
+
+    /**
+     * Give up each held key a later spread of a resource, model or collection writes, which its printed arm sends over
+     * the keys before it: a resource writes its required keys always and its optional ones maybe, a model any of its
+     * attributes, and a collection none, as it renumbers its own.
+     */
+    private function yieldToNamedArm(ResourceAnalysis $analysis, Expr $value): void
+    {
+        $arm = $analysis->properties === [] ? null : InlineArrayHandler::classifySpreadArm($value, $this->scope, $this);
+        $named = $arm !== null && ! ($arm['isCollection'] ?? false)
+            && (! isset($arm['type']) || isset($arm['result']['resolvedFqcn']));
+        $writes = $named ? $this->spreadArmAnalysis($arm) : null;
+
+        if ($writes === null) {
+            return;
+        }
+
+        $written = new InlineObjectResult()->of($writes);
+        // A member no queue can read, such as an enum wrap, still says which keys the arm always writes.
+        $keys = ObjectMembers::members($written) ?? array_map(
+            static fn (array $property): array => [$property['name'], ['type' => 'unknown', 'optional' => $property['optional']]],
+            $writes->properties,
+        );
+
+        $analysis->yieldToSpreadArm(($arm['isModel'] ?? false)
+            ? array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys)
+            : $keys, $written);
     }
 
     /**
@@ -1805,10 +1863,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     /**
      * Whether a spread's value reads as a closed shape, every key of which the engine names: an object type, its `null`
      * aside as spreading `null` sets no key, holding no index signature and no shape left open.
+     *
+     * @param  ValueExpressionResult  $result  the spread's value
      */
-    private function spreadsClosedShape(Expr $expr): bool
+    private function spreadsClosedShape(array $result): bool
     {
-        $result = $this->analyzeValueExpression($expr);
         $members = TsTypeShape::members(TsTypeString::withoutNullArm($result['type']));
 
         return $members !== null
@@ -1825,10 +1884,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         $arm = InlineArrayHandler::classifySpreadArm($expr, $this->scope, $this);
 
-        if ($arm === null) {
-            return null;
-        }
+        return $arm === null ? null : $this->spreadArmAnalysis($arm);
+    }
 
+    /**
+     * The keys a classified spread arm writes, as analyzeSpreadArm() flattens them; null for a value typed as one
+     * object that is no JSON:API instance or resolved resource.
+     *
+     * @param  InlineSpreadArm|ObjectSpreadArm  $arm
+     */
+    private function spreadArmAnalysis(array $arm): ?MethodAnalysis
+    {
         // A resolved resource's restated keys flatten as the resource does, which an Inertia reading restates alike.
         if (isset($arm['result']['resolvedFqcn'])) {
             return $this->analyzeResourceSpreadArm($arm['result']['resolvedFqcn']);

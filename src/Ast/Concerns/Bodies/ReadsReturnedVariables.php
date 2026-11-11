@@ -1647,8 +1647,7 @@ trait ReadsReturnedVariables
         $held = clone $state;
         resolve(IndexSignatureReconciler::class)->reconcile($held);
         $bound = new InlineObjectResult()->of($held);
-        // No PHP variable can be named `@…`, so the copy's reads reach only the state bound to it.
-        $alias = '@'.$varName;
+        $alias = AnalysisScope::walkAlias($varName);
         [$copy] = new NodeTraverser(new CloningVisitor, new class($varName, $alias) extends NodeVisitorAbstract
         {
             /**

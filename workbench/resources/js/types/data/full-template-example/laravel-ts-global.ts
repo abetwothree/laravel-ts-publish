@@ -2956,7 +2956,7 @@ declare global {
          * byline's `author` is the title string, not the helper's recipient.
          */
         export interface BylineResource {
-            byline: Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } };
+            byline: { id: number; author: string };
         }
         /**
          * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
@@ -6085,12 +6085,12 @@ declare global {
         }
         /** Spreads a value that writes a key again, after a helper or a key and before a resource arm (GH-154). */
         export interface ValueSpreadsResource {
-            helper_then_value: Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
-            key_then_value: Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } };
-            helper_then_optional: Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+            helper_then_value: { id: number; by: string };
+            key_then_value: { by: string };
+            helper_then_optional: { id: number; by: { name: string | null; email: string | null } | string };
             value_then_arm: Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource;
-            key_then_arm: Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } };
-            by: { name: string | null; email: string | null };
+            key_then_arm: Omit<{ name?: number }, keyof MailRecipientResource> & MailRecipientResource;
+            by: unknown;
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {

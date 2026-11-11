@@ -6,5 +6,5 @@
  */
 export interface BylineResource
 {
-    byline: Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } };
+    byline: { id: number; author: string };
 }

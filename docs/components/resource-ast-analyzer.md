@@ -639,12 +639,17 @@ kinds:
   It publishes `Record<number, User>`, because spreading a collection renumbers its elements from 0.
 - **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
   `Pick<User, 'id'>`. It joins as that type, with the imports the value carries. So does a resolved resource whose keys
-  Inertia sends restated, an intersection, which the top level flattens as a resource arm by its `resolvedFqcn`.
+  Inertia sends restated, an intersection, which the top level flattens as a resource arm by its `resolvedFqcn`. The
+  item loop reads some in place instead: a value typed as one closed object, or one beside `[]`, writes its keys over
+  the keys before it (`MethodAnalysis::writeSpreadKeys()`), and a string map joins each key before it with its value
+  (`joinHeldKeys()`). Only where a later arm follows does such a spread stay an arm, giving up the earlier keys it
+  always writes (`yieldToSpreadArm()`), and a held key that a later resource, model or collection arm writes yields to
+  that arm.
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
 a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member. An object
-arm names no class to flatten, so it is left out there.
+arm names no class to flatten, so it is left out there, unless the item loop writes its keys in place.
 
 Each arm is `Omit<>`'d against every explicit key and every later arm's `keyof`. PHP's `[...$a, 'k' => $v]` lets the
 later write win, while TypeScript's `&` intersects both and makes a disagreeing key `never`. Three rules follow:

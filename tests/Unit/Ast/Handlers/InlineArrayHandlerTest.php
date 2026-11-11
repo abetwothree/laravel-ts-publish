@@ -434,7 +434,8 @@ it('keeps a keyed literal\'s keys when no member the re-index could rewrite drop
     'scalars under named keys' => ['["a" => 1, "b" => $this->title]', true],
     'only numeric keys, which the filter lists' => ['[6 => collect([6 => $this->title])]', false],
     'an array member beside a collection' => ['["a" => collect([6 => 1]), "b" => [6 => 2]]', false],
-    'a spread' => ['[...["a" => 1], "b" => 2]', false],
+    'a spread of a literal, whose keys it names' => ['[...["a" => 1], "b" => 2]', true],
+    'a spread of a value, whose keys it does not' => ['[...$this->options, "b" => 2]', false],
 ]);
 
 it('keeps a missing when() element out of a list, which a resource re-indexes', function () {

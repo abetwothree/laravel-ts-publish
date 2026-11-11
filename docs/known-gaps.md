@@ -181,6 +181,8 @@ the `null` the call can write.
 `['o' => 1, ...$this->opaque()]` publishes `o: number` even when `opaque()` can return `['o' => 'x']`. A `$this->`,
 `self::` or `static::` spread whose helper the engine cannot read adds no key, so the keys before it keep their own
 types; one read by its first return alone adds that return's keys over them, though a later return may send others.
+So can the spread of a resource, model or collection inside a merged array, or inside a helper read for a nested value,
+which the package leaves unread: the keys written before it, a spread's too, keep their own types.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
@@ -1151,12 +1153,13 @@ use string keys.
 `'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the
 outer resource's `filter()` enters the array `resolve()` returns and re-indexes it.
 
-### An explicit key written before a spread publishes its own type, though the spread's value wins
+### A key beside a spread of a map can publish a type PHP does not send
 
-`['id' => 'x', ...$arm]` publishes `Omit<Arm, 'id'> & { id: string }`, though PHP lets the later spread write the
-arm's own `id`. Every explicit key is subtracted from every spread arm, whatever their order. An array union reads as
-that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
-or on the left of `+`.
+`$request->all() + ['id' => 'x']` publishes `Omit<Record<string, unknown>, 'id'> & { id: string }`, though PHP's `+`
+keeps the request's own `id`. An array union reads as a spread with its operands swapped, and a map whose values the
+package cannot type leaves each key before it as it is; one it can type widens each with its value. A string map
+spread before a key its value does not fit reads that key as `never`, since TypeScript cannot drop a key from a
+signature: `[...$this->options, 'a' => 1]`. Write the key on the left of `+`, or type it with `#[TsCasts]`.
 
 ### A `parent::` spread that cycles back into itself types a parameter by the first call alone
 

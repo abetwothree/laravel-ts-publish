@@ -146,7 +146,7 @@ it('reads a + of joined locals as its literals up to the cap, and past it as the
         ->and(arrayUnionSent($body, true, ['n' => 9]))->toBe(['a' => $left, 'b' => 4]);
 })->with([
     'four by four, at the cap' => [4, '{ a: number; b: number }'],
-    'five by four, past the cap' => [5, 'Omit<{ b: number }, keyof { a: number }> & { a: number }'],
+    'five by four, past the cap' => [5, '{ b: number; a: number }'],
 ]);
 
 // A helper read as a value reads its parameter's binding where its write reads the parameter.

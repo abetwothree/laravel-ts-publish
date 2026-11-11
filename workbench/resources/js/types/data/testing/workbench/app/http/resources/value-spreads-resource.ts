@@ -7,10 +7,10 @@ import type { MailRecipientResource } from '.';
  */
 export interface ValueSpreadsResource
 {
-    helper_then_value: Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
-    key_then_value: Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } };
-    helper_then_optional: Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+    helper_then_value: { id: number; by: string };
+    key_then_value: { by: string };
+    helper_then_optional: { id: number; by: { name: string | null; email: string | null } | string };
     value_then_arm: Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource;
-    key_then_arm: Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } };
-    by: { name: string | null; email: string | null };
+    key_then_arm: Omit<{ name?: number }, keyof MailRecipientResource> & MailRecipientResource;
+    by: unknown;
 }

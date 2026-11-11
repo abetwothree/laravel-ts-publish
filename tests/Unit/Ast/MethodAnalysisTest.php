@@ -690,3 +690,98 @@ it('replaces a key\'s inline queues with the classes requeued, each keyed by its
         ->and($analysis->directEnumFqcns)->toBe(['Workbench\App\Enums\Role' => 'Workbench\App\Enums\Role'])
         ->and($analysis->modelFqcns)->toBe(['Workbench\App\Models\User' => 'Workbench\App\Models\User']);
 });
+
+it('writes a spread key over the held one where the spread always writes it, and joins one it may leave out', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
+    $analysis->addProperty('at', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
+
+    $analysis->writeSpreadKeys([
+        ['id', ['type' => 'string', 'optional' => false]],
+        ['by', ['type' => 'string', 'optional' => true]],
+        ['at', ['type' => 'string', 'optional' => false]],
+        ['note', ['type' => 'string', 'optional' => true]],
+    ], ['type' => '{ id: string; by?: string; at: string; note?: string }', 'optional' => false, 'customImports' => ['@/x' => ['X']]]);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'id' => 'string', 'by' => 'User | string', 'at' => 'string', 'note' => 'string',
+    ])->and(array_column($analysis->properties, 'optional', 'name'))->toBe([
+        'id' => false, 'by' => false, 'at' => false, 'note' => true,
+    ])->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User'])
+        ->and($analysis->customImports)->toBe(['@/x' => ['X']]);
+});
+
+it('writes a spread key over the held one with none of the held value\'s inline classes left', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('row', ['type' => '{ u: User }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\App\Models\User']]);
+
+    $analysis->writeSpreadKeys(
+        [['row', ['type' => '{ u: User }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\Crm\Models\User']]]],
+        ['type' => '{ row: { u: User } }', 'optional' => false],
+    );
+
+    expect($analysis->inlineModelFqcns)->toBe(['row' => ['Workbench\Crm\Models\User']]);
+});
+
+it('keeps the held value of a key a spread may leave out where both name classes, or either is untyped', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
+    $analysis->addProperty('n', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('raw', ['type' => 'unknown', 'optional' => false]);
+
+    $analysis->writeSpreadKeys([
+        ['by', ['type' => 'Post', 'optional' => true, 'modelFqcn' => 'Workbench\App\Models\Post']],
+        ['n', ['type' => 'unknown', 'optional' => true]],
+        ['raw', ['type' => 'string', 'optional' => true]],
+    ], ['type' => '{ by?: Post; n?: unknown; raw?: string }', 'optional' => false]);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['by' => 'User', 'n' => 'number', 'raw' => 'unknown'])
+        ->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User']);
+});
+
+it('keeps what both sides of a joined key leave open', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('by', ['type' => 'string | null', 'optional' => false, 'openReadings' => ["\0string | null"]]);
+
+    $analysis->writeSpreadKeys(
+        [['by', ['type' => '{ a: number }', 'optional' => true, 'openReadings' => ["\0{ a: number }"]]]],
+        ['type' => '{ by?: { a: number } }', 'optional' => false],
+    );
+
+    expect($analysis->openReadings)->toBe(['by' => ["\0string | null", "\0{ a: number }"]]);
+});
+
+it('joins each named key held with the value a spread of a map may write over it', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => true, 'modelFqcn' => 'Workbench\App\Models\User']);
+    $analysis->addSignatureEntry('[key: `x_${string}`]', ['type' => 'boolean', 'optional' => false]);
+
+    $analysis->joinHeldKeys(['type' => 'string', 'optional' => false], ['type' => 'Record<string, string>', 'optional' => false]);
+    $untouched = clone $analysis;
+    $analysis->joinHeldKeys(['type' => 'unknown', 'optional' => false], ['type' => 'Record<string, unknown>', 'optional' => false]);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'id' => 'number | string', 'by' => 'User | string', '[key: `x_${string}`]' => 'boolean | undefined',
+    ])->and(array_column($analysis->properties, 'optional', 'name'))->toBe([
+        'id' => false, 'by' => true, '[key: `x_${string}`]' => false,
+    ])->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User'])
+        ->and($analysis->properties)->toBe($untouched->properties);
+});
+
+// The arm prints over the keys before it, so a key it always writes goes, and one it may write joins the held value.
+it('gives up each held key a later arm always writes, and joins one it may write', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
+
+    $analysis->yieldToSpreadArm([
+        ['by', ['type' => 'string', 'optional' => false]],
+        ['id', ['type' => 'string', 'optional' => true]],
+        ['extra', ['type' => 'string', 'optional' => false]],
+    ], ['type' => '{ by: string; id?: string; extra: string }', 'optional' => false]);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number | string'])
+        ->and($analysis->modelFqcns)->toBe([]);
+});

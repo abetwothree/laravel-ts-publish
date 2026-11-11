@@ -11885,7 +11885,7 @@
             "properties": [
                 {
                     "name": "byline",
-                    "type": "Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } }",
+                    "type": "{ id: number; author: string }",
                     "optional": false
                 }
             ]
@@ -22197,17 +22197,17 @@
             "properties": [
                 {
                     "name": "helper_then_value",
-                    "type": "Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } }",
+                    "type": "{ id: number; by: string }",
                     "optional": false
                 },
                 {
                     "name": "key_then_value",
-                    "type": "Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } }",
+                    "type": "{ by: string }",
                     "optional": false
                 },
                 {
                     "name": "helper_then_optional",
-                    "type": "Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } }",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } | string }",
                     "optional": false
                 },
                 {
@@ -22217,12 +22217,12 @@
                 },
                 {
                     "name": "key_then_arm",
-                    "type": "Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } }",
+                    "type": "Omit<{ name?: number }, keyof MailRecipientResource> & MailRecipientResource",
                     "optional": false
                 },
                 {
                     "name": "by",
-                    "type": "{ name: string | null; email: string | null }",
+                    "type": "unknown",
                     "optional": false
                 }
             ]

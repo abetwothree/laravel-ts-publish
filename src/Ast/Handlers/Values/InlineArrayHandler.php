@@ -5,18 +5,25 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -24,8 +31,10 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 
@@ -87,6 +96,138 @@ final class InlineArrayHandler implements ExpressionHandler
             : null;
     }
 
+    /**
+     * An array literal's items with each spread of a literal keyed only by names PHP keeps strings replaced by that
+     * literal's own items, which PHP writes where the spread stands. A spread of any other value stays, as does a
+     * literal $staysSpread takes by its index.
+     *
+     * @param  array<ArrayItem>  $items
+     * @param  (Closure(int): bool)|null  $staysSpread
+     * @return list<ArrayItem>
+     */
+    public static function withNamedLiteralSpreadsInlined(array $items, ?Closure $staysSpread = null): array
+    {
+        $inlined = [];
+
+        foreach (array_values($items) as $index => $item) {
+            if ($item->unpack && $item->value instanceof Array_ && self::namesEveryKey($item->value)
+                && ($staysSpread === null || ! $staysSpread($index))) {
+                array_push($inlined, ...$item->value->items);
+
+                continue;
+            }
+
+            $inlined[] = $item;
+        }
+
+        return $inlined;
+    }
+
+    /**
+     * Whether the item loops read a spread by the value it holds: not a `$this->`, function or `self::`, `static::` or
+     * `parent::` call they flatten or decline themselves, a model's or collection's toArray() the arm collector names,
+     * nor the keys a returned variable's walk holds already.
+     */
+    public static function readsSpreadByValue(Expr $value, AnalysisScope $scope): bool
+    {
+        $relative = $value instanceof StaticCall && $value->class instanceof Name
+            && in_array($value->class->toLowerString(), ['self', 'static', 'parent'], true);
+
+        return ! AnalysisScope::isWalkAlias($value) && ! $relative && ! $value instanceof FuncCall
+            && ! ($value instanceof MethodCall && $value->var instanceof Variable && $value->var->name === 'this')
+            && self::spreadModelToArrayFqcn($value, $scope) === null
+            && self::spreadCollectionToArrayFqcn($value, $scope) === null
+            && self::spreadRelationChainFqcn($value, $scope) === null;
+    }
+
+    /**
+     * The keys a spread writes where it stands, each with its value, where the value reads as one object whose every
+     * key the engine names, or as one beside `[]`, each key then one it may leave out; null for any other spread.
+     *
+     * The item loops write them over the keys before the spread, so the arm collector leaves such a spread out.
+     *
+     * @param  ValueExpressionResult  $result  the spread's value
+     * @return list<array{string, ValueExpressionResult}>|null
+     */
+    public static function spreadKeys(Expr $value, array $result, AnalysisScope $scope): ?array
+    {
+        $arms = TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($result['type']));
+        $object = self::spreadObject($result);
+        $keys = $object === null || ! self::readsWholeValue($value, $result, $scope)
+            || ObjectMembers::isOpen([...$result, 'type' => $object])
+            ? null
+            : ObjectMembers::seededMembers([...$result, 'type' => $object], $scope->carriesImports);
+
+        // PHP renumbers a key it stores as an int, so the spread writes it under another key.
+        if ($keys === null || array_any($keys, static fn (array $key): bool => PhpArrayKey::storedInt($key[0]) !== null)) {
+            return null;
+        }
+
+        return count($arms) === 1
+            ? $keys
+            : array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys);
+    }
+
+    /**
+     * The value a spread may write under any key, where its value reads as one map, maybe beside `[]`: a
+     * `Record<string, …>`, or an object holding only a `[key: string]` signature; null for any other spread.
+     *
+     * @param  ValueExpressionResult  $result  the spread's value
+     * @return ValueExpressionResult|null the map's value, with the classes behind its tokens but no custom import
+     */
+    public static function spreadSignature(Expr $value, array $result, AnalysisScope $scope): ?array
+    {
+        $map = self::spreadObject($result);
+        $mapValue = $map !== null && self::readsWholeValue($value, $result, $scope) ? self::mapValue($map) : null;
+
+        // Read as a one-key object's member, the value takes the classes behind its own tokens.
+        $members = $mapValue === null
+            ? null
+            : ObjectMembers::seededMembers([...$result, 'type' => '{ value: '.$mapValue.' }'], $scope->carriesImports);
+
+        return $members === null ? null : $members[0][1];
+    }
+
+    /**
+     * Write the keys a keyless spread sets where it stands, over the keys before it, as PHP does; else join each key
+     * held with the value a map may write under it. True where the keys were written in place.
+     *
+     * The item loops of a returned array and of a merged one both write a spread through this.
+     *
+     * @param  ValueExpressionResult  $result  the spread's value
+     */
+    public static function writeSpread(
+        MethodAnalysis $analysis,
+        Expr $value,
+        array $result,
+        AnalysisScope $scope,
+        bool $optional = false,
+    ): bool {
+        $keys = self::spreadKeys($value, $result, $scope);
+
+        if ($keys === null) {
+            $signature = self::spreadSignature($value, $result, $scope);
+
+            if ($signature !== null) {
+                $analysis->joinHeldKeys($signature, $result);
+            }
+
+            return false;
+        }
+
+        $analysis->writeSpreadKeys($optional
+            ? array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys)
+            : $keys, $result);
+
+        // A value that holds keys no name names, which PHP writes too, leaves the object it is written into open.
+        if (in_array("\0".self::spreadObject($result), $result['openReadings'] ?? [], true)) {
+            $analysis->holdsUnnamedKeys = true;
+            UnreadSpreads::record();
+        }
+
+        return true;
+    }
+
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
     {
@@ -101,6 +242,33 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         return null;
+    }
+
+    /**
+     * Whether a later item spreads what stays an arm, a class's or a value read neither in place nor as a map: a print
+     * places every arm before the keys, so a spread before it stays an arm too, and still loses to it.
+     *
+     * @param  list<ArrayItem>  $items  the literal's items, before or after its literal spreads are inlined
+     */
+    public function armFollows(array $items, int $index, AnalysisScope $scope, ExpressionEngine $engine): bool
+    {
+        foreach (array_slice($items, $index + 1) as $later) {
+            // A literal naming every key is inlined, or stays a spread only where a later arm follows it too.
+            if ($later->key !== null || ! $later->unpack || $this->isKnownArraySpreadShape($later->value)
+                || ($later->value instanceof Array_ && self::namesEveryKey($later->value))) {
+                continue;
+            }
+
+            $arm = self::classifySpreadArm($later->value, $scope, $engine);
+
+            if ($arm !== null && (! isset($arm['result'])
+                || (self::spreadKeys($later->value, $arm['result'], $scope) === null
+                    && self::spreadSignature($later->value, $arm['result'], $scope) === null))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -255,6 +423,92 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
+     * Whether every item of a literal writes a key PHP keeps a string: a spread would renumber an int key, and add keys
+     * no name names.
+     */
+    private static function namesEveryKey(Array_ $array): bool
+    {
+        return array_all($array->items, static fn (ArrayItem $item): bool => ! $item->unpack && ! $item->byRef
+            && $item->key instanceof String_ && PhpArrayKey::storedInt($item->key->value) === null);
+    }
+
+    /**
+     * Whether the item loops read a spread's whole value: one readsSpreadByValue() takes, and no resource's, whose arm
+     * the collector names.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private static function readsWholeValue(Expr $value, array $result, AnalysisScope $scope): bool
+    {
+        return ! isset($result['resourceFqcn']) && ! isset($result['resolvedFqcn']) && self::readsSpreadByValue($value, $scope);
+    }
+
+    /**
+     * The one arm of a spread's value that writes keys, `[]` and `null` aside, which write none; null where the value
+     * holds two or none.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private static function spreadObject(array $result): ?string
+    {
+        $arms = array_values(array_diff(
+            TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($result['type'])),
+            ['never[]'],
+        ));
+
+        return count($arms) === 1 ? $arms[0] : null;
+    }
+
+    /**
+     * The value a map type holds under any string key, `undefined` aside: a `Record<string, …>`'s, or a `[key: string]`
+     * signature's where that is the object's one member; null for any other type.
+     */
+    private static function mapValue(string $type): ?string
+    {
+        $record = TsTypeShape::recordArguments($type);
+        $members = $record === null ? TsTypeShape::members($type) : null;
+        $value = match (true) {
+            $record !== null => $record[0] === 'string' ? $record[1] : null,
+            $members !== null && count($members) === 1 => IndexSignatureKey::is($members[0][0])
+                && str_ends_with($members[0][0], ': string]') ? $members[0][1] : null,
+            default => null,
+        };
+        $arms = $value === null ? [] : array_diff(TsTypeString::splitTopLevelUnion($value), ['undefined']);
+
+        return $arms === [] ? null : TsTypeString::hoistNull(array_values($arms));
+    }
+
+    /**
+     * Whether every named key an analysis publishes fits a map's value, a literal fitting its primitive: no `Omit<>`
+     * can drop a key from the map's signature, so a key it does not fit would read as the map's value.
+     */
+    private static function keysFitMapValue(MethodAnalysis $analysis, string $mapValue): bool
+    {
+        $fits = TsTypeString::splitTopLevelUnion($mapValue);
+
+        if (in_array('unknown', $fits, true)) {
+            return true;
+        }
+
+        foreach (array_column($analysis->properties, 'type', 'name') as $name => $type) {
+            foreach (JsEmitter::isIndexSignatureKey((string) $name) ? [] : TsTypeString::splitTopLevelUnion($type) as $arm) {
+                $primitive = match (true) {
+                    $arm === 'true' || $arm === 'false' => 'boolean',
+                    is_numeric($arm) => 'number',
+                    TsTypeShape::isScalar($arm) && ! in_array($arm, ['number', 'string', 'boolean'], true) => 'string',
+                    default => $arm,
+                };
+
+                if (! in_array($arm, $fits, true) && ! in_array($primitive, $fits, true)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Analyze an inline array literal and produce an inline TypeScript object type, or a list type for a list.
      *
      * e.g. `['name' => $this->resource->name, 'value' => $this->maxSizeMb()]`
@@ -281,7 +535,7 @@ final class InlineArrayHandler implements ExpressionHandler
 
         // A spread whose value resolves to a bare named resource (not an array/collection of one), to a
         // bound model's toArray(), or to a bound collection's toArray(), intersects with the literal's keys.
-        $result = new InlineObjectResult()->of($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine));
+        $result = new InlineObjectResult()->of($analysis, $this->collectInlineArraySpreadArms($array, $scope, $engine, $analysis));
 
         // The object names only the keys written as a string or an int, so array_keys() may find others in it.
         return array_all($array->items, static fn (ArrayItem $item): bool => ! $item->unpack && ($item->key instanceof String_ || $item->key instanceof Int_))
@@ -304,25 +558,42 @@ final class InlineArrayHandler implements ExpressionHandler
 
     /**
      * Collect every spread in an inline array that classifySpreadArm() takes, in source order — the
-     * arms an intersection type is built from.
+     * arms an intersection type is built from — but one whose keys the item loop wrote where it stands.
+     *
+     * A map's arm after another item is left out where a key of $analysis does not fit its value: the item loop joined
+     * the keys before it with that value, which the arm's signature would narrow back.
      *
      * @return list<InlineSpreadArm|ObjectSpreadArm>
      */
-    private function collectInlineArraySpreadArms(Array_ $array, AnalysisScope $scope, ExpressionEngine $engine): array
-    {
+    private function collectInlineArraySpreadArms(
+        Array_ $array,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        MethodAnalysis $analysis,
+    ): array {
         /** @var list<InlineSpreadArm|ObjectSpreadArm> $spreadArms */
         $spreadArms = [];
+        $items = self::withNamedLiteralSpreadsInlined(
+            $array->items,
+            fn (int $index): bool => $this->armFollows(array_values($array->items), $index, $scope, $engine),
+        );
 
-        foreach ($array->items as $item) {
+        foreach ($items as $index => $item) {
             if ($item->key !== null || ! $item->unpack || $this->isKnownArraySpreadShape($item->value)) {
                 continue;
             }
 
             $arm = self::classifySpreadArm($item->value, $scope, $engine);
+            $map = isset($arm['result']) && $index > 0 ? self::spreadSignature($item->value, $arm['result'], $scope) : null;
 
-            if ($arm !== null) {
-                $spreadArms[] = $arm;
+            if ($arm === null
+                || (isset($arm['result']) && self::spreadKeys($item->value, $arm['result'], $scope) !== null
+                    && ! $this->armFollows($items, $index, $scope, $engine))
+                || ($map !== null && ! self::keysFitMapValue($analysis, $map['type']))) {
+                continue;
             }
+
+            $spreadArms[] = $arm;
         }
 
         return $spreadArms;

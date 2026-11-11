@@ -660,6 +660,23 @@ final class AnalysisScope
     }
 
     /**
+     * The name a returned variable's walk reads the variable under, bound in varValueBindings to the keys it holds.
+     */
+    public static function walkAlias(string $name): string
+    {
+        // No PHP variable can be named `@…`, so a read of the alias reaches only the keys bound to it.
+        return '@'.$name;
+    }
+
+    /**
+     * Whether a value is a read of the name walkAlias() gives a walked variable.
+     */
+    public static function isWalkAlias(Expr $value): bool
+    {
+        return $value instanceof Variable && is_string($value->name) && str_starts_with($value->name, '@');
+    }
+
+    /**
      * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
      * them: the one way a builder rebases a scope after construction.
      *

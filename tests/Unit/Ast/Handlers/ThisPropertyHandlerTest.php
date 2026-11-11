@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SubjectProps;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
+use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
@@ -129,9 +130,30 @@ it('extractPropertiesFromArray() resolves each keyed item through the engine, fo
         ]);
 });
 
-it('extractPropertiesFromArray() skips unkeyed items — it does not support spreads', function () {
+it('extractPropertiesFromArray() writes the keys a spread of a value sets over the keys before it', function () {
+    $nameValue = new Variable('nameExpr');
+    $spreadValue = new Variable('spread');
+
     $array = new Array_([
-        new ArrayItem(new Variable('spread'), null, unpack: true),
+        new ArrayItem($nameValue, new String_('name')),
+        new ArrayItem($spreadValue, null, unpack: true),
+    ]);
+
+    $engine = new ThisPropertyHandlerArmStubEngine([
+        [$nameValue, ['type' => 'string', 'optional' => false]],
+        [$spreadValue, ['type' => '{ name: number; extra?: boolean }', 'optional' => false]],
+    ]);
+
+    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, $engine, new AnalysisScope(new ReflectionClass(UserResource::class)));
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['name' => 'number', 'extra' => 'boolean'])
+        ->and(array_column($analysis->properties, 'optional', 'name'))->toBe(['name' => false, 'extra' => true]);
+});
+
+it('extractPropertiesFromArray() skips an unkeyed item that is no spread, or a spread of a call the item loop reads', function () {
+    $array = new Array_([
+        new ArrayItem(new Variable('listed')),
+        new ArrayItem(new MethodCall(new Variable('this'), 'helper'), null, unpack: true),
     ]);
 
     $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, thisPropertyHandlerThrowingEngine(), new AnalysisScope(new ReflectionClass(UserResource::class)));
