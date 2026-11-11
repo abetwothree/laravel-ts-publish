@@ -347,12 +347,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Merge branch analyses: a key some branch lacks is optional and absent, a value any branch may remove stays so,
-     * channels merge as MethodAnalysis::merge() does, a cast survives only where every branch setting its key casts it
-     * alike, and flatTypeAlias is the first non-null.
-     *
-     * Public for `Inertia::render()`. A spread helper and a merge call drop an untyped branch ($dropsUntypedBranches);
-     * only a merge call keeps the `null` left alone ($keepsLoneNull).
+     * Merge branch analyses as BranchJoin::joinInto() joins them. Public for `Inertia::render()`.
      *
      * @param  list<ResourceAnalysis>  $analyses
      */
@@ -361,140 +356,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
     ): ResourceAnalysis {
-        if ($dropsUntypedBranches) {
-            $analyses = BranchJoin::withUnalikeFillsUntyped($analyses);
-        }
-
-        $branchCount = count($analyses);
-
-        /** @var array<array-key, list<AnalyzedProperty>> PHP stores a numeric name as an int key */
-        $propertyMap = [];
-
-        // Only the channels collapse onto merge(): a property name several branches set has to be
-        // union-typed from $propertyMap below, which a field-by-field merge cannot express.
-        $channels = new ResourceAnalysis;
-        $flatTypeAlias = null;
-        $flatTypeAliasFqcn = null;
-
-        /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
-        $closed = [];
-
-        /** @var array<array-key, list<string>> $openReadings the readings any branch holds open under the key */
-        $openReadings = [];
-
-        /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
-        $declaredMap = [];
-
-        foreach ($analyses as $analysis) {
-            // A key a branch writes twice, as a helper and a later key may, is one key it sends.
-            foreach ($analysis->writtenProperties() as $prop) {
-                $propertyMap[$prop['name']][] = $prop;
-                $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
-                $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
-                $openReadings[$prop['name']] = [...$openReadings[$prop['name']] ?? [], ...$analysis->openReadings[$prop['name']] ?? []];
-            }
-
-            $channels->merge($analysis);
-            $channels->properties = [];
-
-            $flatTypeAlias ??= $analysis->flatTypeAlias;
-            $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
-        }
-
-        /** @var AnalyzedPropertyList */
-        $properties = [];
-
-        /** @var array<array-key, Slots> $slots */
-        $slots = [];
-        $unalike = [];
-
-        foreach ($propertyMap as $name => $entries) {
-            // A dropping join has read an unalike fill as untyped already, so only a strict one meets one here.
-            [$declared, $unalikeTexts] = BranchJoin::declaredBranches($declaredMap[$name], $dropsUntypedBranches);
-            $bound = $unalikeTexts === [];
-            [$type, $keySlots] = $bound
-                ? BranchJoin::slottedBranchUnion(array_column($entries, 'type'), $dropsUntypedBranches, $keepsLoneNull, $declared)
-                : ['unknown', []];
-            $bodyTypes = array_map(fn (array $e): string => $e['bodyType'] ?? $e['type'], $entries);
-            $bodyType = $bound ? BranchJoin::branchUnion($bodyTypes, $dropsUntypedBranches, $keepsLoneNull, $declared) : $type;
-            // A branch with no fill stands in with its own value. A fill equal to the merged type is kept too: that
-            // type is a fill, and a reconcile that puts it back must find it again.
-            $fillTypes = array_map(fn (array $e): string => $e['fillType'] ?? $e['bodyType'] ?? $e['type'], $entries);
-            $fillType = array_column($entries, 'fillType') === [] || ! $bound
-                ? null
-                : BranchJoin::branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
-
-            if ($keySlots !== []) {
-                $slots[$name] = $keySlots;
-            }
-
-            if (! $bound) {
-                $unalike[] = (string) $name;
-            }
-
-            $presentInAll = count($entries) === $branchCount;
-            $keepsKeys = array_all($entries, fn (array $e): bool => $e['keepsKeys'] ?? false);
-            $anyOptional = (bool) array_filter($entries, fn (array $e) => $e['optional']);
-            // An index signature (e.g. `[key: number]`) can never carry `?:` — it's a syntax
-            // error — regardless of whether every branch produced it.
-            $signature = JsEmitter::isIndexSignatureKey($name);
-            $optional = ! $signature && (! $presentInAll || $anyOptional);
-            $absent = ! $presentInAll || array_any($entries, fn (array $e): bool => $e['absent'] ?? false);
-            $removed = array_any($entries, fn (array $e): bool => $e['removed'] ?? false);
-
-            // Use the first non-empty description found
-            $description = '';
-
-            foreach ($entries as $entry) {
-                if ($entry['description'] !== '') { // @codeCoverageIgnoreStart
-                    $description = $entry['description'];
-
-                    break; // @codeCoverageIgnoreEnd
-                }
-            }
-
-            $properties[] = [
-                'name' => (string) $name,
-                'type' => $type,
-                'optional' => $optional,
-                'description' => $description,
-                ...($bodyType === $type ? [] : ['bodyType' => $bodyType]),
-                ...($fillType === null ? [] : ['fillType' => $fillType]),
-                ...($keepsKeys ? ['keepsKeys' => true] : []),
-                ...MethodAnalysis::presenceFacts(! $signature && $absent, ! $signature && $removed),
-            ];
-        }
-
-        $merged = new ResourceAnalysis(
-            properties: $properties,
-            enumResources: $channels->enumResources,
-            nestedResources: $channels->nestedResources,
-            customImports: $channels->customImports,
-            directEnumFqcns: $channels->directEnumFqcns,
-            modelFqcns: $channels->modelFqcns,
-            inlineEnumFqcns: $channels->inlineEnumFqcns,
-            inlineModelFqcns: $channels->inlineModelFqcns,
-            inlineResourceFqcns: $channels->inlineResourceFqcns,
-            multiEnumResourceFqcns: $channels->multiEnumResourceFqcns,
-            inlineEnumResourceFqcns: $channels->inlineEnumResourceFqcns,
-            enumResourceArmShapes: $channels->enumResourceArmShapes,
-            casts: BranchJoin::castsEveryBranchAgrees($analyses, array_keys($propertyMap)),
-            carried: $channels->carried,
-            flatTypeAlias: $flatTypeAlias,
-            flatTypeAliasFqcn: $flatTypeAliasFqcn,
-        );
-        $merged->readsCompletely = $channels->readsCompletely;
-        $merged->holdsUnreadKeys = $channels->holdsUnreadKeys;
-        $merged->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
-        $merged->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
-        $merged->openReadings = array_map(static fn (array $shapes): array => array_values(array_unique($shapes)), array_filter($openReadings));
-        $merged->declaredTokenFqcns = $slots;
-        $merged->queueSplitClasses($analyses);
-
-        // No class stands behind a token of a key its branches spell unalike, so the key, now unknown, keeps none.
-        foreach ($unalike as $name) {
-            $merged->untype($name);
-        }
+        $merged = new ResourceAnalysis;
+        BranchJoin::joinInto($merged, $analyses, $dropsUntypedBranches, $keepsLoneNull);
 
         return $merged;
     }
