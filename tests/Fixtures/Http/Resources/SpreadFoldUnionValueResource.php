@@ -25,6 +25,11 @@ final class SpreadFoldUnionValueResource extends JsonResource
                 ...($request->boolean('picked') ? ['by' => $this->resource->title, 'x' => 1] : ['by' => 2]),
             ],
             'array_merge' => ['by' => $this->resource->author, ...array_merge(['by' => $this->resource->title], [])],
+            'removable_or_empty' => [
+                'id' => 0,
+                'by' => $this->resource->author,
+                ...($request->boolean('picked') ? ['by' => $this->when($request->boolean('flagged'), 1)] : []),
+            ],
             'ternary_removable' => [
                 'id' => 0,
                 'by' => $this->resource->author,

@@ -153,17 +153,18 @@ final class ObjectMembers
     }
 
     /**
-     * The same keys, each one its writer may leave unset.
+     * The same keys, each one its writer may leave unset; a value that may be removed stays so beside it.
      *
      * @param  KeyedValues  $keys
      * @return KeyedValues
      */
     public static function eachOptional(array $keys): array
     {
-        return array_map(
-            static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true, 'absent' => true]],
-            $keys,
-        );
+        return array_map(static function (array $key): array {
+            $removed = $key[1]['optional'] && (! ($key[1]['absent'] ?? false) || ($key[1]['removed'] ?? false));
+
+            return [$key[0], [...$key[1], 'optional' => true, 'absent' => true, ...($removed ? ['removed' => true] : [])]];
+        }, $keys);
     }
 
     /**

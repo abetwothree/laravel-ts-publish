@@ -215,9 +215,16 @@ it('reads a printed ? back as a value that may be removed', function () {
 });
 
 // A writer that may leave a key unset keeps the value held before it there, unlike a removed value.
-it('marks each key one its writer may leave unset', function () {
-    expect(ObjectMembers::eachOptional([['a', ['type' => 'number', 'optional' => false]]]))
-        ->toBe([['a', ['type' => 'number', 'optional' => true, 'absent' => true]]]);
+it('marks each key one its writer may leave unset, a value that may be removed staying so', function () {
+    expect(ObjectMembers::eachOptional([
+        ['a', ['type' => 'number', 'optional' => false]],
+        ['b', ['type' => 'number', 'optional' => true]],
+        ['c', ['type' => 'number', 'optional' => true, 'absent' => true]],
+    ]))->toBe([
+        ['a', ['type' => 'number', 'optional' => true, 'absent' => true]],
+        ['b', ['type' => 'number', 'optional' => true, 'absent' => true, 'removed' => true]],
+        ['c', ['type' => 'number', 'optional' => true, 'absent' => true]],
+    ]);
 });
 
 // A member written where its object stood keeps what its own value leaves open, under its own path.

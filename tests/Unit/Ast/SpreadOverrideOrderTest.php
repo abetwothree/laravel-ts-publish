@@ -617,15 +617,16 @@ it('publishes the named keys of a value that also holds unnamed ones as that val
 // D15: a value that is one of two closed arrays writes per key the arms' union, required where every arm holds it.
 it('publishes each key a union of closed values writes as the union of its arms\' values', function () {
     expect(foldSent(SpreadFoldUnionValueResource::class))->toBe('{"ternary":{"by":1},"ternary_partial":{"by":2},'
-        .'"array_merge":{"by":"hi"},"ternary_removable":{"id":0,"by":"q"}}')
+        .'"array_merge":{"by":"hi"},"removable_or_empty":{"id":0,"by":{"id":1,"name":"Ada"}},"ternary_removable":{"id":0,"by":"q"}}')
         ->and(foldSent(SpreadFoldUnionValueResource::class, ['picked' => '1']))->toBe('{"ternary":{"by":"hi"},'
-            .'"ternary_partial":{"by":"hi","x":1},"array_merge":{"by":"hi"},"ternary_removable":{"id":0}}')
+            .'"ternary_partial":{"by":"hi","x":1},"array_merge":{"by":"hi"},"removable_or_empty":{"id":0},"ternary_removable":{"id":0}}')
         ->and(foldSent(SpreadFoldUnionValueResource::class, ['picked' => '1', 'flagged' => '1']))
         ->toContain('"ternary_removable":{"id":0,"by":1}')
         ->and(resourceProps(SpreadFoldUnionValueResource::class))->toBe([
             'ternary' => '{ by: string | number }',
             'ternary_partial' => '{ by: string | number; x?: number }',
             'array_merge' => '{ by: string }',
+            'removable_or_empty' => '{ id: number; by?: User | number }',
             'ternary_removable' => '{ id: number; by?: number | string }',
         ]);
 });
