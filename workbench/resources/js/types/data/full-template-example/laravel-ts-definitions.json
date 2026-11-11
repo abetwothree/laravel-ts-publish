@@ -22221,6 +22221,11 @@
                     "optional": false
                 },
                 {
+                    "name": "merged_when",
+                    "type": "{ id: number; by?: string }",
+                    "optional": false
+                },
+                {
                     "name": "by",
                     "type": "unknown",
                     "optional": false

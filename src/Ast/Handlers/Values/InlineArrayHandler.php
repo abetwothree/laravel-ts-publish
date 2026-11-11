@@ -46,6 +46,7 @@ use PhpParser\Node\Scalar\String_;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
+ * @phpstan-import-type KeyedValues from ObjectMembers
  *
  * @internal
  */
@@ -147,7 +148,7 @@ final class InlineArrayHandler implements ExpressionHandler
      * The item loops write them over the keys before the spread, so the arm collector leaves such a spread out.
      *
      * @param  ValueExpressionResult  $result  the spread's value
-     * @return list<array{string, ValueExpressionResult}>|null
+     * @return KeyedValues|null
      */
     public static function spreadKeys(Expr $value, array $result, AnalysisScope $scope): ?array
     {
@@ -163,9 +164,7 @@ final class InlineArrayHandler implements ExpressionHandler
             return null;
         }
 
-        return count($arms) === 1
-            ? $keys
-            : array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys);
+        return count($arms) === 1 ? $keys : ObjectMembers::eachOptional($keys);
     }
 
     /**
@@ -215,9 +214,7 @@ final class InlineArrayHandler implements ExpressionHandler
             return false;
         }
 
-        $analysis->writeSpreadKeys($optional
-            ? array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys)
-            : $keys, $result);
+        $analysis->writeSpreadKeys($optional ? ObjectMembers::eachOptional($keys) : $keys, $result);
 
         // A value that holds keys no name names, which PHP writes too, leaves the object it is written into open.
         if (in_array("\0".self::spreadObject($result), $result['openReadings'] ?? [], true)) {

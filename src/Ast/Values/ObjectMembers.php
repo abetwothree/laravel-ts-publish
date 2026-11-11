@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
+ * @phpstan-type KeyedValues = list<array{string, ValueExpressionResult}>
  * @phpstan-type MemberChannel = array{
  *      modelFqcn?: class-string,
  *      embeddedModelFqcns?: list<class-string>,
@@ -65,7 +66,7 @@ final class ObjectMembers
      * class it cannot place. The value's custom imports and carried classes stay on it.
      *
      * @param  ValueExpressionResult  $value
-     * @return list<array{string, ValueExpressionResult}>|null
+     * @return KeyedValues|null
      */
     public static function members(array $value): ?array
     {
@@ -130,11 +131,22 @@ final class ObjectMembers
      * as seed() declines.
      *
      * @param  ValueExpressionResult  $value
-     * @return list<array{string, ValueExpressionResult}>|null
+     * @return KeyedValues|null
      */
     public static function seededMembers(array $value, bool $carriesImports): ?array
     {
         return self::keepsText($value, $carriesImports) ? self::members($value) : null;
+    }
+
+    /**
+     * The same keys, each one its writer may leave out.
+     *
+     * @param  KeyedValues  $keys
+     * @return KeyedValues
+     */
+    public static function eachOptional(array $keys): array
+    {
+        return array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys);
     }
 
     /**

@@ -6090,6 +6090,7 @@ declare global {
             helper_then_optional: { id: number; by: { name: string | null; email: string | null } | string };
             value_then_arm: Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource;
             key_then_arm: Omit<{ name?: number }, keyof MailRecipientResource> & MailRecipientResource;
+            merged_when: { id: number; by?: string };
             by: unknown;
         }
         /** Fixture resource exercising variable-return trait method spreads. */

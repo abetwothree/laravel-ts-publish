@@ -120,7 +120,7 @@ final class InlineObjectResult
         // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
         // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
         $spreadArmTypes = array_values(array_unique(
-            $this->buildSpreadArmTypes($spreadArms, array_column($analysis->properties, 'name')),
+            $this->buildSpreadArmTypes($spreadArms, array_values(array_unique(array_column($analysis->properties, 'name')))),
         ));
         $type = match (true) {
             $spreadArms === [] => $this->buildInlineObjectType($analysis),

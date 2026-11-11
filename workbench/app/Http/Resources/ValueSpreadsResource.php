@@ -44,6 +44,7 @@ class ValueSpreadsResource extends JsonResource
                 ...$maybe,
                 ...MailRecipientResource::make($this->resource->author)->resolve($request),
             ],
+            'merged_when' => ['id' => 1, $this->mergeWhen($this->resource->flag, ['by' => $this->resource->author, ...$afterKey])],
             'by' => $this->resource->author,
             ...$untyped,
         ];

@@ -8,11 +8,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLiteralBesideArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMergeJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadNamedArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideMappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadReturnsJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueBesideArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueKeyBesideArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueMapResource;
@@ -241,7 +243,7 @@ it('keeps a spread of a value before a resource\'s arm as an arm, over the keys 
         'value_then_resource' => 'Omit<{ name: number }, keyof UserResource> & UserResource',
         'resource_then_value' => "Omit<UserResource, 'name'> & { name: number }",
         'key_value_resource' => 'Omit<{ by: string }, keyof UserResource> & UserResource',
-        'key_maybe_resource' => "Omit<{ by?: string }, 'by' | 'by' | keyof UserResource> & Omit<UserResource, 'by' | 'by'> & { by: User | string }",
+        'key_maybe_resource' => "Omit<{ by?: string }, 'by' | keyof UserResource> & Omit<UserResource, 'by'> & { by: User | string }",
     ])->and(analyzedImportNames(SpreadValueBesideArmResource::class))->toBe(['User', 'UserResource'])
         ->and(analyzedImportNames(SpreadValueKeyBesideArmResource::class))->toBe(['UserResource'])
         ->and(spreadValueSent(SpreadValueBesideArmResource::class, ['titled' => '1']))->toBe('{'
@@ -283,7 +285,8 @@ it('gives up each key before a resource\'s or a model\'s arm to the arm that wri
         'untyped_maybe_resource' => 'Omit<{ name?: number }, keyof UserResource> & UserResource',
         'typed_maybe_resource' => 'Omit<{ name?: number }, keyof UserResource> & UserResource',
         'resource_then_key' => "Omit<UserResource, 'id'> & { id: string }",
-        'key_then_model' => "Omit<User, 'name' | 'title' | 'name'> & { name: number | string; title: number }",
+        'key_then_model' => "Omit<User, 'name' | 'title'> & { name: number | string; title: number }",
+        'hidden_then_model' => "Omit<User, 'password'> & { password: number }",
     ])->and(analyzedImportNames(SpreadNamedArmResource::class))->toBe(['User', 'UserResource'])
         ->and(spreadValueSent(SpreadNamedArmResource::class, ['titled' => '1']))->toBe('{'
             .'"key_then_resource":{"id":null,"name":"Ada","email":null,"role":null},'
@@ -291,7 +294,7 @@ it('gives up each key before a resource\'s or a model\'s arm to the arm that wri
             .'"untyped_maybe_resource":{"name":"Ada","id":null,"email":null,"role":null},'
             .'"typed_maybe_resource":{"name":"Ada","id":null,"email":null,"role":null},'
             .'"resource_then_key":{"id":"x","name":"Ada","email":null,"role":null},'
-            .'"key_then_model":{"name":"Ada","title":9}}')
+            .'"key_then_model":{"name":"Ada","title":9},"hidden_then_model":{"password":9,"name":"Ada"}}')
         ->and(spreadValueSent(SpreadNamedArmResource::class))->toContain('"untyped_maybe_resource":{"name":"Ada",');
 });
 
@@ -340,9 +343,44 @@ it('writes no key of a spread whose value may hold one it does not name, and joi
 
 it('writes each key a spread sets as one it may leave out where the caller says so', function () {
     $analysis = new ResourceAnalysis;
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
     $scope = new AnalysisScope(new ReflectionClass(SpreadValueOverrideResource::class), Post::class);
 
-    InlineArrayHandler::writeSpread($analysis, new Variable('extra'), ['type' => '{ by: boolean }', 'optional' => false], $scope, optional: true);
+    InlineArrayHandler::writeSpread(
+        $analysis,
+        new Variable('extra'),
+        ['type' => '{ id: string; by: boolean }', 'optional' => false],
+        $scope,
+        optional: true,
+    );
 
-    expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['by' => true]);
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number | string', 'by' => 'boolean'])
+        ->and(array_column($analysis->properties, 'optional', 'name'))->toBe(['id' => false, 'by' => true])
+        ->and(array_column($analysis->properties, 'name'))->toBe(['id', 'by']);
+});
+
+// A key a spread or a later key writes again is one key on its path, so a path that sends none leaves it optional.
+it('keeps a key optional where a return holds it written twice and another return leaves it out', function () {
+    expect(publishedResourceKeyTypes(SpreadReturnsJoinResource::class, Post::class))->toBe([
+        'by?' => 'string',
+        'note?' => 'string',
+        'at?' => 'string',
+        'id?' => 'number',
+    ])->and(spreadValueSent(SpreadReturnsJoinResource::class, ['titled' => '1']))->toBe('{"by":"hi","note":"hi","at":"hi"}')
+        ->and(spreadValueSent(SpreadReturnsJoinResource::class))->toBe('{"id":9}');
+});
+
+it('keeps a key optional where a merge call that may not run writes it twice', function () {
+    expect(publishedResourceKeyTypes(SpreadMergeJoinResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'by?' => 'string',
+        'note?' => 'string',
+        'maybe?' => 'User | string',
+        'name?' => 'User',
+        'row' => '{ id: number; by?: string }',
+    ])->and(spreadValueSent(SpreadMergeJoinResource::class, ['titled' => '1']))
+        ->toBe('{"id":9,"by":"hi","note":"hi","row":{"id":9,"by":"hi"}}')
+        ->and(spreadValueSent(SpreadMergeJoinResource::class))->toBe('{"id":9,"name":{"name":"Ada"},"row":{"id":9}}')
+        ->and(spreadValueSent(SpreadMergeJoinResource::class, ['merged' => '1']))->toContain('"maybe":{"name":"Ada"}')
+        ->and(spreadValueSent(SpreadMergeJoinResource::class, ['merged' => '1', 'titled' => '1']))->toContain('"maybe":"hi"');
 });

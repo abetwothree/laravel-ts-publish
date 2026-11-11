@@ -203,11 +203,11 @@ describe('AstEngine::analyze()', function () {
             'name',
         );
 
-        // The raw analysis appends, so the same three names arrive twice; rendered as-is they are
-        // duplicate interface members.
+        // A key written after the parent's spread replaces the parent's where it stood, so the raw analysis holds
+        // each of the three names once too.
         expect(array_column($engine->analyzeMethod(ApiPostResource::class)->properties, 'name'))
             ->toContain('status', 'visibility', 'priority')
-            ->and(count($engine->analyzeMethod(ApiPostResource::class)->properties))->toBe(count($names) + 3)
+            ->toBe($names)
             ->and($names)->toBe(array_values(array_unique($names)));
     });
 

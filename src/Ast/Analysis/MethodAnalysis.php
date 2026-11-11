@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -27,6 +28,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type Slots from TokenSlots
+ * @phpstan-import-type KeyedValues from ObjectMembers
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -281,6 +283,19 @@ class MethodAnalysis
     }
 
     /**
+     * Write a key over every entry held under its name, as PHP's later write does: the value takes the first entry's
+     * place, and the held entries' import channels and cast go with them.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public function overwriteProperty(string $name, array $result, bool $optional = false): void
+    {
+        $this->forgetChannels($name);
+        $this->addProperty($name, $result, $optional);
+        $this->keepLastWriteOf($name);
+    }
+
+    /**
      * Mark that keys these hold reach the return unread, so the read behind them is not complete either.
      */
     public function holdUnreadKeys(): void
@@ -519,6 +534,23 @@ class MethodAnalysis
                 $this->carried[$kind] = array_values(array_unique([...($this->carried[$kind] ?? []), ...$fqcns]));
             }
         }
+    }
+
+    /**
+     * Each key once, as PHP holds it after every write: its last value, where its first write stood; a signature keeps
+     * every entry, each one more runtime key it covers.
+     *
+     * @return AnalyzedPropertyList
+     */
+    public function writtenProperties(): array
+    {
+        $written = [];
+
+        foreach ($this->properties as $index => $property) {
+            $written[JsEmitter::isIndexSignatureKey($property['name']) ? '#'.$index : '.'.$property['name']] = $property;
+        }
+
+        return array_values($written);
     }
 
     /**
@@ -775,7 +807,7 @@ class MethodAnalysis
      * Write the keys a spread sets where it stands, as PHP does: one it always sets replaces the key held before it, as
      * a later key does, and one it may leave out joins the value held before, which stays where it is left out.
      *
-     * @param  list<array{string, ValueExpressionResult}>  $keys  each key and its value, no custom import on it
+     * @param  KeyedValues  $keys  each key and its value, no custom import on it
      * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes its keys use
      */
     public function writeSpreadKeys(array $keys, array $value): void
@@ -789,8 +821,7 @@ class MethodAnalysis
                 continue;
             }
 
-            $this->forgetChannels($name);
-            $this->addProperty($name, $result);
+            $this->overwriteProperty($name, $result);
         }
 
         $this->carryImportsOf($value);
@@ -800,7 +831,7 @@ class MethodAnalysis
      * Give up each held key a spread kept as an arm always writes, and join one it may write with the value held: the
      * arm prints that key over the keys before it, and under any later arm.
      *
-     * @param  list<array{string, ValueExpressionResult}>  $keys  each key and its value, no custom import on it
+     * @param  KeyedValues  $keys  each key and its value, no custom import on it
      * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes its keys use
      */
     public function yieldToSpreadArm(array $keys, array $value): void
@@ -1094,8 +1125,35 @@ class MethodAnalysis
             'optional' => $held['optional'],
             ...($openReadings === [] ? [] : ['openReadings' => $openReadings]),
         ]);
+        $this->keepLastWriteOf($name);
 
         return true;
+    }
+
+    /**
+     * Keep one entry for a key, its last write, where its first stood.
+     */
+    private function keepLastWriteOf(string $name): void
+    {
+        $at = array_keys(array_column($this->properties, 'name'), $name, true);
+        $first = array_shift($at);
+        $last = array_pop($at);
+
+        if ($first === null || $last === null) {
+            return;
+        }
+
+        $kept = [];
+
+        foreach ($this->properties as $index => $property) {
+            if ($index === $first) {
+                $kept[] = $this->properties[$last];
+            } elseif ($property['name'] !== $name) {
+                $kept[] = $property;
+            }
+        }
+
+        $this->properties = $kept;
     }
 
     /**

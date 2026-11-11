@@ -385,7 +385,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $declaredMap = [];
 
         foreach ($analyses as $analysis) {
-            foreach ($analysis->properties as $prop) {
+            // A key a branch writes twice, as a helper and a later key may, is one key it sends.
+            foreach ($analysis->writtenProperties() as $prop) {
                 $propertyMap[$prop['name']][] = $prop;
                 $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
@@ -1628,8 +1629,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         foreach ($items as $index => $item) {
             if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
-                $analysis->forgetChannels($item->value->value);
-                $analysis->addProperty($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)));
+                $analysis->overwriteProperty($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)));
 
                 continue;
             }
@@ -1792,10 +1792,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            // When a child key overrides a parent spread key, clear stale parent tracking
-            $analysis->forgetChannels($keyName);
-
-            $analysis->addProperty($keyName, $result);
+            $analysis->overwriteProperty($keyName, $result);
         }
 
         return $analysis;
@@ -1803,8 +1800,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * Give up each held key a later spread of a resource, model or collection writes, which its printed arm sends over
-     * the keys before it: a resource writes its required keys always and its optional ones maybe, a model any of its
-     * attributes, and a collection none, as it renumbers its own.
+     * the keys before it: a resource writes its required keys always and its optional ones maybe, a model any attribute
+     * its toArray() serializes, and a collection none, as it renumbers its own.
      */
     private function yieldToNamedArm(ResourceAnalysis $analysis, Expr $value): void
     {
@@ -1821,12 +1818,19 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         // A member no queue can read, such as an enum wrap, still says which keys the arm always writes.
         $keys = ObjectMembers::members($written) ?? array_map(
             static fn (array $property): array => [$property['name'], ['type' => 'unknown', 'optional' => $property['optional']]],
-            $writes->properties,
+            $writes->writtenProperties(),
         );
 
-        $analysis->yieldToSpreadArm(($arm['isModel'] ?? false)
-            ? array_map(static fn (array $key): array => [$key[0], [...$key[1], 'optional' => true]], $keys)
-            : $keys, $written);
+        // A model's toArray() writes only its visible attributes and appends, any of which it may leave unset.
+        if (isset($arm['fqcn']) && $arm['isModel']) {
+            $serialized = resolve(ModelAttributeResolver::class)->serializedAttributeNames($arm['fqcn']);
+            $keys = ObjectMembers::eachOptional(array_values(array_filter(
+                $keys,
+                static fn (array $key): bool => in_array($key[0], $serialized, true),
+            )));
+        }
+
+        $analysis->yieldToSpreadArm($keys, $written);
     }
 
     /**

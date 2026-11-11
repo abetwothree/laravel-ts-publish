@@ -96,7 +96,7 @@ final class ThisPropertyHandler implements ExpressionHandler
                 continue;
             }
 
-            $analysis->addProperty($keyName, $result, $optional);
+            $analysis->overwriteProperty($keyName, $result, $optional);
         }
 
         return $analysis;

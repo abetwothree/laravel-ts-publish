@@ -36,6 +36,7 @@ final class SpreadNamedArmResource extends JsonResource
             'typed_maybe_resource' => ['name' => $this->author, ...$maybe, ...UserResource::make($this->author)->resolve($request)],
             'resource_then_key' => [...UserResource::make($this->author)->resolve($request), 'id' => 'x'],
             'key_then_model' => ['name' => $this->id, 'title' => $this->id, ...$this->author->toArray()],
+            'hidden_then_model' => ['password' => $this->id, ...$this->author->toArray()],
         ];
     }
 

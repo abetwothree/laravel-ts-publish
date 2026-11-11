@@ -709,7 +709,37 @@ it('writes a spread key over the held one where the spread always writes it, and
     ])->and(array_column($analysis->properties, 'optional', 'name'))->toBe([
         'id' => false, 'by' => false, 'at' => false, 'note' => true,
     ])->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User'])
-        ->and($analysis->customImports)->toBe(['@/x' => ['X']]);
+        ->and($analysis->customImports)->toBe(['@/x' => ['X']])
+        ->and(array_column($analysis->properties, 'name'))->toBe(['id', 'by', 'at', 'note']);
+});
+
+// PHP's later write replaces the value where the first stood, so a join counts the key once per branch.
+it('writes a key over every entry held under its name, where the first stood, with none of their channels', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('by', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
+
+    $analysis->overwriteProperty('by', ['type' => 'string', 'optional' => false], optional: true);
+    $analysis->overwriteProperty('at', ['type' => 'number', 'optional' => false]);
+
+    expect($analysis->properties)->toBe([
+        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
+        ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
+        ['name' => 'at', 'type' => 'number', 'optional' => false, 'description' => ''],
+    ])->and($analysis->modelFqcns)->toBe([]);
+});
+
+it('reads each key once, as its last write where its first stood, and every entry of a signature', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => false]);
+    $analysis->addSignatureEntry('[key: string]', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('by', ['type' => 'string', 'optional' => true]);
+    $analysis->addSignatureEntry('[key: string]', ['type' => 'boolean', 'optional' => false]);
+
+    expect(array_map(static fn (array $property): string => $property['name'].': '.$property['type'], $analysis->writtenProperties()))
+        ->toBe(['by: string', '[key: string]: number | undefined', 'id: number', '[key: string]: boolean | undefined']);
 });
 
 it('writes a spread key over the held one with none of the held value\'s inline classes left', function () {
@@ -749,7 +779,8 @@ it('keeps what both sides of a joined key leave open', function () {
         ['type' => '{ by?: { a: number } }', 'optional' => false],
     );
 
-    expect($analysis->openReadings)->toBe(['by' => ["\0string | null", "\0{ a: number }"]]);
+    expect($analysis->openReadings)->toBe(['by' => ["\0string | null", "\0{ a: number }"]])
+        ->and(array_column($analysis->properties, 'name'))->toBe(['by']);
 });
 
 it('joins each named key held with the value a spread of a map may write over it', function () {
@@ -783,5 +814,6 @@ it('gives up each held key a later arm always writes, and joins one it may write
     ], ['type' => '{ by: string; id?: string; extra: string }', 'optional' => false]);
 
     expect(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number | string'])
+        ->and(array_column($analysis->properties, 'name'))->toBe(['id'])
         ->and($analysis->modelFqcns)->toBe([]);
 });
