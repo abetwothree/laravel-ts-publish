@@ -1700,13 +1700,13 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Note each key a write sets optional, which its value made so, since the walk's own writes go through writeKey().
+     * Note each key a write sets to a value that may be removed, since the walk's own writes go through writeKey().
      */
     private function noteOptionalValues(MethodAnalysis $write): void
     {
         foreach ($write->properties as $property) {
-            // The printed `?`, not `removed`, so a key a mergeWhen() may leave unset keeps its `?` past a `??=`.
-            if ($property['optional']) {
+            // A removed value is set and not null, so `??=` leaves it; a key a merge may leave unset takes the default.
+            if ($property['removed'] ?? false) {
                 $this->optionalValueKeys[$property['name']] = true;
             }
         }

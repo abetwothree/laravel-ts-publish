@@ -1003,7 +1003,7 @@ test('a ??= or a write reading the variable itself publishes what Laravel sends'
         [[], ['id' => 9]],
         [['c' => '1'], ['id' => 9, 'w' => 1]],
     ]],
-    'a ??= beside a key mergeWhen() merges in once filtered' => [ReturnedCoalesceMergeWhenResource::class, 'id: number; w?: number | string', [
+    'a ??= beside a key mergeWhen() merges in once filtered' => [ReturnedCoalesceMergeWhenResource::class, 'id: number; w: number | string', [
         [[], ['id' => 9, 'w' => 'none']],
         [['c' => '1'], ['id' => 9, 'w' => 1]],
     ]],
