@@ -709,7 +709,8 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function dropOverriddenEnumResources(): self
     {
-        // CastChannels::fit() already moved a cast key's records, so only a later spread's key leaves one here.
+        // CastChannels::fit() moved a cast key's records and a literal's fold writes each key from the values it
+        // sends, so what leaves records the type does not lead is a list a callback maps to two wraps, `(A | B)[]`.
         foreach ($this->properties as $property => ['type' => $type]) {
             $holdsTypeName = fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
                 $this->enumFqcnMap[$fqcn],
@@ -729,7 +730,7 @@ class ResourceTransformer extends CoreTransformer
                 $wraps[] = $single;
             }
 
-            // A later spread replaces the key but not its wrap channel, and its type may still spell a wrapped name.
+            // A mapped list's element union spells the wraps inside `(…)[]`, so they do not lead its type.
             if ($several !== [] && ! $this->leadsWithWraps($type, $several)) {
                 unset($this->multiEnumResourceProperties[$property]);
                 array_push($wraps, ...$several);

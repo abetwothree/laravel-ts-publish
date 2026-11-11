@@ -4,9 +4,21 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SpreadFoldPropsController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldCertainResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMaybeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMergeOrderResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldMergeWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldOpenValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldRemovableResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldResolvedArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldReturnsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadFoldUnionValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLiteralBesideArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadMaybeOverHeldReturnsResource;
@@ -26,7 +38,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueOverri
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueTopResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueUntypedHeldResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueUntypedMemberResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FoldBox;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
@@ -37,8 +52,11 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
+use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * What a resource sends for a post with an id, a title and a loaded author.
@@ -189,29 +207,36 @@ it('merges a merge() array whose spread of a local overrides the key before it',
         ->and(spreadValueSent(SpreadValueMergeResource::class))->toBe('{"id":9,"by":"hi"}');
 });
 
-it('reads the keys a spread writes from a value typed as one closed object', function (string $type, ?array $keys) {
-    expect(spreadValueKeys($type))->toBe($keys);
+// An open value's named keys are written too (D14), and a union of objects writes per key its arms' union (D15).
+it('reads the keys a spread writes from a value typed as objects whose named keys the engine reads', function (string $type, ?array $keys, array $extra = []) {
+    expect(spreadValueKeys($type, $extra))->toBe($keys);
 })->with([
     'a closed object' => ['{ a: string; b?: number }', ['a: string', 'b?: number']],
     'one beside [], each key one it may leave out' => ['{ a: string } | never[]', ['a?: string']],
     'one beside null, which spreads no key' => ['{ a: string } | null', ['a: string']],
-    'two objects' => ['{ a: string } | { b: number }', null],
+    'two objects, a key one lacks one it may leave out' => ['{ a: string } | { b: number }', ['a?: string', 'b?: number']],
+    'two objects writing one key' => ['{ a: string } | { a: number }', ['a: string | number']],
+    'a literal holding a key no name names' => ['{ a: string }', ['a: string'], ['unnamedKeys' => true]],
+    'a signature beside a key, its named key' => ['{ [key: string]: string; a: string }', ['a: string']],
     'a key PHP stores as an int' => ['{ 0: string; a: number }', null],
     'a map' => ['Record<string, string>', null],
     'a signature' => ['{ [key: string]: string }', null],
     'a list' => ['string[]', null],
 ]);
 
-it('reads no keys from a spread its item loop reads another way, or a value that may hold a key it does not name', function (?Expr $value, array $extra) {
+it('reads no keys from a spread its item loop reads another way', function (?Expr $value, array $extra) {
     expect(spreadValueKeys('{ a: string }', $extra, $value))->toBeNull();
 })->with([
     'the keys a walk holds' => [fn (): Expr => new Variable(AnalysisScope::walkAlias('data')), []],
     'a parent:: call' => [fn (): Expr => new StaticCall(new Name('parent'), 'helper'), []],
     'a $this-> call' => [fn (): Expr => new MethodCall(new Variable('this'), 'helper'), []],
-    'a function call' => [fn (): Expr => new FuncCall(new Name('helper')), []],
+    'a call of the class\'s own method' => [fn (): Expr => new FuncCall(new Name('authored')), []],
     'a resource' => [null, ['resourceFqcn' => SpreadValueOverrideResource::class]],
-    'a literal holding a key no name names' => [null, ['unnamedKeys' => true]],
 ]);
+
+it('reads the keys a PHP function\'s array writes, as any value\'s', function () {
+    expect(spreadValueKeys('{ a: string }', [], new FuncCall(new Name('array_merge'))))->toBe(['a: string']);
+});
 
 // A mark is no fact of the value: the keys a marked object names are written, and the object they go into is open too.
 it('reads the keys of a value a mark says is open, as of any other closed object', function () {
@@ -302,19 +327,22 @@ it('gives up each key before a resource\'s or a model\'s arm to the arm that wri
 });
 
 /**
- * An analysis holding `id: number` and `by: string`, then the keys a spread of $extra writes into it.
+ * A literal holding `id: number` and `by: string`, then the keys a spread of $result writes into it, folded.
  *
  * @param  array<string, mixed>  $result  the spread's value
  * @return array{bool, ResourceAnalysis}
  */
 function spreadWritten(array $result): array
 {
-    $analysis = new ResourceAnalysis;
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-    $analysis->addProperty('by', ['type' => 'string', 'optional' => false]);
+    $writes = new LiteralWrites;
+    $writes->recordKey('id', ['type' => 'number', 'optional' => false], 0);
+    $writes->recordKey('by', ['type' => 'string', 'optional' => false], 1);
     $scope = new AnalysisScope(new ReflectionClass(SpreadValueOverrideResource::class), Post::class);
+    $written = InlineArrayHandler::recordSpread($writes, new Variable('extra'), $result, $scope, 2);
+    $analysis = new ResourceAnalysis;
+    $writes->applyTo($analysis, true);
 
-    return [InlineArrayHandler::writeSpread($analysis, new Variable('extra'), $result, $scope), $analysis];
+    return [$written, $analysis];
 }
 
 it('writes a spread\'s keys in place, the object it writes into open where the value itself is', function (array $result, bool $open) {
@@ -332,34 +360,14 @@ it('writes a spread\'s keys in place, the object it writes into open where the v
     'a union\'s mark beside null, which is no fact of the object' => [
         ['type' => '{ by: boolean } | null', 'openReadings' => ["\0{ by: boolean } | null"]], false,
     ],
+    'a value that holds keys no name names (D14)' => [['type' => '{ by: boolean }', 'unnamedKeys' => true], true],
 ]);
 
-it('writes no key of a spread whose value may hold one it does not name, and joins each held key with a map\'s value', function () {
-    [$open, $openAnalysis] = spreadWritten(['type' => '{ by: boolean }', 'optional' => false, 'unnamedKeys' => true]);
+it('joins each held key with the value a spread of a map may write over it', function () {
     [$map, $mapAnalysis] = spreadWritten(['type' => 'Record<string, boolean>', 'optional' => false]);
 
-    expect($open)->toBeFalse()
-        ->and(array_column($openAnalysis->properties, 'type', 'name'))->toBe(['id' => 'number', 'by' => 'string'])
-        ->and($map)->toBeFalse()
+    expect($map)->toBeFalse()
         ->and(array_column($mapAnalysis->properties, 'type', 'name'))->toBe(['id' => 'number | boolean', 'by' => 'string | boolean']);
-});
-
-it('writes each key a spread sets as one it may leave out where the caller says so', function () {
-    $analysis = new ResourceAnalysis;
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-    $scope = new AnalysisScope(new ReflectionClass(SpreadValueOverrideResource::class), Post::class);
-
-    InlineArrayHandler::writeSpread(
-        $analysis,
-        new Variable('extra'),
-        ['type' => '{ id: string; by: boolean }', 'optional' => false],
-        $scope,
-        optional: true,
-    );
-
-    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number | string', 'by' => 'boolean'])
-        ->and(array_column($analysis->properties, 'optional', 'name'))->toBe(['id' => false, 'by' => true])
-        ->and(array_column($analysis->properties, 'name'))->toBe(['id', 'by']);
 });
 
 // A key a spread or a later key writes again is one key on its path, so a path that sends none leaves it optional.
@@ -388,13 +396,14 @@ it('keeps a key optional where a merge call that may not run writes it twice', f
         ->and(spreadValueSent(SpreadMergeJoinResource::class, ['merged' => '1', 'titled' => '1']))->toContain('"maybe":"hi"');
 });
 
-// A write that may not land leaves the held value where it does not; a merge call's value beats a later key.
-it('joins a held key with a helper, when() or later write that may not land, as PHP sends either', function () {
+// A write that may not land leaves the held value where it does not, and a when() value replaces it where it does;
+// a merge call's value beats a later key.
+it('joins a held key with a helper or later write that may not land, and gives it up to a when() value', function () {
     expect(publishedResourceKeyTypes(SpreadMaybeOverHeldResource::class, Post::class))->toBe([
         'id' => 'number',
         'by' => 'User | string',
         'key' => 'User | string',
-        'when?' => 'User | string',
+        'when?' => 'string',
         'merged' => 'string | User',
     ])->and(spreadValueSent(SpreadMaybeOverHeldResource::class, ['picked' => '1']))
         ->toBe('{"id":9,"by":"hi","key":"hi","when":"hi","merged":"hi"}')
@@ -406,8 +415,8 @@ it('joins a held key with a helper, when() or later write that may not land, as 
 it('keeps a held key optional where a helper writes it as a when() value it was passed or a local holds', function () {
     expect(publishedResourceKeyTypes(SpreadRemovableOverHeldResource::class, Post::class))->toBe([
         'id' => 'number',
-        'seeded?' => 'User | string',
-        'local?' => 'User | string',
+        'seeded?' => 'string',
+        'local?' => 'string',
         'n' => 'number',
     ])->and(spreadValueSent(SpreadRemovableOverHeldResource::class, ['picked' => '1']))
         ->toBe('{"id":9,"seeded":"hi","local":"hi","n":1}')
@@ -420,11 +429,224 @@ it('keeps each such joined key optional where another return leaves it out', fun
         'id?' => 'number',
         'by?' => 'User | string',
         'key?' => 'User | string',
-        'when?' => 'User | string',
+        'when?' => 'string',
         'merged?' => 'string | User',
     ])->and(spreadValueSent(SpreadMaybeOverHeldReturnsResource::class, ['titled' => '1', 'picked' => '1']))
         ->toBe('{"id":9,"by":"hi","key":"hi","when":"hi","merged":"hi"}')
         ->and(spreadValueSent(SpreadMaybeOverHeldReturnsResource::class, ['titled' => '1']))
         ->toBe('{"id":9,"by":{"name":"Ada"},"key":{"name":"Ada"},"merged":{"name":"Ada"}}')
         ->and(spreadValueSent(SpreadMaybeOverHeldReturnsResource::class))->toBe('{"n":1}');
+});
+
+/**
+ * A box holding an app author, its CRM namesake, a title and two statuses.
+ */
+function foldBox(): FoldBox
+{
+    return new FoldBox(
+        (new User)->forceFill(['id' => 1, 'name' => 'Ada']),
+        (new CrmUser)->forceFill(['id' => 2, 'name' => 'Cy']),
+        'hi',
+        Status::Published,
+        CrmStatus::Active,
+    );
+}
+
+/**
+ * What a resource over foldBox() sends, given the request's input.
+ *
+ * @param  class-string  $resource
+ * @param  array<string, mixed>  $input
+ */
+function foldSent(string $resource, array $input = []): string
+{
+    return (string) json_encode((new $resource(foldBox()))->resolve(Request::create('/', 'GET', $input)));
+}
+
+/**
+ * What an EnumResource of the box's status sends.
+ */
+function foldWrapJson(): string
+{
+    return (string) json_encode(EnumResource::make(Status::Published));
+}
+
+/**
+ * Every type and value name a resource's published file imports, sorted.
+ *
+ * @param  class-string<JsonResource>  $resource
+ * @return list<string>
+ */
+function foldImportNames(string $resource): array
+{
+    $data = new ResourceTransformer($resource)->data();
+    $names = array_merge([], ...array_values($data->typeImports), ...array_values($data->valueImports ?? []));
+    sort($names);
+
+    return $names;
+}
+
+// D1: a write that sets the key on every path is what PHP sends; the earlier value's class is not imported.
+it('publishes a key written again on every path as the later value alone, importing only its class', function () {
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    expect(foldSent(SpreadFoldCertainResource::class))
+        ->toBe('{"crm_then_app":{"u":{"id":1,"name":"Ada"}},"crm_then_wrap":{"c":'.foldWrapJson().',"s":1}}')
+        ->and(resourceProps(SpreadFoldCertainResource::class))->toBe([
+            'crm_then_app' => '{ u: User }',
+            'crm_then_wrap' => '{ c: AsEnum<typeof Status>; s: StatusType }',
+        ])
+        ->and(foldImportNames(SpreadFoldCertainResource::class))->toBe(['Status', 'StatusType', 'User']);
+});
+
+// D2: a later write that may leave the key unset joins the value before it, which PHP still sends where it does;
+// every class either side names is kept and imported. An EnumResource wrap beside a same-named enum still folds into
+// the wrap (`row_status`), as a ternary of the two does: a follow-up, not the join.
+it('joins a key with a later write that may leave it unset, keeping both classes', function () {
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    expect(foldSent(SpreadFoldMaybeResource::class))->toBe('{"u":{"id":1,"name":"Ada"},"by":{"id":1,"name":"Ada"},'
+        .'"row_user":{"u":{"id":2,"name":"Cy"}},"row_status":{"c":'.foldWrapJson().'}}')
+        ->and(foldSent(SpreadFoldMaybeResource::class, ['picked' => '1', 'flagged' => '1']))->toBe('{"u":{"id":2,"name":"Cy"},'
+            .'"by":"hi","row_user":{"u":{"id":1,"name":"Ada"}},"row_status":{"c":"active"},"m":"hi"}')
+        ->and(foldSent(SpreadFoldMaybeResource::class, ['flagged' => '1']))->toContain('"m":{"id":1,"name":"Ada"}')
+        ->and(resourceProps(SpreadFoldMaybeResource::class))->toBe([
+            'u' => 'WorkbenchUser | CrmUser',
+            'by' => 'WorkbenchUser | string',
+            'row_user' => '{ u: CrmUser | WorkbenchUser }',
+            'row_status' => '{ c: AsEnum<typeof Status> }',
+            'm?' => 'WorkbenchUser | string',
+        ]);
+});
+
+// D3: a later when() value always sets the key, so the value before it is never sent; the key is optional.
+it('publishes a key a later when() value writes as that value alone, optional', function () {
+    $loaded = '"author":{"id":null,"name":"Ada","email":null,"role":null}';
+
+    expect(spreadValueSent(SpreadFoldRemovableResource::class, ['picked' => '1']))->toBe('{"id":9,'.$loaded.','
+        .'"writer":{"id":null,"name":"Ada","email":null,"role":null},"by":"hi","helper_by":"hi","local":"hi"}')
+        ->and(spreadValueSent(SpreadFoldRemovableResource::class))->toBe('{"id":9,'.$loaded.'}')
+        ->and(publishedResourceKeyTypes(SpreadFoldRemovableResource::class, Post::class))->toBe([
+            'id' => 'number',
+            'author?' => 'UserResource',
+            'writer?' => 'UserResource',
+            'by?' => 'string',
+            'helper_by?' => 'string',
+            'local?' => 'string',
+        ])
+        ->and(analyzedImportNames(SpreadFoldRemovableResource::class))->toBe(['UserResource']);
+});
+
+// D3 and D17: an Inertia optional() prop a helper writes over a prop sends that prop on a partial reload alone.
+it('publishes a prop a helper writes again as an optional prop as that prop alone', function () {
+    expect(inertiaPropsJson(new SpreadFoldPropsController()->show()))->toBe('[]')
+        ->and(inertiaPropsJson(new SpreadFoldPropsController()->show(), partialReload('SpreadFold/Show', 'probe')))
+        ->toBe('{"probe":"x"}')
+        ->and(pageData(SpreadFoldPropsController::class.'@show')['pageType'])->toBe('Inertia.SharedData & { probe?: string }');
+});
+
+// D7, D8, D9, D11, D12: a key set before a merge beats it, a removed one stops it, a merge beats every later write,
+// a merge's removed value lets the later one through, and the first merge that runs wins.
+it('lifts each merge over the keys after it and under the keys before it, as Laravel\'s mergeData() does', function () {
+    $ada = '{"id":1,"name":"Ada"}';
+
+    expect(foldSent(SpreadFoldMergeOrderResource::class))->toBe('{"held":'.$ada.',"maybe_held":"hi","merged":"hi",'
+        .'"beats_helper":"hi","dropped":'.$ada.',"twice":'.$ada.',"first":"hi"}')
+        ->and(foldSent(SpreadFoldMergeOrderResource::class, ['picked' => '1']))->toBe('{"held":'.$ada.',"maybe_held":'.$ada.','
+            .'"gone":'.$ada.',"merged":"hi","beats_helper":"hi","dropped":"hi","twice":"hi","first":"hi"}')
+        ->and(resourceProps(SpreadFoldMergeOrderResource::class))->toBe([
+            'held' => 'User',
+            'maybe_held' => 'User | string',
+            'gone?' => 'User',
+            'merged' => 'string',
+            'beats_helper' => 'string',
+            'dropped' => 'string | User',
+            'twice' => 'string | User',
+            'first' => 'string',
+        ]);
+});
+
+// D10: a mergeWhen() value wins wherever the merge runs, over a later write of any kind, which wins elsewhere.
+it('publishes a key a mergeWhen() writes before a later write of any kind as either value', function () {
+    $ada = '{"id":1,"name":"Ada"}';
+
+    expect(foldSent(SpreadFoldMergeWhenResource::class))->toBe('{"id":1,"helper":'.$ada.',"local":'.$ada.','
+        .'"literal":'.$ada.',"u":{"id":2,"name":"Cy"},"removable":'.$ada.',"unless":'.$ada.'}')
+        ->and(foldSent(SpreadFoldMergeWhenResource::class, ['picked' => '1', 'flagged' => '1']))->toBe('{"id":1,'
+            .'"helper":"hi","local":"hi","literal":"hi","u":'.$ada.',"removable":"hi","later_when":"hi"}')
+        ->and(foldSent(SpreadFoldMergeWhenResource::class, ['flagged' => '1']))->toContain('"later_when":'.$ada)
+        ->and(resourceProps(SpreadFoldMergeWhenResource::class))->toBe([
+            'id' => 'number',
+            'helper' => 'string | WorkbenchUser',
+            'local' => 'string | WorkbenchUser',
+            'literal' => 'string | WorkbenchUser',
+            'u' => 'WorkbenchUser | CrmUser',
+            'removable' => 'string | WorkbenchUser',
+            'unless?' => 'WorkbenchUser',
+            'later_when?' => 'string | WorkbenchUser',
+        ]);
+});
+
+// D14: an open value's named key is written where it stands. Two of the table's residuals keep the earlier key's type:
+// a key only the unnamed part re-sets (`zz`), and a map local given a named key the walk leaves untyped (`signature`).
+it('publishes the named keys of a value that also holds unnamed ones as that value writes them', function () {
+    expect(foldSent(SpreadFoldOpenValueResource::class))->toBe('{"open_literal":{"by":"hi","z":"q"},'
+        .'"walked":{"by":"hi","z":"q"},"signature":{"by":"hi","z":1,"tone":"warm"},"helper":{"by":"hi","z":"q"},'
+        .'"before_arm":{"by":"hi","z":"q","id":1,"name":"Ada","email":null,"role":null},'
+        .'"literal_holding_local":{"by":"hi","x":1},"literal_of_local":{"by":"hi"},"local_of_spreads":{"by":"hi","id":1},'
+        .'"top":"hi","top_id":1,"walked_top":"hi","zz":"q"}')
+        ->and(resourceProps(SpreadFoldOpenValueResource::class))->toBe([
+            'open_literal' => '{ by: string; z: number }',
+            'walked' => '{ by: string; z: number }',
+            'signature' => '{ by: User; z: number }',
+            'helper' => '{ by: string; z: number }',
+            'before_arm' => 'Omit<{ by: string }, keyof UserResource> & UserResource',
+            'literal_holding_local' => '{ by: string; x: number }',
+            'literal_of_local' => '{ by: string }',
+            'local_of_spreads' => '{ by: string; id: number }',
+            'top' => 'string',
+            'top_id' => 'number',
+            'walked_top' => 'string',
+            'zz' => 'number',
+        ]);
+});
+
+// D15: a value that is one of two closed arrays writes per key the arms' union, required where every arm holds it.
+it('publishes each key a union of closed values writes as the union of its arms\' values', function () {
+    expect(foldSent(SpreadFoldUnionValueResource::class))
+        ->toBe('{"ternary":{"by":1},"ternary_partial":{"by":2},"array_merge":{"by":"hi"}}')
+        ->and(foldSent(SpreadFoldUnionValueResource::class, ['picked' => '1']))
+        ->toBe('{"ternary":{"by":"hi"},"ternary_partial":{"by":"hi","x":1},"array_merge":{"by":"hi"}}')
+        ->and(resourceProps(SpreadFoldUnionValueResource::class))->toBe([
+            'ternary' => '{ by: string | number }',
+            'ternary_partial' => '{ by: string | number; x?: number }',
+            'array_merge' => '{ by: string }',
+        ]);
+});
+
+// D16: each return folds on its own, then the returns join, a key one of them lacks optional.
+it('folds each return on its own before the returns join', function () {
+    $ada = '{"id":1,"name":"Ada"}';
+
+    expect(foldSent(SpreadFoldReturnsResource::class))->toBe('{"n":1}')
+        ->and(foldSent(SpreadFoldReturnsResource::class, ['flagged' => '1']))->toBe('{"id":1,"by":'.$ada.','
+            .'"helper":'.$ada.',"key":'.$ada.',"merged":'.$ada.',"local":'.$ada.'}')
+        ->and(foldSent(SpreadFoldReturnsResource::class, ['flagged' => '1', 'picked' => '1']))
+        ->toBe('{"id":1,"by":"hi","helper":"hi","key":"hi","merged":"hi","local":"hi"}')
+        ->and(resourceProps(SpreadFoldReturnsResource::class))->toBe([
+            'id?' => 'number',
+            'by?' => 'string | User',
+            'helper?' => 'User | string',
+            'key?' => 'User | string',
+            'merged?' => 'string | User',
+            'local?' => 'User | string',
+            'n?' => 'number',
+        ]);
+});
+
+// D13: resolve() sends only the keys it keeps, so a key it may drop leaves the earlier value where it does.
+it('joins a key with a resolved resource\'s key that resource may drop, which leaves the earlier value there', function () {
+    expect(spreadValueSent(SpreadFoldResolvedArmResource::class, ['picked' => '1']))->toBe('{"title":"hi"}')
+        ->and(spreadValueSent(SpreadFoldResolvedArmResource::class))->toBe('{"title":9}')
+        ->and(publishedResourceKeyTypes(SpreadFoldResolvedArmResource::class, Post::class))->toBe(['title' => 'number | string']);
 });

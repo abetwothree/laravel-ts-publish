@@ -22226,6 +22226,21 @@
                     "optional": false
                 },
                 {
+                    "name": "key_then_removable",
+                    "type": "{ id: number; by?: string }",
+                    "optional": false
+                },
+                {
+                    "name": "merge_when_then_value",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } | string }",
+                    "optional": false
+                },
+                {
+                    "name": "key_then_open",
+                    "type": "{ by: string }",
+                    "optional": false
+                },
+                {
                     "name": "by",
                     "type": "unknown",
                     "optional": false

@@ -12,75 +12,6 @@ it('is the base class ResourceAnalysis now extends, as an empty subclass', funct
         ->and(new ReflectionClass(ResourceAnalysis::class)->getParentClass()->getName())->toBe(MethodAnalysis::class);
 });
 
-it('appends the keys the source adds, and writes one it always sets over the held one where that stood', function () {
-    $target = new MethodAnalysis(properties: [
-        ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
-        ['name' => 'at', 'type' => 'string', 'optional' => false, 'description' => ''],
-    ]);
-    $source = new MethodAnalysis(properties: [
-        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
-        ['name' => 'id', 'type' => 'string', 'optional' => false, 'description' => ''],
-    ]);
-
-    $target->merge($source);
-
-    expect($target->properties)->toBe([
-        ['name' => 'id', 'type' => 'string', 'optional' => false, 'description' => ''],
-        ['name' => 'at', 'type' => 'string', 'optional' => false, 'description' => ''],
-        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
-    ]);
-});
-
-// PHP still sends the held value where the source leaves its key out, so the key holds either.
-it('joins a key the source may leave out with the held one, which stays where both name classes or it is untyped', function () {
-    $target = new MethodAnalysis;
-    $target->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
-    $target->addProperty('at', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
-    $target->addProperty('raw', ['type' => 'unknown', 'optional' => false]);
-    $target->addProperty('n', ['type' => 'number', 'optional' => false]);
-    // Keys a helper sets on some paths only: optional, though no value of theirs is left out by itself.
-    $source = new MethodAnalysis(properties: [
-        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => ''],
-        ['name' => 'at', 'type' => 'User', 'optional' => true, 'description' => ''],
-        ['name' => 'raw', 'type' => 'string', 'optional' => true, 'description' => ''],
-        ['name' => 'n', 'type' => 'string', 'optional' => true, 'description' => ''],
-    ], modelFqcns: ['at' => 'Workbench\App\Models\User']);
-
-    $target->merge($source);
-
-    expect(array_map(static fn (array $property): string => $property['name'].($property['optional'] ? '?' : '').': '.$property['type'], $target->properties))
-        ->toBe(['by: User | string', 'at: Post', 'raw: unknown', 'n: number | string'])
-        ->and($target->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User', 'at' => 'Workbench\App\Models\Post']);
-});
-
-// A when() value the source writes is a MissingValue PHP filters out, taking the key with it.
-it('joins a key the source writes as a value it may leave out, which may leave the key out too', function () {
-    $target = new MethodAnalysis;
-    $target->addProperty('by', ['type' => 'number', 'optional' => false]);
-    $source = new MethodAnalysis;
-    $source->addProperty('by', ['type' => 'string', 'optional' => true]);
-
-    $target->merge($source);
-
-    expect($target->properties)->toBe([[
-        'name' => 'by', 'type' => 'number | string', 'optional' => true, 'description' => '', 'removed' => true,
-    ]]);
-});
-
-it('keeps a key a merge call wrote where a later key writes it, which wins only where the merge did not run', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('by', ['type' => 'string', 'optional' => true]);
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-
-    $analysis->writeUnderMerged('by', ['type' => 'number', 'optional' => false]);
-    $analysis->writeUnderMerged('id', ['type' => 'number', 'optional' => true]);
-
-    expect($analysis->properties)->toBe([
-        ['name' => 'by', 'type' => 'string | number', 'optional' => false, 'description' => ''],
-        ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
-    ]);
-});
-
 it('array-spread-merges the single-value class maps, later source winning on key collision', function () {
     $target = new MethodAnalysis(
         enumResources: ['a' => 'Old\\A', 'shared' => 'Old\\Shared'],
@@ -141,25 +72,6 @@ it('appends inlineEnumFqcns per property WITHOUT deduping, same as inlineModelFq
     ]);
 });
 
-// A key the target holds is replaced by the source's value, whose own tokens alone the queue then describes; a target
-// holding no such key is a join's accumulator, whose queue still reads every branch.
-it('replaces the inline enum queue of a key the target holds and the source sets again', function (bool $holds, array $queue) {
-    $target = new MethodAnalysis(
-        properties: $holds ? [['name' => 'row', 'type' => '{ s: StatusType }', 'optional' => false, 'description' => '']] : [],
-        inlineEnumFqcns: ['row' => ['App\\Status'], 'kept' => ['App\\Kept']],
-    );
-    $target->merge(new MethodAnalysis(
-        properties: [['name' => 'row', 'type' => '{ c: StatusType }', 'optional' => false, 'description' => '']],
-        inlineEnumFqcns: ['row' => ['Crm\\Status']],
-    ));
-
-    expect($target->inlineEnumFqcns['row'])->toBe($queue)
-        ->and($target->inlineEnumFqcns['kept'])->toBe(['App\\Kept']);
-})->with([
-    'held by the target' => [true, ['Crm\\Status']],
-    'held by no property of the target' => [false, ['App\\Status', 'Crm\\Status']],
-]);
-
 it('appends inlineEnumResourceFqcns per property WITHOUT deduping, same as inlineModelFqcns', function () {
     $target = new MethodAnalysis(inlineEnumResourceFqcns: ['status' => ['App\\Enum1', 'App\\Enum2']]);
     $source = new MethodAnalysis(inlineEnumResourceFqcns: ['status' => ['App\\Enum2', 'App\\Enum3']]);
@@ -205,8 +117,8 @@ it('clears the cast entry of a key the source sets without one', function () {
 // A declaration's token slots describe the text it wrote, which the source's value replaces.
 it('merges declared token slots as it merges casts', function () {
     $user = 'Workbench\\App\\Models\\User';
+    // The target's `owner` row is gone, as a whole write the walk merges for its channels leaves it.
     $target = new MethodAnalysis(properties: [
-        ['name' => 'owner', 'type' => 'User', 'optional' => false, 'description' => ''],
         ['name' => 'kept', 'type' => 'User', 'optional' => false, 'description' => ''],
     ]);
     $target->declaredTokenFqcns = ['owner' => [$user], 'kept' => [$user]];
@@ -504,13 +416,11 @@ function presenceFactsOf(MethodAnalysis $analysis): array
 }
 
 // No held value survives a removed value, as one survives a key left unset.
-it('tells a key whose value may be removed from one a write or a spread member may leave unset, through merges', function () {
+it('tells a key whose value may be removed from one a write or a spread member may leave unset, through a merge', function () {
     $analysis = new MethodAnalysis;
     $analysis->addProperty('deferred', ['type' => 'string', 'optional' => true]);
     $analysis->addProperty('skipped', ['type' => 'string', 'optional' => false], optional: true);
     $analysis->addProperty('member', ['type' => 'string', 'optional' => true, 'absent' => true]);
-    $analysis->addProperty('reset', ['type' => 'string', 'optional' => true]);
-    $analysis->overwriteProperty('reset', ['type' => 'number', 'optional' => false]);
     $other = new MethodAnalysis;
     $other->addProperty('when', ['type' => 'string', 'optional' => true]);
     $analysis->merge($other);
@@ -521,46 +431,9 @@ it('tells a key whose value may be removed from one a write or a spread member m
         'later' => ['optional' => true, 'removed' => true],
         'skipped' => ['optional' => true, 'absent' => true],
         'member' => ['optional' => true, 'absent' => true],
-        'reset' => ['optional' => false],
         'when' => ['optional' => true, 'removed' => true],
     ]);
 });
-
-// The source's removed value removes the key wherever it runs; one it may leave unset keeps the held one there.
-it('joins a held key with the presence of the value a merge may leave out', function (array $held, array $written, array $facts) {
-    $target = new MethodAnalysis;
-    $target->addProperty('k', ['type' => 'number', ...$held]);
-    $source = new MethodAnalysis;
-    $source->addProperty('k', ['type' => 'string', ...$written]);
-
-    $target->merge($source);
-
-    expect(presenceFactsOf($target)['k'])->toBe($facts);
-})->with([
-    'removed over required' => [['optional' => false], ['optional' => true], ['optional' => true, 'removed' => true]],
-    'unset over required' => [['optional' => false], ['optional' => true, 'absent' => true], ['optional' => false]],
-    'unset over removed' => [
-        ['optional' => true], ['optional' => true, 'absent' => true], ['optional' => true, 'removed' => true],
-    ],
-    'unset over unset' => [
-        ['optional' => true, 'absent' => true], ['optional' => true, 'absent' => true],
-        ['optional' => true, 'absent' => true],
-    ],
-]);
-
-// A merge call's value wins where it ran; a later key's removed value leaves the key out where it did not.
-it('keeps a merge call\'s key removed only where a later key\'s value may be removed too', function (bool $merged, bool $later, array $facts) {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('k', ['type' => 'number', 'optional' => $merged]);
-
-    $analysis->writeUnderMerged('k', ['type' => 'string', 'optional' => $later]);
-
-    expect(presenceFactsOf($analysis)['k'])->toBe($facts);
-})->with([
-    'both may be removed' => [true, true, ['optional' => true, 'removed' => true]],
-    'only the merged one' => [true, false, ['optional' => false]],
-    'only the later one' => [false, true, ['optional' => false]],
-]);
 
 it('drops the queued classes and custom imports a branch of a join only repeats from another', function () {
     $entry = fn (string $name, string $type): array => ['name' => $name, 'type' => $type, 'optional' => false, 'description' => ''];
@@ -801,45 +674,6 @@ it('replaces a key\'s inline queues with the classes requeued, each keyed by its
         ->and($analysis->modelFqcns)->toBe(['Workbench\App\Models\User' => 'Workbench\App\Models\User']);
 });
 
-it('writes a spread key over the held one where the spread always writes it, and joins one it may leave out', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
-    $analysis->addProperty('at', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
-
-    $analysis->writeSpreadKeys([
-        ['id', ['type' => 'string', 'optional' => false]],
-        ['by', ['type' => 'string', 'optional' => true]],
-        ['at', ['type' => 'string', 'optional' => false]],
-        ['note', ['type' => 'string', 'optional' => true]],
-    ], ['type' => '{ id: string; by?: string; at: string; note?: string }', 'optional' => false, 'customImports' => ['@/x' => ['X']]]);
-
-    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
-        'id' => 'string', 'by' => 'User | string', 'at' => 'string', 'note' => 'string',
-    ])->and(array_column($analysis->properties, 'optional', 'name'))->toBe([
-        'id' => false, 'by' => false, 'at' => false, 'note' => true,
-    ])->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User'])
-        ->and($analysis->customImports)->toBe(['@/x' => ['X']])
-        ->and(array_column($analysis->properties, 'name'))->toBe(['id', 'by', 'at', 'note']);
-});
-
-// PHP's later write replaces the value where the first stood, so a join counts the key once per branch.
-it('writes a key over every entry held under its name, where the first stood, with none of their channels', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-    $analysis->addProperty('by', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
-
-    $analysis->overwriteProperty('by', ['type' => 'string', 'optional' => false], optional: true);
-    $analysis->overwriteProperty('at', ['type' => 'number', 'optional' => false]);
-
-    expect($analysis->properties)->toBe([
-        ['name' => 'by', 'type' => 'string', 'optional' => true, 'description' => '', 'absent' => true],
-        ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
-        ['name' => 'at', 'type' => 'number', 'optional' => false, 'description' => ''],
-    ])->and($analysis->modelFqcns)->toBe([]);
-});
-
 it('reads each key once, as its last write where its first stood, and every entry of a signature', function () {
     $analysis = new MethodAnalysis;
     $analysis->addProperty('by', ['type' => 'User', 'optional' => false]);
@@ -852,78 +686,78 @@ it('reads each key once, as its last write where its first stood, and every entr
         ->toBe(['by: string', '[key: string]: number | undefined', 'id: number', '[key: string]: boolean | undefined']);
 });
 
-it('writes a spread key over the held one with none of the held value\'s inline classes left', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('row', ['type' => '{ u: User }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\App\Models\User']]);
+// A per-key map one of these methods forgets would keep a moved key's classes, cast or readings under the old name.
+it('moves every per-key map with its key, through every method that moves, slices or forgets keys', function () {
+    $wide = ['properties', 'customImports', 'carried'];
+    $maps = array_values(array_filter(
+        array_map(
+            static fn (ReflectionProperty $property): string => $property->getName(),
+            new ReflectionClass(MethodAnalysis::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+        ),
+        static fn (string $name): bool => ! in_array($name, $wide, true)
+            && (string) new ReflectionProperty(MethodAnalysis::class, $name)->getType() === 'array',
+    ));
+    $filled = static function () use ($maps): MethodAnalysis {
+        $analysis = new MethodAnalysis(properties: [
+            ['name' => 'k', 'type' => 'string', 'optional' => false, 'description' => ''],
+            ['name' => 'other', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ]);
 
-    $analysis->writeSpreadKeys(
-        [['row', ['type' => '{ u: User }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\Crm\Models\User']]]],
-        ['type' => '{ row: { u: User } }', 'optional' => false],
-    );
+        foreach ($maps as $map) {
+            $analysis->{$map} = ['k' => ['K'], 'other' => ['O']];
+        }
 
-    expect($analysis->inlineModelFqcns)->toBe(['row' => ['Workbench\Crm\Models\User']]);
+        return $analysis;
+    };
+    $slice = $filled()->sliceOf('k');
+    $renamed = $filled();
+    $renamed->renameKeys(['k' => 'n']);
+    $appended = new MethodAnalysis;
+    $appended->appendSlice($slice, keepsHeldObjects: true);
+    $merged = new MethodAnalysis;
+    $merged->appendSlice($slice, keepsHeldObjects: false);
+    $replaced = new MethodAnalysis;
+    $replaced->replaceWith($filled());
+    $forgotten = $filled();
+    $forgotten->forgetChannels('k');
+    // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
+    $keptByForget = ['heldObjectKeys', 'closedToDottedKeys', 'openReadings'];
+
+    expect($maps)->toHaveCount(15);
+
+    foreach ($maps as $map) {
+        expect($slice->{$map})->toBe(['k' => ['K']], $map)
+            ->and($renamed->{$map})->toBe(['n' => ['K'], 'other' => ['O']], $map)
+            ->and($appended->{$map})->toBe(['k' => ['K']], $map)
+            ->and($merged->{$map})->toBe($map === 'heldObjectKeys' ? [] : ['k' => ['K']], $map)
+            ->and($replaced->{$map})->toBe(['k' => ['K'], 'other' => ['O']], $map)
+            ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map);
+    }
 });
 
-it('keeps the held value of a key a spread may leave out where both name classes, or either is untyped', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
-    $analysis->addProperty('n', ['type' => 'number', 'optional' => false]);
-    $analysis->addProperty('raw', ['type' => 'unknown', 'optional' => false]);
+it('slices one row of a named key, its last, and every row of a signature', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'k', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => '[key: string]', 'type' => 'number', 'optional' => false, 'description' => ''],
+        ['name' => 'k', 'type' => 'number', 'optional' => false, 'description' => ''],
+        ['name' => '[key: string]', 'type' => 'boolean', 'optional' => false, 'description' => ''],
+    ]);
 
-    $analysis->writeSpreadKeys([
-        ['by', ['type' => 'Post', 'optional' => true, 'modelFqcn' => 'Workbench\App\Models\Post']],
-        ['n', ['type' => 'unknown', 'optional' => true]],
-        ['raw', ['type' => 'string', 'optional' => true]],
-    ], ['type' => '{ by?: Post; n?: unknown; raw?: string }', 'optional' => false]);
-
-    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['by' => 'User', 'n' => 'number', 'raw' => 'unknown'])
-        ->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User']);
+    expect(array_column($analysis->sliceOf('k')->properties, 'type'))->toBe(['number'])
+        ->and(array_column($analysis->sliceOf('[key: string]')->properties, 'type'))->toBe(['number', 'boolean']);
 });
 
-it('keeps what both sides of a joined key leave open', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('by', ['type' => 'string | null', 'optional' => false, 'openReadings' => ["\0string | null"]]);
+it('refuses to merge a key the analysis already holds, which a literal\'s fold writes once', function () {
+    $target = new MethodAnalysis;
+    $target->addProperty('k', ['type' => 'string', 'optional' => false]);
+    $source = new MethodAnalysis;
+    $source->addProperty('k', ['type' => 'number', 'optional' => false]);
+    $signatures = new MethodAnalysis;
+    $signatures->addSignatureEntry('[key: string]', ['type' => 'number', 'optional' => false]);
+    $more = new MethodAnalysis;
+    $more->addSignatureEntry('[key: string]', ['type' => 'string', 'optional' => false]);
+    $signatures->merge($more);
 
-    $analysis->writeSpreadKeys(
-        [['by', ['type' => '{ a: number }', 'optional' => true, 'openReadings' => ["\0{ a: number }"]]]],
-        ['type' => '{ by?: { a: number } }', 'optional' => false],
-    );
-
-    expect($analysis->openReadings)->toBe(['by' => ["\0string | null", "\0{ a: number }"]])
-        ->and(array_column($analysis->properties, 'name'))->toBe(['by']);
-});
-
-it('joins each named key held with the value a spread of a map may write over it', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-    $analysis->addProperty('by', ['type' => 'User', 'optional' => true, 'modelFqcn' => 'Workbench\App\Models\User']);
-    $analysis->addSignatureEntry('[key: `x_${string}`]', ['type' => 'boolean', 'optional' => false]);
-
-    $analysis->joinHeldKeys(['type' => 'string', 'optional' => false], ['type' => 'Record<string, string>', 'optional' => false]);
-    $untouched = clone $analysis;
-    $analysis->joinHeldKeys(['type' => 'unknown', 'optional' => false], ['type' => 'Record<string, unknown>', 'optional' => false]);
-
-    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
-        'id' => 'number | string', 'by' => 'User | string', '[key: `x_${string}`]' => 'boolean | undefined',
-    ])->and(array_column($analysis->properties, 'optional', 'name'))->toBe([
-        'id' => false, 'by' => true, '[key: `x_${string}`]' => false,
-    ])->and($analysis->modelFqcns)->toBe(['by' => 'Workbench\App\Models\User'])
-        ->and($analysis->properties)->toBe($untouched->properties);
-});
-
-// The arm prints over the keys before it, so a key it always writes goes, and one it may write joins the held value.
-it('gives up each held key a later arm always writes, and joins one it may write', function () {
-    $analysis = new MethodAnalysis;
-    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
-    $analysis->addProperty('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
-
-    $analysis->yieldToSpreadArm([
-        ['by', ['type' => 'string', 'optional' => false]],
-        ['id', ['type' => 'string', 'optional' => true]],
-        ['extra', ['type' => 'string', 'optional' => false]],
-    ], ['type' => '{ by: string; id?: string; extra: string }', 'optional' => false]);
-
-    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number | string'])
-        ->and(array_column($analysis->properties, 'name'))->toBe(['id'])
-        ->and($analysis->modelFqcns)->toBe([]);
+    expect(fn () => $target->merge($source))->toThrow(LogicException::class)
+        ->and(array_column($signatures->properties, 'name'))->toBe(['[key: string]', '[key: string]']);
 });

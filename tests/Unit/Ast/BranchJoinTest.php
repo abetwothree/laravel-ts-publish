@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
 
 test('slottedBranchUnion() joins a declared text\'s arms whole, an override\'s and a model\'s token kept apart', function () {
     expect(BranchJoin::slottedBranchUnion(['User | User', 'string'], false, false, [['User | User', [null, User::class]]]))
@@ -54,4 +55,41 @@ test('castsEveryBranchAgrees() keeps a cast only where every branch setting its 
         $branch(['a' => $cast, 'b' => $cast]),
         $branch(['a' => [...$cast, 'optional' => true], 'b' => ['type' => 'Cents', 'import' => '@/money']]),
     ], ['a', 'b']))->toBe(['a' => [...$cast, 'optional' => true]]);
+});
+
+/**
+ * One branch holding `k` typed as given, with its model class where it names one.
+ *
+ * @param  class-string|null  $model
+ */
+function joinBranch(string $type, ?string $model = null): MethodAnalysis
+{
+    $branch = new MethodAnalysis;
+    $branch->addProperty('k', ['type' => $type, 'optional' => false, ...($model === null ? [] : ['modelFqcn' => $model])]);
+
+    return $branch;
+}
+
+test('joinInto() keeps a key the first branch leaves untyped untyped only where told to', function () {
+    $kept = new MethodAnalysis;
+    BranchJoin::joinInto($kept, [joinBranch('unknown'), joinBranch('string')], dropsUntypedBranches: true, keepsFirstUntyped: true);
+    $dropped = new MethodAnalysis;
+    BranchJoin::joinInto($dropped, [joinBranch('unknown'), joinBranch('string')], dropsUntypedBranches: true);
+    $later = new MethodAnalysis;
+    BranchJoin::joinInto($later, [joinBranch('string'), joinBranch('unknown')], dropsUntypedBranches: true, keepsFirstUntyped: true);
+
+    expect(array_column($kept->properties, 'type'))->toBe(['unknown'])
+        ->and(array_column($dropped->properties, 'type'))->toBe(['string'])
+        ->and(array_column($later->properties, 'type'))->toBe(['string']);
+});
+
+test('joinInto() keeps two models one name spells as two arms, each queued, only where told to', function () {
+    $apart = new MethodAnalysis;
+    BranchJoin::joinInto($apart, [joinBranch('User', User::class), joinBranch('User', CrmUser::class)], keepsClassesApart: true);
+    $folded = new MethodAnalysis;
+    BranchJoin::joinInto($folded, [joinBranch('User', User::class), joinBranch('User', CrmUser::class)]);
+
+    expect(array_column($apart->properties, 'type'))->toBe(['User | User'])
+        ->and($apart->inlineModelFqcns)->toBe(['k' => [User::class, CrmUser::class]])
+        ->and(array_column($folded->properties, 'type'))->toBe(['User']);
 });

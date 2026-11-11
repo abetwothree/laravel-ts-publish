@@ -10,6 +10,6 @@ final class OverwrittenSpreadArgument extends OverwrittenSpreadBase
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        return [...parent::withArgument(['k' => 1, ...array_merge(['k' => 'x'], [])])];
+        return [...parent::withArgument(['k' => 1, ...(array) json_decode('{"k":"x"}', true)])];
     }
 }

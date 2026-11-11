@@ -1037,23 +1037,8 @@ trait ReadsReturnedVariables
         $unset = $this->keysLeftUnset($value, $write);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
-        $written = [];
-        $positions = [];
-
-        // A named key the write itself repeats is one key with its last value, as the same literal returned would
-        // publish; each signature entry is one more runtime key, kept as addSignatureEntry() keeps one.
+        // A literal's fold writes each named key once; each signature entry is one more runtime key.
         foreach ($write->properties as $prop) {
-            if (! JsEmitter::isIndexSignatureKey($prop['name']) && isset($positions[$prop['name']])) {
-                $written[$positions[$prop['name']]] = $prop;
-
-                continue;
-            }
-
-            $positions[$prop['name']] = count($written);
-            $written[] = $prop;
-        }
-
-        foreach ($written as $prop) {
             // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
             $index = JsEmitter::isIndexSignatureKey($prop['name']) ? false : array_search($prop['name'], $names, true);
 
@@ -1088,6 +1073,8 @@ trait ReadsReturnedVariables
             );
         }
 
+        // merge() takes keys the variable does not hold, so only the channels move; the rows are the ones laid above.
+        $into->properties = [];
         $into->merge($write);
         $into->properties = $properties;
     }

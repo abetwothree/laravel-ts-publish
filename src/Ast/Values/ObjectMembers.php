@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  * InlineObjectResult::of(), so a value already typed as an object can start an analysis that writes more keys.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  *
  * @phpstan-type KeyedValues = list<array{string, ValueExpressionResult}>
  * @phpstan-type MemberChannel = array{
@@ -140,6 +141,18 @@ final class ObjectMembers
     }
 
     /**
+     * The keys a spread writes, as writtenMembers() reads them; null where a member would lose its text, as seed()
+     * declines.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return KeyedValues|null
+     */
+    public static function seededWrittenMembers(array $value, bool $carriesImports): ?array
+    {
+        return self::keepsText($value, $carriesImports) ? self::writtenMembers($value) : null;
+    }
+
+    /**
      * The same keys, each one its writer may leave unset.
      *
      * @param  KeyedValues  $keys
@@ -169,6 +182,80 @@ final class ObjectMembers
         $signatures = array_filter($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]));
 
         return $signatures !== [] && count($signatures) < count($members);
+    }
+
+    /**
+     * The presence facts InlineObjectResult::of() recorded for each optional member of $object, the object text it
+     * printed: a printed `?` alone cannot tell a key a branch may leave unset from a removed value, which a spread over
+     * an earlier key must. Empty where the value holds no record for that text.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return array<string, PresenceFacts>
+     */
+    public static function keyPresence(array $value, string $object): array
+    {
+        return $value['keyPresence'][$object] ?? [];
+    }
+
+    /**
+     * The keys a spread of a value writes, as members() reads them, each `?` member with the facts a literal's fold
+     * reads: those recorded for it, else "may be unset and may be removed". members() itself keeps a bare `?` removed,
+     * for a seed whose `??=` no removed value takes: two callers, two answers.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return KeyedValues|null
+     */
+    public static function writtenMembers(array $value): ?array
+    {
+        $members = self::members($value);
+
+        if ($members === null) {
+            return null;
+        }
+
+        $recorded = self::keyPresence($value, $value['type']);
+        $everyAbsent = $value['absentKeys'] ?? false;
+
+        return array_map(static function (array $member) use ($recorded, $everyAbsent): array {
+            [$name, $result] = $member;
+
+            if (! $result['optional']) {
+                return $member;
+            }
+
+            $facts = $everyAbsent ? ['absent' => true] : $recorded[$name] ?? ['absent' => true, 'removed' => true];
+            unset($result['absent'], $result['removed']);
+
+            // A removed-only member stays as members() reads it; absent marks it unset, `removed` beside it both.
+            return [$name, [
+                ...$result,
+                ...(isset($facts['absent']) ? ['absent' => true] : []),
+                ...(isset($facts['absent'], $facts['removed']) ? ['removed' => true] : []),
+            ]];
+        }, $members);
+    }
+
+    /**
+     * A value whose object's optional members are each one its writer may leave unset, never a removed value: the
+     * keys `resolve()` returns, which hold no MissingValue.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    public static function withOptionalKeysAbsent(array $value): array
+    {
+        $object = TsTypeString::withoutNullArm($value['type']);
+        $facts = [];
+
+        foreach (TsTypeShape::members($object) ?? [] as [$key]) {
+            $name = PrintedKey::decode($key);
+
+            if ($name !== null && str_ends_with($key, '?')) {
+                $facts[$name] = ['absent' => true];
+            }
+        }
+
+        return $facts === [] ? $value : [...$value, 'keyPresence' => [...$value['keyPresence'] ?? [], $object => $facts]];
     }
 
     /**

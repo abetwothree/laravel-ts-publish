@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\ResolvesModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
@@ -1483,12 +1484,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * Analyze the items of an array literal analyzeReturnArray() reads. With $readsAttributeNames, a keyless string
      * reads the model attribute it names, `$this->resource->{name}`, and `...parent::toAttributes()` what it returns.
      * With $printsArms, a spread a later arm follows stays an arm, which InlineArrayHandler prints before these keys.
+     *
+     * Each item records its writes; one fold (LiteralWrites) then decides each key a literal writes twice, as PHP
+     * builds the literal and Laravel's `filter()` lifts its merge calls over the keys after them.
      */
     private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames, bool $printsArms): ResourceAnalysis
     {
-        $analysis = new ResourceAnalysis;
-        /** @var array<array-key, true> $merged each key a merge call wrote: Laravel sends its value over a later one */
-        $merged = [];
+        $writes = new LiteralWrites;
         $arms = $printsArms && array_any($array->items, static fn (ArrayItem $item): bool => $item->unpack)
             ? new InlineArrayHandler
             : null;
@@ -1498,13 +1500,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         foreach ($items as $index => $item) {
             if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
-                $analysis->overwriteProperty($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)));
+                $writes->recordKey($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)), $index);
 
                 continue;
             }
 
             if ($readsAttributeNames && $this->spreadsFrameworkToAttributes($item)) {
-                $analysis->merge($this->jsonApiFrameworkAttributesAnalysis());
+                $writes->record($this->jsonApiFrameworkAttributesAnalysis(), $index);
 
                 continue;
             }
@@ -1516,10 +1518,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $parentAnalysis = $this->analyzeParentCall($parentMethod);
 
                 if ($parentAnalysis !== null) {
-                    $analysis->merge($parentAnalysis);
+                    $writes->record($parentAnalysis, $index);
                 } else {
                     UnreadSpreads::record();
-                    $analysis->holdsUnnamedKeys = true;
+                    $writes->holdUnnamedKeys();
                 }
 
                 continue;
@@ -1532,10 +1534,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $filterAnalysis = $this->analyzeThisAttributeFilter($item->value);
 
                 if ($filterAnalysis !== null) {
-                    $analysis->merge($filterAnalysis);
+                    $writes->record($filterAnalysis, $index);
                 } else {
                     UnreadSpreads::record();
-                    $analysis->holdsUnnamedKeys = true;
+                    $writes->holdUnnamedKeys();
                 }
 
                 continue;
@@ -1546,7 +1548,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $filterAnalysis = $this->analyzeReceiverModelFilter($item->value);
 
                 if ($filterAnalysis !== null) {
-                    $analysis->merge($filterAnalysis);
+                    $writes->record($filterAnalysis, $index);
 
                     continue;
                 }
@@ -1558,7 +1560,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
-                $analysis->merge($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value));
+                $writes->record($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value), $index);
 
                 continue;
             }
@@ -1570,7 +1572,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 && $item->value->name instanceof Identifier
                 && ($spread = $this->relativeMethodSpread($item->value, $item->value->name->toString(), $topLevel)) !== null
             ) {
-                $analysis->merge($spread);
+                $writes->record($spread, $index);
 
                 continue;
             }
@@ -1583,11 +1585,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $funcName = $funcCallName instanceof Name ? $funcCallName->getLast() : null;
 
                 if ($funcName !== null && $this->scope->declaringClass->hasMethod($funcName)) {
-                    $analysis->merge($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass));
+                    $writes->record($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass), $index);
                 } else {
-                    UnreadSpreads::record();
-                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys
-                        || ! $this->spreadsClosedShape($this->analyzeValueExpression($item->value));
+                    // A PHP function's array, as array_merge()'s, writes its keys where it stands as any value does.
+                    $value = $this->analyzeValueExpression($item->value);
+
+                    if (! InlineArrayHandler::recordSpread($writes, $item->value, $value, $this->scope, $index)) {
+                        UnreadSpreads::record();
+
+                        if (! $this->spreadsClosedShape($value)) {
+                            $writes->holdUnnamedKeys();
+                        }
+                    }
                 }
 
                 continue;
@@ -1598,7 +1607,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $armAnalysis = $this->analyzeSpreadArm($item->value);
 
                 if ($armAnalysis !== null) {
-                    $analysis->merge($armAnalysis);
+                    $writes->record($armAnalysis, $index);
 
                     continue;
                 }
@@ -1607,16 +1616,15 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $spread = $item->key === null && $item->unpack ? $this->analyzeValueExpression($item->value) : null;
 
             if ($spread !== null) {
-                $spreadKeys = $arms === null ? null : InlineArrayHandler::spreadKeys($item->value, $spread, $this->scope);
-
                 // A printed arm stands before every key, so a spread a later arm follows stays an arm, over the keys
                 // before it.
-                if ($arms !== null && $spreadKeys !== null && $arms->armFollows($items, $index, $this->scope, $this)) {
-                    $analysis->yieldToSpreadArm($spreadKeys, $spread);
-                } elseif (InlineArrayHandler::writeSpread($analysis, $item->value, $spread, $this->scope)) {
+                if ($arms !== null && InlineArrayHandler::spreadKeys($item->value, $spread, $this->scope) !== null
+                    && $arms->armFollows($items, $index, $this->scope, $this)) {
+                    InlineArrayHandler::recordSpread($writes, $item->value, $spread, $this->scope, $index, printedArm: true);
+                } elseif (InlineArrayHandler::recordSpread($writes, $item->value, $spread, $this->scope, $index)) {
                     continue;
                 } elseif ($arms !== null) {
-                    $this->yieldToNamedArm($analysis, $item->value);
+                    $this->yieldToNamedArm($writes, $item->value, $index);
                 }
             }
 
@@ -1628,11 +1636,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 $mergeResult = $this->analyzeMergeExpression($item->value);
                 $mergeResult->holdsUnnamedKeys = $mergeResult->holdsUnnamedKeys || ($spread !== null && ! $this->spreadsClosedShape($spread));
-
-                // Laravel's mergeData() unions the keys before a merge with the merged ones, so the earlier key stays.
-                $mergeResult->dropKeysHeldBy($analysis);
-                $analysis->merge($mergeResult);
-                $merged += array_fill_keys(array_column($mergeResult->properties, 'name'), true);
+                $writes->record($mergeResult, $index, fromMerge: true);
 
                 continue;
             }
@@ -1640,7 +1644,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             if ($item->key === null) {
                 if ($spread !== null) {
                     UnreadSpreads::record();
-                    $analysis->holdsUnnamedKeys = $analysis->holdsUnnamedKeys || ! $this->spreadsClosedShape($spread);
+
+                    if (! $this->spreadsClosedShape($spread)) {
+                        $writes->holdUnnamedKeys();
+                    }
                 }
 
                 continue;
@@ -1649,7 +1656,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $keyName = $this->resolveKeyName($item->key, $this->scope);
 
             if ($keyName === null) {
-                $analysis->holdsUnnamedKeys = true;
+                $writes->holdUnnamedKeys();
 
                 continue;
             }
@@ -1657,46 +1664,45 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $result = $this->reading->arrayValue($this->analyzeValueExpression($item->value));
 
             if (JsEmitter::isIndexSignatureKey($keyName)) {
-                $analysis->addSignatureEntry($keyName, $result);
+                $writes->recordSignature($keyName, $result);
 
                 continue;
             }
 
-            if (isset($merged[$keyName])) {
-                $analysis->writeUnderMerged($keyName, $result);
-            } else {
-                $analysis->overwriteProperty($keyName, $result);
-            }
+            $writes->recordKey($keyName, $result, $index);
         }
+
+        $analysis = new ResourceAnalysis;
+        $writes->applyTo($analysis, $this->reading->filtersBodyOf($this->scope));
 
         return $analysis;
     }
 
     /**
-     * Give up each held key a later spread of a resource, model or collection writes, which its printed arm sends over
-     * the keys before it: a resource writes its required keys always and its optional ones maybe, a model any attribute
-     * its toArray() serializes, and a collection none, as it renumbers its own.
+     * Record the keys a later spread of a resource, model or collection writes as its printed arm's, which it sends
+     * over the keys before it: a resource writes its required keys always and its optional ones maybe, a model any
+     * attribute its toArray() serializes, and a collection none, as it renumbers its own.
      */
-    private function yieldToNamedArm(ResourceAnalysis $analysis, Expr $value): void
+    private function yieldToNamedArm(LiteralWrites $writes, Expr $value, int $index): void
     {
-        $arm = $analysis->properties === [] ? null : InlineArrayHandler::classifySpreadArm($value, $this->scope, $this);
+        $arm = $writes->names() === [] ? null : InlineArrayHandler::classifySpreadArm($value, $this->scope, $this);
         $named = $arm !== null && ! ($arm['isCollection'] ?? false)
             && (! isset($arm['type']) || isset($arm['result']['resolvedFqcn']));
-        $writes = $named ? $this->spreadArmAnalysis($arm) : null;
+        $armWrites = $named ? $this->spreadArmAnalysis($arm) : null;
 
-        if ($writes === null) {
+        if ($armWrites === null) {
             return;
         }
 
-        $written = new InlineObjectResult()->of($writes);
+        $written = new InlineObjectResult()->of($armWrites);
         // A member no queue can read, such as an enum wrap, still says which keys the arm always writes.
-        $keys = ObjectMembers::members($written) ?? array_map(
+        $keys = ObjectMembers::writtenMembers($written) ?? array_map(
             static fn (array $property): array => [$property['name'], [
                 'type' => 'unknown',
                 'optional' => $property['optional'],
                 ...($property['optional'] && ! ($property['removed'] ?? false) ? ['absent' => true] : []),
             ]],
-            $writes->writtenProperties(),
+            $armWrites->writtenProperties(),
         );
 
         // A model's toArray() writes only its visible attributes and appends, any of which it may leave unset.
@@ -1708,7 +1714,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             )));
         }
 
-        $analysis->yieldToSpreadArm($keys, $written);
+        $writes->recordKeys($keys, $written, $index, printedArm: true);
     }
 
     /**
@@ -1843,6 +1849,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $analysis->readsCompletely = true;
         $analysis->holdsUnreadKeys = false;
 
+        // resolve() writes only the keys it sends, so a key the resource may drop is unset, never a removed value.
+        foreach ($analysis->properties as $at => $property) {
+            if ($property['removed'] ?? false) {
+                $analysis->properties[$at] = MethodAnalysis::withPresence($property, true, true, false);
+            }
+        }
+
         // resolve() runs the spread resource's own filter.
         self::reindexNumericKeyedArrays($analysis, new ReflectionClass($resourceFqcn));
 
@@ -1945,8 +1958,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function mergedArrayAnalysis(Array_ $array): ResourceAnalysis
     {
-        return (new ThisPropertyHandler)
-            ->extractPropertiesFromArray($array, $this, $this->scope, optional: false);
+        return $this->analyzeReturnArray($array, topLevel: false);
     }
 
     /**

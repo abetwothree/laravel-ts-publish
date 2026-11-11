@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
@@ -125,16 +126,18 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Whether the item loops read a spread by the value it holds: not a `$this->`, function or `self::`, `static::` or
-     * `parent::` call they flatten or decline themselves, a model's or collection's toArray() the arm collector names,
-     * nor the keys a returned variable's walk holds already.
+     * Whether the item loops read a spread by the value it holds: not a `$this->`, `self::`, `static::` or `parent::`
+     * call nor a call of the class's own method they flatten themselves, a model's or collection's toArray() the arm
+     * collector names, nor the keys a returned variable's walk holds already. A PHP function's value is read.
      */
     public static function readsSpreadByValue(Expr $value, AnalysisScope $scope): bool
     {
         $relative = $value instanceof StaticCall && $value->class instanceof Name
             && in_array($value->class->toLowerString(), ['self', 'static', 'parent'], true);
+        $ownCall = $value instanceof FuncCall
+            && (! $value->name instanceof Name || $scope->declaringClass->hasMethod($value->name->getLast()));
 
-        return ! AnalysisScope::isWalkAlias($value) && ! $relative && ! $value instanceof FuncCall
+        return ! AnalysisScope::isWalkAlias($value) && ! $relative && ! $ownCall
             && ! ($value instanceof MethodCall && $value->var instanceof Variable && $value->var->name === 'this')
             && self::spreadModelToArrayFqcn($value, $scope) === null
             && self::spreadCollectionToArrayFqcn($value, $scope) === null
@@ -142,10 +145,13 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * The keys a spread writes where it stands, each with its value, where the value reads as one object whose every
-     * key the engine names, or as one beside `[]`, each key then one it may leave out; null for any other spread.
+     * The keys a spread writes where it stands, each with its value: where the value reads as one object, or as a union
+     * of objects, whose named keys the engine reads, maybe beside `[]`; null for any other spread.
      *
-     * The item loops write them over the keys before the spread, so the arm collector leaves such a spread out.
+     * An open value's named keys are written too, the object it lands in left open for the rest. A union writes per
+     * key its arms' union, one some arm lacks a key it may leave unset; a `?` member reads as writtenMembers() has it.
+     *
+     * The item loop writes these keys over the keys before the spread, so the arm collector and armFollows() skip it.
      *
      * @param  ValueExpressionResult  $result  the spread's value
      * @return KeyedValues|null
@@ -153,18 +159,31 @@ final class InlineArrayHandler implements ExpressionHandler
     public static function spreadKeys(Expr $value, array $result, AnalysisScope $scope): ?array
     {
         $arms = TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($result['type']));
-        $object = self::spreadObject($result);
-        $keys = $object === null || ! self::readsWholeValue($value, $result, $scope)
-            || ObjectMembers::isOpen([...$result, 'type' => $object])
-            ? null
-            : ObjectMembers::seededMembers([...$result, 'type' => $object], $scope->carriesImports);
+        $objects = array_values(array_diff($arms, ['never[]']));
 
-        // PHP renumbers a key it stores as an int, so the spread writes it under another key.
-        if ($keys === null || array_any($keys, static fn (array $key): bool => PhpArrayKey::storedInt($key[0]) !== null)) {
+        if ($objects === [] || ! self::readsWholeValue($value, $result, $scope)) {
             return null;
         }
 
-        return count($arms) === 1 ? $keys : ObjectMembers::eachOptional($keys);
+        $armKeys = [];
+
+        foreach ($objects as $object) {
+            $named = self::namedObject($object);
+            $keys = $named === null
+                ? null
+                : ObjectMembers::seededWrittenMembers([...$result, 'type' => $named], $scope->carriesImports);
+
+            // PHP renumbers a key it stores as an int, so the spread writes it under another key.
+            if ($keys === null || array_any($keys, static fn (array $key): bool => PhpArrayKey::storedInt($key[0]) !== null)) {
+                return null;
+            }
+
+            $armKeys[] = $keys;
+        }
+
+        $keys = count($armKeys) === 1 ? $armKeys[0] : self::unionKeys($armKeys);
+
+        return count($objects) === count($arms) ? $keys : ObjectMembers::eachOptional($keys);
     }
 
     /**
@@ -188,19 +207,19 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Write the keys a keyless spread sets where it stands, over the keys before it, as PHP does; else join each key
-     * held with the value a map may write under it. True where the keys were written in place.
-     *
-     * The item loops of a returned array and of a merged one both write a spread through this.
+     * Record the keys a keyless spread writes where it stands, an open value's named ones included, else each held key
+     * a map may write; true where the keys were recorded in place. A value that holds keys no name names, which PHP
+     * writes too, leaves the object it is written into open.
      *
      * @param  ValueExpressionResult  $result  the spread's value
      */
-    public static function writeSpread(
-        MethodAnalysis $analysis,
+    public static function recordSpread(
+        LiteralWrites $writes,
         Expr $value,
         array $result,
         AnalysisScope $scope,
-        bool $optional = false,
+        int $position,
+        bool $printedArm = false,
     ): bool {
         $keys = self::spreadKeys($value, $result, $scope);
 
@@ -208,17 +227,16 @@ final class InlineArrayHandler implements ExpressionHandler
             $signature = self::spreadSignature($value, $result, $scope);
 
             if ($signature !== null) {
-                $analysis->joinHeldKeys($signature, $result);
+                $writes->recordMapSpread($signature, $result, $position);
             }
 
             return false;
         }
 
-        $analysis->writeSpreadKeys($optional ? ObjectMembers::eachOptional($keys) : $keys, $result);
+        $writes->recordKeys($keys, $result, $position, $printedArm);
 
-        // A value that holds keys no name names, which PHP writes too, leaves the object it is written into open.
-        if (in_array("\0".self::spreadObject($result), $result['openReadings'] ?? [], true)) {
-            $analysis->holdsUnnamedKeys = true;
+        if (! $printedArm && self::holdsUnnamedKeys($result)) {
+            $writes->holdUnnamedKeys();
             UnreadSpreads::record();
         }
 
@@ -503,6 +521,79 @@ final class InlineArrayHandler implements ExpressionHandler
         }
 
         return true;
+    }
+
+    /**
+     * The keys a union of objects writes (D15): per key the arms' values as one union, a key some arm lacks one the
+     * spread may leave unset, one an arm's value may remove one it may remove.
+     *
+     * @param  non-empty-list<KeyedValues>  $arms  each object arm's keys
+     * @return KeyedValues
+     */
+    private static function unionKeys(array $arms): array
+    {
+        $values = [];
+
+        foreach ($arms as $keys) {
+            foreach ($keys as [$name, $result]) {
+                $values[$name][] = $result;
+            }
+        }
+
+        $union = [];
+
+        foreach ($values as $name => $results) {
+            $absent = count($results) < count($arms) || array_any($results, static fn (array $result): bool => $result['optional'] && ($result['absent'] ?? false));
+            $removed = array_any($results, static fn (array $result): bool => $result['optional'] && (! ($result['absent'] ?? false) || ($result['removed'] ?? false)));
+            $joined = ValueResult::unionResults($results);
+            unset($joined['absent'], $joined['removed']);
+
+            $union[] = [(string) $name, [
+                ...$joined,
+                'optional' => $absent || $removed,
+                ...($absent ? ['absent' => true] : []),
+                ...($absent && $removed ? ['removed' => true] : []),
+            ]];
+        }
+
+        return $union;
+    }
+
+    /**
+     * An object's text with its index-signature members left out, whose keys no name names; null where nothing named
+     * is left, or the object is no literal object.
+     */
+    private static function namedObject(string $object): ?string
+    {
+        $members = TsTypeShape::members($object);
+
+        if ($members === null) {
+            return null;
+        }
+
+        $named = array_filter($members, static fn (array $member): bool => ! IndexSignatureKey::is($member[0]));
+
+        if ($named === []) {
+            return null;
+        }
+
+        return count($named) === count($members)
+            ? $object
+            : '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1], $named)).' }';
+    }
+
+    /**
+     * Whether a spread value holds keys no name names: an open literal or signature, or an object its own mark opens.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private static function holdsUnnamedKeys(array $result): bool
+    {
+        $object = self::spreadObject($result);
+
+        return ($object !== null && ObjectMembers::isOpen([...$result, 'type' => $object]))
+            || ($result['unnamedKeys'] ?? false)
+            || in_array("\0".$object, $result['openReadings'] ?? [], true);
     }
 
     /**

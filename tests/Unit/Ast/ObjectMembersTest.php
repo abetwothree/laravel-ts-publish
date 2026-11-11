@@ -255,3 +255,29 @@ it('reads a value as open where it may hold a key its type does not name', funct
     'a Record' => [['type' => 'Record<string, string>', 'optional' => false], false],
     'an object a mark says is open' => [['type' => '{ a: string }', 'optional' => false, 'openReadings' => ["\0{ a: string }"]], false],
 ]);
+
+// A printed `?` cannot say whether its key may be unset or its value removed, which a spread over a held key must.
+it('reads a `?` member as InlineObjectResult::of() recorded it, else as either, for a spread', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('unset', ['type' => 'string', 'optional' => false], optional: true);
+    $analysis->addProperty('removed', ['type' => 'string', 'optional' => true]);
+    $analysis->addProperty('kept', ['type' => 'string', 'optional' => false]);
+    $printed = new InlineObjectResult()->of($analysis);
+    $bare = ['type' => '{ unset?: string; removed?: string; open?: string }', 'optional' => false];
+    $facts = static fn (?array $members): array => array_map(
+        static fn (array $member): string => $member[0].':'.(($member[1]['optional'] ? 'o' : '').(($member[1]['absent'] ?? false) ? 'a' : '').(($member[1]['removed'] ?? false) ? 'r' : '')),
+        $members ?? [],
+    );
+
+    expect($printed['keyPresence'] ?? null)->toBe([$printed['type'] => ['unset' => ['absent' => true], 'removed' => ['removed' => true]]])
+        ->and($facts(ObjectMembers::writtenMembers($printed)))->toBe(['unset:oa', 'removed:o', 'kept:'])
+        ->and($facts(ObjectMembers::writtenMembers($bare)))->toBe(['unset:oar', 'removed:oar', 'open:oar'])
+        ->and($facts(ObjectMembers::writtenMembers([...$bare, 'absentKeys' => true])))->toBe(['unset:oa', 'removed:oa', 'open:oa'])
+        ->and($facts(ObjectMembers::members($bare)))->toBe(['unset:o', 'removed:o', 'open:o']);
+});
+
+it('marks every `?` member of the keys resolve() returns as one it may leave unset', function () {
+    $value = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a: string; b?: number } | null', 'optional' => false]);
+
+    expect($value['keyPresence'] ?? null)->toBe(['{ a: string; b?: number }' => ['b' => ['absent' => true]]]);
+});

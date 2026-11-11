@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 
@@ -16,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type AnalyzedPropertyList from MethodAnalysis
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type DeclaredArm from TokenSlots
  *
@@ -29,8 +33,10 @@ final class BranchJoin
      * its key casts it alike, and flatTypeAlias is the first non-null.
      *
      * A spread helper, a merge call and a literal's key with several sources drop an untyped branch
-     * ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull). With $keepsFirstUntyped,
-     * a key the first branch holding it leaves untyped stays `unknown`, as a held value PHP may still send.
+     * ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
+     *
+     * A literal's key keeps `unknown` where its first branch is untyped, a held value PHP may still send
+     * ($keepsFirstUntyped), and two models or resources one name spells as two imported arms ($keepsClassesApart).
      *
      * @param  list<MethodAnalysis>  $analyses
      */
@@ -40,6 +46,7 @@ final class BranchJoin
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
         bool $keepsFirstUntyped = false,
+        bool $keepsClassesApart = false,
     ): void {
         if ($dropsUntypedBranches) {
             $analyses = self::withUnalikeFillsUntyped($analyses);
@@ -65,10 +72,14 @@ final class BranchJoin
         /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
         $declaredMap = [];
 
+        /** @var array<array-key, list<ValueExpressionResult>> $classed each branch's value, with its classes */
+        $classed = [];
+
         foreach ($analyses as $analysis) {
             // A key a branch writes twice, as a helper and a later key may, is one key it sends.
             foreach ($analysis->writtenProperties() as $prop) {
                 $propertyMap[$prop['name']][] = $prop;
+                $classed[$prop['name']][] = self::classedValue($analysis, $prop);
                 $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
                 $openReadings[$prop['name']] = [...$openReadings[$prop['name']] ?? [], ...$analysis->openReadings[$prop['name']] ?? []];
@@ -107,6 +118,12 @@ final class BranchJoin
             $fillType = array_column($entries, 'fillType') === [] || ! $bound
                 ? null
                 : self::branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
+
+            // Text alone unions two same-named classes into one token; queueSplitClasses() queues both in branch order.
+            if ($keepsClassesApart && $bound && self::spellsClassesAlike($classed[$name])) {
+                $type = ValueResult::unionResults($classed[$name])['type'];
+                $bodyType = $type;
+            }
 
             if ($keySlots !== []) {
                 $slots[$name] = $keySlots;
@@ -353,6 +370,49 @@ final class BranchJoin
         }
 
         return $slotted === [] ? [TsTypeString::hoistNull($unique), []] : self::unionSlottedTypes($unique, $slotted);
+    }
+
+    /**
+     * A branch's value for one key with the model and resource classes behind its tokens, as a ternary's arm has.
+     *
+     * @param  AnalyzedProperty  $property
+     * @return ValueExpressionResult
+     */
+    private static function classedValue(MethodAnalysis $analysis, array $property): array
+    {
+        $name = $property['name'];
+
+        return [
+            'type' => $property['type'],
+            'optional' => false,
+            ...(isset($analysis->modelFqcns[$name]) ? ['modelFqcn' => $analysis->modelFqcns[$name]] : []),
+            ...(isset($analysis->nestedResources[$name]) ? ['resourceFqcn' => $analysis->nestedResources[$name]] : []),
+            ...(($analysis->inlineModelFqcns[$name] ?? []) !== [] ? ['embeddedModelFqcns' => $analysis->inlineModelFqcns[$name]] : []),
+            ...(($analysis->inlineResourceFqcns[$name] ?? []) !== [] ? ['embeddedResourceFqcns' => $analysis->inlineResourceFqcns[$name]] : []),
+        ];
+    }
+
+    /**
+     * Whether a key's branch values spell two different models, or two different resources, with one name.
+     *
+     * @param  list<ValueExpressionResult>  $values
+     */
+    private static function spellsClassesAlike(array $values): bool
+    {
+        $models = [];
+        $resources = [];
+
+        foreach ($values as $value) {
+            foreach ([...isset($value['modelFqcn']) ? [$value['modelFqcn']] : [], ...$value['embeddedModelFqcns'] ?? []] as $fqcn) {
+                $models[class_basename($fqcn)][$fqcn] = true;
+            }
+
+            foreach ([...isset($value['resourceFqcn']) ? [$value['resourceFqcn']] : [], ...$value['embeddedResourceFqcns'] ?? []] as $fqcn) {
+                $resources[TsNaming::resourceTypeName($fqcn)][$fqcn] = true;
+            }
+        }
+
+        return array_any([...$models, ...$resources], static fn (array $fqcns): bool => count($fqcns) > 1);
     }
 
     /**

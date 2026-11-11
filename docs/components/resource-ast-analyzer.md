@@ -640,11 +640,10 @@ kinds:
 - **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
   `Pick<User, 'id'>`. It joins as that type, with the imports the value carries. So does a resolved resource whose keys
   Inertia sends restated, an intersection, which the top level flattens as a resource arm by its `resolvedFqcn`. The
-  item loop reads some in place instead: a value typed as one closed object, or one beside `[]`, writes its keys over
-  the keys before it (`MethodAnalysis::writeSpreadKeys()`), and a string map joins each key before it with its value
-  (`joinHeldKeys()`). Only where a later arm follows does such a spread stay an arm, giving up the earlier keys it
-  always writes (`yieldToSpreadArm()`), and a held key that a later resource, model or collection arm writes yields to
-  that arm.
+  item loop reads some in place instead (`InlineArrayHandler::spreadKeys()`): a value typed as one object or a union of
+  objects, maybe beside `[]`, writes its named keys where it stands, an open one's too, and a string map may write
+  each key before it. Only where a later arm follows does such a spread stay an arm, and a held key that a later
+  resource, model or collection arm writes is that arm's, as [one fold per literal](#one-fold-per-literal) decides.
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
@@ -681,6 +680,18 @@ A model arm names the bare model interface, which is a floor, not an exact match
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations
 `relationsToArray()` adds, which depend on what is loaded, and it keeps `$hidden` columns unless `exclude_hidden` is
 set. Only this collector reads `$var->toArray()` as a model, so a model's `toArray()` in value position gets no shape.
+
+## One fold per literal
+
+`analyzeReturnArrayItems()` records every key each item writes into a
+[`LiteralWrites`](../../src/Ast/Analysis/Fold/LiteralWrites.php), with whether the item may leave it unset (`absent`) or
+writes a value Laravel may remove (`removed`), and whether a merge call wrote it. At the end of the literal, before the
+reconcile, [`LiteralFold`](../../src/Ast/Analysis/Fold/LiteralFold.php) decides each key once as PHP builds the literal
+and, where `Reading::filtersBodyOf()` holds, as `filter()` lifts each merge over the keys after it; `applyTo()` writes
+the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept. A merged literal is read
+through the same loop. A key's slot sits where its first write landed on each path, so a first write that may not
+land lets a merge before the next one win there; the fold test replays what the real `resolve()` sent for 7380
+sequences (`tests/Unit/Ast/Fixtures/fold-oracle.php`).
 
 ## Resource classes a value names
 
@@ -998,11 +1009,11 @@ up unused; see
 
 ### `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel, plus two flat scalars
 
-`mergeReturnBranches()` stays on the analyzer, off `MethodAnalysis`, because it needs a per-branch property map to
-union a key that several branches set, which a field-by-field merge cannot express. It takes every channel from
-`MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to `merge()` reaches
-branch merging too. It is public for `InertiaPageAnalyzer`, which merges one component's renders through it. The join
-of each key's branch types and casts is `BranchJoin`'s, so the engine owns that type-string composition.
+`mergeReturnBranches()` is public for `InertiaPageAnalyzer`, which merges one component's renders through it, and
+delegates to `BranchJoin::joinInto()`, which a literal's fold also joins a key's sources with. The join needs a
+per-branch property map to union a key that several branches set, which a field-by-field merge cannot express. It takes
+every channel from `MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to
+`merge()` reaches branch merging too.
 
 The inline queues are never deduped, in `merge()` as in `addProperty()`, for the reason
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
@@ -1023,8 +1034,9 @@ spells two models, two resources or two enums read directly. `withMembersByClass
 arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel.
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
 `unionResults()`. `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and
-default alike. `HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource`
-the `when()` and `whenNull()` ones.
+default alike; a literal's fold keeps two same-named models or resources apart (`joinInto()`'s `keepsClassesApart`).
+`HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
+and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 

@@ -1084,7 +1084,7 @@ it('ends a parent:: spread that reaches back into a method it is reading', funct
         ->and(json_encode(new CyclingSpreadBase()->toArray()))->toBe('{"g":1,"b":1}');
 });
 
-// A spread no arm reads may overwrite an earlier key, as `array_merge()` overwrites `a` here, so a `parent::` spread
+// A spread no arm reads may overwrite an earlier key, as the decoded array overwrites `a` here, so a `parent::` spread
 // holding one is not read at all, as in the release, rather than publish the earlier key's type.
 it('reads no key from a parent:: spread whose body holds a spread no arm reads', function () {
     expect(analyzedKeyTypes(OverwrittenSpreadTop::class))->toBe([])

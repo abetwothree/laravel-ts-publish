@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResolvedResourceBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -495,7 +496,8 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         return $keepsKeys === null
-            ? [...$sent, 'optional' => $resolved['optional'], 'resolvedFqcn' => $resource]
+            // resolve() returns only the keys the resource sends, so one it may drop is unset, never a removed value.
+            ? [...ObjectMembers::withOptionalKeysAbsent($sent), 'optional' => $resolved['optional'], 'resolvedFqcn' => $resource]
             : [...$sent, 'type' => ValueResult::collectionListType($sent['type'], $keepsKeys), 'optional' => $resolved['optional']];
     }
 

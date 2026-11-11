@@ -16,12 +16,15 @@ use PhpParser\Node\Expr;
  *
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CarriedMap from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  *
  * @phpstan-type HeldNulls = array{objectNull: bool, plainNull: bool}
  * @phpstan-type ValueExpressionResult = array{
  *      type: string,
  *      optional: bool,
  *      absent?: true,
+ *      removed?: true,
+ *      keyPresence?: array<string, array<string, PresenceFacts>>,
  *      enumFqcn?: class-string,
  *      directEnumFqcn?: class-string,
  *      resourceFqcn?: class-string,
@@ -61,7 +64,10 @@ use PhpParser\Node\Expr;
  * it, unlike a callable; `returnsCallable` says a callable's call may return a callable.
  *
  * `absent` says the value's `optional` is a key its writer may leave unset, not a removed value (MethodAnalysis's
- * presence facts).
+ * presence facts); `removed` beside it says the value may be removed as well, as a printed `?` alone may be.
+ *
+ * `keyPresence` holds, per object text the value prints, the facts each optional member had where it was written,
+ * which a spread of the value reads back; a member with none may be unset or removed alike.
  *
  * `absentKeys` says each optional member of the value's object arms is a key PHP leaves out, never a `MissingValue`,
  * so a read of one throws or gives the member, as preg_match()'s matches leave out the groups that did not take part.

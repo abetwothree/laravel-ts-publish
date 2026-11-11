@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -20,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
+use LogicException;
 
 /**
  * Holds the result of AST analysis of a class method returning an array (e.g. a resource's toArray()).
@@ -28,7 +27,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type Slots from TokenSlots
- * @phpstan-import-type KeyedValues from ObjectMembers
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -65,13 +63,13 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * }
  * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
  * @phpstan-type PresenceFacts = array{absent?: true, removed?: true}
- * @phpstan-type Presence = array{optional: bool, absent: bool, removed: bool}
  *
  * A row's `optional` is its printed `?`. Two facts of the body say why: `absent`, the key is missing on some path,
  * where a value held before it survives; `removed`, its value may be removed, as a `when()` MissingValue or an Inertia
  * `optional()` prop is, which no held value survives. A `?` a cast or a docblock puts on a row sets neither.
  *
- * addProperty() reads its `$optional` as absent, and a value's own `optional` as removed unless the value is `absent`.
+ * addProperty() reads its `$optional` as absent, and a value's own `optional` as removed unless the value is `absent`
+ * without `removed`.
  *
  * @internal
  */
@@ -254,7 +252,10 @@ class MethodAnalysis
             'optional' => $optional || $result['optional'],
             'description' => $description,
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-            ...self::presenceFacts($optional || ($result['optional'] && $absent), $result['optional'] && ! $absent),
+            ...self::presenceFacts(
+                $optional || ($result['optional'] && $absent),
+                $result['optional'] && (! $absent || ($result['removed'] ?? false)),
+            ),
         ];
 
         $held = ValueResult::heldNullsOf($result);
@@ -306,44 +307,6 @@ class MethodAnalysis
     }
 
     /**
-     * Write a key over every entry held under its name, as PHP's later write does: the value takes the first entry's
-     * place, and the held entries' import channels and cast go with them.
-     *
-     * @param  ValueExpressionResult  $result
-     */
-    public function overwriteProperty(string $name, array $result, bool $optional = false): void
-    {
-        $this->forgetChannels($name);
-        $this->addProperty($name, $result, $optional);
-        $this->keepLastWriteOf($name);
-    }
-
-    /**
-     * Write a key a merge call before it already wrote: Laravel sends the merged value wherever the merge ran, so the
-     * key holds either value; it is left out only where both may be, and there the later value is removed.
-     *
-     * @param  ValueExpressionResult  $result
-     */
-    public function writeUnderMerged(string $name, array $result): void
-    {
-        $held = array_column($this->writtenProperties(), null, 'name')[$name] ?? null;
-
-        if ($held === null) {
-            $this->overwriteProperty($name, $result);
-
-            return;
-        }
-
-        $optional = $held['optional'] && $result['optional'];
-        $absent = $optional && ($result['absent'] ?? false);
-        $presence = ['optional' => $optional, 'absent' => $absent, 'removed' => $optional && ! $absent];
-
-        if (! $this->joinHeldKey($held, $result, $presence)) {
-            $this->setPresence($name, $presence);
-        }
-    }
-
-    /**
      * Mark that keys these hold reach the return unread, so the read behind them is not complete either.
      */
     public function holdUnreadKeys(): void
@@ -367,19 +330,20 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends, but a key this analysis holds is written once, where it stood: a value the source always
-     * sets replaces it, one it may leave out joins it, as joinHeldKey() does.
+     * `properties` appends: each caller hands keys this analysis does not hold, as a literal's fold writes each key
+     * once; a signature entry is one more runtime key.
      *
      * The class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings` replace-merge, the source
      * winning, a key it sets with none losing its own; the inline maps append undeduped, as read by position.
-     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      *
-     * A held key takes the source's inline enum queue alone where the source's value replaces it.
+     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      */
     public function merge(self $source): void
     {
-        [$source, $joined] = $this->joiningMaybeWrites($source);
-        $held = array_flip(array_column($this->properties, 'name'));
+        if (! $this->holdsNoneOf($source)) {
+            throw new LogicException('merge() takes only keys the analysis does not hold; a literal\'s fold writes each once.');
+        }
+
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
@@ -402,12 +366,6 @@ class MethodAnalysis
             }
 
             unset($this->closedToDottedKeys[$property['name']], $this->openReadings[$property['name']]);
-
-            // A replaced value's enums would lead the new tokens' queue; a joined value leads with the held one's,
-            // and a join's accumulator holds no key, so each branch's queue stays.
-            if (isset($held[$property['name']]) && ! isset($joined[$property['name']])) {
-                unset($this->inlineEnumFqcns[$property['name']]);
-            }
         }
 
         // A spread would renumber a numeric cast key.
@@ -437,12 +395,6 @@ class MethodAnalysis
             $this->inlineEnumResourceFqcns[$propName] = [
                 ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
             ];
-        }
-
-        foreach (array_column($source->properties, 'name') as $name) {
-            if (isset($held[$name]) && ! JsEmitter::isIndexSignatureKey($name)) {
-                $this->keepLastWriteOf($name);
-            }
         }
     }
 
@@ -854,84 +806,6 @@ class MethodAnalysis
     }
 
     /**
-     * Write the keys a spread sets where it stands, as PHP does: one it always sets replaces the key held before it, as
-     * a later key does, and one it may leave out joins the value held before, which stays where it is left out.
-     *
-     * @param  KeyedValues  $keys  each key and its value, no custom import on it
-     * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes its keys use
-     */
-    public function writeSpreadKeys(array $keys, array $value): void
-    {
-        $held = array_column($this->properties, null, 'name');
-
-        foreach ($keys as [$name, $result]) {
-            if ($result['optional'] && isset($held[$name])) {
-                $this->joinHeldKey($held[$name], $result);
-
-                continue;
-            }
-
-            $this->overwriteProperty($name, $result);
-        }
-
-        $this->carryImportsOf($value);
-    }
-
-    /**
-     * Give up each held key a spread kept as an arm always writes, and join one it may write with the value held: the
-     * arm prints that key over the keys before it, and under any later arm.
-     *
-     * @param  KeyedValues  $keys  each key and its value, no custom import on it
-     * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes its keys use
-     */
-    public function yieldToSpreadArm(array $keys, array $value): void
-    {
-        $held = array_flip(array_column($this->properties, 'name'));
-        $written = new self;
-        $joined = [];
-
-        foreach ($keys as $key) {
-            if (! isset($held[$key[0]])) {
-                continue;
-            }
-
-            if ($key[1]['optional']) {
-                $joined[] = $key;
-            } else {
-                $written->addProperty(...$key);
-            }
-        }
-
-        $this->dropKeysHeldBy($written);
-
-        if ($joined !== []) {
-            $this->writeSpreadKeys($joined, $value);
-        }
-    }
-
-    /**
-     * Join each named key held with the value a spread of a map may write over it; the keys only the map writes stay
-     * unnamed.
-     *
-     * @param  ValueExpressionResult  $signature  the value the map holds under any key, no custom import on it
-     * @param  ValueExpressionResult  $value  the spread's value, whose custom imports and carried classes it spells
-     */
-    public function joinHeldKeys(array $signature, array $value): void
-    {
-        $joined = false;
-
-        foreach (array_column($this->properties, null, 'name') as $name => $held) {
-            if (! JsEmitter::isIndexSignatureKey((string) $name)) {
-                $joined = $this->joinHeldKey($held, [...$signature, 'optional' => true, 'absent' => true]) || $joined;
-            }
-        }
-
-        if ($joined) {
-            $this->carryImportsOf($value);
-        }
-    }
-
-    /**
      * Rename properties, with every import channel, cast and held-object entry kept under their names, at once.
      *
      * @param  array<array-key, string>  $names  each name => its new name; a name it lacks keeps its own
@@ -959,6 +833,60 @@ class MethodAnalysis
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
         $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
         $this->openReadings = TopLevelRenumbering::rekey($this->openReadings, $names);
+    }
+
+    /**
+     * One key's row and every map renameKeys() rekeys under its name, with each class its queues key by itself: what
+     * LiteralWrites moves when it writes the key once. A signature keeps every row it holds.
+     */
+    public function sliceOf(string $name): self
+    {
+        $slice = new self;
+        $rows = array_values(array_filter($this->properties, static fn (array $property): bool => $property['name'] === $name));
+        $slice->properties = JsEmitter::isIndexSignatureKey($name) ? $rows : array_slice($rows, -1);
+        $key = [$name => true];
+        $slice->enumResources = array_intersect_key($this->enumResources, $key);
+        $slice->nestedResources = array_intersect_key($this->nestedResources, $key);
+        $slice->directEnumFqcns = array_intersect_key($this->directEnumFqcns, $key);
+        $slice->modelFqcns = array_intersect_key($this->modelFqcns, $key);
+        $slice->inlineEnumFqcns = array_intersect_key($this->inlineEnumFqcns, $key);
+        $slice->inlineModelFqcns = array_intersect_key($this->inlineModelFqcns, $key);
+        $slice->inlineResourceFqcns = array_intersect_key($this->inlineResourceFqcns, $key);
+        $slice->multiEnumResourceFqcns = array_intersect_key($this->multiEnumResourceFqcns, $key);
+        $slice->inlineEnumResourceFqcns = array_intersect_key($this->inlineEnumResourceFqcns, $key);
+        $slice->enumResourceArmShapes = array_intersect_key($this->enumResourceArmShapes, $key);
+        $slice->casts = array_intersect_key($this->casts, $key);
+        $slice->declaredTokenFqcns = array_intersect_key($this->declaredTokenFqcns, $key);
+        $slice->heldObjectKeys = array_intersect_key($this->heldObjectKeys, $key);
+        $slice->closedToDottedKeys = array_intersect_key($this->closedToDottedKeys, $key);
+        $slice->openReadings = array_intersect_key($this->openReadings, $key);
+
+        foreach ($slice->inlineEnumFqcns[$name] ?? [] as $fqcn) {
+            $slice->directEnumFqcns += array_intersect_key($this->directEnumFqcns, [$fqcn => true]);
+        }
+
+        foreach ($slice->inlineModelFqcns[$name] ?? [] as $fqcn) {
+            $slice->modelFqcns += array_intersect_key($this->modelFqcns, [$fqcn => true]);
+        }
+
+        foreach ($slice->inlineResourceFqcns[$name] ?? [] as $fqcn) {
+            $slice->nestedResources += array_intersect_key($this->nestedResources, [$fqcn => true]);
+        }
+
+        return $slice;
+    }
+
+    /**
+     * Append a slice's rows and maps, as LiteralWrites writes a key once into an analysis holding none of it; a
+     * slice's held objects come too only where $keepsHeldObjects, as addProperty() keeps them and merge() does not.
+     */
+    public function appendSlice(self $slice, bool $keepsHeldObjects): void
+    {
+        $this->merge($slice);
+
+        if ($keepsHeldObjects) {
+            $this->heldObjectKeys = array_replace($this->heldObjectKeys, $slice->heldObjectKeys);
+        }
     }
 
     /**
@@ -1048,41 +976,6 @@ class MethodAnalysis
     }
 
     /**
-     * The printed `?` and the two presence facts of a row.
-     *
-     * @param  AnalyzedProperty  $property
-     * @return Presence
-     */
-    private static function presenceOf(array $property): array
-    {
-        return [
-            'optional' => $property['optional'],
-            'absent' => $property['absent'] ?? false,
-            'removed' => $property['removed'] ?? false,
-        ];
-    }
-
-    /**
-     * The presence of a held key a merge's value may leave out joins: a removed value removes it, and one that may be
-     * unset, or that a declaration marks so, leaves the held one there.
-     *
-     * @param  AnalyzedProperty  $held
-     * @param  AnalyzedProperty  $written
-     * @return Presence
-     */
-    private static function presenceOver(array $held, array $written): array
-    {
-        $removed = $written['removed'] ?? false;
-        $keepsHeld = ($written['absent'] ?? false) || ! $removed;
-
-        return [
-            'optional' => $held['optional'] || $removed,
-            'absent' => $keepsHeld && ($held['absent'] ?? false),
-            'removed' => $removed || ($keepsHeld && ($held['removed'] ?? false)),
-        ];
-    }
-
-    /**
      * Every class the given single-entry and list channels hold, once each.
      *
      * @param  list<ClassMapType>  $single
@@ -1110,6 +1003,17 @@ class MethodAnalysis
     private function channelClasses(string $name, array $single, array $listed): array
     {
         return [...(isset($single[$name]) ? [$single[$name]] : []), ...$listed[$name] ?? []];
+    }
+
+    /**
+     * Whether another analysis names no key this one holds: the contract merge() checks; a signature may repeat.
+     */
+    private function holdsNoneOf(self $source): bool
+    {
+        $held = array_flip(array_column($this->properties, 'name'));
+
+        return array_all($source->properties, static fn (array $property): bool => ! isset($held[$property['name']])
+            || JsEmitter::isIndexSignatureKey($property['name']));
     }
 
     /**
@@ -1169,172 +1073,5 @@ class MethodAnalysis
         }
 
         return array_values(array_unique($wrapped));
-    }
-
-    /**
-     * Write a key a spread may leave out as the value it held or the spread's, each keeping the classes behind its
-     * tokens, and say whether its type changed; joinedType() says where the held value stays. The key's presence is
-     * the held one's, or $presence.
-     *
-     * @param  AnalyzedProperty  $held
-     * @param  ValueExpressionResult  $written
-     * @param  Presence|null  $presence
-     */
-    private function joinHeldKey(array $held, array $written, ?array $presence = null): bool
-    {
-        $name = $held['name'];
-        $holdsClass = $this->hasFqcnChannel($name);
-        $writes = new self;
-        $writes->addProperty($name, $written);
-        $type = $this->joinedType($held, $written['type'], $writes->hasFqcnChannel($name));
-
-        if ($type === null) {
-            return false;
-        }
-
-        $openReadings = [...$this->openReadings[$name] ?? [], ...$written['openReadings'] ?? []];
-
-        if (! $holdsClass) {
-            $this->forgetChannels($name);
-        }
-
-        $presence ??= self::presenceOf($held);
-        $this->addProperty($name, [
-            ...$written,
-            'type' => $type,
-            'optional' => $presence['optional'],
-            ...($openReadings === [] ? [] : ['openReadings' => $openReadings]),
-        ]);
-        $this->keepLastWriteOf($name);
-        $this->setPresence($name, $presence);
-
-        return true;
-    }
-
-    /**
-     * The type a held key takes beside a value that may not land, or null where the held value stays: an untyped one,
-     * which PHP may still send and a typed one would hide, one beside a value also naming classes, which one key's
-     * channels cannot queue apart, or one the union adds nothing to.
-     *
-     * @param  AnalyzedProperty  $held
-     */
-    private function joinedType(array $held, string $written, bool $writesClass): ?string
-    {
-        if ($held['type'] === 'unknown' || ($writesClass && $this->hasFqcnChannel($held['name']))) {
-            return null;
-        }
-
-        $type = BranchJoin::branchUnion([$held['type'], $written], dropsUntypedBranches: true, keepsLoneNull: false);
-
-        return $type === $held['type'] ? null : $type;
-    }
-
-    /**
-     * The source of a merge with each value it may leave out of a key this holds joined with the held one, or left out
-     * where the held one stays; and each key it joins. A removed value, as a when() value is, is a MissingValue PHP
-     * filters out with the key, so the key may be left out too.
-     *
-     * @return array{self, array<array-key, true>}
-     */
-    private function joiningMaybeWrites(self $source): array
-    {
-        $held = array_column($this->writtenProperties(), null, 'name');
-        $kept = clone $source;
-        $joined = [];
-
-        foreach ($source->writtenProperties() as $written) {
-            $name = $written['name'];
-            $holds = $held[$name] ?? null;
-
-            if ($holds === null || ! $written['optional'] || JsEmitter::isIndexSignatureKey($name)) {
-                continue;
-            }
-
-            $type = $this->joinedType($holds, $written['type'], $source->hasFqcnChannel($name));
-            $presence = self::presenceOver($holds, $written);
-            $kept->properties = array_values(array_filter($kept->properties, static fn (array $property): bool => $property['name'] !== $name));
-
-            if ($type === null) {
-                $kept->forgetChannels($name);
-                unset($kept->closedToDottedKeys[$name], $kept->openReadings[$name]);
-                $this->setPresence($name, $presence);
-
-                continue;
-            }
-
-            $joined[$name] = true;
-            $kept->properties[] = self::withPresence([
-                'name' => $name,
-                'type' => $type,
-                'optional' => false,
-                'description' => $written['description'],
-                ...(($written['keepsKeys'] ?? false) && ($holds['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-            ], ...$presence);
-            $readings = [...$this->openReadings[$name] ?? [], ...$source->openReadings[$name] ?? []];
-
-            if ($readings !== []) {
-                $kept->openReadings[$name] = $readings;
-            }
-
-            if (! isset($this->closedToDottedKeys[$name])) {
-                unset($kept->closedToDottedKeys[$name]);
-            }
-        }
-
-        return [$kept, $joined];
-    }
-
-    /**
-     * Set the printed `?` and the presence facts of every entry of a key.
-     *
-     * @param  Presence  $presence
-     */
-    private function setPresence(string $name, array $presence): void
-    {
-        foreach ($this->properties as $index => $property) {
-            if ($property['name'] === $name) {
-                $this->properties[$index] = self::withPresence($property, ...$presence);
-            }
-        }
-    }
-
-    /**
-     * Keep one entry for a key, its last write, where its first stood.
-     */
-    private function keepLastWriteOf(string $name): void
-    {
-        $at = array_keys(array_column($this->properties, 'name'), $name, true);
-        $first = array_shift($at);
-        $last = array_pop($at);
-
-        if ($first === null || $last === null) {
-            return;
-        }
-
-        $kept = [];
-
-        foreach ($this->properties as $index => $property) {
-            if ($index === $first) {
-                $kept[] = $this->properties[$last];
-            } elseif ($property['name'] !== $name) {
-                $kept[] = $property;
-            }
-        }
-
-        $this->properties = $kept;
-    }
-
-    /**
-     * Carry the custom imports and displaced classes a spread's value brings, once, beside the keys it wrote.
-     *
-     * @param  ValueExpressionResult  $value
-     */
-    private function carryImportsOf(array $value): void
-    {
-        foreach ($value['customImports'] ?? [] as $path => $types) {
-            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
-        }
-
-        $this->carry($value['carriedFqcns'] ?? []);
     }
 }

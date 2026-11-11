@@ -853,8 +853,14 @@ writes as they are, so a resource's re-index skips it.
 A row's `optional` is its printed `?`. Two facts on the row say why, each kept only where true: `absent`, the key is
 missing on some path and a value held before it survives there (a write that may not run, a member of a spread that
 may be `[]`, a branch lacking the key), and `removed`, its value may be removed (a `when()` MissingValue, an Inertia
-`optional()` prop) and no held value survives. A `?` a cast or a docblock puts on a row sets neither; a `?` read back
-from a printed type cannot tell them apart, so it reads as `removed`.
+`optional()` prop) and no held value survives. A `?` a cast or a docblock puts on a row sets neither. A `?` read back
+from a printed type cannot tell them apart: `InlineObjectResult::of()` records each optional key's facts in the value's
+`keyPresence`, a spread reads them back (`ObjectMembers::writtenMembers()`), and a `?` with no record is read as
+either. A seed's `?` keeps reading as `removed` (`ObjectMembers::members()`), for the walk's `??=`.
+
+`merge()` takes only keys the analysis does not hold, a signature entry aside, and throws otherwise: a literal's fold
+writes each key once ([ResourceAstAnalyzer § One fold per literal](resource-ast-analyzer.md#one-fold-per-literal)), and
+every other caller hands it a disjoint analysis or one whose rows it lays itself.
 
 Never deduplicate the four inline queues, `inlineEnumFqcns`, `inlineModelFqcns`, `inlineResourceFqcns` and
 `inlineEnumResourceFqcns`. `addProperty()` appends to them, and `merge()` concatenates them per occurrence, for return
@@ -868,7 +874,7 @@ channels by hand would miss the next import channel added. `merge()` lets the la
 or without an import, and drops the entry where the later analysis sets the key without a cast.
 
 Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
-owns its rules.
+owns its rules; `BranchJoin::joinInto()` is the one join of a key across branches or sources.
 
 ### An attribute read carries the attribute's channels
 

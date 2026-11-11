@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Config;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type InlineResourceFqcnsMap from MethodAnalysis
@@ -129,6 +130,12 @@ final class InlineObjectResult
         };
 
         $result = ['type' => $type, 'optional' => false];
+        $presence = $spreadArms === [] ? $this->keyPresence($analysis) : [];
+
+        if ($presence !== []) {
+            $result['keyPresence'] = [$type => $presence];
+        }
+
         $openReadings = $this->openReadings($analysis, $type, $spreadArms);
 
         if ($openReadings !== []) {
@@ -369,6 +376,28 @@ final class InlineObjectResult
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * Why each optional key may be left out, where a body says only one of the two: unset on some path, or a value
+     * Laravel may remove. A spread of the object reads it back (ObjectMembers::writtenMembers()).
+     *
+     * @return array<string, PresenceFacts>
+     */
+    private function keyPresence(MethodAnalysis $analysis): array
+    {
+        $presence = [];
+
+        foreach ($analysis->writtenProperties() as $property) {
+            $absent = $property['absent'] ?? false;
+            $removed = $property['removed'] ?? false;
+
+            if ($property['optional'] && $absent !== $removed && ! JsEmitter::isIndexSignatureKey($property['name'])) {
+                $presence[$property['name']] = MethodAnalysis::presenceFacts($absent, $removed);
+            }
+        }
+
+        return $presence;
     }
 
     /**

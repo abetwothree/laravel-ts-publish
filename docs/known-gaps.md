@@ -184,6 +184,24 @@ types; one read by its first return alone adds that return's keys over them, tho
 So can the spread of a resource, model or collection inside a merged array, or inside a helper read for a nested value,
 which the package leaves unread: the keys written before it, a spread's too, keep their own types.
 
+### A key an array writes twice follows PHP and `filter()`, except where the write is out of the literal's sight
+
+A literal's keys publish what PHP and Laravel send when the literal writes one key twice: a later write wins, one that
+may not land joins the earlier value, a `when()` value replaces it, and a `merge()` beats the keys after it. These
+writes stay outside that reading:
+
+- A `merge()` or `mergeWhen()` inside a helper's or a local's array lifts within that array, while Laravel lifts it
+  where the array is spread: `['k' => 1, ...$this->withMerge()]` publishes the helper's merged `k` beside `1`, though
+  only `1` is sent.
+- An empty or list `merge()` renames the string keys after it to numbers, which publish under their names.
+- A value spread the walk cannot read leaves the key before it as it was, as a local written and spread inside one
+  block, or a map local given a named key: `['k' => 1, ...$map]` after `$map['k'] = 'x'` publishes `k: number`.
+- The keys an open value holds besides its named ones never replace an earlier key of their name.
+- A same-named enum a later write may set beside an `EnumResource` wrap publishes the wrap alone, as a ternary of the
+  two does.
+
+Write the key once, or type it with `#[TsCasts]`.
+
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes

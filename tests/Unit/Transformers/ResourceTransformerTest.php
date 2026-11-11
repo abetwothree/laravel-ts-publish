@@ -2896,7 +2896,7 @@ describe('ResourceTransformer with mixed-ternary collector regressions', functio
         expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
     });
 
-    test('ThisPropertyHandler::extractPropertiesFromArray() carries the arm shape through $this->merge()', function () {
+    test('a merged literal carries the arm shape through $this->merge()', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $properties = (new ResourceTransformer(MixedEnumMergedResource::class))->data()->properties;
 

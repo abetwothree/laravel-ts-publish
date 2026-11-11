@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
@@ -13,26 +12,22 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgT
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use ReflectionClass;
 
 /**
  * `$this->property` — resolved against the backing model, attributes before relations, matching
- * Laravel's `Model::__get`. Also carries `extractPropertiesFromArray()`, a plain-array-literal
- * property extractor still used by the analyzer's own merge()/mergeWhen() resolution.
+ * Laravel's `Model::__get`.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
@@ -59,47 +54,6 @@ final class ThisPropertyHandler implements ExpressionHandler
         }
 
         return null;
-    }
-
-    /**
-     * Extract properties and FQCNs from an array expression, e.g. for mergeWhen's second argument.
-     *
-     * Public: the analyzer's own mergedArrayAnalysis() (merge()/mergeWhen() resolution) calls this
-     * directly — the array machinery moved here while that caller stayed on the analyzer.
-     *
-     * @param  AnalysisScope  $scope  the scope a constant key's `self`, `static` and `parent` are read in
-     */
-    public function extractPropertiesFromArray(Array_ $array, ExpressionEngine $engine, AnalysisScope $scope, bool $optional = false): ResourceAnalysis
-    {
-        $analysis = new ResourceAnalysis;
-
-        foreach (InlineArrayHandler::withNamedLiteralSpreadsInlined($array->items) as $item) {
-            if ($item->key === null) {
-                if ($item->unpack && InlineArrayHandler::readsSpreadByValue($item->value, $scope)) {
-                    InlineArrayHandler::writeSpread($analysis, $item->value, $engine->resolve($item->value), $scope, $optional);
-                }
-
-                continue;
-            }
-
-            $keyName = $this->resolveKeyName($item->key, $scope);
-
-            if ($keyName === null) {
-                continue;
-            }
-
-            $result = $engine->resolve($item->value);
-
-            if (JsEmitter::isIndexSignatureKey($keyName)) {
-                $analysis->addSignatureEntry($keyName, $result);
-
-                continue;
-            }
-
-            $analysis->overwriteProperty($keyName, $result, $optional);
-        }
-
-        return $analysis;
     }
 
     /**
