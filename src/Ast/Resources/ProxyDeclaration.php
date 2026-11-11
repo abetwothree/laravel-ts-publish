@@ -103,7 +103,7 @@ final class ProxyDeclaration
             return null;
         }
 
-        return resolve(AnalysisMemo::class)->remember('proxy-held:'.$resourceClass, static function () use ($resourceClass): ?ReceiverType {
+        return resolve(AnalysisMemo::class)->rememberFact('proxy-held:'.$resourceClass, static function () use ($resourceClass): ?ReceiverType {
             $resource = new ReflectionClass($resourceClass);
 
             return self::heldOver($resource, resolve(ModelClassResolver::class)->resolve($resource));
@@ -232,7 +232,7 @@ final class ProxyDeclaration
      */
     private static function declarations(ReflectionClass $resource): array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'proxy-declarations:'.$resource->getName(),
             static fn (): array => self::read($resource),
         );

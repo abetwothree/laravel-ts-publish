@@ -122,7 +122,7 @@ final class JsonApiResources
      */
     public static function relationships(string $class, ?string $modelClass): array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'json-api-relationships:'.$class.'@'.$modelClass,
             fn (): array => self::readRelationships($class, $modelClass),
         );
@@ -137,7 +137,7 @@ final class JsonApiResources
      */
     public static function includedResources(string $class): array
     {
-        return resolve(AnalysisMemo::class)->remember('json-api-included:'.$class, fn (): array => self::readIncludedResources($class));
+        return resolve(AnalysisMemo::class)->rememberFact('json-api-included:'.$class, fn (): array => self::readIncludedResources($class));
     }
 
     /**

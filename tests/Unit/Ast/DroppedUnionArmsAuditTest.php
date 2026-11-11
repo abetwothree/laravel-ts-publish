@@ -13,6 +13,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use function Orchestra\Testbench\workbench_path;
 
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -126,9 +127,17 @@ test('a new recording site cannot go unpinned', function () {
             continue;
         }
 
+        $entries = false;
+
         foreach ($finder->findInstanceOf($stmts, StaticCall::class) as $call) {
             if (! $call->class instanceof Name || $call->class->toString() !== DroppedUnionArms::class
-                || ! $call->name instanceof Identifier || $call->name->toString() !== 'record') {
+                || ! $call->name instanceof Identifier) {
+                continue;
+            }
+
+            $entries = $entries || in_array($call->name->toString(), ['leftOut', 'leftOutOfJoin'], true);
+
+            if ($call->name->toString() !== 'record') {
                 continue;
             }
 
@@ -138,12 +147,28 @@ test('a new recording site cannot go unpinned', function () {
                 ? $arg->value->value
                 : $file->getRelativePathname().':'.$call->getStartLine();
         }
+
+        // An entry takes each arm beside the site that dropped it as an `[$arm, '<site>']` pair written in its file.
+        $pairSites = [];
+
+        foreach ($entries ? $finder->findInstanceOf($stmts, Array_::class) : [] as $array) {
+            [$arm, $site] = count($array->items) === 2 ? $array->items : [null, null];
+
+            if ($arm !== null && $site !== null && $arm->key === null && $site->key === null && ! $arm->unpack
+                && ! $arm->value instanceof String_ && $site->value instanceof String_) {
+                $pairSites[] = $site->value->value;
+            }
+        }
+
+        // A file whose entries take no literal pair passes sites the scan cannot read, so its location fails below.
+        array_push($sites, ...($entries && $pairSites === [] ? [$file->getRelativePathname()] : $pairSites));
     }
 
-    $remedy = 'A DroppedUnionArms::record() site that no baseline row names. Give it a permanent UnionHonestyResource key '
-        .'that drops an arm there, then pin that key\'s drop in dropped-union-arms-baseline.php: a bare row fails the corpus test.';
+    $remedy = 'A DroppedUnionArms::record() site, or an `[$arm, \'<site>\']` pair a leftOut() entry takes, that no baseline row '
+        .'names. Give it a permanent UnionHonestyResource key that drops an arm there, then pin that key\'s drop in '
+        .'dropped-union-arms-baseline.php: a bare row fails the corpus test.';
 
     expect($unparsed)->toBe([], 'These src/ files do not parse, so the scan read none of their DroppedUnionArms::record() calls.')
-        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan did not find the closure-union recording site, so it may have read no record() call and proves nothing.')
+        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan did not find the closure-union recording site, so it may have read no pair and proves nothing.')
         ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([], $remedy);
 });

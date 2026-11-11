@@ -1832,7 +1832,7 @@ final class ReceiverClassResolver
         $key = 'forwarded-query:'.$class.'@'.$method.'@'.$queried.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
-        return $memo->remember($key, function () use ($memo, $key, $query, $queried, $method): ?ReceiverType {
+        return $memo->rememberFact($key, function () use ($memo, $key, $query, $queried, $method): ?ReceiverType {
             if (! $memo->enter($key)) {
                 return $this->unproven($query);
             }
@@ -1886,7 +1886,7 @@ final class ReceiverClassResolver
         $key = 'builder-method:'.$class.'@'.$method.'@'.$queried.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
-        return $memo->remember($key, function () use ($memo, $key, $class, $method, $queried): ?ReceiverType {
+        return $memo->rememberFact($key, function () use ($memo, $key, $class, $method, $queried): ?ReceiverType {
             $query = new ReceiverType([$class], relatedModel: $queried);
             $context = $memo->enter($key) ? resolve(MethodLocator::class)->locate($class, $method) : null;
 
@@ -2282,7 +2282,7 @@ final class ReceiverClassResolver
         $key = 'model-method-query:'.$model.'@'.$method.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
-        return $memo->remember($key, function () use ($memo, $key, $model, $method): ?ReceiverType {
+        return $memo->rememberFact($key, function () use ($memo, $key, $model, $method): ?ReceiverType {
             $query = new ReceiverType([QueryForwarding::builderClass($model)], relatedModel: $model);
             $context = $memo->enter($key) ? resolve(MethodLocator::class)->locate($model, $method) : null;
 

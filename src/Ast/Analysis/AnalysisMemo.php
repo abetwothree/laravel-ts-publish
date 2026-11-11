@@ -13,10 +13,11 @@ use LogicException;
 
 /**
  * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
- * computing it again could not differ, and a reuse replays the cache dependencies, dropped union arms and unread
+ * computing it again could not differ, and a reuse replays the cache dependencies, dropped union arms, gaps and unread
  * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
  *
- * It also holds whether a read under way needs each enum case as its enum, whose answers it keeps apart.
+ * It also holds whether a read under way needs each enum case as its enum, and whether it shows gaps (the gap mode),
+ * keeping the answers of each apart.
  *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
@@ -24,6 +25,7 @@ use LogicException;
  *     pathMark: int,
  *     recording: bool,
  *     dropped: int,
+ *     gapMark: int,
  *     unreadSpreads: int,
  *     reentries: int,
  *     cuts: array<string, int>,
@@ -38,6 +40,7 @@ use LogicException;
  *     paths: list<string>,
  *     recording: bool,
  *     dropped: int,
+ *     gaps: list<int>,
  *     unreadSpreads: int,
  *     reentries: int|null,
  *     cuts: array<string, int>,
@@ -74,6 +77,9 @@ final class AnalysisMemo
 
     /** How many reads under way need each enum case as its enum: readingCasesAsEnums(). */
     private int $enumReadings = 0;
+
+    /** Whether the read under way keeps the gap each dropped arm leaves in its type text: showingGaps(). */
+    private bool $showsGaps = false;
 
     /** @var ValueSite|null the reading and scope of the value the innermost read under way types */
     private ?array $valueSite = null;
@@ -264,6 +270,41 @@ final class AnalysisMemo
     }
 
     /**
+     * Run a read in the gap mode: every arm it drops leaves a gap in the type text, however many frames deep, for a
+     * declared type to fill in place.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function showingGaps(Closure $read): mixed
+    {
+        return $this->readingGaps(true, $read);
+    }
+
+    /**
+     * Run a read with the gap mode off, whatever the read around it shows.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function hidingGaps(Closure $read): mixed
+    {
+        return $this->readingGaps(false, $read);
+    }
+
+    /**
+     * Whether the read under way is in the gap mode.
+     */
+    public function showsGaps(): bool
+    {
+        return $this->showsGaps;
+    }
+
+    /**
      * Mark the value a read under way types by its reading and scope, handing back the mark it replaces for the reader
      * to restore: a body memoized apart from its reader's reading, an accessor's, asks filterReachesValue() of it.
      *
@@ -288,7 +329,7 @@ final class AnalysisMemo
     /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
      * found held, since only those can cut a fresh computation short somewhere else; one a seed shaped is kept apart.
-     * So is one computed while a read needs enum cases as their enums, under its own key.
+     * So is one computed while a read needs enum cases as their enums, or shows gaps, each under its own key.
      *
      * @template T
      *
@@ -297,7 +338,7 @@ final class AnalysisMemo
      */
     public function remember(string $key, Closure $compute): mixed
     {
-        $key .= $this->enumReadings > 0 ? '@casesAsEnums' : '';
+        $key .= ($this->enumReadings > 0 ? '@casesAsEnums' : '').($this->showsGaps ? '@gaps' : '');
         $enums = PublishedEnums::version();
 
         $stored = $this->seeded === [] ? $this->entries[$key] ?? [] : [
@@ -324,6 +365,7 @@ final class AnalysisMemo
             'pathMark' => DependencyRecorder::mark(),
             'recording' => DependencyRecorder::isRecording(),
             'dropped' => DroppedUnionArms::dropped(),
+            'gapMark' => DroppedUnionArms::gapMark(),
             'unreadSpreads' => UnreadSpreads::count(),
             'reentries' => $this->reentries,
             'cuts' => $this->cuts,
@@ -341,6 +383,20 @@ final class AnalysisMemo
         $this->store($key, $value, $frame);
 
         return $value;
+    }
+
+    /**
+     * A fact's answer, as remember() gives one, computed with the gap mode off under its plain key, so a read in the
+     * mode and one out of it share it: a fact read through gap text could answer each mode differently.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $compute
+     * @return T
+     */
+    public function rememberFact(string $key, Closure $compute): mixed
+    {
+        return $this->hidingGaps(fn () => $this->remember($key, $compute));
     }
 
     /**
@@ -362,6 +418,18 @@ final class AnalysisMemo
     }
 
     /**
+     * The key of each answer stored outside a seeded check, in the order it was first stored.
+     *
+     * @internal for tests, which tell the answers of each mode apart by it
+     *
+     * @return list<string>
+     */
+    public function keys(): array
+    {
+        return array_keys($this->entries);
+    }
+
+    /**
      * The marker of each guard in $keys, which a re-entry holds while it lifts the guard.
      *
      * @param  array<string, true>  $keys
@@ -376,6 +444,25 @@ final class AnalysisMemo
         }
 
         return $marks;
+    }
+
+    /**
+     * Run a read with the gap mode set as given, restoring the mode around it on every way out.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    private function readingGaps(bool $shows, Closure $read): mixed
+    {
+        [$around, $this->showsGaps] = [$this->showsGaps, $shows];
+
+        try {
+            return $read();
+        } finally {
+            $this->showsGaps = $around;
+        }
     }
 
     /**
@@ -414,7 +501,7 @@ final class AnalysisMemo
             DependencyRecorder::record($path);
         }
 
-        DroppedUnionArms::replay($entry['dropped']);
+        DroppedUnionArms::replay($entry['dropped'], $entry['gaps']);
         UnreadSpreads::replay($entry['unreadSpreads']);
         $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
         foreach ($entry['cuts'] as $guard => $count) {
@@ -488,6 +575,7 @@ final class AnalysisMemo
             'paths' => array_values(array_unique($paths)),
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
+            'gaps' => DroppedUnionArms::gapsSince($frame['gapMark']),
             'unreadSpreads' => UnreadSpreads::count() - $frame['unreadSpreads'],
             'reentries' => $cut ? $this->reentries - $frame['reentries'] : null,
             'cuts' => $this->cutsSince($frame['cuts']),

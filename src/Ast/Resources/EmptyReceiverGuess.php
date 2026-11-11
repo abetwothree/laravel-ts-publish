@@ -67,7 +67,7 @@ final class EmptyReceiverGuess
         $key = ResourceWrapping::key(self::COLLECTION);
         $own = ResourceWrapping::key($collection);
 
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'admits-empty-response:'.$collection.'@'.($key ?? '').'@'.($own ?? ''),
             function () use ($collection, $key, $own): bool {
                 // The caller's type follows this body; the memo replays the files recorded here on every later read.

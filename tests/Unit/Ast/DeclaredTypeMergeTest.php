@@ -25,6 +25,18 @@ test('a position the body reads as unknown takes the declared type, keeping the 
     'mixed' => ['mixed', '{ a: number }', '{ a: number }'],
 ]);
 
+test('tells how much a type says of its value, its null aside', function (string $type, int $tells) {
+    expect(DeclaredTypeMerge::tells($type))->toBe($tells);
+})->with([
+    'unknown' => ['unknown', 0],
+    'mixed' => ['mixed', 0],
+    'unknown beside null' => ['unknown | null', 0],
+    'a container of unknown' => ['unknown[] | null', 1],
+    'a record of unknown' => ['Record<string, unknown>', 1],
+    'a type beside unknown' => ['string | unknown', 2],
+    'a type' => ['string', 2],
+]);
+
 // R7 rule 2.
 test('a declared type that says nothing keeps the body\'s reading', function (string $declared) {
     expect(mergedType('{ a: string }', $declared))->toBe('{ a: string }');

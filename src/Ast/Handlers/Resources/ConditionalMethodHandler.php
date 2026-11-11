@@ -186,8 +186,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
         if ($default['type'] === 'unknown' || $value['type'] === 'unknown') {
             // Only a value arm with a type publishes without the default, so only then is an arm left out.
             if ($value['type'] !== 'unknown') {
-                DroppedUnionArms::record($defaultExpr, $scope, 'conditional-default');
-                DroppedUnionArms::warnOfPlaceholder($value, [$defaultExpr], $scope);
+                $value = DroppedUnionArms::leftOut($value, [[$defaultExpr, 'conditional-default']], $scope);
             }
 
             return [...$value, 'optional' => $value['optional'] || $default['optional']];

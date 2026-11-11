@@ -70,7 +70,7 @@ function warningsKeptBy(bool $kept): array
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     DroppedUnionArms::replaceable(
-        fn (): array => DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('held')], $scope),
+        fn (): array => DroppedUnionArms::leftOut(['type' => 'null', 'optional' => false], [[new Variable('held'), 'test']], $scope),
         fn (): bool => $kept,
     );
 
@@ -229,11 +229,11 @@ test('a replaceable read prints the warnings it holds only where they are kept',
 test('a provisional read not kept leaves neither its warnings nor its dropped count, and a kept one leaves both', function () {
     AnalysisWarnings::reset();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $read = fn (string $name): Closure => function () use ($name, $scope): array {
-        DroppedUnionArms::record(new Variable($name), $scope, 'test');
-
-        return DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable($name)], $scope);
-    };
+    $read = fn (string $name): Closure => fn (): array => DroppedUnionArms::leftOut(
+        ['type' => 'null', 'optional' => false],
+        [[new Variable($name), 'test']],
+        $scope,
+    );
 
     $dropped = DroppedUnionArms::dropped();
     DroppedUnionArms::provisional($read('discarded'), fn (): bool => false);
@@ -250,7 +250,7 @@ test('a replaceable read that throws leaves no hold behind', function () {
     expect(fn () => DroppedUnionArms::replaceable(fn () => throw new RuntimeException('read failed'), fn (): bool => true))
         ->toThrow(RuntimeException::class, 'read failed');
 
-    DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('after')], $scope);
+    DroppedUnionArms::leftOut(['type' => 'null', 'optional' => false], [[new Variable('after'), 'test']], $scope);
 
     expect(AnalysisWarnings::all())->toHaveCount(1);
 });
@@ -259,7 +259,7 @@ test('a nested read passes a kept warning to the read around it, which decides w
     AnalysisWarnings::reset();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $inner = fn (bool $kept): Closure => fn () => DroppedUnionArms::replaceable(
-        fn (): array => DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('inner')], $scope),
+        fn (): array => DroppedUnionArms::leftOut(['type' => 'null', 'optional' => false], [[new Variable('inner'), 'test']], $scope),
         fn (): bool => $kept,
     );
 

@@ -1570,7 +1570,7 @@ final class AnalysisScope
      */
     private static function collectionFacts(ReflectionClass $class): array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'collection-facts:'.$class->getName(),
             static fn (): array => [
                 ResourceCollections::reindexesNumericKeys($class),
@@ -1587,7 +1587,7 @@ final class AnalysisScope
      */
     private static function picksItems(ReflectionClass $collection): bool
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'collection-picks:'.$collection->getName(),
             static fn (): bool => ! ResourceCollections::keepsRawItems($collection),
         );

@@ -81,21 +81,19 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
 
             // unionResults() leaves out an operand the engine could not type, so only the audit is told which one:
             // the left one alone when neither has a type.
-            $dropped = [];
+            $left = [];
 
             if ($leftResult['type'] === 'unknown') {
-                DroppedUnionArms::record($expr->left, $scope, 'coalesce-left');
-                $dropped[] = $expr->left;
+                $left = [[$expr->left, 'coalesce-left']];
             } elseif ($rightResult['type'] === 'unknown') {
-                DroppedUnionArms::record($expr->right, $scope, 'coalesce-right');
-                $dropped[] = $expr->right;
+                $left = [[$expr->right, 'coalesce-right']];
             }
 
             // Two arms that render alike are one member, unless they spell one name for two classes, which
             // unionResults() keeps apart.
             $union = ValueResult::unionResults([$leftResult, $rightResult]);
 
-            return [...DroppedUnionArms::warnOfPlaceholder($union, $dropped, $scope), 'optional' => $optional];
+            return [...DroppedUnionArms::leftOut($union, $left, $scope), 'optional' => $optional];
         }
 
         return null;

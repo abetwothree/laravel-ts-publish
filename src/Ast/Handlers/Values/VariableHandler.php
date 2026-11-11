@@ -344,13 +344,13 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $reaches = $gap[3] || array_any($written, fn (Expr $value): bool => ! in_array($value, $nested, true));
         $old = $gap[3] ? $this->heldValue($name, $scope, $engine) : null;
         $arms = [];
-        $dropped = [];
+        $left = [];
         // A value left out can still be a MissingValue, whose key Laravel drops.
         $optional = false;
 
         foreach ($values as $index => $arm) {
             if ($reaches && $untyped($arm) && in_array($written[$index], $nested, true)) {
-                $dropped[] = $written[$index];
+                $left[] = [$written[$index], 'binding-join'];
                 $optional = $optional || ($arm['optional'] ?? false);
             } else {
                 $arms[] = $arm;
@@ -358,8 +358,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         if ($gap[3] && $untyped($old) && $arms !== [] && ! array_any($arms, $untyped)) {
-            $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
+            $binding = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
                 ?? $scope->passedValues[$name] ?? $read;
+            $left[] = [$binding, 'binding-join'];
             $optional = $optional || ($old['optional'] ?? false);
         } elseif ($gap[3]) {
             array_unshift($arms, $old);
@@ -369,14 +370,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        foreach ($dropped as $arm) {
-            DroppedUnionArms::record($arm, $scope, 'binding-join');
-        }
-
         $typed = array_values(array_filter($arms));
         $union = count($typed) === 1 ? $typed[0] : ValueResult::unionResults($typed);
 
-        return DroppedUnionArms::warnOfJoinDrop([...$union, 'optional' => $union['optional'] || $optional], $dropped, $scope);
+        return DroppedUnionArms::leftOutOfJoin([...$union, 'optional' => $union['optional'] || $optional], $left, $scope);
     }
 
     /**

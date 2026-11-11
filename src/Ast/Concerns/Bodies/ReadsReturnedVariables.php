@@ -76,6 +76,7 @@ use WeakMap;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
+ * @phpstan-import-type LeftOutArm from DroppedUnionArms
  *
  * @phpstan-type UntypedKeyWrite = array{string, Expr}
  * @phpstan-type KeyPaths = array{unset: bool, object: bool, objectNull: bool, plainNull: bool}
@@ -637,8 +638,7 @@ trait ReadsReturnedVariables
     protected function recordedMergeJoin(MethodAnalysis $joined, array $branches): MethodAnalysis
     {
         $notes = array_map(fn (MethodAnalysis $branch): array => $this->branchNotes[$branch] ?? [], $branches);
-        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'merge-branch-join');
-        $this->recordJoinDrops($joined, $branches, $notes, $record);
+        $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'merge-branch-join']);
         // A join can be a branch of another, as a merged spread helper's is, which names what its branches saw.
         $this->branchNotes ??= new WeakMap;
         $this->branchNotes[$joined] = array_merge(...$notes);
@@ -1306,8 +1306,7 @@ trait ReadsReturnedVariables
         }
 
         $joined = $this->joinedBranches($branches);
-        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'walk-branch-join');
-        $this->recordJoinDrops($joined, $branches, $notes, $record);
+        $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'walk-branch-join']);
         $into->replaceWith($joined);
     }
 
@@ -1317,9 +1316,9 @@ trait ReadsReturnedVariables
      *
      * @param  list<TAnalysis>  $branches
      * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
-     * @param  Closure(Expr): void  $record  records one value left out, under its join's site
+     * @param  Closure(Expr): LeftOutArm  $leftOut  one value left out, beside its join's site
      */
-    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $record): void
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $leftOut): void
     {
         if (array_merge(...$notes) === []) {
             return;
@@ -1330,12 +1329,12 @@ trait ReadsReturnedVariables
             $branches,
         );
 
-        foreach ($joined->properties as $property) {
+        foreach ($joined->properties as $at => $property) {
             if ($property['type'] === 'unknown') {
                 continue;
             }
 
-            $dropped = [];
+            $left = [];
 
             foreach ($types as $index => $branchTypes) {
                 $write = ($branchTypes[$property['name']] ?? null) === 'unknown'
@@ -1343,14 +1342,14 @@ trait ReadsReturnedVariables
                     : null;
 
                 if ($write !== null) {
-                    $record($write);
-                    $dropped[] = $write;
+                    $left[] = $leftOut($write);
                 }
             }
 
-            if ($dropped !== []) {
+            if ($left !== []) {
                 $union = [...ValueResult::unknown(), 'type' => $property['type']];
-                DroppedUnionArms::warnOfJoinDrop($union, $dropped, $this->analysisScope());
+                $union = DroppedUnionArms::leftOutOfJoin($union, $left, $this->analysisScope());
+                $joined->properties[$at]['type'] = $union['type'];
             }
         }
     }

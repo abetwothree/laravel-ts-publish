@@ -342,7 +342,7 @@ A closure a call passes values to, such as a conditional's value, a `map()` call
 `readClaimedClosure()`, which claims its parameters inside `within()`. A subject method's body is read with
 `enterMethod()` as the `$enter`. `beforeGap()`, `resolvingBinding()` and `resolvingName()` stay apart, since each
 restores one name's entry. State outside the scope saves and restores itself the same way: the analyzer's walk notes and
-`readsKeylessAttributeNames`, `DroppedUnionArms::$held` and `AnalysisMemo`'s frames.
+`readsKeylessAttributeNames`, `DroppedUnionArms::$held` and its extents, and `AnalysisMemo`'s frames and gap mode.
 `ResolvesModelRelationTypes::bindForeachLoopVariables()` takes no snapshot, because a `foreach` binding holds for the
 whole body by design, and `ClosureHandler` calls it inside its own `within()`. The closure writers' reads restore over
 it, so a same-named closure parameter still resolves against its own binding, as `ClosureParamShadowResource` pins.
@@ -791,8 +791,10 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 `AstEngine::analyzeMethod()`, `MethodReturnTypeResolver::resolve()`, `AccessorBodyAnalyzer::analyze()` and
 `ModelAttributeResolver`'s accessor waterfall. The two accessor keys gain an `@importless` suffix for a read that
 carries no imports, and all three gain `@casesAsLiterals` for the body fallback's reading. Every key gains
-`@casesAsEnums` while a read that needs each case's enum is under way (`readingCasesAsEnums()`), so its answers stay
-apart. It also holds the per-class reads each resource prop repeats:
+`@casesAsEnums` while a read that needs each case's enum is under way (`readingCasesAsEnums()`), and `@gaps` while the
+gap mode is on (`showingGaps()`), so their answers stay apart. A fact, such as a class set or a bool, goes through
+`rememberFact()`, which computes it with the mode off under its plain key, so both modes share one answer.
+It also holds the per-class reads each resource prop repeats:
 `JsonApiResources::relationships()` and `includedResources()`, `ResourceCollectionBody::sendsCollectedList()`,
 `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in `GuessesModelResources`.
 
@@ -812,8 +814,9 @@ A body read for Inertia adds `Reading::memoKey()`'s `@inertia` to its `analysis:
 `@filtered` after it under a resource's filter; a response's extras read adds `@unfiltered`. So a helper read for a page
 never shares the answer a read for anything else gets ([Inertia profile](#inertia-profile)).
 
-A stored answer keeps the dependency paths, the dropped-arm count and the `UnreadSpreads` count recorded while it was
-computed, and every reuse records them again. The generation cache, the accessor `null` rule and a `parent::` spread's
+A stored answer keeps the dependency paths, the dropped-arm count, the gap ids and the `UnreadSpreads` count recorded
+while it was computed, and every reuse records them again.
+The generation cache, the accessor `null` rule and a `parent::` spread's
 read therefore see what a fresh computation would have shown them. A cycle can cut an answer short, so each answer is
 stored with the guards it found held, and `AnalysisMemo::reproducible()` reuses it only where nothing it read has
 changed and exactly those guards are held again. No answer depends on which entry point read it first.
@@ -931,10 +934,11 @@ Recording is off until a test calls `start()`, but the count always runs. `Acces
 compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
 answer.
 
-Each site also passes its union to `DroppedUnionArms::warnOfPlaceholder()`. Where a drop leaves the union only `null`
-and/or `never[]`, it adds one run-output warning per arm left out, naming its line and expression, and returns at once
-when nothing was dropped. The three join sites call `warnOfJoinDrop()` instead: a value a join leaves out still reaches
-the read, so beside a typed arm it warns that the published type may not admit every value the read sends. A receiver's
+Each site hands its union and each arm it left out, paired with its site, to `DroppedUnionArms::leftOut()`, which
+records each arm. Where a drop leaves the union only `null` and/or `never[]`, it adds one run-output warning per arm
+left out, naming its line and expression. The three join sites call `leftOutOfJoin()` instead: a value a join leaves
+out still reaches the read, so beside a typed arm it warns that the published type may not admit every value the read
+sends. A receiver's
 join publishes no type of its own, so a read through it warns through `ReceiverClassResolver::warnOfLeftOut()` once it
 publishes one: `ReceiverPropertyFetchHandler`'s and `ReceiverMethodCallHandler`'s read of any receiver holding
 `leftOut`, and `VariableHandler`'s read of a bound parameter's attribute only where the parameter is in
@@ -952,10 +956,15 @@ audit entries too. A class the generation cache serves prints none, since the ca
 `--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
 cast on the key leaves the reading, and so the warning, as it is.
 
+`DroppedUnionArms` also holds the gap mode's state: `gap()` gives the gap a drop leaves an id stable for the run, and a
+gap's warnings are held by that id until a strip raises them, or the outermost `extent()` ends with the gap unfilled.
+`replaceable()` and `provisional()` settle a held warning as they settle a raised one.
+
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
-proves each recording site still fires. A `DroppedUnionArms::record()` call whose site no baseline row names fails
-`a new recording site cannot go unpinned`, so a new site brings its own `UnionHonestyResource` key and row. Apart from
+proves each recording site still fires. A `DroppedUnionArms::record()` call, or an `[$arm, '<site>']` pair an entry
+takes, whose site no baseline row names fails `a new recording site cannot go unpinned`, so a new site brings its own
+`UnionHonestyResource` key and row. Apart from
 those rows, the baseline only shrinks: teach a rule to type the shape, then delete its entries. A recorded arm is a
 candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back to a return-type annotation
 or to `null`. Read the published property before you call an entry a bug.

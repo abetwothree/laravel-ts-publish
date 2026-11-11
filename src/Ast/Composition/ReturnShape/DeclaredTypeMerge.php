@@ -66,6 +66,23 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
+     * How much a type tells of its value, its `null` aside: 0 for `unknown` or `mixed`, 1 for no more than its
+     * container, as `unknown[]` or a `Record` of `unknown` does, and 2 for any other type.
+     *
+     * @return 0|1|2
+     */
+    public static function tells(string $type): int
+    {
+        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+
+        return match (true) {
+            $type === 'mixed' || $arms === ['unknown'] => 0,
+            $arms !== [] && array_all($arms, static fn (string $arm): bool => in_array($arm, self::VAGUE, true)) => 1,
+            default => 2,
+        };
+    }
+
+    /**
      * The type to publish at a position: the body's reading merged with the declared type there.
      *
      * @param  Typed  $body
@@ -85,23 +102,6 @@ final readonly class DeclaredTypeMerge
         }
 
         return $this->mergeReading($body, $declared, $at);
-    }
-
-    /**
-     * How much a type tells of its value, its `null` aside: 0 for `unknown` or `mixed`, 1 for no more than its
-     * container, as `unknown[]` or a `Record` of `unknown` does, and 2 for any other type.
-     *
-     * @return 0|1|2
-     */
-    private static function tells(string $type): int
-    {
-        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
-
-        return match (true) {
-            $type === 'mixed' || $arms === ['unknown'] => 0,
-            $arms !== [] && array_all($arms, static fn (string $arm): bool => in_array($arm, self::VAGUE, true)) => 1,
-            default => 2,
-        };
     }
 
     /**
