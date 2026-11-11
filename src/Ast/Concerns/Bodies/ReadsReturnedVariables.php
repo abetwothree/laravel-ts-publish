@@ -1718,7 +1718,7 @@ trait ReadsReturnedVariables
     private function noteOptionalValues(MethodAnalysis $write): void
     {
         foreach ($write->properties as $property) {
-            // The printed `?`, not `removed`: a seed's `?` may be a removed value, which no `??=` fills.
+            // The printed `?`, not `removed`, so a key a mergeWhen() may leave unset keeps its `?` past a `??=`.
             if ($property['optional']) {
                 $this->optionalValueKeys[$property['name']] = true;
             }

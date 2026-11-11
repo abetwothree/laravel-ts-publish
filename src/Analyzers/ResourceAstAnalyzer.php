@@ -2008,7 +2008,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         foreach ($names as $column) {
             $override = $tsCasts['overrides'][$column] ?? null;
-            // A declared optional column reads as one it may leave unset, as a printed `?` does.
+            // A column a #[TsCasts] entry marks optional is one toArray() may leave unset.
             $optional = $tsCasts['optionalOverrides'][$column] ?? false;
 
             if ($override !== null) {
@@ -2505,7 +2505,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         foreach ($skipped->properties as $index => $property) {
             $named = ! JsEmitter::isIndexSignatureKey($property['name']);
             $skipped->properties[$index] = MethodAnalysis::withPresence(
-                $property, optional: $named, absent: $named, removed: $property['removed'] ?? false,
+                $property, optional: $named, absent: $named, removed: $named && ($property['removed'] ?? false),
             );
         }
 

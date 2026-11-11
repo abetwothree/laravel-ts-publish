@@ -200,8 +200,18 @@ it('hands out each member as the value it holds, with the classes behind its own
 
     expect(ObjectMembers::members($value))->toBe([
         ['author', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]],
-        ['note', ['type' => 'string', 'optional' => true, 'absent' => true]],
+        ['note', ['type' => 'string', 'optional' => true]],
     ])->and(ObjectMembers::members(['type' => '{ [key: string]: string }', 'optional' => false]))->toBeNull();
+});
+
+// A printed `?` cannot tell an unset key from a removed value, so it keeps the removable reading the old map gave it.
+it('reads a printed ? back as a value that may be removed', function () {
+    $analysis = ObjectMembers::analysis(['type' => '{ a: number; b?: string }', 'optional' => false]);
+
+    expect(array_map(
+        static fn (array $property): array => array_intersect_key($property, ['optional' => true, 'absent' => true, 'removed' => true]),
+        $analysis?->properties ?? [],
+    ))->toBe([['optional' => false], ['optional' => true, 'removed' => true]]);
 });
 
 // A writer that may leave a key unset keeps the value held before it there, unlike a removed value.

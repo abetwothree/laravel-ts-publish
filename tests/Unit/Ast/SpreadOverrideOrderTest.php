@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideMap
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverrideParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadRemovableOverHeldResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadReturnsJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueBesideArmResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadValueKeyBesideArmResource;
@@ -399,6 +400,18 @@ it('joins a held key with a helper, when() or later write that may not land, as 
         ->toBe('{"id":9,"by":"hi","key":"hi","when":"hi","merged":"hi"}')
         ->and(spreadValueSent(SpreadMaybeOverHeldResource::class))
         ->toBe('{"id":9,"by":{"name":"Ada"},"key":{"name":"Ada"},"merged":{"name":"Ada"}}');
+});
+
+// A helper's when() value, passed in or spread from a local, is a MissingValue Laravel removes with the key.
+it('keeps a held key optional where a helper writes it as a when() value it was passed or a local holds', function () {
+    expect(publishedResourceKeyTypes(SpreadRemovableOverHeldResource::class, Post::class))->toBe([
+        'id' => 'number',
+        'seeded?' => 'User | string',
+        'local?' => 'User | string',
+        'n' => 'number',
+    ])->and(spreadValueSent(SpreadRemovableOverHeldResource::class, ['picked' => '1']))
+        ->toBe('{"id":9,"seeded":"hi","local":"hi","n":1}')
+        ->and(spreadValueSent(SpreadRemovableOverHeldResource::class))->toBe('{"id":9,"n":1}');
 });
 
 it('keeps each such joined key optional where another return leaves it out', function () {

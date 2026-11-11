@@ -96,12 +96,10 @@ final class ObjectMembers
             $holdsObject = TsTypeShape::holdsKeyedObject($type);
             $readings = self::memberReadings($value, $name);
 
-            $optional = str_ends_with($key, '?');
             $members[] = [$name, [
                 'type' => $type,
-                // A printed `?` cannot tell an unset key from a removed value: read as unset, where a held value stays.
-                'optional' => $optional,
-                ...($optional ? ['absent' => true] : []),
+                // A printed `?` cannot tell an unset key from a removed value, so it reads as removed, as a when() is.
+                'optional' => str_ends_with($key, '?'),
                 ...self::memberChannel($models->take($type), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
                 ...self::memberChannel($resources->take($type), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
                 ...self::memberChannel($enums->take($type), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),

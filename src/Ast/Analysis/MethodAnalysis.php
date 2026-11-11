@@ -60,16 +60,18 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     bodyType?: string,
  *     fillType?: string,
  *     keepsKeys?: bool,
- *     absent?: bool,
- *     removed?: bool,
+ *     absent?: true,
+ *     removed?: true,
  * }
  * @phpstan-type AnalyzedPropertyList = list<AnalyzedProperty>
  * @phpstan-type PresenceFacts = array{absent?: true, removed?: true}
  * @phpstan-type Presence = array{optional: bool, absent: bool, removed: bool}
  *
- * A row's `optional` is its printed `?`. Two facts of the body say why, each set only where true: `absent`, the key
- * is missing on some path, where a value held before it survives; `removed`, its value may be removed, as a `when()`
- * MissingValue or an Inertia `optional()` prop is, which no held value survives. A declared `?` sets neither.
+ * A row's `optional` is its printed `?`. Two facts of the body say why: `absent`, the key is missing on some path,
+ * where a value held before it survives; `removed`, its value may be removed, as a `when()` MissingValue or an Inertia
+ * `optional()` prop is, which no held value survives. A `?` a cast or a docblock puts on a row sets neither.
+ *
+ * addProperty() reads its `$optional` as absent, and a value's own `optional` as removed unless the value is `absent`.
  *
  * @internal
  */
@@ -227,8 +229,7 @@ class MethodAnalysis
      * The one place a value becomes a property: a channel added here reaches every collector,
      * where a hand-rolled collector had to be found and updated one at a time.
      *
-     * $optional says the key may be absent, as a write that may not run leaves it; a value's own `optional` says it
-     * may be removed, unless its `absent` says it is a key its writer may leave out.
+     * Its presence facts read as the class docblock says.
      *
      * @param  ValueExpressionResult  $result
      */
