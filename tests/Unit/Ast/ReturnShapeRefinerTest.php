@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuth
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewContainersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewExtrasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptPairsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeySpellingsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewListedShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
@@ -490,16 +491,25 @@ test('a mapped key keeps the open mark its value moves with and pairs keys by th
 ]);
 
 // `filter()` re-lists a row keyed only by ints in the order it holds them, so a row whose values no rule types takes
-// each key's declared element in its key order; json_encode() alone keeps the keys (GH-154).
+// each key's declared element in its key order; a value keeping its keys, or json_encode() alone, keeps them (GH-154).
 test('a mapped key whose rows are keyed 0 to n-1 out of order with no value typed takes the declared tuple in key order', function () {
     $data = new ResourceTransformer(ReviewOutOfOrderPairsResource::class)->data();
+    $kept = new ResourceTransformer(ReviewKeptPairsResource::class)->data();
     $event = new BroadcastEventTransformer(ReviewOutOfOrderPairsEvent::class)->data();
+    $types = fn (object $dto): array => array_map(fn (array $property): string => $property['type'], $dto->properties);
 
-    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+    expect($types($data))->toBe([
         'pairs' => '[string, number][]',
         'maybe' => '([string, number] | null)[]',
+        'collected' => '{ "1": unknown; "0": unknown }',
+        'object' => '{ "1": unknown; "0": unknown }',
+        'twoWhen' => 'unknown[][]',
     ])->and($data->typeImports)->toBe([])
-        ->and(array_map(fn (array $property): string => $property['type'], $event->properties))->toBe([
+        ->and($types($kept))->toBe([
+            'pairs' => '{ "1": unknown; "0": unknown }[]',
+            'pair' => '{ "1": unknown; "0": unknown }',
+        ])
+        ->and($types($event))->toBe([
             'pairs' => '{ "1": unknown; "0": unknown }[]',
             'pair' => '{ "1": unknown; "0": unknown }',
         ]);

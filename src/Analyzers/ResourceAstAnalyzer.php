@@ -818,7 +818,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->seedVarBindings($method, $stmts, $passed);
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $method, filtered: $this->reading->filtersBodyOf($this->scope));
+        resolve(ReturnShapeRefiner::class)->refine($analysis, $method, relists: $this->relistsIntKeys());
 
         if (! $this->isInertiaShare($method)) {
             $this->applyTsCastsFromMethod($method, $analysis);
@@ -1307,7 +1307,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $ownMethod,
             keepsUnresolvedNames: false,
             fillsPositions: ! $this->docblockOutranksBody(),
-            filtered: $this->reading->filtersBodyOf($this->scope),
+            relists: $this->relistsIntKeys(),
         );
 
         // InertiaSharedDataAnalyzer lays the casts of each share() it reads over the props itself, with the `?`.
@@ -2255,6 +2255,16 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         return $this->sharedDataShareClass() !== ''
             || ($this->methodName === 'provide' && $this->scope->subjectReflection->implementsInterface(ModelMetadataProvider::class));
+    }
+
+    /**
+     * Whether the client gets the body's arrays keyed only by ints as lists: `filter()` runs over the body, for an API
+     * resource that keeps no keys, as reindexNumericKeyedArrays() reads the published type.
+     */
+    private function relistsIntKeys(): bool
+    {
+        // Below another resource's filter, a body on a class that is no resource cannot tell if that one keeps keys.
+        return $this->reading->filtersBodyOf($this->scope) && ResourceCollections::reindexesNumericKeys($this->scope->subjectReflection);
     }
 
     /**

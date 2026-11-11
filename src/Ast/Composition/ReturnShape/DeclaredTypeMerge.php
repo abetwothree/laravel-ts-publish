@@ -20,9 +20,11 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  * identity, never by spelling, and an enum the body wraps in an `EnumResource` is never that enum.
  *
  * @phpstan-import-type Slots from TokenSlots
+ * @phpstan-import-type TupleElement from TsTypeShape
  *
  * @phpstan-type Typed = array{string, Slots}
  * @phpstan-type Verdict = 'body'|'declared'|'unknown'
+ * @phpstan-type Relisting = array{list<int>, bool}
  *
  * @internal
  */
@@ -39,14 +41,14 @@ final readonly class DeclaredTypeMerge
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
      * @param  list<string>  $openReadings  each reading the body leaves open, as ValueResult `openReadings` spells it:
      *                                      its path from the position merged, a NUL, and its type
-     * @param  bool  $filtered  whether `JsonResource::filter()` runs over the value, which re-lists an array keyed only
-     *                          by ints in the order it holds them
+     * @param  bool  $relists  whether the client gets an array keyed only by ints as the list of its values in the
+     *                         order it holds them, as `filter()` re-lists one in a resource that keeps no keys
      */
     public function __construct(
         private array $names,
         private array $bodyWraps = [],
         private array $openReadings = [],
-        private bool $filtered = false,
+        private bool $relists = false,
     ) {}
 
     /**
@@ -165,6 +167,47 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
+     * How a shape's members are re-listed, in its key order: null unless its keys are 0 to n-1, every value is
+     * `unknown`, and no key but the last may be left out.
+     *
+     * @param  list<array{string, string}>  $members
+     * @return Relisting|null the declared element each key takes, and whether the last key may be left out
+     */
+    private static function relisting(array $members): ?array
+    {
+        $order = [];
+        $lastOptional = false;
+
+        foreach ($members as $position => [$key, $value]) {
+            $index = PhpArrayKey::listIndex(self::keyName($key));
+            $lastOptional = str_ends_with($key, '?');
+
+            // Past a key left out, array_values() moves each later value up a place, so only the last may be left out.
+            if ($index === null || $value !== 'unknown' || ($lastOptional && $position !== count($members) - 1)) {
+                return null;
+            }
+
+            $order[] = $index;
+        }
+
+        return $order !== [] && count(array_unique($order)) === count($order) && max($order) === count($order) - 1 ? [$order, $lastOptional] : null;
+    }
+
+    /**
+     * The elements of a declared type that is one tuple, beside a `null` or not, with no rest element; null for any
+     * other type.
+     *
+     * @return list<TupleElement>|null
+     */
+    private static function tupleElementsOf(string $declared): ?array
+    {
+        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']));
+        $elements = count($tuples) === 1 && TsTypeShape::isWrapped($tuples[0], '[', ']') ? TsTypeShape::tupleElements($tuples[0]) : [];
+
+        return $elements === [] || array_any($elements, static fn (array $element): bool => str_starts_with($element[0], '...')) ? null : $elements;
+    }
+
+    /**
      * merge() of a reading no union left an untyped arm out of.
      *
      * @param  Typed  $body
@@ -228,9 +271,9 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * A filtered body shape keyed 0 to n-1 with every value `unknown` as the list `filter()` re-lists it into, typed by
-     * a declared n-tuple: each key's element in the shape's key order, optional where the key is, and the body's
-     * `null` kept; null for a value not filtered or any other pair.
+     * Where $relists, a body shape keyed 0 to n-1 with every value `unknown` as the list it is re-listed into, typed by
+     * a declared n-tuple: each key's element in the shape's key order, the last optional where the last key is, and
+     * the body's `null` kept; null for any other pair.
      *
      * @param  Typed  $body
      * @param  Typed  $declared
@@ -238,46 +281,51 @@ final readonly class DeclaredTypeMerge
      */
     private function relistedTuple(array $body, array $declared): ?array
     {
+        if (! $this->relists) {
+            return null;
+        }
+
         $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body[0]), ['null']));
-        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared[0]), ['null']));
-        $members = $this->filtered && count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : [];
+        $relisting = self::relisting(count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : []);
+        $elements = self::tupleElementsOf($declared[0]);
 
-        if ($members === [] || count($tuples) !== 1 || ! TsTypeShape::isWrapped($tuples[0], '[', ']')) {
+        if ($relisting === null || $elements === null || count($elements) !== count($relisting[0])) {
             return null;
         }
 
-        $elements = TsTypeShape::tupleElements($tuples[0]);
-        $indexes = array_map(static fn (array $member): int => PhpArrayKey::listIndex(self::keyName($member[0])) ?? -1, $members);
-        $optional = array_map(static fn (array $member): bool => str_ends_with($member[0], '?'), $members);
-        [$sortedIndexes, $sortedOptional] = [$indexes, $optional];
-        sort($sortedIndexes);
-        sort($sortedOptional);
+        [$order, $lastOptional] = $relisting;
+        $slots = $this->elementSlots($elements, $declared[1]);
+        $printed = [];
 
-        // Past a key left out, array_values() moves each later value up a place, so only the last keys may be.
-        if ($sortedIndexes !== range(0, count($members) - 1) || $optional !== $sortedOptional || count($elements) !== count($members)
-            || ! array_all($members, static fn (array $member): bool => $member[1] === 'unknown')
-            || array_any($elements, static fn (array $element): bool => str_starts_with($element[0], '...'))) {
-            return null;
+        foreach ($order as $position => $index) {
+            $element = $elements[$index][0];
+            $printed[] = $lastOptional && $position === count($order) - 1 ? TsTypeShape::postfixOperand($element).'?' : $element;
         }
-
-        $slots = [];
-        $from = 0;
-
-        foreach ($elements as [$element]) {
-            $slots[] = array_slice($declared[1], $from, $this->count($element));
-            $from += $this->count($element);
-        }
-
-        $printed = array_map(
-            static fn (int $index, bool $isOptional): string => $isOptional ? TsTypeShape::postfixOperand($elements[$index][0]).'?' : $elements[$index][0],
-            $indexes,
-            $optional,
-        );
 
         return [
             TsTypeString::withNullArmOf($body[0], '['.implode(', ', $printed).']'),
-            array_merge([], ...array_map(static fn (int $index): array => $slots[$index], $indexes)),
+            array_merge([], ...array_map(static fn (int $index): array => $slots[$index], $order)),
         ];
+    }
+
+    /**
+     * Each declared tuple element's share of the slots, in the tuple's order.
+     *
+     * @param  list<TupleElement>  $elements
+     * @param  Slots  $slots
+     * @return list<Slots>
+     */
+    private function elementSlots(array $elements, array $slots): array
+    {
+        $shares = [];
+        $from = 0;
+
+        foreach ($elements as [$element]) {
+            $shares[] = array_slice($slots, $from, $this->count($element));
+            $from += $this->count($element);
+        }
+
+        return $shares;
     }
 
     /**
