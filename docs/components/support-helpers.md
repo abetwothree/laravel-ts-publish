@@ -114,6 +114,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which arm of this type is a gap, where does the open marker go, and what does the type read with them set aside or stripped? | `VisibleGaps` |
 | Which separator do this object literal's members print with? | `TsTypeShape::memberSeparator()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
+| How does an arm stand alone once the arms beside it are gone? | `TsTypeShape::loneArm()` |
 | Does a docblock's type replace this declared one? | `TsTypeString::documentedWins()` |
 | Does this type have a top-level `null` arm, and what is it with one, without one, or with another type's? | `TsTypeString::hasNullArm()`, `withNullArm()`, `orNull()`, `withoutNullArm()`, `withNullArmOf()` |
 | How does this arm join so the union reads as its arms, an intersection grouped too? | `TsTypeShape::groupedArm()` |

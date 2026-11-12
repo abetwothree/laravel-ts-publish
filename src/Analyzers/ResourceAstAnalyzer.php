@@ -354,14 +354,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      * Merge branch analyses as BranchJoin::joinInto() joins them. Public for `Inertia::render()`.
      *
      * @param  list<ResourceAnalysis>  $analyses
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      */
     public function mergeReturnBranches(
         array $analyses,
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
+        array $returns = [],
+        ?AnalysisScope $scope = null,
     ): ResourceAnalysis {
         $merged = new ResourceAnalysis;
-        BranchJoin::joinInto($merged, $analyses, $dropsUntypedBranches, $keepsLoneNull);
+        BranchJoin::joinInto($merged, $analyses, $dropsUntypedBranches, $keepsLoneNull, returns: $returns, scope: $scope);
 
         return $merged;
     }
@@ -811,24 +814,27 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         $members = ReturnMembers::of($method);
-        // Read in the caller's tables, before they are set aside; a value bound here may reach a key the helper types.
-        $passed = $call instanceof CallLike ? $this->scope->readingLevel(
-            fn (): array => new CallSite($call, $this->scope, $this)->passedTo($method),
-            $members->typedKeys(),
-        ) : [];
-        $proofs = $this->proofsAcrossCall($this->scope, $call);
         $stmts = $targetMethod->stmts;
-        $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
 
-        $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $members, $proofs, $rewritten, $stmts, $passed): void {
-            $scope->enterMethod($method, $proofs, $rewritten);
-            $scope->typedKeys = $members->typedKeys();
-            // The helper's body is seeded with its own locals, whatever local read the caller is in.
-            $scope->readingLocals = [];
-            $this->seedVarBindings($method, $stmts, $passed);
-        }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
+        // The arguments' gaps flow into the helper's keys, so one extent holds both reads.
+        return $this->inGapExtent(function () use ($call, $method, $methodName, $members, $stmts, $topLevel): ResourceAnalysis {
+            // Read in the caller's tables, before they are set aside; a value bound here may reach a key it types.
+            $passed = $call instanceof CallLike ? $this->scope->readingLevel(
+                fn (): array => new CallSite($call, $this->scope, $this)->passedTo($method),
+                $members->typedKeys(),
+            ) : [];
+            $proofs = $this->proofsAcrossCall($this->scope, $call);
+            $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
+            $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $members, $proofs, $rewritten, $stmts, $passed): void {
+                $scope->enterMethod($method, $proofs, $rewritten);
+                $scope->typedKeys = $members->typedKeys();
+                // The helper's body is seeded with its own locals, whatever local read the caller is in.
+                $scope->readingLocals = [];
+                $this->seedVarBindings($method, $stmts, $passed);
+            }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        return $this->methodShaped($analysis, $method, $members, keepsUnresolvedNames: true, fillsPositions: true);
+            return $this->methodShaped($analysis, $method, $members, keepsUnresolvedNames: true, fillsPositions: true);
+        });
     }
 
     /**
@@ -1182,21 +1188,24 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $passesKeys = $this->returnsUnseededParameter($toArrayMethod);
         $stmts = $toArrayMethod->stmts;
         $members = $this->ownReturnMembers();
-        // share() and provide() lay their own `@return` over every key, so no key of theirs reads in the gap mode.
-        $analysis = $this->scope->typingKeys(
-            $members === null || $this->docblockOutranksBody() ? [] : $members->typedKeys(),
-            fn (): ?ResourceAnalysis => $this->analyzeAllReturnBranches($stmts) ?? $this->ownFirstReturnAnalysis($stmts),
-        );
 
-        if ($analysis === null) {
-            return new ResourceAnalysis; // @codeCoverageIgnore
-        }
+        return $this->inGapExtent(function () use ($members, $stmts, $passesKeys): ResourceAnalysis {
+            // share() and provide() lay their own `@return` over every key, so no key of theirs reads in the gap mode.
+            $analysis = $this->scope->typingKeys(
+                $members === null || $this->docblockOutranksBody() ? [] : $members->typedKeys(),
+                fn (): ?ResourceAnalysis => $this->analyzeAllReturnBranches($stmts) ?? $this->ownFirstReturnAnalysis($stmts),
+            );
 
-        if ($passesKeys) {
-            $analysis->holdUnreadKeys();
-        }
+            if ($analysis === null) {
+                return new ResourceAnalysis; // @codeCoverageIgnore
+            }
 
-        return $this->ownMethodShaped($analysis, $members);
+            if ($passesKeys) {
+                $analysis->holdUnreadKeys();
+            }
+
+            return $this->ownMethodShaped($analysis, $members);
+        });
     }
 
     /**
@@ -1218,6 +1227,22 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         } finally {
             $memo->markValueSite($outer);
         }
+    }
+
+    /**
+     * Run a frame's read, or a documented helper's argument read, as an extent of gaps where it is entered with the gap
+     * mode off: the warnings of each gap made in it and never stripped rise as it ends.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    private function inGapExtent(Closure $read): mixed
+    {
+        $memo = $this->memo ??= resolve(AnalysisMemo::class);
+
+        return $memo->showsGaps() ? $read() : DroppedUnionArms::extent($read);
     }
 
     /**
@@ -1345,6 +1370,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         bool $keepsUnresolvedNames,
         bool $fillsPositions,
     ): ResourceAnalysis {
+        // Until the merge fills them, every gap and open marker the body read leaves is stripped before it.
+        $analysis->stripGaps();
+
         resolve(ReturnShapeRefiner::class)->refine(
             $analysis,
             $method,
@@ -1515,8 +1543,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->readsKeylessAttributeNames = $methodName === 'toAttributes'
                 && JsonApiResources::is($this->scope->runtime->class->getName());
             $branches = [];
+            $returns = $this->collectReturnExpressions($stmts);
 
-            foreach ($this->collectReturnExpressions($stmts) as $returned) {
+            foreach ($returns as $returned) {
                 $branches[] = match (true) {
                     $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
                     $returned instanceof Array_ => $this->literalBranch($returned, $this->analyzeReturnArray($returned, $topLevel)),
@@ -1530,7 +1559,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $branches !== [] && ! in_array(null, $branches, true)
                 ? (count($branches) === 1
                     ? $branches[0]
-                    : $this->recordedMergeJoin($this->mergeReturnBranches($branches, dropsUntypedBranches: true), $branches))
+                    : $this->recordedMergeJoin(
+                        $this->mergeReturnBranches($branches, dropsUntypedBranches: true, returns: $returns, scope: $this->scope),
+                        $branches,
+                        $returns,
+                    ))
                 : $this->analyzeFirstReturn($stmts, $topLevel);
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
@@ -1547,7 +1580,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames, bool $printsArms): ResourceAnalysis
     {
-        $writes = new LiteralWrites;
+        $writes = new LiteralWrites($array, $this->scope);
         $arms = $printsArms && array_any($array->items, static fn (ArrayItem $item): bool => $item->unpack)
             ? new InlineArrayHandler()->planArms($array->items, $this->scope, $this)
             : null;

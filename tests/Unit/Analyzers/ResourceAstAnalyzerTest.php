@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\GapModeLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\GapModeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
@@ -112,6 +113,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
@@ -8079,3 +8081,29 @@ it('reads a model accessor under a typed key in the gap mode, and a caster body 
         ->and(gapModeHelperReads())->toBe(['summaryText' => 'gaps', 'label' => 'plain'])
         ->and(gapModeReads('/^caster-body:([^@]+)@/'))->toBe([GapModeLabelCast::class => 'plain']);
 })->group('gap-mode');
+
+it('keeps a gap in the gap mode for a spread helper\'s return that leaves a key untyped with no write to name (PJ3b)', function (bool $shows) {
+    $analyzer = new class(new ReflectionClass(GapModeKeysResource::class)) extends ResourceAstAnalyzer
+    {
+        /**
+         * The helper join of two returns, the second leaving `k` untyped.
+         */
+        public function joinedReturns(): string
+        {
+            [$typed, $untyped] = [new ResourceAnalysis, new ResourceAnalysis];
+            $typed->addProperty('k', ['type' => 'string', 'optional' => false]);
+            $untyped->addProperty('k', ['type' => 'unknown', 'optional' => false]);
+            $returns = [new Variable('typed'), new Variable('untyped')];
+
+            return $this->recordedMergeJoin(
+                $this->mergeReturnBranches([$typed, $untyped], dropsUntypedBranches: true, returns: $returns, scope: $this->analysisScope()),
+                [$typed, $untyped],
+                $returns,
+            )->properties[0]['type'];
+        }
+    };
+    $type = $shows ? resolve(AnalysisMemo::class)->showingGaps($analyzer->joinedReturns(...)) : $analyzer->joinedReturns();
+
+    expect(VisibleGaps::stripped($type)[0])->toBe('string')
+        ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
+})->with([false, true]);

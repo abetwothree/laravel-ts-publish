@@ -101,7 +101,11 @@ final class VisibleGaps
 
         $rest = array_diff($arms, $gaps);
 
-        return [$rest === [] ? 'unknown' : implode(' | ', $rest), $gaps];
+        return [match (count($rest)) {
+            0 => 'unknown',
+            1 => TsTypeShape::loneArm(reset($rest)),
+            default => implode(' | ', $rest),
+        }, $gaps];
     }
 
     /**

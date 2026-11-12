@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\User;
@@ -48,3 +50,41 @@ it('queues the enums a member wraps on the object\'s enum queue, as their tokens
         ->and($result['embeddedEnumFqcns'] ?? [])->toBe([CrmStatus::class, Status::class, Role::class])
         ->and($result)->not->toHaveKey('embeddedEnumResourceFqcns');
 })->with(['tolki on' => [true], 'tolki off' => [false]]);
+
+it('prints the open marker in the gap mode where the object may hold keys no name names, and none out of it', function (array $properties, array $arms, bool $shows, string $type) {
+    $analysis = new MethodAnalysis;
+
+    foreach ($properties as $name => $value) {
+        $analysis->addProperty($name, ['type' => $value, 'optional' => false]);
+    }
+
+    $analysis->holdUnreadKeys();
+    $read = fn (): array => new InlineObjectResult()->of($analysis, $arms);
+    $printed = $shows ? resolve(AnalysisMemo::class)->showingGaps($read) : $read();
+
+    expect($printed['type'])->toBe($type)
+        ->and($printed['openReadings'] ?? [])->toContain("\0".VisibleGaps::stripped($type)[0]);
+})->with([
+    'a literal, the mode off' => [['a' => 'string'], [], false, '{ a: string }'],
+    'a literal, the mode on' => [['a' => 'string'], [], true, '{ a: string; #$open: unknown }'],
+    'a member holding a gap' => [['a' => 'string | $gap1'], [], true, '{ a: string | $gap1; #$open: unknown }'],
+    'arms only' => [[], [['type' => '{ b: number }', 'result' => ['type' => '{ b: number }', 'optional' => false]]], true, '{ b: number } & { #$open: unknown }'],
+    'arms beside keys' => [['a' => 'string'], [['type' => '{ b: number }', 'result' => ['type' => '{ b: number }', 'optional' => false]]], true, "Omit<{ b: number }, 'a'> & { a: string; #\$open: unknown }"],
+]);
+
+it('reads a literal holding no named key as a Record, with no marker', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->holdUnreadKeys();
+
+    expect(resolve(AnalysisMemo::class)->showingGaps(fn (): array => new InlineObjectResult()->of($analysis))['type'])
+        ->toBe('Record<string, unknown>');
+});
+
+it('prints no open marker beside a string-keyed Record arm, which already types every key', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->holdsUnnamedKeys = true;
+    $map = ['type' => 'Record<string, number>', 'result' => ['type' => 'Record<string, number>', 'optional' => false]];
+
+    expect(resolve(AnalysisMemo::class)->showingGaps(fn (): array => new InlineObjectResult()->of($analysis, [$map]))['type'])
+        ->toBe('Record<string, number>');
+});

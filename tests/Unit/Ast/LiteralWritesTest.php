@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use PhpParser\Node\Expr\Variable;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -307,3 +311,14 @@ it('keeps a map\'s arm after a key holding a gap where the key\'s gap-free value
 
     expect(foldedInto($writes)->spreadArms())->toBe([$resource, literalMapArm('number | $gap2', checksKeys: true)['arm']]);
 });
+
+it('keeps a gap in the gap mode where a key\'s later source may write a value no rule types, which the join drops (PJ10b)', function (bool $shows) {
+    $writes = new LiteralWrites(new Variable('literal'), new AnalysisScope(new ReflectionClass(stdClass::class)));
+    $writes->recordKey('k', ['type' => 'string', 'optional' => false], 0);
+    $writes->recordKeys([['k', ['type' => 'unknown', 'optional' => true, 'absent' => true]]], ['type' => '{ k?: unknown }', 'optional' => false], 1);
+    $fold = static fn (): array => array_column(foldedInto($writes)->properties, 'type', 'name');
+    $type = ($shows ? resolve(AnalysisMemo::class)->showingGaps($fold) : $fold())['k'];
+
+    expect(VisibleGaps::stripped($type)[0])->toBe('string')
+        ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
+})->with([false, true]);

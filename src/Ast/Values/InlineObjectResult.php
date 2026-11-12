@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
@@ -124,10 +125,15 @@ final class InlineObjectResult
         $spreadArmTypes = array_values(array_unique(
             $this->buildSpreadArmTypes($spreadArms, array_values(array_unique(array_column($analysis->properties, 'name')))),
         ));
+        // In the gap mode, an object that may hold keys no name names carries the open marker, which a merge fills; a
+        // string-keyed Record beside it already types every key.
+        $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && resolve(AnalysisMemo::class)->showsGaps()
+            && ! array_any($spreadArmTypes, static fn (string $arm): bool => (TsTypeShape::recordArguments($arm)[0] ?? null) === 'string');
+        $object = fn (): string => VisibleGaps::opened($this->buildInlineObjectType($analysis), $open);
         $type = match (true) {
-            $spreadArms === [] => $this->buildInlineObjectType($analysis),
-            $analysis->properties === [] => implode(' & ', $spreadArmTypes),
-            default => implode(' & ', [...$spreadArmTypes, $this->buildInlineObjectType($analysis)]),
+            $spreadArms === [] => $object(),
+            $analysis->properties === [] => implode(' & ', [...$spreadArmTypes, ...($open ? ['{ '.VisibleGaps::MARKER.' }'] : [])]),
+            default => implode(' & ', [...$spreadArmTypes, $object()]),
         };
 
         $result = ['type' => $type, 'optional' => false];

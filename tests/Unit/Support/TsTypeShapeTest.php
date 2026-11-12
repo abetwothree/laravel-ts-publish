@@ -355,6 +355,19 @@ describe('unionArm', function () {
     ]);
 });
 
+describe('loneArm', function () {
+    test('takes off the parentheses unionArm() gives an arrow, and leaves any other arm', function (string $arm, string $expected) {
+        expect(TsTypeShape::loneArm($arm))->toBe($expected);
+    })->with([
+        'a grouped arrow' => ['(() => void)', '() => void'],
+        'a grouped arrow returning a union' => ['((a: string) => A | B)', '(a: string) => A | B'],
+        'a bare arrow' => ['() => void', '() => void'],
+        'a grouped union' => ['(A | B)', '(A | B)'],
+        'a list of arrows' => ['(() => void)[]', '(() => void)[]'],
+        'two groups side by side' => ['(() => A) & (() => B)', '(() => A) & (() => B)'],
+    ]);
+});
+
 describe('groupedArm', function () {
     test('parenthesizes an arm holding a top-level intersection or arrow, so a union reads as its arms', function (string $arm, string $expected) {
         expect(TsTypeShape::groupedArm($arm))->toBe($expected);

@@ -966,6 +966,11 @@ typed key's value in the mode, and `readingLevel()` each read landing keys besid
 return or write, a helper's bound arguments or a `merge()` closure's defaults. A value read clears the set, `share()` and
 `provide()` type no key of their own, and a caster body reads with the mode hidden.
 
+In the mode, each drop entry appends a `$gapN` arm and holds its warning, and `InlineObjectResult::of()` marks an object
+that may hold unnamed keys with `#$open: unknown`. Every reader decides on the text with both set aside
+(`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The frames' shared tail strips them
+(`MethodAnalysis::stripGaps()`) before the merge, so nothing published moves; `.github/scripts/gap-gate.sh` proves it.
+
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
 proves each recording site still fires. A `DroppedUnionArms::record()` call, or an `[$arm, '<site>']` pair an entry

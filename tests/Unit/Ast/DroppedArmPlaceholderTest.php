@@ -190,7 +190,7 @@ test('a merge call and a spread helper that leave out a value they cannot type w
             'nested' => 'string',
             'merged_rows' => 'never[]',
         ]);
-});
+})->group('gap-mode');
 
 test('sends the value a merge call or a spread helper leaves out of its published type', function () {
     $tag = new Tag;

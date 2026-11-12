@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
@@ -156,7 +158,7 @@ final class InlineArrayHandler implements ExpressionHandler
             $armKeys[] = $keys;
         }
 
-        $keys = count($armKeys) === 1 ? $armKeys[0] : self::unionKeys($armKeys);
+        $keys = count($armKeys) === 1 ? $armKeys[0] : self::unionKeys($armKeys, $value, $scope);
 
         return count($objects) === count($arms) ? $keys : ObjectMembers::eachOptional($keys);
     }
@@ -598,13 +600,16 @@ final class InlineArrayHandler implements ExpressionHandler
 
     /**
      * The keys a union of objects writes (D15): per key the arms' values as one union, a key some arm lacks one the
-     * spread may leave unset, one an arm's value may remove one it may remove.
+     * spread may leave unset, one an arm's value may remove one it may remove. In the gap mode, a value the union left
+     * out, which no rule typed, leaves a gap arm at the spread in its place.
      *
      * @param  non-empty-list<KeyedValues>  $arms  each object arm's keys
      * @return KeyedValues
      */
-    private static function unionKeys(array $arms): array
+    private static function unionKeys(array $arms, Expr $value, AnalysisScope $scope): array
     {
+        $gaps = resolve(AnalysisMemo::class)->showsGaps();
+
         $values = [];
 
         foreach ($arms as $keys) {
@@ -620,6 +625,10 @@ final class InlineArrayHandler implements ExpressionHandler
             $removed = array_any($results, static fn (array $result): bool => $result['optional'] && (! ($result['absent'] ?? false) || ($result['removed'] ?? false)));
             $joined = ValueResult::unionResults($results);
             unset($joined['absent'], $joined['removed']);
+
+            if ($gaps && $joined['type'] !== 'unknown' && in_array('unknown', array_column($results, 'type'), true)) {
+                $joined['type'] = VisibleGaps::withArm($joined['type'], DroppedUnionArms::gap($scope, 'union-spread-key', $value, $joined['type']));
+            }
 
             $union[] = [(string) $name, [
                 ...$joined,

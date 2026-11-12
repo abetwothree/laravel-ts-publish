@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
@@ -644,12 +645,13 @@ trait ReadsReturnedVariables
      *
      * @param  TAnalysis  $joined
      * @param  list<TAnalysis>  $branches
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      * @return TAnalysis
      */
-    protected function recordedMergeJoin(MethodAnalysis $joined, array $branches): MethodAnalysis
+    protected function recordedMergeJoin(MethodAnalysis $joined, array $branches, array $returns = []): MethodAnalysis
     {
         $notes = array_map(fn (MethodAnalysis $branch): array => $this->branchNotes[$branch] ?? [], $branches);
-        $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'merge-branch-join']);
+        $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'merge-branch-join'], $returns);
         // A join can be a branch of another, as a merged spread helper's is, which names what its branches saw.
         $this->branchNotes ??= new WeakMap;
         $this->branchNotes[$joined] = array_merge(...$notes);
@@ -1331,10 +1333,13 @@ trait ReadsReturnedVariables
      * @param  list<TAnalysis>  $branches
      * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
      * @param  Closure(Expr): LeftOutArm  $leftOut  one value left out, beside its join's site
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      */
-    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $leftOut): void
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $leftOut, array $returns = []): void
     {
         if (array_merge(...$notes) === []) {
+            $this->gapDroppedReturns($joined, $branches, $returns);
+
             return;
         }
 
@@ -1364,6 +1369,38 @@ trait ReadsReturnedVariables
                 $union = [...ValueResult::unknown(), 'type' => $property['type']];
                 $union = DroppedUnionArms::leftOutOfJoin($union, $left, $this->analysisScope());
                 $joined->properties[$at]['type'] = $union['type'];
+            }
+        }
+    }
+
+    /**
+     * In the gap mode, give a key a gap arm for each method return whose branch left it untyped beside a typed one, a
+     * drop no untyped write names; out of it, the join stays as it is.
+     *
+     * @param  list<TAnalysis>  $branches
+     * @param  list<Node>  $returns  each branch's returned value
+     */
+    private function gapDroppedReturns(MethodAnalysis $joined, array $branches, array $returns): void
+    {
+        if ($returns === [] || ! resolve(AnalysisMemo::class)->showsGaps()) {
+            return;
+        }
+
+        $types = array_map(
+            fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'),
+            $branches,
+        );
+
+        foreach ($joined->properties as $at => $property) {
+            if ($property['type'] === 'unknown') {
+                continue;
+            }
+
+            foreach ($types as $index => $branchTypes) {
+                if (isset($returns[$index]) && ($branchTypes[$property['name']] ?? null) === 'unknown') {
+                    $id = DroppedUnionArms::gap($this->analysisScope(), 'merge-branch-join', $returns[$index], $property['type']);
+                    $joined->properties[$at]['type'] = VisibleGaps::withArm($joined->properties[$at]['type'], $id);
+                }
             }
         }
     }

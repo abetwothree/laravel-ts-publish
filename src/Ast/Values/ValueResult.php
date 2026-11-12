@@ -476,6 +476,12 @@ final class ValueResult
      */
     public static function unionResults(array $results, bool $countMembers = false): array
     {
+        // Text alone keeps two same-named classes apart only while no strip collapses one of them onto the other.
+        if (array_any($results, static fn (array $inner): bool => VisibleGaps::stripped($inner['type'])[0] !== $inner['type'])
+            && self::spellsTwoClassesAlike(array_values(array_filter($results, static fn (array $inner): bool => $inner['type'] !== 'unknown')))) {
+            return self::unionLiftingGaps($results, $countMembers);
+        }
+
         /** @var list<string> $types the types mergeUnion() counts: each arm's whole type, or each member of it */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
@@ -735,6 +741,29 @@ final class ValueResult
     public static function forgetEnumNames(): void
     {
         self::$enumNames = [];
+    }
+
+    /**
+     * The union of results spelling two classes alike, read on their texts with gaps and markers stripped, every gap
+     * their arms held lifted to the union's top, where a strip leaves the arms spelled alike as they are.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     * @return ValueExpressionResult
+     */
+    private static function unionLiftingGaps(array $results, bool $countMembers): array
+    {
+        $gaps = [];
+        $bare = [];
+
+        foreach ($results as $inner) {
+            [$type, $ids] = VisibleGaps::stripped($inner['type']);
+            array_push($gaps, ...array_map(VisibleGaps::arm(...), $ids));
+            $bare[] = [...$inner, 'type' => $type];
+        }
+
+        $union = self::unionResults($bare, $countMembers);
+
+        return [...$union, 'type' => VisibleGaps::restored($union['type'], $gaps)];
     }
 
     /**

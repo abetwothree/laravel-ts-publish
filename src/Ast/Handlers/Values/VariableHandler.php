@@ -134,11 +134,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
                 // A parameter bound from a join's element warns of what that join left out, as a receiver's read does.
                 $held = isset($scope->leftOutParameters[$expr->var->name]) ? $receivers->resolve($expr->var, $scope) : null;
 
-                if ($held !== null) {
-                    $receivers->warnOfLeftOut($held, $attribute, $scope, $engine);
-                }
-
-                return $attribute;
+                return $held === null ? $attribute : $receivers->warnOfLeftOut($held, $attribute, $scope, $engine);
             }
         }
 

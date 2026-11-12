@@ -101,8 +101,7 @@ final class ReceiverMemberReader
             return null;
         }
 
-        DroppedUnionArms::warnOfDeclined($declined, $scope);
-        $union = count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
+        $union = DroppedUnionArms::declined(count($results) === 1 ? $results[0] : ValueResult::unionResults($results), $declined, $scope);
 
         return $readsNull ? [...$union, 'type' => TsTypeString::withNullArm($union['type'])] : $union;
     }

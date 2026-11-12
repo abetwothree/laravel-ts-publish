@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
@@ -12,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLocalModelResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -674,3 +676,13 @@ it('opens the host for a value its marker opens, as for its mark, and neither fo
     'its mark beside a signature' => [['type' => '{ by: string; [key: string]: number }', 'openReadings' => ["\0{ by: string; [key: string]: number }"]], true, 1],
     'a gap arm' => [['type' => '{ by: string } | $gap1'], false, 0],
 ]);
+
+it('keeps a gap in the gap mode where a union of objects spread leaves out a value no rule types (PJ11b)', function (bool $shows) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $read = static fn (): ?array => InlineArrayHandler::spreadKeys(new Variable('held'), ['type' => '{ k: string } | { k: unknown }', 'optional' => false], $scope);
+    $keys = $shows ? resolve(AnalysisMemo::class)->showingGaps($read) : $read();
+    $type = $keys[0][1]['type'] ?? '';
+
+    expect(VisibleGaps::stripped($type)[0])->toBe('string')
+        ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
+})->with([false, true]);

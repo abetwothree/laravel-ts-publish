@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -15,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use LogicException;
+use PhpParser\Node;
 
 /**
  * The key writes of one array literal, held apart from the analysis they become: the item loop records each item's
@@ -69,9 +73,9 @@ final class LiteralWrites
     private MethodAnalysis $wide;
 
     /**
-     * Start with no write.
+     * Start with no write, for the literal at $literal read in $scope, where a joined key's dropped value leaves a gap.
      */
-    public function __construct()
+    public function __construct(private readonly ?Node $literal = null, private readonly ?AnalysisScope $scope = null)
     {
         $this->wide = new MethodAnalysis;
     }
@@ -526,6 +530,34 @@ final class LiteralWrites
 
         $joined = new MethodAnalysis;
         BranchJoin::joinInto($joined, $slices, dropsUntypedBranches: true, keepsFirstUntyped: true, keepsClassesApart: true);
+
+        return $this->withDroppedGap($joined, $slices);
+    }
+
+    /**
+     * In the gap mode, a joined key the join typed without a later source's untyped value, which may not be written,
+     * with a gap arm in that value's place; out of it, the key as it is.
+     *
+     * @param  list<MethodAnalysis>  $slices
+     */
+    private function withDroppedGap(MethodAnalysis $joined, array $slices): MethodAnalysis
+    {
+        $property = $joined->properties[0] ?? null;
+
+        if ($property === null || $this->literal === null || $this->scope === null || $property['type'] === 'unknown'
+            || ! resolve(AnalysisMemo::class)->showsGaps()) {
+            return $joined;
+        }
+
+        $dropped = array_any(
+            array_slice($slices, 1),
+            static fn (MethodAnalysis $slice): bool => in_array('unknown', array_column($slice->properties, 'type'), true),
+        );
+
+        if ($dropped) {
+            $id = DroppedUnionArms::gap($this->scope, 'fold-join', $this->literal, $property['type']);
+            $joined->properties[0]['type'] = VisibleGaps::withArm($property['type'], $id);
+        }
 
         return $joined;
     }

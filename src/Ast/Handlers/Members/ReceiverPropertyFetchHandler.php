@@ -79,7 +79,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             return null;
         }
 
-        $receivers->warnOfLeftOut($receiver, $merged, $scope, $engine);
+        $merged = $receivers->warnOfLeftOut($receiver, $merged, $scope, $engine);
 
         if ($expr instanceof NullsafePropertyFetch || $receiver->shortCircuits) {
             $merged['type'] = TsTypeString::withNullArm($merged['type']);

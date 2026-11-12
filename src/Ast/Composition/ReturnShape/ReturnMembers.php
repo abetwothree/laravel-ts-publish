@@ -24,7 +24,7 @@ use ReflectionMethod;
 final class ReturnMembers
 {
     /**
-     * The gap gate's switch: while on, every key reads as typed, so a run proves the gap mode changes no published byte.
+     * The gap gate's switch: while on, every key reads as typed, so a run proves the gap mode moves no published byte.
      *
      * @internal
      */

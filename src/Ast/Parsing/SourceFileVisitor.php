@@ -8,8 +8,8 @@ use PhpParser\Node;
 use PhpParser\NodeVisitorAbstract;
 
 /**
- * Writes the file a node was parsed from onto it, so a node keeps one identity, its file and position, across the parses
- * of a file AstParser's cache evicts and reads again.
+ * Writes the file a node was parsed from onto it, so a node keeps one identity, its file and position, across the
+ * parses of a file AstParser's cache evicts and reads again.
  *
  * @internal
  */

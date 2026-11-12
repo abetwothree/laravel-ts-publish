@@ -234,3 +234,14 @@ describe('marker', function () {
         'a nullable object' => ['{ a: number } | null'],
     ]);
 });
+
+// A union groups an arrow only beside another arm, so the arrow a gap left alone reads as it did before the gap came.
+test('gives back a lone arrow without the parentheses its gap arm gave it', function () {
+    $gapped = VisibleGaps::withArm('() => string', 3);
+
+    expect($gapped)->toBe('(() => string) | $gap3')
+        ->and(VisibleGaps::stripped($gapped)[0])->toBe('() => string')
+        ->and(VisibleGaps::aside($gapped)[0])->toBe('() => string')
+        ->and(VisibleGaps::stripped('{ cb: (() => string) | $gap3 }')[0])->toBe('{ cb: () => string }')
+        ->and(VisibleGaps::stripped('(() => string) | null | $gap3')[0])->toBe('(() => string) | null');
+});

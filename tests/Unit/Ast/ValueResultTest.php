@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\App\Enums\Priority;
@@ -737,4 +738,18 @@ describe('gap arms', function () {
         expect(ValueResult::closedToDottedKeys($union))->toBeTrue()
             ->and($marked['openReadings'] ?? [])->toBe(["\0string | null"]);
     });
+});
+
+test('keeps two same-named classes apart through a strip: their arms\' gaps rise to the union\'s top', function () {
+    $union = ValueResult::unionResults([
+        ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class]],
+        ['type' => '(User | $gap1)[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+    ]);
+    $plain = ValueResult::unionResults([
+        ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class]],
+        ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+    ]);
+
+    expect(VisibleGaps::stripped($union['type'])[0])->toBe($plain['type'])
+        ->and(VisibleGaps::ids($union['type']))->toBe([1]);
 });

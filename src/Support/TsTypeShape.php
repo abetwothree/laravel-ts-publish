@@ -280,6 +280,16 @@ final class TsTypeShape
     }
 
     /**
+     * One union arm as it stands alone: an arrow without the parentheses unionArm() gives it beside others.
+     */
+    public static function loneArm(string $arm): string
+    {
+        $inner = self::isWrapped($arm, '(', ')') ? substr($arm, 1, -1) : null;
+
+        return $inner !== null && self::unionArm($inner) === $arm ? $inner : $arm;
+    }
+
+    /**
      * One arm of a union as it joins others, an intersection parenthesized like an arrow, so the union reads as arms.
      */
     public static function groupedArm(string $arm): string

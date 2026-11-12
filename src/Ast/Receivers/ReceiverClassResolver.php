@@ -679,12 +679,15 @@ final class ReceiverClassResolver
      * object no class names, and `$this` read as a class that cannot answer the member. A scalar, an array or `null`
      * holds no object a member read could answer, so it is left out quietly.
      *
+     * The read is handed back, with a gap arm for each write it warns of in the gap mode.
+     *
      * @param  ValueExpressionResult  $read
+     * @return ValueExpressionResult
      */
-    public function warnOfLeftOut(ReceiverType $receiver, array $read, AnalysisScope $scope, ExpressionEngine $engine): void
+    public function warnOfLeftOut(ReceiverType $receiver, array $read, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         if ($receiver->leftOut === [] || $read['type'] === 'unknown') {
-            return;
+            return $read;
         }
 
         $untyped = [];
@@ -715,9 +718,7 @@ final class ReceiverClassResolver
             }
         }
 
-        DroppedUnionArms::warnOfLeftOut($untyped, $scope);
-        DroppedUnionArms::warnOfUnnamedObject($objects, $scope);
-        DroppedUnionArms::warnOfDeclined($readAs, $scope);
+        return DroppedUnionArms::leftOutOfRead($read, $untyped, $objects, $readAs, $scope);
     }
 
     /**

@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use PhpParser\Node\Expr\Variable;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -121,4 +125,27 @@ test('joinInto() joins a multi-source key whose sources hold gaps as their gap-f
     expect($joined(['string | $gap1', 'unknown']))->toBe('string | $gap1')
         ->and($joined(['null | $gap1', 'unknown']))->toBe('unknown')
         ->and($joined(['string', 'string | $gap1'], false))->toBe('string | $gap1');
+});
+
+test('joinInto() keeps a gap in the mode where a method return\'s fill another branch spells unalike is dropped (PJ8)', function () {
+    $fill = joinBranch('User | User');
+    $fill->declaredTokenFqcns['k'] = [null, User::class];
+    $returns = [new Variable('fill'), new Variable('model')];
+    $joined = static function (bool $shows) use ($fill, $returns): string {
+        $target = new MethodAnalysis;
+        $join = static fn () => BranchJoin::joinInto(
+            $target,
+            [$fill, joinBranch('User', User::class)],
+            dropsUntypedBranches: true,
+            returns: $returns,
+            scope: new AnalysisScope(new ReflectionClass(stdClass::class)),
+        );
+        $shows ? resolve(AnalysisMemo::class)->showingGaps($join) : $join();
+
+        return $target->properties[0]['type'];
+    };
+
+    expect($joined(false))->toBe('User')
+        ->and(VisibleGaps::aside($joined(true)))->toMatchArray([0 => 'User'])
+        ->and(VisibleGaps::ids($joined(true)))->toHaveCount(1);
 });

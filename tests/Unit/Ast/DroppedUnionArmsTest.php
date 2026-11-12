@@ -5,10 +5,12 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\SourceFileVisitor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeKeysResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
@@ -92,7 +94,7 @@ function inGapMode(bool $shows, Closure $read): mixed
 
 dataset('gap modes', ['gaps hidden' => [false], 'gaps shown' => [true]]);
 
-test('leftOut() records and counts each arm under its site, and warns of the placeholder it leaves as the sites did', function (bool $shows) {
+test('leftOut() records and counts each arm under its site, and warns of its placeholder, held by a gap in the mode', function (bool $shows) {
     [$first, $second] = [droppedArm('first'), droppedArm('second')];
     $union = droppedArmsUnion('null');
     $dropped = DroppedUnionArms::dropped();
@@ -108,12 +110,17 @@ test('leftOut() records and counts each arm under its site, and warns of the pla
         $audit = DroppedUnionArms::stop();
     }
 
-    expect($returned)->toBe($union)
+    $held = droppedArmsRunMessages();
+    DroppedUnionArms::stripped(VisibleGaps::ids($returned['type']));
+
+    expect(VisibleGaps::stripped($returned['type'])[0])->toBe($union['type'])
+        ->and(count(VisibleGaps::ids($returned['type'])))->toBe($shows ? 2 : 0)
         ->and(DroppedUnionArms::dropped() - $dropped)->toBe(2)
         ->and($audit)->toBe([
             ['subject' => stdClass::class, 'line' => 7, 'expression' => '$first', 'site' => 'match-arm'],
             ['subject' => stdClass::class, 'line' => 7, 'expression' => '$second', 'site' => 'coalesce-right'],
         ])
+        ->and($held)->toBe($shows ? [] : droppedArmsRunMessages())
         ->and(droppedArmsRunMessages())->toBe([droppedArmPlaceholderMessage('$first'), droppedArmPlaceholderMessage('$second')]);
 })->with('gap modes');
 
@@ -131,13 +138,15 @@ test('leftOut() warns of nothing where a typed arm stands, and records nothing w
         $audit = DroppedUnionArms::stop();
     }
 
-    expect($returned)->toBe([$union, droppedArmsUnion('null')])
+    expect(VisibleGaps::stripped($returned[0]['type'])[0])->toBe($union['type'])
+        ->and(count(VisibleGaps::ids($returned[0]['type'])))->toBe($shows ? 1 : 0)
+        ->and($returned[1])->toBe(droppedArmsUnion('null'))
         ->and(DroppedUnionArms::dropped() - $dropped)->toBe(1)
         ->and(array_column($audit, 'site'))->toBe(['ternary-narrowed'])
         ->and(droppedArmsRunMessages())->toBe([]);
 })->with('gap modes');
 
-test('leftOutOfJoin() records each arm, and warns of a placeholder as leftOut() does and of a typed union as left out', function (bool $shows) {
+test('leftOutOfJoin() records each arm and warns of a placeholder as leftOut() does, of a typed union as left out', function (bool $shows) {
     [$placeholder, $typed] = [droppedArm('placeholder'), droppedArm('typed')];
     $dropped = DroppedUnionArms::dropped();
     DroppedUnionArms::start();
@@ -151,9 +160,14 @@ test('leftOutOfJoin() records each arm, and warns of a placeholder as leftOut() 
         $audit = DroppedUnionArms::stop();
     }
 
-    expect($returned)->toBe([droppedArmsUnion('never[]'), droppedArmsUnion('string')])
+    $held = droppedArmsRunMessages();
+    DroppedUnionArms::stripped([...VisibleGaps::ids($returned[0]['type']), ...VisibleGaps::ids($returned[1]['type'])]);
+
+    expect(array_map(static fn (array $union): string => VisibleGaps::stripped($union['type'])[0], $returned))->toBe(['never[]', 'string'])
+        ->and(array_map(static fn (array $union): int => count(VisibleGaps::ids($union['type'])), $returned))->toBe($shows ? [1, 1] : [0, 0])
         ->and(DroppedUnionArms::dropped() - $dropped)->toBe(2)
         ->and(array_column($audit, 'site'))->toBe(['walk-branch-join', 'binding-join'])
+        ->and($held)->toBe($shows ? [] : droppedArmsRunMessages())
         ->and(droppedArmsRunMessages())->toBe([
             droppedArmPlaceholderMessage('$placeholder', '`never[]`, an array that is always empty'),
             droppedArmLeftOutMessage('$typed'),
@@ -429,3 +443,40 @@ test('a placeholder beside gap arms warns as the placeholder alone', function (s
     'only gaps' => ['$gap1', null],
     'a type' => ['string | $gap1', null],
 ]);
+
+test('a receiver\'s join leaves a gap per write it warns of in the gap mode, each warning held until a strip (PJ4b-d)', function (bool $shows) {
+    [$untyped, $object, $declined] = [droppedArm('untyped'), droppedArm('object'), droppedArm('declined')];
+    $scope = droppedArmsScope();
+    $read = inGapMode($shows, fn (): array => DroppedUnionArms::leftOutOfRead(droppedArmsUnion('string'), [$untyped], [$object], [], $scope));
+    $member = inGapMode($shows, fn (): array => DroppedUnionArms::declined(droppedArmsUnion('number'), [['name' => 'p', 'value' => $declined]], $scope));
+    $held = droppedArmsRunMessages();
+    DroppedUnionArms::stripped([...VisibleGaps::ids($read['type']), ...VisibleGaps::ids($member['type'])]);
+
+    expect([VisibleGaps::stripped($read['type'])[0], VisibleGaps::stripped($member['type'])[0]])->toBe(['string', 'number'])
+        ->and([count(VisibleGaps::ids($read['type'])), count(VisibleGaps::ids($member['type']))])->toBe($shows ? [2, 1] : [0, 0])
+        ->and($held)->toHaveCount($shows ? 0 : 3)
+        ->and(droppedArmsRunMessages())->toHaveCount(3)
+        ->and(droppedArmsRunMessages()[0])->toBe(droppedArmLeftOutMessage('$untyped'));
+})->with('gap modes');
+
+test('a gap stripped warns once, as the drop warned with the mode off, and one an extent leaves unstripped as it ends', function () {
+    $arm = droppedArm('arm');
+    $memo = resolve(AnalysisMemo::class);
+    $analysis = new MethodAnalysis;
+    $union = $memo->showingGaps(fn (): array => DroppedUnionArms::leftOut(droppedArmsUnion('null'), [[$arm, 'match-arm']], droppedArmsScope()));
+    $analysis->addProperty('a', $union);
+    $analysis->addProperty('b', $union);
+    $analysis->addProperty('c', $union);
+    $kept = droppedArmsRunMessages();
+    $analysis->stripGaps();
+    $stripped = droppedArmsRunMessages();
+    AnalysisWarnings::reset();
+    DroppedUnionArms::extent(fn (): array => $memo->showingGaps(
+        fn (): array => DroppedUnionArms::leftOut(droppedArmsUnion('null'), [[droppedArm('dropped'), 'match-arm']], droppedArmsScope()),
+    ));
+
+    expect($kept)->toBe([])
+        ->and(array_column($analysis->properties, 'type'))->toBe(['null', 'null', 'null'])
+        ->and($stripped)->toBe([droppedArmPlaceholderMessage('$arm')])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmPlaceholderMessage('$dropped')]);
+});

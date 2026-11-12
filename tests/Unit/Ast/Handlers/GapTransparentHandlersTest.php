@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
@@ -55,4 +56,41 @@ it('reads a literal spreading a value that holds a gap arm or the open marker as
     'a value spread after a key' => ["['k' => 1, ...%s]", '{ a: string; k?: number }', '{ a: string; k?: number; #$open: unknown }'],
     'a map spread after a key' => ["['k' => 1, ...%s]", 'Record<string, number>', '{ [key: string]: number; #$open: unknown }'],
     'a union of objects spread' => ["['k' => 1, ...%s]", '{ a: string } | { b: number }', '{ a: string; #$open: unknown } | { b: number }'],
+]);
+
+/**
+ * The type an expression reads as through PostResource over a Post, with the gap mode on or off.
+ */
+function gapModeType(string $php, bool $shows): string
+{
+    $read = static fn (): string => gappedValue($php, PostResource::class, Post::class)['type'];
+    $memo = resolve(AnalysisMemo::class);
+
+    return $shows ? $memo->showingGaps($read) : $memo->hidingGaps($read);
+}
+
+// Each site a union arm is dropped at keeps it as one gap arm in the mode, and drops it as before out of it.
+it('keeps each arm a drop site leaves out as a gap arm in the gap mode, and leaves it out with the mode off', function (string $php, string $published) {
+    $shown = gapModeType($php, true);
+
+    expect(gapModeType($php, false))->toBe($published)
+        ->and(VisibleGaps::stripped($shown)[0])->toBe($published)
+        ->and(VisibleGaps::ids($shown))->toHaveCount(1)
+        ->and(VisibleGaps::aside($shown)[0])->toBe($published);
+})->with([
+    'a ternary' => ['$this->resource->id > 0 ? $this->resource->title : cache(\'x\')', 'string'],
+    'a ternary leaving only null' => ['$this->resource->id > 0 ? null : cache(\'x\')', 'null'],
+    'a match arm' => ['match (true) { $this->resource->id > 0 => $this->resource->title, default => cache(\'x\') }', 'string'],
+    'a coalesce\'s right side' => ['$this->resource->title ?? cache(\'x\')', 'string'],
+    'a closure union' => ['$this->when(true, function () { if ($this->resource->id > 0) { return $this->resource->title; } return cache(\'x\'); })', 'string'],
+    'data_get()\'s default' => ['data_get($this->resource, \'title\', cache(\'x\'))', 'string | null'],
+    'a conditional method\'s default' => ['$this->when($this->resource->id > 0, $this->resource->title, cache(\'x\'))', 'string'],
+]);
+
+// A later arm's keys are read off its printed object, which in the gap mode may carry the open marker.
+it('writes the keys a later model or resource arm sends over the keys before it alike in either mode', function (string $php) {
+    expect(VisibleGaps::stripped(gapModeType($php, true))[0])->toBe(gapModeType($php, false));
+})->with([
+    'a model arm after a key' => ["['title' => 1, ...\$this->resource->author->toArray()]"],
+    'a model arm between keys' => ["['id' => 'x', ...\$this->resource->toArray(), 'title' => 2]"],
 ]);

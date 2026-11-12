@@ -91,7 +91,7 @@ final class TypeRewriter
     }
 
     /**
-     * Union arms joined, `unknown` when none is left, each grouped once two or more join.
+     * Union arms joined, `unknown` when none is left, each grouped once two or more join and a lone one ungrouped.
      *
      * @param  list<string>  $arms
      */
@@ -99,7 +99,7 @@ final class TypeRewriter
     {
         return match (count($arms)) {
             0 => 'unknown',
-            1 => $arms[0],
+            1 => TsTypeShape::loneArm($arms[0]),
             default => implode(' | ', array_map(TsTypeShape::unionArm(...), $arms)),
         };
     }

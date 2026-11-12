@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -927,21 +928,32 @@ class MethodAnalysis
      */
     public function rewritePropertyTypes(Closure $rewrite): void
     {
-        foreach ($this->properties as &$property) {
-            if (isset($this->casts[$property['name']]) || ($property['keepsKeys'] ?? false)) {
-                continue;
-            }
+        $this->rewriteTypes(
+            $rewrite,
+            fn (array $property): bool => ! isset($this->casts[$property['name']]) && ! ($property['keepsKeys'] ?? false),
+        );
+    }
 
-            $property['type'] = $rewrite($property['type']);
+    /**
+     * Take every gap arm and open marker out of the type, body type and fill of each property $strips takes, every one
+     * where it is null, and raise the warnings of each gap taken out.
+     *
+     * @param  (Closure(string): bool)|null  $strips  whether to strip a property, by its name
+     */
+    public function stripGaps(?Closure $strips = null): void
+    {
+        $ids = [];
+        $this->rewriteTypes(
+            static function (string $type) use (&$ids): string {
+                [$stripped, $gaps] = VisibleGaps::stripped($type);
+                array_push($ids, ...$gaps);
 
-            foreach (['bodyType', 'fillType'] as $field) {
-                if (isset($property[$field])) {
-                    $property[$field] = $rewrite($property[$field]);
-                }
-            }
-        }
+                return $stripped;
+            },
+            static fn (array $property): bool => $strips === null || $strips($property['name']),
+        );
 
-        unset($property);
+        DroppedUnionArms::stripped(array_values(array_unique($ids)));
     }
 
     /**
@@ -1104,5 +1116,30 @@ class MethodAnalysis
         }
 
         return array_values(array_unique($wrapped));
+    }
+
+    /**
+     * Rewrite the type, body type and fill of each property $takes takes.
+     *
+     * @param  Closure(string): string  $rewrite
+     * @param  Closure(AnalyzedProperty): bool  $takes
+     */
+    private function rewriteTypes(Closure $rewrite, Closure $takes): void
+    {
+        foreach ($this->properties as &$property) {
+            if (! $takes($property)) {
+                continue;
+            }
+
+            $property['type'] = $rewrite($property['type']);
+
+            foreach (['bodyType', 'fillType'] as $field) {
+                if (isset($property[$field])) {
+                    $property[$field] = $rewrite($property[$field]);
+                }
+            }
+        }
+
+        unset($property);
     }
 }

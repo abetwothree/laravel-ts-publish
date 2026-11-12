@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -12,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use PhpParser\Node;
 
 /**
  * Joins one key's branch types into one type, beside the token slots a declared text's arms bring to it, and keeps the
@@ -40,6 +44,7 @@ final class BranchJoin
      * ($keepsFirstUntyped), and two models or resources one name spells as two imported arms ($keepsClassesApart).
      *
      * @param  list<MethodAnalysis>  $analyses
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      */
     public static function joinInto(
         MethodAnalysis $target,
@@ -48,9 +53,11 @@ final class BranchJoin
         bool $keepsLoneNull = false,
         bool $keepsFirstUntyped = false,
         bool $keepsClassesApart = false,
+        array $returns = [],
+        ?AnalysisScope $scope = null,
     ): void {
         if ($dropsUntypedBranches) {
-            $analyses = self::withUnalikeFillsUntyped($analyses);
+            $analyses = self::withUnalikeFillsUntyped($analyses, $returns, $scope);
         }
 
         $branchCount = count($analyses);
@@ -199,15 +206,19 @@ final class BranchJoin
 
     /**
      * The branches a dropping join reads, each fill another branch spells unalike read as the untyped value it stood
-     * in for, so the join drops it and publishes the other branches as it did before the fill.
+     * in for, so the join drops it and publishes the other branches as it did before the fill. In the gap mode, a
+     * branch whose returned value $returns names reads as a gap there instead, which the join keeps beside the rest.
      *
      * @template T of MethodAnalysis
      *
      * @param  list<T>  $analyses
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      * @return list<T>
      */
-    public static function withUnalikeFillsUntyped(array $analyses): array
+    public static function withUnalikeFillsUntyped(array $analyses, array $returns = [], ?AnalysisScope $scope = null): array
     {
+        $gapScope = $returns !== [] && resolve(AnalysisMemo::class)->showsGaps() ? $scope : null;
+
         /** @var array<array-key, list<array{string, Slots}>> $entries */
         $entries = [];
 
@@ -230,7 +241,9 @@ final class BranchJoin
                 foreach ($analysis->properties as $prop) {
                     if ($prop['name'] === (string) $name && in_array([$prop['type'], $slots], $unalike, true)) {
                         $analyses[$index] = clone $analysis;
-                        $analyses[$index]->untype((string) $name);
+                        $analyses[$index]->retypeClassLess((string) $name, $gapScope !== null && isset($returns[$index])
+                            ? VisibleGaps::arm(DroppedUnionArms::gap($gapScope, 'unalike-fill', $returns[$index], $prop['type']))
+                            : 'unknown');
 
                         break;
                     }
