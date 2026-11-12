@@ -405,22 +405,23 @@ function spreadWritten(array $result): array
     return [$written, $analysis];
 }
 
-it('writes a spread\'s keys in place, the object it writes into open where the value itself is', function (array $result, bool $open) {
+// Only a value that reads open counts as an unread spread: its own mark, or the marker, opens the host and counts none.
+it('writes a spread\'s keys in place, the object it writes into open where the value itself is', function (array $result, bool $open, bool $counts) {
     $unread = UnreadSpreads::count();
     [$written, $analysis] = spreadWritten(['optional' => false, ...$result]);
 
     expect($written)->toBeTrue()
         ->and(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number', 'by' => 'boolean'])
         ->and($analysis->holdsUnnamedKeys)->toBe($open)
-        ->and(UnreadSpreads::count() - $unread)->toBe($open ? 1 : 0);
+        ->and(UnreadSpreads::count() - $unread)->toBe($counts ? 1 : 0);
 })->with([
-    'a closed object' => [['type' => '{ by: boolean }'], false],
-    'an object whose own mark says it holds more keys' => [['type' => '{ by: boolean }', 'openReadings' => ["\0{ by: boolean }"]], true],
-    'a member\'s mark, which is the member\'s' => [['type' => '{ by: boolean }', 'openReadings' => [".by\0boolean"]], false],
+    'a closed object' => [['type' => '{ by: boolean }'], false, false],
+    'an object whose own mark says it holds more keys' => [['type' => '{ by: boolean }', 'openReadings' => ["\0{ by: boolean }"]], true, false],
+    'a member\'s mark, which is the member\'s' => [['type' => '{ by: boolean }', 'openReadings' => [".by\0boolean"]], false, false],
     'a union\'s mark beside null, which is no fact of the object' => [
-        ['type' => '{ by: boolean } | null', 'openReadings' => ["\0{ by: boolean } | null"]], false,
+        ['type' => '{ by: boolean } | null', 'openReadings' => ["\0{ by: boolean } | null"]], false, false,
     ],
-    'a value that holds keys no name names (D14)' => [['type' => '{ by: boolean }', 'unnamedKeys' => true], true],
+    'a value that holds keys no name names (D14)' => [['type' => '{ by: boolean }', 'unnamedKeys' => true], true, true],
 ]);
 
 it('joins each held key with the value a spread of a map may write over it', function () {

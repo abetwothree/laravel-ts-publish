@@ -655,19 +655,22 @@ it('reads a map spread\'s value past its gap arms and open marker', function (st
     'a signature beside the marker' => ['{ [key: string]: string; #$open: unknown }'],
 ]);
 
-it('opens the host and counts one unread spread for a value its marker opens, and neither for a gap beside it', function (string $type, bool $opens) {
+it('opens the host for a value its marker opens, as for its mark, and neither for a gap; each counts as the other mode', function (array $result, bool $opens, int $counts) {
     $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
     $writes = new LiteralWrites;
     $unread = UnreadSpreads::count();
-    $inPlace = InlineArrayHandler::recordSpread($writes, new Variable('held'), ['type' => $type, 'optional' => false], $scope, 0);
+    $inPlace = InlineArrayHandler::recordSpread($writes, new Variable('held'), ['optional' => false, ...$result], $scope, 0);
     $folded = new MethodAnalysis;
     $writes->applyTo($folded, false);
 
     expect($inPlace)->toBeTrue()
         ->and(array_column($folded->properties, 'name'))->toBe(['by'])
         ->and($folded->holdsUnnamedKeys)->toBe($opens)
-        ->and(UnreadSpreads::count() - $unread)->toBe($opens ? 1 : 0);
+        ->and(UnreadSpreads::count() - $unread)->toBe($counts);
 })->with([
-    'the open marker' => ['{ by: string; #$open: unknown }', true],
-    'a gap arm' => ['{ by: string } | $gap1', false],
+    'the open marker' => [['type' => '{ by: string; #$open: unknown }'], true, 0],
+    'its mark, as the gap mode off reads it' => [['type' => '{ by: string }', 'openReadings' => ["\0{ by: string }"]], true, 0],
+    'the marker beside a signature, which reads open' => [['type' => '{ by: string; [key: string]: number; #$open: unknown }'], true, 1],
+    'its mark beside a signature' => [['type' => '{ by: string; [key: string]: number }', 'openReadings' => ["\0{ by: string; [key: string]: number }"]], true, 1],
+    'a gap arm' => [['type' => '{ by: string } | $gap1'], false, 0],
 ]);

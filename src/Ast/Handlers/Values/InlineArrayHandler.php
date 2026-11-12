@@ -184,7 +184,7 @@ final class InlineArrayHandler implements ExpressionHandler
     /**
      * Record the keys a keyless spread writes where it stands, an open value's named ones included, else each held key
      * a map may write; true where the keys were recorded in place. A value that holds keys no name names, which PHP
-     * writes too, leaves the object it is written into open.
+     * writes too, leaves the object it is written into open, and counts as an unread spread where it reads open.
      *
      * @param  ValueExpressionResult  $result  the spread's value
      */
@@ -212,7 +212,11 @@ final class InlineArrayHandler implements ExpressionHandler
 
         if (! $printedArm && self::holdsUnnamedKeys($result)) {
             $writes->holdUnnamedKeys();
-            UnreadSpreads::record();
+
+            // A mark or the marker opens the host, but only a value that reads open counts, in either mode alike.
+            if (self::readsOpen($result)) {
+                UnreadSpreads::record();
+            }
         }
 
         return true;
@@ -661,10 +665,21 @@ final class InlineArrayHandler implements ExpressionHandler
     {
         $object = self::spreadObject($result);
 
-        return ($object !== null && ObjectMembers::isOpen([...$result, 'type' => $object]))
-            || ($result['unnamedKeys'] ?? false)
+        return self::readsOpen($result)
             || ($object !== null && in_array("\0".VisibleGaps::stripped($object)[0], $result['openReadings'] ?? [], true))
             || ($object !== null && (VisibleGaps::members($object)[1] ?? false));
+    }
+
+    /**
+     * Whether a spread value reads as holding keys no name names: an open literal, or a signature beside a named key.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private static function readsOpen(array $result): bool
+    {
+        $object = self::spreadObject($result);
+
+        return ($object !== null && ObjectMembers::isOpen([...$result, 'type' => $object])) || ($result['unnamedKeys'] ?? false);
     }
 
     /**
