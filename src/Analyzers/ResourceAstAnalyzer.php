@@ -71,6 +71,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -1836,16 +1837,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * Whether a spread's value reads as a closed shape, every key of which the engine names: an object type, its `null`
-     * aside as spreading `null` sets no key, holding no index signature and no shape left open.
+     * and gap arms aside as spreading `null` sets no key and a gap names none, holding no index signature, no open
+     * marker and no shape left open.
      *
      * @param  ValueExpressionResult  $result  the spread's value
      */
     private function spreadsClosedShape(array $result): bool
     {
-        $members = TsTypeShape::members(TsTypeString::withoutNullArm($result['type']));
+        $members = TsTypeShape::members(TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0]));
 
         return $members !== null
-            && ! array_any($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]))
+            && ! array_any($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]) || VisibleGaps::isMarker($member[0]))
             && ! array_any($result['openReadings'] ?? [], static fn (string $shape): bool => str_starts_with($shape, "\0"));
     }
 

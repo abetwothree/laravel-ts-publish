@@ -5,8 +5,10 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
@@ -590,3 +592,82 @@ it('spreads the model a variable no closure binds holds, never the relation\'s',
         ->and($sent['data']['fresh'])->toBe(['x' => 1])
         ->and($sent['data'])->not->toHaveKey('unbound');
 });
+
+/**
+ * An engine typing every value as $type, as a read in the gap mode may: gap arms beside an object, or its open marker.
+ */
+function inlineArrayHandlerGappedEngine(string $type): ExpressionEngine
+{
+    return new class($type) implements ExpressionEngine
+    {
+        /** Type every value alike. */
+        public function __construct(private readonly string $type) {}
+
+        /** Type every value as the engine's one type. */
+        public function resolve(Expr $expr): array
+        {
+            return ['type' => $this->type, 'optional' => false];
+        }
+
+        /** Fails the test: no method is spread in this case. */
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
+        {
+            throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
+        {
+            return Reading::Encoded;
+        }
+
+        /** Fails the test: no array is analyzed in this case. */
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+        {
+            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+        }
+    };
+}
+
+it('reads a spread value past its gap arms and open marker: its named keys in place, a map\'s value, an object arm', function (string $type, string $arm) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $value = new Variable('held');
+    $result = ['type' => $type, 'optional' => false];
+    $keys = InlineArrayHandler::spreadKeys($value, $result, $scope);
+
+    expect(array_map(static fn (array $key): string => $key[0].($key[1]['optional'] ? '?' : '').': '.$key[1]['type'], $keys ?? []))
+        ->toBe(['by: string | $gap2'])
+        ->and(InlineArrayHandler::classifySpreadArm($value, $scope, inlineArrayHandlerGappedEngine($type))['type'] ?? null)
+        ->toBe($arm);
+})->with([
+    'a gap beside the object' => ['{ by: string | $gap2 } | $gap1', '{ by: string | $gap2 }'],
+    'the open marker' => ['{ by: string | $gap2; #$open: unknown }', '{ by: string | $gap2; #$open: unknown }'],
+    'both, beside null' => ['{ by: string | $gap2; #$open: unknown } | null | $gap1', '{ by: string | $gap2; #$open: unknown }'],
+]);
+
+it('reads a map spread\'s value past its gap arms and open marker', function (string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+
+    expect(InlineArrayHandler::spreadSignature(new Variable('held'), ['type' => $type, 'optional' => false], $scope)['type'] ?? null)
+        ->toBe('string');
+})->with([
+    'a record beside a gap' => ['Record<string, string> | $gap1'],
+    'a signature beside the marker' => ['{ [key: string]: string; #$open: unknown }'],
+]);
+
+it('opens the host and counts one unread spread for a value its marker opens, and neither for a gap beside it', function (string $type, bool $opens) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $writes = new LiteralWrites;
+    $unread = UnreadSpreads::count();
+    $inPlace = InlineArrayHandler::recordSpread($writes, new Variable('held'), ['type' => $type, 'optional' => false], $scope, 0);
+    $folded = new MethodAnalysis;
+    $writes->applyTo($folded, false);
+
+    expect($inPlace)->toBeTrue()
+        ->and(array_column($folded->properties, 'name'))->toBe(['by'])
+        ->and($folded->holdsUnnamedKeys)->toBe($opens)
+        ->and(UnreadSpreads::count() - $unread)->toBe($opens ? 1 : 0);
+})->with([
+    'the open marker' => ['{ by: string; #$open: unknown }', true],
+    'a gap arm' => ['{ by: string } | $gap1', false],
+]);

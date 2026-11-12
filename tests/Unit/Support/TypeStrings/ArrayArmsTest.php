@@ -164,3 +164,29 @@ describe('keysOf, keysList and keysListOf', function () {
             ->and(ArrayArms::holdsList('Record<string, number> | [A, B]'))->toBeFalse();
     });
 });
+
+describe('gaps and the open marker', function () {
+    test('reads an array with its gap arms set aside, as with them dropped', function () {
+        expect(ArrayArms::arms('string[] | $gap3', ArrayArms::elementOf(...)))->toBe(['string'])
+            ->and(ArrayArms::arms('null | $gap3', fn (string $arm): string => $arm))->toBe([]);
+    });
+
+    test('gives the lists it builds of an array the array\'s gap arms back', function (string $method, string $type, string $built) {
+        expect(ArrayArms::{$method}($type))->toBe($built);
+    })->with([
+        'array_values()' => ['valuesList', 'Record<string, number> | $gap3', 'number[] | $gap3'],
+        'array_values() of an empty array' => ['valuesList', 'never[] | null | $gap3', 'never[] | null | $gap3'],
+        'array_keys()' => ['keysList', 'Record<string, number> | $gap3', 'string[] | $gap3'],
+        'a keyed list' => ['keyedList', 'User[] | $gap3', 'User[] | Record<string, User> | $gap3'],
+    ]);
+
+    test('reads an object past its open marker, which a filter or a map keeps', function () {
+        expect(ArrayArms::valuesOf('{ a: string; #$open: unknown }'))->toBe('string[]')
+            ->and(ArrayArms::filtered('{ a: string | null; #$open: unknown }', true))->toBe('{ a?: string; #$open: unknown }')
+            ->and(ArrayArms::mapped('{ a: string; #$open: unknown }', 'number'))->toBe('{ a: number; #$open: unknown }');
+    });
+
+    test('drops a member a filter leaves only a gap beside its null, as it drops the null alone', function () {
+        expect(ArrayArms::filtered('{ a: null | $gap2; b: string }', true))->toBe(ArrayArms::filtered('{ a: null; b: string }', true));
+    });
+});

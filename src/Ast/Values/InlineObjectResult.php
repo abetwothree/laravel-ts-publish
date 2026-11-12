@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Support\Facades\Config;
 
@@ -133,7 +134,7 @@ final class InlineObjectResult
         $presence = $spreadArms === [] ? $this->keyPresence($analysis) : [];
 
         if ($presence !== []) {
-            $result['keyPresence'] = [$type => $presence];
+            $result['keyPresence'] = [VisibleGaps::stripped($type)[0] => $presence];
         }
 
         $openReadings = $this->openReadings($analysis, $type, $spreadArms);
@@ -412,7 +413,7 @@ final class InlineObjectResult
     {
         $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys)
             && (TsTypeShape::members($type) !== null || TsTypeShape::intersectedObjects($type) !== null);
-        $paths = $open ? ["\0".$type] : [];
+        $paths = $open ? ["\0".VisibleGaps::stripped($type)[0]] : [];
         $spread = array_merge([], ...array_map(
             static fn (array $arm): array => isset($arm['result']) ? $arm['result']['openReadings'] ?? [] : [],
             $spreadArms,

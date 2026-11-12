@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -34,6 +35,7 @@ trait BindsMapCallbacks
      * $elementModel, guarded where $guarded says so; $arrayed says filter() reaches the result as an array.
      *
      * An element binds the classes $declaredElement says the array holds too, as resolveArrayCallback() binds them.
+     * A gap arm of the array, which no rule typed, maps to one no rule types, so it stays beside the mapped arms.
      *
      * @param  ValueExpressionResult  $input
      * @param  class-string<Model>|null  $elementModel
@@ -51,52 +53,17 @@ trait BindsMapCallbacks
         array $leftOut = [],
         ?ReceiverType $declaredElement = null,
     ): ?array {
-        $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::elementOf($arm) === null ? null : $arm);
-
-        if ($arms === null || $arms === []) {
-            return null;
-        }
-
-        /** @var array<string, ValueExpressionResult> $bodies each element's mapped value, read once */
-        $bodies = [];
-        $mapped = [];
-
-        foreach ($arms as $arm) {
-            $element = (string) ArrayArms::elementOf($arm);
-
-            if (! isset($bodies[$element])) {
-                $value = ValueResult::elementOf($input, $element);
-                $carried = $value['modelFqcn'] ?? null;
-                // An element that may be null binds as its value, keeping the `null` a bound model would drop.
-                $model = $elementModel ?? ($carried !== null && $element === class_basename($carried) && is_a($carried, Model::class, true)
-                    ? $carried
-                    : null);
-                $body = $this->resolveArrayCallback(
-                    $callback,
-                    [$value],
-                    $model,
-                    $arrayed,
-                    $scope,
-                    $engine,
-                    guardsElement: $guarded,
-                    leftOut: $leftOut,
-                    declaredElements: $declaredElement === null ? [] : [$declaredElement],
-                );
-
-                if ($body === null || $body['type'] === 'unknown') {
-                    return null;
-                }
-
-                $bodies[$element] = $body;
-            }
-
-            $mapped[] = (string) ArrayArms::mapped($arm, $bodies[$element]['type']);
-        }
-
-        $body = count($bodies) === 1 ? array_values($bodies)[0] : ValueResult::unionResults(array_values($bodies));
-
-        // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
-        return ValueResult::holdingOpenReadings($body, [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false], '[]', '{}');
+        return ValueResult::gapTransparent($input, fn (array $input): ?array => $this->mappedArms(
+            $callback,
+            $input,
+            $arrayed,
+            $scope,
+            $engine,
+            $elementModel,
+            $guarded,
+            $leftOut,
+            $declaredElement,
+        ));
     }
 
     /**
@@ -244,6 +211,74 @@ trait BindsMapCallbacks
     }
 
     /**
+     * What a map makes of an array's arms, gaps aside: as mappedArrayResult() says.
+     *
+     * @param  ValueExpressionResult  $input
+     * @param  class-string<Model>|null  $elementModel
+     * @param  list<LeftOutWrite>  $leftOut
+     * @return ValueExpressionResult|null
+     */
+    private function mappedArms(
+        Expr $callback,
+        array $input,
+        bool $arrayed,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+        ?string $elementModel,
+        bool $guarded,
+        array $leftOut,
+        ?ReceiverType $declaredElement,
+    ): ?array {
+        $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::elementOf($arm) === null ? null : $arm);
+
+        if ($arms === null || $arms === []) {
+            return null;
+        }
+
+        /** @var array<string, ValueExpressionResult> $bodies each element's mapped value, read once */
+        $bodies = [];
+        $mapped = [];
+
+        foreach ($arms as $arm) {
+            $element = (string) ArrayArms::elementOf($arm);
+
+            if (! isset($bodies[$element])) {
+                $value = ValueResult::elementOf($input, $element);
+                $carried = $value['modelFqcn'] ?? null;
+                // An element that may be null binds as its value, keeping the `null` a bound model would drop.
+                $model = $elementModel ?? ($carried !== null && VisibleGaps::aside($element)[0] === class_basename($carried)
+                    && is_a($carried, Model::class, true)
+                    ? $carried
+                    : null);
+                $body = $this->resolveArrayCallback(
+                    $callback,
+                    [$value],
+                    $model,
+                    $arrayed,
+                    $scope,
+                    $engine,
+                    guardsElement: $guarded,
+                    leftOut: $leftOut,
+                    declaredElements: $declaredElement === null ? [] : [$declaredElement],
+                );
+
+                if ($body === null || $body['type'] === 'unknown') {
+                    return null;
+                }
+
+                $bodies[$element] = $body;
+            }
+
+            $mapped[] = (string) ArrayArms::mapped($arm, $bodies[$element]['type']);
+        }
+
+        $body = count($bodies) === 1 ? array_values($bodies)[0] : ValueResult::unionResults(array_values($bodies));
+
+        // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
+        return ValueResult::holdingOpenReadings($body, [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false], '[]', '{}');
+    }
+
+    /**
      * The kinds of item a map hands back, from its element's top-level arms: `array` for an object literal, `ambiguous`
      * for a list or a Record, and `value` for anything else; a `null` or `[]` arm counts as none. Null where an arm
      * holds no element.
@@ -253,7 +288,7 @@ trait BindsMapCallbacks
      */
     private function itemKinds(array $mapped): ?array
     {
-        $elements = ArrayArms::arms($mapped['type'], ArrayArms::elementOf(...));
+        $elements = ArrayArms::arms(VisibleGaps::aside($mapped['type'])[0], ArrayArms::elementOf(...));
 
         if ($elements === null) {
             return null;
@@ -261,7 +296,7 @@ trait BindsMapCallbacks
 
         $kinds = [];
 
-        foreach (TsTypeShape::splitTopLevel(implode(' | ', $elements), ['|']) as $arm) {
+        foreach (TsTypeShape::splitTopLevel(VisibleGaps::aside(implode(' | ', $elements))[0], ['|']) as $arm) {
             $kind = match (true) {
                 $arm === 'null' || $arm === 'never[]' => null,
                 TsTypeShape::members($arm) !== null => 'array',

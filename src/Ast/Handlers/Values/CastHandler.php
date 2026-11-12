@@ -69,31 +69,34 @@ final class CastHandler implements ExpressionHandler
     {
         $isObject = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null;
         $literalOperand = $this->isScalarLiteral($operand);
-        $result = $engine->resolve($operand);
-        $enum = ! $isObject && ValueResult::readsEnumType($result) ? $result['directEnumFqcn'] ?? null : null;
-        $arms = ArrayArms::arms($result['type'], fn (string $arm): ?string => match (true) {
-            $arm === 'unknown' => null,
-            $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
-            $isObject => $arm,
-            $enum !== null && $arm === ValueResult::enumTypeName($enum) => '{ scalar: '.$arm.' }',
-            default => $this->builtObject($arm, $literalOperand),
-        }, skipNull: false);
+        $built = fn (string $arm): ?string => $this->builtObject($arm, $literalOperand);
 
-        if ($arms === null || $arms === []) {
-            return null;
-        }
+        return ValueResult::gapTransparent($engine->resolve($operand), static function (array $result) use ($isObject, $built): ?array {
+            $enum = ! $isObject && ValueResult::readsEnumType($result) ? $result['directEnumFqcn'] ?? null : null;
+            $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => match (true) {
+                $arm === 'unknown' => null,
+                $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
+                $isObject => $arm,
+                $enum !== null && $arm === ValueResult::enumTypeName($enum) => '{ scalar: '.$arm.' }',
+                default => $built($arm),
+            }, skipNull: false);
 
-        // Two arms of an object stay apart: two same-named classes spell one token, each with its own import.
-        $type = implode(' | ', $isObject ? $arms : array_values(array_unique($arms)));
+            if ($arms === null || $arms === []) {
+                return null;
+            }
 
-        if ($enum === null) {
-            return [...$result, 'type' => $type, 'keepsKeys' => true];
-        }
+            // Two arms of an object stay apart: two same-named classes spell one token, each with its own import.
+            $type = implode(' | ', $isObject ? $arms : array_values(array_unique($arms)));
 
-        // The object holds the enum's value inside it, so the type's import rides the embedded channel.
-        unset($result['directEnumFqcn']);
+            if ($enum === null) {
+                return [...$result, 'type' => $type, 'keepsKeys' => true];
+            }
 
-        return [...$result, 'type' => $type, 'keepsKeys' => true, 'embeddedEnumFqcns' => [$enum, ...$result['embeddedEnumFqcns'] ?? []]];
+            // The object holds the enum's value inside it, so the type's import rides the embedded channel.
+            unset($result['directEnumFqcn']);
+
+            return [...$result, 'type' => $type, 'keepsKeys' => true, 'embeddedEnumFqcns' => [$enum, ...$result['embeddedEnumFqcns'] ?? []]];
+        });
     }
 
     /**
@@ -109,29 +112,33 @@ final class CastHandler implements ExpressionHandler
             return $engine->resolve($operand);
         }
 
-        if (resolve(ReceiverClassResolver::class)->resolve($operand, $scope) === null) {
-            $result = $engine->resolve($operand);
-            $arms = ArrayArms::arms(
-                $result['type'],
-                static fn (string $arm): ?string => match (true) {
-                    $arm === 'null' => 'never[]',
-                    ArrayArms::isArray($arm) => $arm,
-                    default => null,
-                },
-                skipNull: false,
-            );
+        $cast = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null ? null : ValueResult::gapTransparent(
+            $engine->resolve($operand),
+            static function (array $result): ?array {
+                $arms = ArrayArms::arms(
+                    $result['type'],
+                    static fn (string $arm): ?string => match (true) {
+                        $arm === 'null' => 'never[]',
+                        ArrayArms::isArray($arm) => $arm,
+                        default => null,
+                    },
+                    skipNull: false,
+                );
 
-            if ($arms !== null && $arms !== []) {
+                if ($arms === null || $arms === []) {
+                    return null;
+                }
+
                 unset($result['keepsKeys']);
                 $filled = array_values(array_diff($arms, ['never[]']));
                 // A list arm already admits the empty array.
                 $kept = $filled !== [] && ArrayArms::holdsList(implode(' | ', $filled)) ? $filled : $arms;
 
                 return [...$result, 'type' => implode(' | ', array_values(array_unique($kept)))];
-            }
-        }
+            },
+        );
 
-        return ['type' => 'unknown[]', 'optional' => false];
+        return $cast ?? ['type' => 'unknown[]', 'optional' => false];
     }
 
     /**

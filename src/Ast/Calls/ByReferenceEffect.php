@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 
 /**
@@ -67,7 +68,8 @@ enum ByReferenceEffect
         ?string $matches = null,
     ): ?string {
         if ($path === []) {
-            return $this->leftWhole($type, $written, $reindexed, $matches);
+            // A gap arm is a value no rule typed, which the call leaves as it leaves the arms beside it.
+            return VisibleGaps::carried($type, fn (string $type): ?string => $this->leftWhole($type, $written, $reindexed, $matches));
         }
 
         $key = array_shift($path);
@@ -147,7 +149,7 @@ enum ByReferenceEffect
             }]];
         }
 
-        $members = TsTypeShape::members($arm);
+        $members = VisibleGaps::members($arm)[0] ?? null;
 
         return $members === null ? null : array_map(
             static fn (array $member): array => [$member[1], TsTypeShape::isNumericKey($member[0]) ? 'number' : 'string'],

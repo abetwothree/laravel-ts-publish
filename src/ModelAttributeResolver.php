@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Carbon\CarbonImmutable;
 use Closure;
 use Exception;
@@ -820,7 +821,7 @@ class ModelAttributeResolver
         $type = $this->resolveAttribute($modelFqcn, $column)['type'];
 
         // Its callers carry no import, so a column typed by an enum or a class declines.
-        return array_diff(TsTypeString::splitTopLevelUnion($type), ['string', 'number', 'boolean', 'null']) === []
+        return array_diff(TsTypeString::splitTopLevelUnion(VisibleGaps::aside($type)[0]), ['string', 'number', 'boolean', 'null']) === []
             ? $type
             : null;
     }
@@ -1231,6 +1232,8 @@ class ModelAttributeResolver
     protected function isEntirelyVagueTsType(string $type): bool
     {
         // A lone `null` is exact, though withoutNullArm() leaves `unknown` for it.
+        $type = VisibleGaps::aside($type)[0];
+
         return $type !== 'null'
             && in_array(TsTypeString::withoutNullArm($type), ['unknown', 'unknown[]', 'object', 'unknown[] | Record<string, unknown>'], true);
     }

@@ -93,3 +93,32 @@ test('joinInto() keeps two models one name spells as two arms, each queued, only
         ->and($apart->inlineModelFqcns)->toBe(['k' => [User::class, CrmUser::class]])
         ->and(array_column($folded->properties, 'type'))->toBe(['User']);
 });
+
+test('a join decides which branches count on their gap-free text, the lone `null` included, and keeps each gap', function () {
+    expect(BranchJoin::branchUnion(['null | $gap1', 'unknown'], true, false))->toBe('unknown')
+        ->and(BranchJoin::branchUnion(['null | $gap1', 'unknown'], true, true))->toBe('null | $gap1')
+        ->and(BranchJoin::branchUnion(['string | $gap1', 'unknown'], true, false))->toBe('string | $gap1')
+        ->and(BranchJoin::branchUnion(['null', 'null | $gap1', 'unknown'], true, false))->toBe('unknown')
+        ->and(BranchJoin::branchUnion(['string', 'string | $gap1'], false, false))->toBe('string | $gap1');
+});
+
+test('declaredBranches() reads two branches that differ only by a gap or the marker as one declared text', function () {
+    $fill = ['{ u: User }', [User::class]];
+    $gapped = ['{ u: User | $gap1; #$open: unknown }', [User::class]];
+
+    expect(BranchJoin::declaredBranches([$fill, $gapped], false))->toBe([[$fill, $gapped], []])
+        ->and(BranchJoin::declaredBranches([$fill, $gapped, ['unknown', []]], true)[1])->toBe([]);
+});
+
+test('joinInto() joins a multi-source key whose sources hold gaps as their gap-free texts join', function () {
+    $joined = static function (array $types, bool $drops = true): string {
+        $target = new MethodAnalysis;
+        BranchJoin::joinInto($target, array_map(joinBranch(...), $types), dropsUntypedBranches: $drops);
+
+        return implode(' ', array_column($target->properties, 'type'));
+    };
+
+    expect($joined(['string | $gap1', 'unknown']))->toBe('string | $gap1')
+        ->and($joined(['null | $gap1', 'unknown']))->toBe('unknown')
+        ->and($joined(['string', 'string | $gap1'], false))->toBe('string | $gap1');
+});

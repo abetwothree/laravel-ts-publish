@@ -138,3 +138,9 @@ it('keeps a value a recursive walk writes while every leaf it visits holds each 
     'a walk that writes nothing' => ['{ a: { b: string } }', [], '{ a: { b: string } }'],
     'a value that is no array' => ['User', [], null],
 ]);
+
+it('leaves a gap arm beside the arms a call leaves, and decides on those arms alone', function () {
+    expect(byReferenceLeft(ByReferenceEffect::KeepsList, 'string[] | $gap1'))->toBe('string[] | $gap1')
+        ->and(byReferenceLeft(ByReferenceEffect::KeepsNumber, 'number | $gap1'))->toBe('number | $gap1')
+        ->and(byReferenceLeft(ByReferenceEffect::KeepsList, 'null | $gap1'))->toBe(byReferenceLeft(ByReferenceEffect::KeepsList, 'null'));
+});

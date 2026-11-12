@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -201,6 +202,8 @@ final class CollectionPipelineHandler implements ExpressionHandler
      */
     private function isList(string $type): bool
     {
+        $type = VisibleGaps::aside($type)[0];
+
         return str_ends_with($type, '[]') && ArrayArms::listElement($type) !== null;
     }
 

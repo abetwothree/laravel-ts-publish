@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -124,14 +125,15 @@ final class InlineArrayHandler implements ExpressionHandler
      * An open value's named keys are written too, the object it lands in left open for the rest. A union writes per
      * key its arms' union, one some arm lacks a key it may leave unset; a `?` member reads as writtenMembers() has it.
      *
-     * The item loop writes these keys over the keys before the spread, so planArms() keeps no arm for it.
+     * The item loop writes these keys over the keys before the spread, so planArms() keeps no arm for it. A gap arm of
+     * the value, which no rule typed, is set aside: it names no key and leaves no key unset.
      *
      * @param  ValueExpressionResult  $result  the spread's value
      * @return KeyedValues|null
      */
     public static function spreadKeys(Expr $value, array $result, AnalysisScope $scope): ?array
     {
-        $arms = TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($result['type']));
+        $arms = TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0]));
         $objects = array_values(array_diff($arms, ['never[]']));
 
         if ($objects === [] || ! self::readsWholeValue($value, $result, $scope)) {
@@ -477,9 +479,10 @@ final class InlineArrayHandler implements ExpressionHandler
             return ['arm' => ['fqcn' => $spreadResult['resourceFqcn'], 'isModel' => false, 'isCollection' => false], 'value' => $spreadResult];
         }
 
-        // Spreading null throws, so a null arm sets no key. A class no generated file exports would be a token with no
-        // import behind it. A resolved resource's restated keys are one object, though an intersection.
-        $type = TsTypeString::withoutNullArm($spreadResult['type']);
+        // Spreading null throws, so a null arm sets no key, and a gap arm names none. A class no generated file exports
+        // would be a token with no import behind it. A resolved resource's restated keys are one object, though an
+        // intersection.
+        $type = TsTypeString::withoutNullArm(VisibleGaps::aside($spreadResult['type'])[0]);
         $arm = (self::isObjectType($type) || isset($spreadResult['resolvedFqcn'])) && ValueResult::namesOnlyExportedClasses($spreadResult)
             ? ['type' => $type, 'result' => $spreadResult]
             : null;
@@ -555,15 +558,15 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * The one arm of a spread's value that writes keys, `[]` and `null` aside, which write none; null where the value
-     * holds two or none.
+     * The one arm of a spread's value that writes keys, `[]`, `null` and gap arms aside, which write none a rule
+     * names; null where the value holds two or none.
      *
      * @param  ValueExpressionResult  $result
      */
     private static function spreadObject(array $result): ?string
     {
         $arms = array_values(array_diff(
-            TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($result['type'])),
+            TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0])),
             ['never[]'],
         ));
 
@@ -577,7 +580,7 @@ final class InlineArrayHandler implements ExpressionHandler
     private static function mapValue(string $type): ?string
     {
         $record = TsTypeShape::recordArguments($type);
-        $members = $record === null ? TsTypeShape::members($type) : null;
+        $members = $record === null ? VisibleGaps::members($type)[0] ?? null : null;
         $value = match (true) {
             $record !== null => $record[0] === 'string' ? $record[1] : null,
             $members !== null && count($members) === 1 => IndexSignatureKey::is($members[0][0])
@@ -626,12 +629,12 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * An object's text with its index-signature members left out, whose keys no name names; null where nothing named
-     * is left, or the object is no literal object.
+     * An object's text with its index-signature members and open marker left out, whose keys no name names; null where
+     * nothing named is left, or the object is no literal object.
      */
     private static function namedObject(string $object): ?string
     {
-        $members = TsTypeShape::members($object);
+        [$members, $open] = VisibleGaps::members($object) ?? [null, false];
 
         if ($members === null) {
             return null;
@@ -643,13 +646,14 @@ final class InlineArrayHandler implements ExpressionHandler
             return null;
         }
 
-        return count($named) === count($members)
+        return count($named) === count($members) && ! $open
             ? $object
             : '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1], $named)).' }';
     }
 
     /**
-     * Whether a spread value holds keys no name names: an open literal or signature, or an object its own mark opens.
+     * Whether a spread value holds keys no name names: an open literal or signature, or an object its own mark or its
+     * open marker opens. A gap arm beside the object opens nothing: it is no object a rule read.
      *
      * @param  ValueExpressionResult  $result
      */
@@ -659,7 +663,8 @@ final class InlineArrayHandler implements ExpressionHandler
 
         return ($object !== null && ObjectMembers::isOpen([...$result, 'type' => $object]))
             || ($result['unnamedKeys'] ?? false)
-            || in_array("\0".$object, $result['openReadings'] ?? [], true);
+            || ($object !== null && in_array("\0".VisibleGaps::stripped($object)[0], $result['openReadings'] ?? [], true))
+            || ($object !== null && (VisibleGaps::members($object)[1] ?? false));
     }
 
     /**

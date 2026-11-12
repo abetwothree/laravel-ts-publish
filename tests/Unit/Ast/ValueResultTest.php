@@ -708,3 +708,33 @@ it('marks a held object\'s kind, and a callable that may return a callable', fun
         ->and(ValueResult::unionResults([$returnsClosure, $plain])['returnsCallable'] ?? null)->toBeTrue()
         ->and(ValueResult::withoutHeldObject([...$returnsClosure, 'heldProp' => true]))->toBe(['type' => 'number', 'optional' => false]);
 });
+
+describe('gap arms', function () {
+    test('gapTransparent() reads a value with its gap arms set aside and gives the result they make back', function () {
+        $read = static fn (array $value): array => [...$value, 'type' => str_replace('[]', '', $value['type'])];
+
+        expect(ValueResult::gapTransparent(['type' => 'string[] | $gap1', 'optional' => false], $read)['type'] ?? null)
+            ->toBe('string | $gap1')
+            ->and(ValueResult::gapTransparent(['type' => 'string[]', 'optional' => false], $read)['type'] ?? null)->toBe('string')
+            ->and(ValueResult::gapTransparent(['type' => 'string[] | $gap1', 'optional' => false], static fn (): null => null))
+            ->toBeNull();
+    });
+
+    test('reads a list-shaped value, an element\'s model and a value closed to dotted keys past their gap arms', function () {
+        $element = ValueResult::elementOf(['type' => '(User | $gap2)[]', 'optional' => false, 'modelFqcn' => User::class], 'User | $gap2');
+        $closed = ValueResult::closeToDottedKeys(['type' => '{ a: string }', 'optional' => false]);
+
+        expect(ValueResult::isListShaped('string[] | $gap1'))->toBeTrue()
+            ->and($element['modelFqcn'] ?? null)->toBe(User::class)
+            ->and(ValueResult::closedToDottedKeys([...$closed, 'type' => '{ a: string } | $gap1']))->toBeTrue();
+    });
+
+    test('unions a `null` beside a gap as the null Inertia replaces, and marks a dropped arm\'s null on gap-free text', function () {
+        $closed = ValueResult::closeToDottedKeys(['type' => '{ a: string }', 'optional' => false]);
+        $union = ValueResult::unionResults([$closed, ['type' => 'null | $gap1', 'optional' => false]]);
+        $marked = ValueResult::unionResults([['type' => 'string | $gap1', 'optional' => false], ['type' => 'null', 'optional' => false], ValueResult::unknown()]);
+
+        expect(ValueResult::closedToDottedKeys($union))->toBeTrue()
+            ->and($marked['openReadings'] ?? [])->toBe(["\0string | null"]);
+    });
+});

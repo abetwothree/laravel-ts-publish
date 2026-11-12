@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -1059,7 +1060,7 @@ final class ReceiverClassResolver
         return $value instanceof Array_
             || $value instanceof Cast\Array_
             || array_all(
-                TsTypeString::splitTopLevelUnion($type),
+                TsTypeString::splitTopLevelUnion(VisibleGaps::aside($type)[0]),
                 fn (string $arm): bool => preg_match('/^(?:string|number|boolean|bigint|null|true|false|-?[\d.]+|([\'"]).*\1|.+\[\]|\[.*\])$/s', $arm) === 1,
             );
     }

@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -369,47 +370,14 @@ final class ParameterBinder
      * functions call a callback: each arm the type admits kept as it is, an enum's alias or a type the app declares
      * included, and every other arm read as the type PHP converts it to. Any other type, or `unknown`, keeps the value.
      *
+     * A gap arm, which no rule typed, is no arm to convert: it stays beside the arms converted.
+     *
      * @param  ValueExpressionResult  $value
      * @return ValueExpressionResult
      */
     public static function coercedValue(Param $param, array $value): array
     {
-        $scalars = $value['type'] === 'unknown' ? null : self::declaredScalars($param);
-        $converted = $scalars === null ? [] : array_values(array_unique(array_diff_key($scalars, ['null' => true])));
-
-        if ($scalars === null || $converted === []) {
-            return $value;
-        }
-
-        $direct = $value['directEnumFqcn'] ?? null;
-        $enums = array_values(array_unique([...($direct === null ? [] : [$direct]), ...($value['embeddedEnumFqcns'] ?? [])]));
-        // A type the app declares for a class names nothing the binder can test against the scalar, so it stays.
-        $declared = ImportMaps::localNames($value['customImports'] ?? []);
-        $arms = [];
-        $kept = [];
-        $keepsDeclared = false;
-
-        foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
-            $enum = array_find($enums, static fn (string $enum): bool => self::enumArmFits($arm, $enum, $scalars));
-            $kept = $enum === null ? $kept : [...$kept, $enum];
-            $keepsDeclared = $keepsDeclared || in_array($arm, $declared, true);
-            array_push($arms, ...($enum !== null || in_array($arm, $declared, true) || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
-        }
-
-        $type = implode(' | ', array_values(array_unique($arms)));
-
-        if ($type === $value['type']) {
-            return $value;
-        }
-
-        // An enum's alias or a declared type the parameter takes as it is keeps the channel that imports it.
-        return [
-            ...ValueResult::unknown(),
-            'type' => $type,
-            ...($direct !== null && in_array($direct, $kept, true) ? ['directEnumFqcn' => $direct] : []),
-            ...(array_diff($kept, [$direct]) === [] ? [] : ['embeddedEnumFqcns' => array_values(array_unique(array_diff($kept, [$direct])))]),
-            ...($keepsDeclared ? ['customImports' => $value['customImports'] ?? []] : []),
-        ];
+        return ValueResult::gapTransparent($value, static fn (array $value): array => self::coercedArms($param, $value)) ?? $value;
     }
 
     /**
@@ -776,6 +744,52 @@ final class ParameterBinder
     }
 
     /**
+     * What coercedValue() makes of a value with no gap arm.
+     *
+     * @param  ValueExpressionResult  $value
+     * @return ValueExpressionResult
+     */
+    private static function coercedArms(Param $param, array $value): array
+    {
+        $scalars = $value['type'] === 'unknown' ? null : self::declaredScalars($param);
+        $converted = $scalars === null ? [] : array_values(array_unique(array_diff_key($scalars, ['null' => true])));
+
+        if ($scalars === null || $converted === []) {
+            return $value;
+        }
+
+        $direct = $value['directEnumFqcn'] ?? null;
+        $enums = array_values(array_unique([...($direct === null ? [] : [$direct]), ...($value['embeddedEnumFqcns'] ?? [])]));
+        // A type the app declares for a class names nothing the binder can test against the scalar, so it stays.
+        $declared = ImportMaps::localNames($value['customImports'] ?? []);
+        $arms = [];
+        $kept = [];
+        $keepsDeclared = false;
+
+        foreach (TsTypeString::splitTopLevelUnion($value['type']) as $arm) {
+            $enum = array_find($enums, static fn (string $enum): bool => self::enumArmFits($arm, $enum, $scalars));
+            $kept = $enum === null ? $kept : [...$kept, $enum];
+            $keepsDeclared = $keepsDeclared || in_array($arm, $declared, true);
+            array_push($arms, ...($enum !== null || in_array($arm, $declared, true) || self::fitsScalars($arm, $scalars) ? [$arm] : $converted));
+        }
+
+        $type = implode(' | ', array_values(array_unique($arms)));
+
+        if ($type === $value['type']) {
+            return $value;
+        }
+
+        // An enum's alias or a declared type the parameter takes as it is keeps the channel that imports it.
+        return [
+            ...ValueResult::unknown(),
+            'type' => $type,
+            ...($direct !== null && in_array($direct, $kept, true) ? ['directEnumFqcn' => $direct] : []),
+            ...(array_diff($kept, [$direct]) === [] ? [] : ['embeddedEnumFqcns' => array_values(array_unique(array_diff($kept, [$direct])))]),
+            ...($keepsDeclared ? ['customImports' => $value['customImports'] ?? []] : []),
+        ];
+    }
+
+    /**
      * The classes an array declares its element as, for a parameter that declares no class of its own, natively or by
      * `@param`, which ClosureHandler binds instead; null for a model, which binds by the model the element carries.
      *
@@ -896,7 +910,7 @@ final class ParameterBinder
      */
     private static function argumentKey(string $type, ReceiverType $receiver): string|false
     {
-        $arms = array_values(array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']));
+        $arms = array_values(array_diff(TsTypeShape::splitTopLevel(VisibleGaps::aside($type)[0], ['|']), ['null']));
         $lists = $arms !== [] && array_all($arms, fn (string $arm): bool => ArrayArms::listElement($arm) !== null);
         $records = $arms !== [] && array_all($arms, ArrayArms::isKeyed(...));
 
@@ -946,7 +960,7 @@ final class ParameterBinder
      */
     private static function keyedValue(array $value, ?string $key): ?array
     {
-        $type = $value['type'];
+        $type = VisibleGaps::aside($value['type'])[0];
         $lists = ArrayArms::holdsList($type) && array_all(
             array_diff(TsTypeShape::splitTopLevel($type, ['|']), ['null']),
             fn (string $arm): bool => ArrayArms::listElement($arm) !== null,

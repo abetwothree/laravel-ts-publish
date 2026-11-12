@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * A printed object type read back into its keys, each carrying the classes its own type spells: the reverse of
@@ -66,6 +67,8 @@ final class ObjectMembers
      * own tokens and the readings it leaves open, in the order the type spells them; null for any other type, or a
      * class it cannot place. The value's custom imports and carried classes stay on it.
      *
+     * Its gap arms and its open marker name no key, so the keys are read as with both stripped.
+     *
      * @param  ValueExpressionResult  $value
      * @return KeyedValues|null
      */
@@ -77,7 +80,7 @@ final class ObjectMembers
             return null;
         }
 
-        $printed = TsTypeShape::members($value['type']);
+        $printed = VisibleGaps::members(VisibleGaps::aside($value['type'])[0])[0] ?? null;
 
         // InlineObjectResult::of() prints an analysis with no keys as a Record, so `{}` has no analysis to read back.
         if ($printed === null || $printed === []) {
@@ -179,7 +182,7 @@ final class ObjectMembers
             return true;
         }
 
-        $members = TsTypeShape::members($value['type']) ?? [];
+        $members = VisibleGaps::members(VisibleGaps::aside($value['type'])[0])[0] ?? [];
         $signatures = array_filter($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]));
 
         return $signatures !== [] && count($signatures) < count($members);
@@ -188,14 +191,14 @@ final class ObjectMembers
     /**
      * The presence facts InlineObjectResult::of() recorded for each optional member of $object, the object text it
      * printed: a printed `?` alone cannot tell a key a branch may leave unset from a removed value, which a spread over
-     * an earlier key must. Empty where the value holds no record for that text.
+     * an earlier key must. Empty where the value holds no record for that text, which is keyed with its gaps stripped.
      *
      * @param  ValueExpressionResult  $value
      * @return array<string, PresenceFacts>
      */
     public static function keyPresence(array $value, string $object): array
     {
-        return $value['keyPresence'][$object] ?? [];
+        return $value['keyPresence'][VisibleGaps::stripped($object)[0]] ?? [];
     }
 
     /**
@@ -252,7 +255,7 @@ final class ObjectMembers
                 $name = PrintedKey::decode($key);
 
                 if ($name !== null && str_ends_with($key, '?')) {
-                    $presence[$object][$name] = ['absent' => true];
+                    $presence[VisibleGaps::stripped($object)[0]][$name] = ['absent' => true];
                 }
             }
         }

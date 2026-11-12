@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Support\Arr;
 use LogicException;
@@ -1611,7 +1612,8 @@ trait ReadsReturnedVariables
         );
         $filled = clone $into;
         $this->writeKey($filled, $keyName, $default, false);
-        $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
+        [$heldBare, $heldGaps] = VisibleGaps::aside($held['type']);
+        $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($heldBare) === ['null'];
         $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
 
         foreach ($branches as $index => $branch) {
@@ -1628,9 +1630,10 @@ trait ReadsReturnedVariables
         }
 
         // A value left out itself may still be on each path the default does not land, as a `when()` holding null is.
+        // A gap held beside the null is a value `??=` keeps, which the default's lone branch would drop.
         $joined->properties = array_map(
             fn (array $property): array => $property['name'] === $keyName ? MethodAnalysis::withPresence(
-                [...$property, 'type' => $untyped ? 'unknown' : $property['type']],
+                [...$property, 'type' => $untyped ? 'unknown' : ($onlyNull ? VisibleGaps::restored($property['type'], $heldGaps) : $property['type'])],
                 optional: $property['optional'] || ($leftOut && $held['optional']),
                 absent: $property['absent'] ?? false,
                 removed: ($property['removed'] ?? false) || ($leftOut && $held['optional']),

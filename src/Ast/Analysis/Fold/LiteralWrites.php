@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use LogicException;
 
 /**
@@ -331,14 +332,16 @@ final class LiteralWrites
      */
     private static function keysFitMapValue(MethodAnalysis $analysis, string $mapValue): bool
     {
-        $fits = TsTypeString::splitTopLevelUnion($mapValue);
+        $fits = TsTypeString::splitTopLevelUnion(VisibleGaps::stripped($mapValue)[0]);
 
         if (in_array('unknown', $fits, true)) {
             return true;
         }
 
         foreach (array_column($analysis->properties, 'type', 'name') as $name => $type) {
-            foreach (JsEmitter::isIndexSignatureKey((string) $name) ? [] : TsTypeString::splitTopLevelUnion($type) as $arm) {
+            $arms = JsEmitter::isIndexSignatureKey((string) $name) ? [] : TsTypeString::splitTopLevelUnion(VisibleGaps::stripped($type)[0]);
+
+            foreach ($arms as $arm) {
                 $primitive = match (true) {
                     $arm === 'true' || $arm === 'false' => 'boolean',
                     is_numeric($arm) => 'number',

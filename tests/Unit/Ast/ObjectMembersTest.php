@@ -293,3 +293,40 @@ it('marks every `?` member of the keys resolve() returns, or a declared shape ho
             '{ b?: number }' => ['b' => ['absent' => true]],
         ]);
 });
+
+it('reads an object past its open marker and its gap arms, as with both stripped', function () {
+    $marked = ['type' => '{ a: string; b: number | $gap1; #$open: unknown } | $gap2', 'optional' => false];
+    $names = static fn (?array $members): ?array => $members === null ? null : array_map(
+        static fn (array $member): string => $member[0].': '.$member[1]['type'],
+        $members,
+    );
+
+    expect($names(ObjectMembers::members($marked)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and($names(ObjectMembers::seededMembers($marked, true)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and($names(ObjectMembers::writtenMembers($marked)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and($names(ObjectMembers::seededWrittenMembers($marked, true)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and(array_column(ObjectMembers::seed($marked, true)->properties ?? [], 'name'))->toBe(['a', 'b']);
+});
+
+it('reads a value as open on its marker-free text, so the marker beside a signature opens nothing', function () {
+    expect(ObjectMembers::isOpen(['type' => '{ [key: string]: number; #$open: unknown }', 'optional' => false]))->toBeFalse()
+        ->and(ObjectMembers::isOpen(['type' => '{ a: string; [key: string]: number; #$open: unknown } | $gap1', 'optional' => false]))
+        ->toBeTrue();
+});
+
+it('reads a `?` member back across a gap and the marker, its facts recorded on the gap-free text', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('unset', ['type' => 'string | $gap1', 'optional' => false], optional: true);
+    $analysis->addProperty('removed', ['type' => 'string', 'optional' => true]);
+    $printed = new InlineObjectResult()->of($analysis);
+    $marked = [...$printed, 'type' => '{ unset?: string | $gap1; removed?: string; #$open: unknown }'];
+    $facts = static fn (?array $members): array => array_map(
+        static fn (array $member): string => $member[0].':'.(($member[1]['absent'] ?? false) ? 'a' : '').(($member[1]['removed'] ?? false) ? 'r' : ''),
+        $members ?? [],
+    );
+    $declared = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a?: string | $gap1; #$open: unknown } | null', 'optional' => false]);
+
+    expect(array_keys($printed['keyPresence'] ?? []))->toBe(['{ unset?: string; removed?: string }'])
+        ->and($facts(ObjectMembers::writtenMembers($marked)))->toBe(['unset:a', 'removed:'])
+        ->and($declared['keyPresence'] ?? null)->toBe(['{ a?: string }' => ['a' => ['absent' => true]]]);
+});

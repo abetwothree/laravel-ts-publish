@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * One list or object arm of an array's published type, as its named members and the keys it leaves unnamed. A write
@@ -53,7 +54,8 @@ final readonly class ArrayArm
      */
     public static function written(string $type, array $writes, bool $reindexes, bool $ordered): ?string
     {
-        return self::folded($type, $writes, $reindexes, $ordered);
+        // A gap arm, which no rule typed, no write reads: the arms beside it settle as they do without it.
+        return VisibleGaps::carried($type, static fn (string $type): ?string => self::folded($type, $writes, $reindexes, $ordered));
     }
 
     /**
@@ -438,7 +440,12 @@ final readonly class ArrayArm
      */
     private function canList(bool $reindexes): bool
     {
-        $kept = array_filter($this->members, fn (array $member): bool => ! $member['optional']);
+        // The open marker is no key the array holds.
+        $kept = array_filter(
+            $this->members,
+            fn (array $member, int|string $name): bool => ! $member['optional'] && ! VisibleGaps::isMarker((string) $name),
+            ARRAY_FILTER_USE_BOTH,
+        );
 
         // By key, since PHP stores a bare number's name as an int key.
         return array_diff_key($kept, array_flip($this->listedNames($reindexes))) === [];

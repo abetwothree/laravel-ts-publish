@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
@@ -89,7 +90,7 @@ final class ValueResult
      */
     public static function isListShaped(string $type): bool
     {
-        return str_ends_with(implode(' | ', self::filledArms($type)), '[]');
+        return str_ends_with(implode(' | ', self::filledArms(VisibleGaps::aside($type)[0])), '[]');
     }
 
     /**
@@ -119,7 +120,8 @@ final class ValueResult
             $value['directEnumFqcn'] = $enums[0];
         }
 
-        if (isset($value['modelFqcn']) && class_basename($value['modelFqcn']) !== TsTypeString::withoutNullArm($element)) {
+        if (isset($value['modelFqcn'])
+            && class_basename($value['modelFqcn']) !== TsTypeString::withoutNullArm(VisibleGaps::aside($element)[0])) {
             unset($value['modelFqcn']);
         }
 
@@ -354,7 +356,8 @@ final class ValueResult
     {
         $closed = $result['closedToDottedKeys'] ?? null;
 
-        return $closed !== null && TsTypeString::withoutNullArm($closed) === TsTypeString::withoutNullArm($result['type']);
+        return $closed !== null && TsTypeString::withoutNullArm(VisibleGaps::stripped($closed)[0])
+            === TsTypeString::withoutNullArm(VisibleGaps::stripped($result['type'])[0]);
     }
 
     /**
@@ -393,6 +396,27 @@ final class ValueResult
         }
 
         return $result;
+    }
+
+    /**
+     * What a read makes of a value with its top-level gap arms set aside, those gaps given back to the type it makes; a
+     * read that declines stays null, and the gaps' warnings stay held for the strip or the extent that raises them.
+     *
+     * @param  ValueExpressionResult  $input
+     * @param  Closure(ValueExpressionResult): (ValueExpressionResult|null)  $read
+     * @return ValueExpressionResult|null
+     */
+    public static function gapTransparent(array $input, Closure $read): ?array
+    {
+        [$rest, $gaps] = VisibleGaps::aside($input['type']);
+
+        if ($gaps === []) {
+            return $read($input);
+        }
+
+        $result = $read([...$input, 'type' => $rest]);
+
+        return $result === null ? null : [...$result, 'type' => VisibleGaps::restored($result['type'], $gaps)];
     }
 
     /**
@@ -469,7 +493,8 @@ final class ValueResult
         $types = array_values(array_unique($types));
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
         $closed = array_any($results, self::closedToDottedKeys(...))
-            && array_all($results, fn (array $inner): bool => $inner['type'] === 'null' || self::closedToDottedKeys($inner));
+            && array_all($results, fn (array $inner): bool => VisibleGaps::aside($inner['type'])[0] === 'null'
+                || self::closedToDottedKeys($inner));
 
         if ($types === []) {
             $unknown = [...self::unknown(), 'optional' => $optional];
@@ -493,7 +518,7 @@ final class ValueResult
 
         // A `null` kept beside an arm no rule types left out says nothing of that arm, which a declared type may fill.
         if (count($branchResults) < count($results) && TsTypeString::hasNullArm($union['type'])) {
-            $union['openReadings'] = [...$union['openReadings'] ?? [], "\0".$union['type']];
+            $union['openReadings'] = [...$union['openReadings'] ?? [], "\0".VisibleGaps::stripped($union['type'])[0]];
         }
 
         return $union;

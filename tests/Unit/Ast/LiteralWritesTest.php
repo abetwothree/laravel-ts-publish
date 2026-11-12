@@ -297,3 +297,13 @@ it('leaves every recorded source as it was', function () {
 
     expect(serialize($source))->toBe($before);
 });
+
+it('keeps a map\'s arm after a key holding a gap where the key\'s gap-free value fits the map\'s', function () {
+    $resource = ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false];
+    $writes = new LiteralWrites;
+    $writes->recordKey('a', ['type' => 'number | $gap1', 'optional' => false], 0);
+    $writes->recordArm(['arm' => $resource, 'map' => null]);
+    $writes->recordArm(literalMapArm('number | $gap2', checksKeys: true));
+
+    expect(foldedInto($writes)->spreadArms())->toBe([$resource, literalMapArm('number | $gap2', checksKeys: true)['arm']]);
+});

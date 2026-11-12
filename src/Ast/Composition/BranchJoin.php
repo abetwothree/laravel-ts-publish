@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * Joins one key's branch types into one type, beside the token slots a declared text's arms bring to it, and keeps the
@@ -250,7 +251,11 @@ final class BranchJoin
      */
     public static function declaredBranches(array $entries, bool $dropsUntypedBranches): array
     {
-        if ($dropsUntypedBranches && count(array_unique(array_column($entries, 0))) > 1) {
+        // Two branches that differ only by a gap or the open marker are one text, as they are once both are stripped.
+        $texts = array_map(static fn (array $entry): string => VisibleGaps::stripped($entry[0])[0], $entries);
+        $bare = static fn (string $text, array $slots): string => serialize([VisibleGaps::stripped($text)[0], $slots]);
+
+        if ($dropsUntypedBranches && count(array_unique($texts)) > 1) {
             $entries = array_filter($entries, static fn (array $entry): bool => $entry[0] !== 'unknown');
         }
 
@@ -266,7 +271,7 @@ final class BranchJoin
                     static fn (array $token): bool => $token['read'],
                 );
 
-                if ($other !== $own && $spells) {
+                if ($bare($other[0], $other[1]) !== $bare($own[0], $own[1]) && $spells) {
                     $unalike[] = $own;
 
                     continue 2;
@@ -344,13 +349,16 @@ final class BranchJoin
     public static function slottedBranchUnion(array $types, bool $dropsUntypedBranches, bool $keepsLoneNull, array $declared): array
     {
         $unique = array_values(array_unique($types));
+        // Which branches count is decided on their text with gaps and the marker stripped; the union keeps each text.
+        $bare = array_values(array_unique(array_map(static fn (string $type): string => VisibleGaps::stripped($type)[0], $unique)));
 
-        if ($dropsUntypedBranches && count($unique) > 1) {
+        if ($dropsUntypedBranches && count($bare) > 1) {
             $typed = array_values(array_diff($unique, ['unknown']));
 
             // A lone `null` left once the untypable branches are gone says nothing about a spread helper's value, but
             // a merge call keeps it, as a ternary keeps its one typed arm.
-            $unique = $typed === [] || ($typed === ['null'] && ! $keepsLoneNull) ? ['unknown'] : $typed;
+            $lone = array_values(array_diff($bare, ['unknown'])) === ['null'];
+            $unique = $typed === [] || ($lone && ! $keepsLoneNull) ? ['unknown'] : $typed;
         }
 
         $slotted = [];
