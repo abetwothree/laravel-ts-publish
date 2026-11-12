@@ -973,13 +973,14 @@ entry a bug.
 Under a `@return` that types a key, a drop keeps the arm it leaves out in the type text, so the docblock types it where
 it stands. `AnalysisMemo::showingGaps()` turns this gap mode on for a read, `hidingGaps()` off, and a read of a memo
 fact (`rememberFact()`) or a caster body runs with it off. `AnalysisScope::$typedKeys` holds the keys the frame's
-`@return` types: `readingKey()` reads a typed key's value in the mode, and `readingLevel()` each read landing keys
-beside one, such as a keyless item, a whole return or write, a helper's bound arguments or a `merge()` closure's
-defaults. A value read clears the set. [ResourceAstAnalyzer § The gap mode](resource-ast-analyzer.md#the-gap-mode) says
-which frames set it and where each strips.
+`@return` types, where an index signature, standing for many keys, is never one (`typesKey()`): `readingKey()` reads a
+typed key's value in the mode, and `readingLevel()` each read landing keys beside one, such as a keyless item, a whole
+return or write, a helper's bound arguments or a `merge()` closure's defaults. A value read clears the set.
+[ResourceAstAnalyzer § The gap mode](resource-ast-analyzer.md#the-gap-mode) says which frames set it and where each
+strips.
 
 In the mode, a drop entry appends a `$gapN` arm to a union it leaves typed and holds its warning; a union it leaves
-`unknown` takes no gap and warns at once. Four joins that drop with no entry add a silent gap, which holds no warning: a
+`unknown` takes no gap and warns at once. Four sites that drop with no entry add a silent gap, which holds no warning: a
 spread helper's returns (`merge-branch-join` where no branch names an untyped write, and `unalike-fill`), a literal's
 fold (`fold-join`) and a key of a union spread (`union-spread-key`). `InlineObjectResult::of()` marks an object that may
 hold unnamed keys with the open marker, `#$open: unknown`. [`VisibleGaps`] spells both, and every reader decides on the

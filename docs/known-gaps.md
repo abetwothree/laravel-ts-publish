@@ -39,13 +39,19 @@ inline `@var` replaces a whole `null` the drop left, a whole `never[]` where the
 its own item's drop left where the tag's member admits it; a member a nested literal, a helper or another local left
 stays as it is.
 
-A `@return array{…}` that types the key, on `toArray()` or a spread helper, types the arm where it stands, beside every
-arm the body proves is sent, and the arm no longer warns: `DeclaredGapsResource`'s `score`, which holds `null`, a length
-or an untypable value, publishes `number | null | string` under `int|string|null`. Only what the docblock leaves
-untyped, such as a `mixed` member or a key it does not name, is left out as above. A value a spread writes at
-`toArray()`'s top level is the exception: under `@return array{k: string|list<int>}`, `['k' => 'x', ...$maybe]`, where
-`$maybe` may be `['k' => cache('k')]`, publishes `k: string` with no warning, though the same literal as each row of a
-list the docblock types publishes `{ k: string | number[] }[]`.
+A `@return` that types the key, on `toArray()` or a spread helper, types the arm where it stands, beside every arm the
+body proves is sent: `DeclaredGapsResource`'s `score`, which holds `null`, a length or an untypable value, publishes
+`number | null | string` under `int|string|null`. A drop that warned no longer does: `count` in the same resource's
+`summary`, `null` or an untypable value, publishes `number | null` under `int|null` with no warning. Only what the
+docblock leaves untyped, such as a `mixed` member or a key it does not name, is left out as above.
+
+The exception is a key that a spread of a local or of a ternary writes into the literal `toArray()` returns, or into
+the one a spread helper returns under its own `@return` where `toArray()` has none: such a literal writes its keys out
+of the [gap mode](./components/ast-engine.md#visible-gaps). Under `@return array{k: string|list<int>}`,
+`return ['k' => 'x', ...$maybe];`, where `$maybe` may be `['k' => cache('k')]`, publishes `k: string` with no warning,
+and so does a spread of `$c ? ['k' => 'a'] : ['k' => cache('k')]`. The same literal assigned to a local before the
+return, returned by a spread helper under `toArray()`'s `@return`, or built as each row of a list the docblock types
+publishes `k` as `string | number[]`.
 
 A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
 branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or
@@ -195,10 +201,11 @@ which the package leaves unread: the keys written before it, a spread's too, kee
 
 ### A ternary of literals returned whole publishes none of their keys
 
-`return $c ? ['by' => $this->author] : ['id' => 1];` in `toArray()` publishes neither literal's keys, and a spread
-helper that returns `$c ? ['by' => 1] : []` adds no key, even under `@return array{by?: int}`:
-`['by' => 'x', ...$this->maybe()]` publishes `by: string`, though `1` arrives. A ternary is not one of the returns the
-analyzer reads. Return each literal from its own branch of an `if`.
+`return $c ? ['by' => $this->author] : ['id' => 1];` in `toArray()` publishes neither literal's keys: a ternary is not
+one of the returns the analyzer reads. A spread helper that returns one is a helper the engine
+[cannot read](#a-spread-whose-helper-the-engine-cannot-read-whole-can-mistype-the-keys-it-writes), even under its own
+`@return array{by?: int}`: `['by' => 'x', ...$this->maybe()]`, where `maybe()` returns `$c ? ['by' => 1] : []`,
+publishes `by: string`, though `1` arrives. Return each literal from its own branch of an `if`.
 
 ### A key an array writes twice follows PHP and `filter()`, except where the write is out of the literal's sight
 
@@ -279,21 +286,13 @@ Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel t
 
 - A wrap beside a bare case of another enum, `$c ? EnumResource::make(Role::Admin) : Status::Published`, publishes
   `RoleType | StatusType`, though the wrap arm sends the `Role` object.
-- A wrap beside a nested bare read of its own enum misses the `1` the bare arm sends:
-  `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)` publishes `AsEnum<typeof Status> | null`,
-  and with rows of that enum as the other nested arm, `AsEnum<typeof Status> | { s: StatusType }[]`.
+- A wrap beside a nested nullable bare read, `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)`,
+  publishes `AsEnum<typeof Status> | null` and misses the `1` the bare arm sends.
 - A nested ternary over three enums' wraps publishes `AsEnum<typeof Role> | StatusType | VisibilityType` and imports
   neither bare name, which is `TS2304` in a consumer's build.
 - Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
 - A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
   publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
-- Two or more wraps under a nested key or in a list publish the enums' own types:
-  `['row' => ['subject' => $c ? EnumResource::make($status) : EnumResource::make($role)]]` publishes
-  `subject: StatusType | RoleType`, and three wraps there wrap only the first arm,
-  `AsEnum<typeof Status> | RoleType | VisibilityType`.
-- A top-level key whose first arm is a list of rows and whose later arms are two or more wraps publishes the wraps the
-  same way, `{ n: number }[] | StatusType | RoleType`. Beside three wraps, rows holding two enums named `Status` print
-  each with the other's name.
 
 No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
 that has an `import`.
