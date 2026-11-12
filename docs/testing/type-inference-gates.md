@@ -279,10 +279,12 @@ check over all fields that accepts or rejects them together, rather than two reo
 
 [`gap-gate.sh`](../../.github/scripts/gap-gate.sh) proves the gap mode is invisible in the published output. Under a
 `@return` that types a key, the reader keeps each union arm it cannot type as a gap arm and an object that may hold
-unnamed keys as an open marker, the merge fills what the docblock types, and the frame strips the rest. With
-`TS_PUBLISH_GAP_GATE=1`, `tests/Pest.php` turns on `ReturnMembers::$typesEveryKey`, so every key of every such body
-reads in the mode, and every reader those reads reach must decide as it does on gap-free text; a fill needs a member
-that tells something, which only a key the docblock types has:
+unnamed keys as an open marker, the merge fills what the docblock types, and the frame strips the rest
+([AST engine § Visible gaps](../components/ast-engine.md#visible-gaps)). With `TS_PUBLISH_GAP_GATE=1`,
+`tests/Pest.php` turns on `ReturnMembers::$typesEveryKey`, so every key of the subject's body and of each spread
+helper's, `share()`'s and `provide()`'s aside, reads in the mode, and every reader those reads reach must decide as it
+does on gap-free text. The trees must still match `HEAD`, since only a key the docblock types has a member that tells
+something, which a fill needs:
 
 ```bash
 .github/scripts/gap-gate.sh
@@ -352,5 +354,12 @@ The gates miss these cases:
   when the object then collapses to `unknown` no member key is left to match.
 - **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
   sibling among `x`'s members, so a regression of `x` itself can still be masked.
-- **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
+- **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. A key a
+  `@return` types reorders often: the merge lists the body's arms first and the declared arms it adds after them, so
+  an object arm can sit at another index than at the base, and a key that gains a second object arm renames each
+  `prop.member` key to `prop[0].member`, which no base key matches, leaving only the parent key compared. This limit
   is accepted. Do not fix it with content-hashed arm keys.
+- **A leaked gap or open marker**: CI does not run `gap-gate.sh`. A `$gapN` arm left in a published type fails the
+  token gate as TS2304, but the open marker, `#$open: unknown`, is TS18016 to `tsc`, a code no count reads, and the
+  regression gate sees it only as an `unknown` in the object holding it. After a change to the gap mode, run
+  `gap-gate.sh` and grep the trees for `$gap` and `#$open`.

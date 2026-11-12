@@ -39,11 +39,20 @@ inline `@var` replaces a whole `null` the drop left, a whole `never[]` where the
 its own item's drop left where the tag's member admits it; a member a nested literal, a helper or another local left
 stays as it is.
 
+A `@return array{…}` that types the key, on `toArray()` or a spread helper, types the arm where it stands, beside every
+arm the body proves is sent, and the arm no longer warns: `DeclaredGapsResource`'s `score`, which holds `null`, a length
+or an untypable value, publishes `number | null | string` under `int|string|null`. Only what the docblock leaves
+untyped, such as a `mixed` member or a key it does not name, is left out as above. A value a spread writes at
+`toArray()`'s top level is the exception: under `@return array{k: string|list<int>}`, `['k' => 'x', ...$maybe]`, where
+`$maybe` may be `['k' => cache('k')]`, publishes `k: string` with no warning, though the same literal as each row of a
+list the docblock types publishes `{ k: string | number[] }[]`.
+
 A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
 branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or
 `k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
 the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
-override's among them, are left out with no warning.
+override's among them, are left out with no warning. In a spread helper, a `@return` that types the key, the helper's
+own or `toArray()`'s, types the dropped branch in place instead.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -184,6 +193,13 @@ types; one read by its first return alone adds that return's keys over them, tho
 So can the spread of a resource, model or collection inside a merged array, or inside a helper read for a nested value,
 which the package leaves unread: the keys written before it, a spread's too, keep their own types.
 
+### A ternary of literals returned whole publishes none of their keys
+
+`return $c ? ['by' => $this->author] : ['id' => 1];` in `toArray()` publishes neither literal's keys, and a spread
+helper that returns `$c ? ['by' => 1] : []` adds no key, even under `@return array{by?: int}`:
+`['by' => 'x', ...$this->maybe()]` publishes `by: string`, though `1` arrives. A ternary is not one of the returns the
+analyzer reads. Return each literal from its own branch of an `if`.
+
 ### A key an array writes twice follows PHP and `filter()`, except where the write is out of the literal's sight
 
 A literal's keys publish what PHP and Laravel send when the literal writes one key twice: a later write wins, one that
@@ -263,13 +279,21 @@ Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel t
 
 - A wrap beside a bare case of another enum, `$c ? EnumResource::make(Role::Admin) : Status::Published`, publishes
   `RoleType | StatusType`, though the wrap arm sends the `Role` object.
-- A wrap beside a nested nullable bare read, `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)`,
-  publishes `AsEnum<typeof Status> | null` and misses the `1` the bare arm sends.
+- A wrap beside a nested bare read of its own enum misses the `1` the bare arm sends:
+  `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)` publishes `AsEnum<typeof Status> | null`,
+  and with rows of that enum as the other nested arm, `AsEnum<typeof Status> | { s: StatusType }[]`.
 - A nested ternary over three enums' wraps publishes `AsEnum<typeof Role> | StatusType | VisibilityType` and imports
   neither bare name, which is `TS2304` in a consumer's build.
 - Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
 - A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
   publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
+- Two or more wraps under a nested key or in a list publish the enums' own types:
+  `['row' => ['subject' => $c ? EnumResource::make($status) : EnumResource::make($role)]]` publishes
+  `subject: StatusType | RoleType`, and three wraps there wrap only the first arm,
+  `AsEnum<typeof Status> | RoleType | VisibilityType`.
+- A top-level key whose first arm is a list of rows and whose later arms are two or more wraps publishes the wraps the
+  same way, `{ n: number }[] | StatusType | RoleType`. Beside three wraps, rows holding two enums named `Status` print
+  each with the other's name.
 
 No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
 that has an `import`.
@@ -293,7 +317,9 @@ the `null` the type admits, or build the wrap inline in the callback, which publ
 
 `'role' => EnumResource::make($this->role)` in an event's `broadcastWith()` publishes `RoleType` for every enum, though
 the payload sends the resource object, `{ name, value, backed, … }`. API resources, pages and shared data rewrite such a
-key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. An enum whose
+key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. Under a nested key, a
+single wrap publishes `{ w: AsEnum<typeof Status> }` instead and imports neither `AsEnum` nor `Status`, which is
+`TS2304` in a consumer's build. An enum whose
 `#[TsType]` or `custom_ts_mappings` entry types its values still publishes its own `…Type` here. Override the key with
 an import-aware `#[TsCasts]`, typed by a name your own module exports, such as
 `export type RoleResource = AsEnum<typeof Role>`.
@@ -653,6 +679,12 @@ or the key's `@return` docblock, which fills the member.
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
 An open positional shape, `array{int, ...}`, publishes `unknown[]` too, though it may carry string keys and encode as an
 object.
+
+### A key named only at runtime is left out, even under `@return array<string, V>`
+
+`(string) $request->input('k') => $value` publishes no key, though Laravel sends it and `@return array<string, V>`
+types every key. A key with literal text around the variable, such as `"{$name}_label"`, publishes as an index
+signature, which that docblock types ([Interpolated keys](./components/resource-ast-analyzer.md#interpolated-keys)).
 
 ### An index signature its body types can fail to compile beside a key it cannot take in
 

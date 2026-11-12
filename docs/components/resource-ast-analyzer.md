@@ -124,7 +124,8 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
 - **The body, merged with `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills a key the body left
-  vague and merges one it typed, so a docblock only refines what the body sends. `applyTsCastsFromMethod()` then
+  vague and merges one it typed, so a docblock refines what the body sends and types in place what it could not read,
+  each [visible gap](#the-gap-mode) the body kept. `applyTsCastsFromMethod()` then
   applies the method's own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both
   can change a key after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
@@ -138,15 +139,27 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 `toArray()`'s own branches and `InertiaPageAnalyzer`'s merge keep the strict rule: one `unknown` branch makes the key
 `unknown`, because `unknown` absorbs whatever it joins.
 
+In the [gap mode](#the-gap-mode), the branch a spread helper's join drops beside a typed one stays as a gap arm on the
+key (`merge-branch-join`): held with the warning of the untyped write the branch names (`recordedMergeJoin()`), or
+silent where no branch names one (`gapDroppedReturns()`). A fill another branch spells unalike reads as a gap there
+rather than `unknown` (`BranchJoin::withUnalikeFillsUntyped()`). The helper's own `@return`, or the host's where the
+helper's frame is read in the host's mode, then types each dropped branch in place. A key every branch left `unknown`,
+or only a `null` beside them, still reads `unknown`, which a member fills whole. A merge call names no returns, so only
+a named untyped write leaves a gap there.
+
 ### What the method's `@return` may fill
 
 `ReturnShapeRefiner` reads a `@return array{…}` shape per key, or the `V` of a `@return array<string, V>` that is one
 `Record<string, V>`, for every vague key. A `key?:` entry also marks the key optional. A key is vague where every arm
-but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`TsTypeString::isVagueOnly()`), as an
-`'array'`-cast column reads: the member replaces those arms and the `null` stays. A member that is vague itself fills
-only an exact `unknown`.
+but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`TsTypeString::isVagueOnly()`), its gap
+arms set aside, as an `'array'`-cast column reads: the member replaces those arms and the gaps, which count as filled,
+and the `null` stays. A member that is vague itself fills only an exact `unknown`.
 
 A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
+- at a gap arm (`$gapN`), the arm a union left out, the rest of the union merges by the rules below and the gap then
+  takes each member arm the result does not cover, after it, every container arm of the member included; a gap alone
+  or beside only `null` takes the member whole, the `null` kept, and under a member that tells nothing it stays for the
+  strip;
 - where the client gets it re-listed, a shape keyed `0` to n-1, every value `unknown` and only its last key optional,
   takes a declared n-tuple's elements in its own key order, the body's `null` kept
   (`DeclaredTypeMerge::relistedTuple()`). It is re-listed where `filter()` runs over the body
@@ -155,9 +168,6 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
 - where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
   does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
   only `null` takes a vague member;
-- a gap arm (`$gapN`), the arm a union left out, takes each member arm the body's other arms do not cover, after them,
-  every container arm of the member included; beside only `null` it takes the member whole with the `null`, and under
-  a member that tells nothing it stays for the strip;
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member of the
   key it names (`0`, `"0"` and `'0'` are one key, printed as declared), the best matched shape of a declared list's
   element, or a declared `Record`'s value or list's other element, as fits it best
@@ -188,8 +198,8 @@ since the publisher's rewrite would wrap a bare token of that enum the member fi
 body spelling them is (`ReturnShapeRefiner::requeued()`), so the key keeps its enum wraps and declares no slots; only an
 override spelled like a class beside it declares them, through `CastChannels::fit()`. The analyzed `share()` or
 `provide()` itself merges no typed key, since its analyzer lays that docblock over every key it types
-(`ResourceAstAnalyzer::docblockOutranksBody()`); a helper either spreads merges, as neither analyzer reads the helper's
-own `@return`.
+(`ResourceAstAnalyzer::docblockOutranksBody()`), and reads none in the gap mode. A helper either spreads merges its
+own typed keys, read in the mode, since neither analyzer reads the helper's `@return`.
 
 It fills a value only where
 [the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
@@ -216,6 +226,22 @@ A spread helper's `@return` may also name a type no PHP class answers to, which 
 statements to a class, interface, enum or trait is never kept, since it needs an import. The analyzed method's own
 `@return` keeps no such name (`keepsUnresolvedNames: false`), because there an unresolved name is as likely an
 unimported class, which `tsc` rejects with TS2304.
+
+### The gap mode
+
+The analyzer reads its subject's body, and each spread helper's, with the keys whose member in that method's own
+`@return` tells something (`ReturnMembers::typedKeys()`) as the scope's typed keys, so each read reaching one runs in
+the [gap mode](ast-engine.md#visible-gaps). There an arm a union leaves out stays a `$gapN` arm for the merge above to
+fill, and an open shape carries the open marker, so the merge keeps a member only the docblock declares. `share()` and
+`provide()` set no typed key (`docblockOutranksBody()`), and a value read sets none for its own keys
+(`dispatchValue()`). A spread helper's bound arguments read in the helper's mode, since what they bind may reach a key
+the helper types.
+
+A frame entered with the mode off is an extent of its own (`inGapExtent()`, the helper's argument reads included) and
+strips what its merge leaves: each key its `@return` does not type at each return (`untypedKeysStripped()`), since no
+merge fills it and the joins past the return read it as the frame publishes it, and every other key after the refine
+(`methodShaped()`). Each stripped gap raises the warning its drop holds. A frame entered with the mode on, as a helper
+spread beside the host's typed keys is, strips nothing, so its gaps and markers reach the host's merge.
 
 ### A stacked body-less collection collects what its own class names
 
@@ -701,6 +727,11 @@ map's arm after another item stays only where every key fits its value. A merged
 A key's slot sits where its first write landed on each path, so a first write that may not land lets a merge before the
 next one win there; the fold test replays what the real `resolve()` sent for 7380 sequences
 (`tests/Unit/Ast/Fixtures/fold-oracle.php`).
+
+`LiteralFold` reads positions and presence, never types, so a gap or an open marker rides its source's text into the
+key. In the [gap mode](#the-gap-mode), a key the join types without a later source's untyped value keeps a gap for it
+(`fold-join`), and a union of objects written in place gives a key one of its objects leaves untyped a gap
+(`union-spread-key`, `InlineArrayHandler`), so the `@return` types what those writes may send.
 
 ## Resource classes a value names
 

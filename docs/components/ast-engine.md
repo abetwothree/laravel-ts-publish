@@ -792,10 +792,10 @@ which reads the helper's file through `MethodLocator`, and `analyzeMethodValue()
 `ModelAttributeResolver`'s accessor waterfall. The two accessor keys gain an `@importless` suffix for a read that
 carries no imports, and all three gain `@casesAsLiterals` for the body fallback's reading. Every key gains
 `@casesAsEnums` while a read that needs each case's enum is under way (`readingCasesAsEnums()`), and `@gaps` while the
-gap mode is on (`showingGaps()`), so their answers stay apart. A fact, such as a class set or a bool, goes through
-`rememberFact()`, which computes it with the mode off under its plain key, so both modes share one answer.
-It also holds the per-class reads each resource prop repeats:
-`JsonApiResources::relationships()` and `includedResources()`, `ResourceCollectionBody::sendsCollectedList()`,
+[gap mode](#visible-gaps) is on (`showingGaps()`), so their answers stay apart. A fact, such as a class set or a bool,
+goes through `rememberFact()`, which computes it with the mode off under its plain key, so both modes share one answer:
+read through gap text, a fact could answer each mode differently. It also holds the per-class reads each resource prop
+repeats: `JsonApiResources::relationships()` and `includedResources()`, `ResourceCollectionBody::sendsCollectedList()`,
 `ResourceResponseBody::holdsWrapKey()`, and the two model guesses in `GuessesModelResources`.
 
 `analysis:` and `method-return:` also key on what a value read's call binds: `CallSite::signature()` adds an `@args:`
@@ -814,10 +814,11 @@ A body read for Inertia adds `Reading::memoKey()`'s `@inertia` to its `analysis:
 `@filtered` after it under a resource's filter; a response's extras read adds `@unfiltered`. So a helper read for a page
 never shares the answer a read for anything else gets ([Inertia profile](#inertia-profile)).
 
-A stored answer keeps the dependency paths, the dropped-arm count, the gap ids and the `UnreadSpreads` count recorded
-while it was computed, and every reuse records them again.
-The generation cache, the accessor `null` rule and a `parent::` spread's
-read therefore see what a fresh computation would have shown them. A cycle can cut an answer short, so each answer is
+A stored answer keeps the dependency paths, the dropped-arm count, the `UnreadSpreads` count, and the ids of the gaps it
+made, replayed or spelled and of the ones a merge filled, all recorded while it was computed, and every reuse records
+them again (`DroppedUnionArms::replay()` for the gaps). The generation cache, the accessor `null` rule, a `parent::`
+spread's read and the gap warnings therefore see what a fresh computation would have shown them. A cycle can cut an
+answer short, so each answer is
 stored with the guards it found held, and `AnalysisMemo::reproducible()` reuses it only where nothing it read has
 changed and exactly those guards are held again. No answer depends on which entry point read it first.
 `AnalysisMemo::reenterOnce()` lifts each guard entered before the one its caller holds, so a property write's value
@@ -896,8 +897,10 @@ A key the resource's own `only()` or `except()` selects keeps only part of these
 A union arm the engine cannot type is left out, never widened to `unknown`, so `$cond ? <untypable> : null` publishes
 `null`. `unknown` would be more honest but less specific, and no change may make a published type less specific. Close
 the gap instead with a return type, a `@return` docblock or `#[TsCasts]`. [Known gaps][gap-union-arm] records what users
-see. Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch
-makes the key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
+see. The exception is a key the method's own `@return` types: there the arm stays in the type as a
+[visible gap](#visible-gaps), which the docblock types in place, and only what the docblock leaves untyped is left out.
+Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch makes the
+key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
 A list element is not a union arm, since every response carries it: an element no rule types makes the list `unknown[]`.
 An arm left out still makes the union optional when it can be a `MissingValue`. `ValueResult::unionResults()` folds an
 empty `[]`'s `never[]` into a list member beside it, which already admits the empty array: `$rows ?? []` over a list
@@ -956,35 +959,48 @@ audit entries too. A class the generation cache serves prints none, since the ca
 `--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
 cast on the key leaves the reading, and so the warning, as it is.
 
-`DroppedUnionArms` also holds the gap mode's state: `gap()` gives the gap a drop leaves an id stable for the run, and a
-gap's warnings are held by that id until a strip raises them, or the outermost `extent()` ends with the gap unfilled.
-A read that consumes a gap raises them too, whatever a merge filled before it: `ExpressionDispatcher` hands `consumed()`
-each gap a handler's reads made, replayed or carried in (an inner read's result spelled it) that its result no longer
-spells, skipping one a merge inside those reads filled; a reused answer replays its fills with its gaps.
-`replaceable()` and `provisional()` settle a held warning as they settle a raised one.
-
-The mode turns on per frame. `ResourceAstAnalyzer` reads its subject's body, and each spread helper's, with the keys
-that method's `@return` types (`ReturnMembers::typedKeys()`) as `AnalysisScope::$typedKeys`: `readingKey()` reads a
-typed key's value in the mode, and `readingLevel()` each read landing keys beside one, such as a keyless item, a whole
-return or write, a helper's bound arguments or a `merge()` closure's defaults. A value read clears the set, `share()` and
-`provide()` type no key of their own, and a caster body reads with the mode hidden.
-
-In the mode, each drop entry appends a `$gapN` arm and holds its warning, and `InlineObjectResult::of()` marks an object
-that may hold unnamed keys with `#$open: unknown`. Every reader decides on the text with both set aside
-(`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The merge fills a gap with the declared arms
-the rest of its union leaves out and marks it filled (`DeclaredTypeMerge::merge()`). A frame entered with the mode off
-strips what is left (`MethodAnalysis::stripGaps()`): an untyped key's gaps at each return, the rest after its refine;
-one entered with the mode on strips nothing, so its gaps reach the merge of the frame that turned it on. Forcing every
-key into the mode moves no published byte; `.github/scripts/gap-gate.sh` proves it.
-
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
 proves each recording site still fires. A `DroppedUnionArms::record()` call, or an `[$arm, '<site>']` pair an entry
 takes, whose site no baseline row names fails `a new recording site cannot go unpinned`, so a new site brings its own
-`UnionHonestyResource` key and row. Apart from
-those rows, the baseline only shrinks: teach a rule to type the shape, then delete its entries. A recorded arm is a
-candidate gap, not a proven loss, because `ClosureHandler` and `VariableHandler` fall back to a return-type annotation
-or to `null`. Read the published property before you call an entry a bug.
+`UnionHonestyResource` key and row. Apart from those rows, the baseline only shrinks: teach a rule to type the shape,
+then delete its entries. A recorded arm is a candidate known gap, not a proven loss, because `ClosureHandler` and
+`VariableHandler` fall back to a return-type annotation or to `null`. Read the published property before you call an
+entry a bug.
+
+### Visible gaps
+
+Under a `@return` that types a key, a drop keeps the arm it leaves out in the type text, so the docblock types it where
+it stands. `AnalysisMemo::showingGaps()` turns this gap mode on for a read, `hidingGaps()` off, and a read of a memo
+fact (`rememberFact()`) or a caster body runs with it off. `AnalysisScope::$typedKeys` holds the keys the frame's
+`@return` types: `readingKey()` reads a typed key's value in the mode, and `readingLevel()` each read landing keys
+beside one, such as a keyless item, a whole return or write, a helper's bound arguments or a `merge()` closure's
+defaults. A value read clears the set. [ResourceAstAnalyzer § The gap mode](resource-ast-analyzer.md#the-gap-mode) says
+which frames set it and where each strips.
+
+In the mode, a drop entry appends a `$gapN` arm to a union it leaves typed and holds its warning; a union it leaves
+`unknown` takes no gap and warns at once. Four joins that drop with no entry add a silent gap, which holds no warning: a
+spread helper's returns (`merge-branch-join` where no branch names an untyped write, and `unalike-fill`), a literal's
+fold (`fold-join`) and a key of a union spread (`union-spread-key`). `InlineObjectResult::of()` marks an object that may
+hold unnamed keys with the open marker, `#$open: unknown`. [`VisibleGaps`] spells both, and every reader decides on the
+text with both set aside (`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The merge fills a gap
+from the declared type (`DeclaredTypeMerge::merge()`), as
+[ResourceAstAnalyzer § What the method's `@return` may fill][return-fill] lists, and `ReturnShapeRefiner` marks each
+gap a fill took out as filled. What the merge leaves, the frame that turned the mode on strips
+(`MethodAnalysis::stripGaps()`) before the type publishes.
+
+`DroppedUnionArms` holds the mode's state. `gap()` gives each gap an id stable for the run, a file parsed again
+included, and the gap's warnings wait under it, the same text the drop raises out of the mode. A strip raises them,
+even where a merge filled the same gap under another key, and so does the end of the outermost `extent()` for each gap
+no merge filled. A read that consumes a gap raises them too, whatever a merge filled before it: `ExpressionDispatcher`
+hands `consumed()` each gap a handler's reads made, replayed or carried in (an inner read's result spelled it) that its
+result no longer spells, skipping one a merge inside those reads filled; a reused answer replays its fills with its
+gaps. `replaceable()` and `provisional()` settle a held warning as they settle a raised one. So a filled gap only stops
+warning: its drop entry records the arm whether a merge fills it or not, and a silent gap records nothing, as its join
+records nothing out of the mode, so the audit baseline is the same in both.
+
+Forcing every key into the mode moves no published byte, as
+[Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.
 
 ## Public API
 
@@ -1094,6 +1110,7 @@ These pages cover the engine's neighbors:
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
 [`ThisPathWrites`]: ../../src/Ast/Analysis/ThisPathWrites.php
+[`VisibleGaps`]: ../../src/Support/TypeStrings/VisibleGaps.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver
 [body-fallback]: receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does
@@ -1109,5 +1126,6 @@ These pages cover the engine's neighbors:
 [published-models]: model-attribute-resolver.md#models-a-run-publishes
 [receiver-self]: receiver-types.md#self-and-parent
 [resource-imports]: resource-ast-analyzer.md#a-resources-imports-follow-its-published-types
+[return-fill]: resource-ast-analyzer.md#what-the-methods-return-may-fill
 [spread-branches]: resource-ast-analyzer.md#a-spread-helper-drops-an-untypable-branch
 [ternary]: receiver-types.md#a-ternarys-instanceof-condition
