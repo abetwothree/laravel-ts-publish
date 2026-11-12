@@ -712,9 +712,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $branch === null ? [[], false] : [[$branch], true];
         }
 
-        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default,
-        // read where the closure's keys land, at this level.
-        return $this->scope->readingLevel(fn (): array => $this->scope->readClaimedClosure($expr, 0, $this, function () use ($expr): array {
+        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
+        return $this->scope->readClaimedClosure($expr, 0, $this, function () use ($expr): array {
             ModelFills::markDefaults($expr, $this->scope);
 
             // Seeded as ClosureHandler seeds a closure, so a local the body assigns shadows the method's of its name.
@@ -724,7 +723,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             return $this->closureReturnBranches($expr);
-        }));
+        });
     }
 
     /**
@@ -1306,7 +1305,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Lay the analyzed method's own `@return` shape, its $members, and `#[TsCasts]` over what its body returns.
+     * Lay the analyzed method's own `@return` shape, its $members, and `#[TsCasts]` over what its body returns; with no
+     * members, for a subject that has no such method, hand the analysis back as it is.
      */
     private function ownMethodShaped(ResourceAnalysis $analysis, ?ReturnMembers $members): ResourceAnalysis
     {
@@ -1683,8 +1683,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
             // Handle a top-level resolve()/toArray() spread — flatten it into this resource's own properties.
             if ($topLevel && $item->key === null && $item->unpack) {
-                $armed = $item->value;
-                $armAnalysis = $this->scope->readingLevel(fn (): ?MethodAnalysis => $this->analyzeSpreadArm($armed));
+                $armAnalysis = $this->scope->readingLevel(fn (): ?MethodAnalysis => $this->analyzeSpreadArm($item->value));
 
                 if ($armAnalysis !== null) {
                     $writes->record($armAnalysis, $index);
@@ -1693,9 +1692,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
             }
 
-            $spreadValue = $item->value;
             $spread = $item->key === null && $item->unpack
-                ? $this->scope->readingLevel(fn (): array => $this->analyzeValueExpression($spreadValue))
+                ? $this->scope->readingLevel(fn (): array => $this->analyzeValueExpression($item->value))
                 : null;
 
             if ($spread !== null) {
@@ -1745,8 +1743,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            $value = $item->value;
-            $result = $this->reading->arrayValue($this->scope->readingKey($keyName, fn (): array => $this->analyzeValueExpression($value)));
+            $result = $this->reading->arrayValue($this->scope->readingKey($keyName, fn (): array => $this->analyzeValueExpression($item->value)));
 
             if (JsEmitter::isIndexSignatureKey($keyName)) {
                 $writes->recordSignature($keyName, $result);

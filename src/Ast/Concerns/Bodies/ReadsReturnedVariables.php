@@ -33,6 +33,7 @@ use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignOp\Plus;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -47,6 +48,7 @@ use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
@@ -1741,8 +1743,8 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Whether a write of a key the frame's `@return` may type reads the variable it writes; a key no literal spells may
-     * be one.
+     * Whether a write that may set a key the frame's `@return` types reads the variable it writes: a whole write or
+     * `+=` of the variable, which may set any key, or a write of one key a literal names typed, or none names.
      *
      * @param  array<Node\Stmt>  $stmts
      */
@@ -1755,16 +1757,30 @@ trait ReadsReturnedVariables
         }
 
         return new NodeFinder()->findFirst($stmts, function (Node $node) use ($scope, $varName): bool {
-            if (! ($node instanceof Assign || $node instanceof CoalesceAssign) || ! $node->var instanceof ArrayDimFetch
-                || ! $node->var->var instanceof Variable || $node->var->var->name !== $varName || $node->var->dim === null
+            if (! ($node instanceof Assign || $node instanceof CoalesceAssign || $node instanceof Plus)
                 || ! $this->readsVariableIn($node->expr, $varName)
+            ) {
+                return false;
+            }
+
+            if ($node->var instanceof Variable) {
+                return $node->var->name === $varName;
+            }
+
+            if (! $node->var instanceof ArrayDimFetch || ! $node->var->var instanceof Variable
+                || $node->var->var->name !== $varName || $node->var->dim === null
             ) {
                 return false;
             }
 
             $dim = $node->var->dim;
 
-            return ! ($dim instanceof String_ || $dim instanceof Int_) || $scope->typesKey((string) $dim->value);
+            // A key built around a variable is an index signature, which no `@return` member types.
+            return match (true) {
+                $dim instanceof String_, $dim instanceof Int_ => $scope->typesKey((string) $dim->value),
+                $dim instanceof InterpolatedString, $dim instanceof Concat => false,
+                default => true,
+            };
         }) !== null;
     }
 

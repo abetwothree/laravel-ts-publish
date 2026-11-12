@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\GapModeLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\GapModeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCastResource;
@@ -8007,6 +8008,8 @@ it('reads in the gap mode what a level read brings beside a key its @return type
     'a whole return of a helper' => ['returnsHelper', 'returnedRead'],
     'a returned local\'s whole write' => ['writesLocal', 'writtenRead'],
     'the walk\'s alias' => ['aliasesWalk', 'aliasRead'],
+    'the walk\'s alias in a += of the variable' => ['addsAliasedKey', 'addedAliasRead'],
+    'the walk\'s alias in a whole write spreading the variable' => ['spreadsAliasedKey', 'spreadAliasRead'],
     'a merge() call' => ['mergesLiteral', 'mergedRead'],
     'a merge() literal\'s typed key' => ['mergesTypedKey', 'mergedTypedRead'],
     'an eagerly bound helper argument' => ['passesArgument', 'argumentRead'],
@@ -8021,6 +8024,7 @@ it('reads with the gap mode off what a level read brings where no @return types 
     expect(gapModeHelperReads())->toBe([$helper => 'plain']);
 })->with([
     'an untyped key the walk writes beside a typed key that never reads the variable' => ['writesBesideKey', 'besideRead'],
+    'an index signature the walk writes from the variable' => ['writesSignatureAlias', 'signatureAliasRead'],
     'an undocumented helper\'s argument under an undocumented caller' => ['passesPlainArgument', 'plainArgumentRead'],
 ])->group('gap-mode');
 
@@ -8072,5 +8076,6 @@ it('reads a model accessor under a typed key in the gap mode, and a caster body 
     new ResourceAstAnalyzer(new ReflectionClass(GapModeModelReadsResource::class), GapModeReadsPost::class)->analyze();
 
     expect(gapModeReads('/^accessor-body:[^@]+@(\w+)/'))->toBe(['summary' => 'gaps'])
-        ->and(gapModeHelperReads())->toBe(['summaryText' => 'gaps', 'label' => 'plain']);
+        ->and(gapModeHelperReads())->toBe(['summaryText' => 'gaps', 'label' => 'plain'])
+        ->and(gapModeReads('/^caster-body:([^@]+)@/'))->toBe([GapModeLabelCast::class => 'plain']);
 })->group('gap-mode');

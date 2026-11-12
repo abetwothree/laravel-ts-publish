@@ -58,6 +58,48 @@ final class GapModeLevelsResource extends JsonResource
     }
 
     /**
+     * A typed key a `+=` writes from an untyped key of the same local.
+     *
+     * @return array{k: string}
+     */
+    public function addsAliasedKey(): array
+    {
+        $data = [];
+        $data['raw'] = $this->addedAliasRead();
+        $data += ['k' => $data['raw']];
+
+        return $data;
+    }
+
+    /**
+     * A typed key a whole write spreading the local writes from one of its untyped keys.
+     *
+     * @return array{k: string}
+     */
+    public function spreadsAliasedKey(): array
+    {
+        $data = [];
+        $data['raw'] = $this->spreadAliasRead();
+        $data = [...$data, 'k' => $data['raw']];
+
+        return $data;
+    }
+
+    /**
+     * An index signature written from an untyped key of the same local, beside a typed key.
+     *
+     * @return array{k: string}
+     */
+    public function writesSignatureAlias(string $name): array
+    {
+        $data = ['k' => 'k'];
+        $data['raw'] = $this->signatureAliasRead();
+        $data["{$name}_tag"] = $data['raw'];
+
+        return $data;
+    }
+
+    /**
      * An untyped key written beside a typed key that never reads the local.
      *
      * @return array{k: string}
@@ -233,6 +275,30 @@ final class GapModeLevelsResource extends JsonResource
      * An untyped key's value beside a typed key.
      */
     private function besideRead(): string
+    {
+        return 'raw';
+    }
+
+    /**
+     * A key's value a `+=` reads back.
+     */
+    private function addedAliasRead(): string
+    {
+        return 'raw';
+    }
+
+    /**
+     * A key's value a whole write spreading the local reads back.
+     */
+    private function spreadAliasRead(): string
+    {
+        return 'raw';
+    }
+
+    /**
+     * A key's value an index signature reads back.
+     */
+    private function signatureAliasRead(): string
     {
         return 'raw';
     }
