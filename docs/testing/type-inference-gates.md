@@ -100,13 +100,16 @@ The gate runs `npx tsc --noEmit` over each generated tree and counts these diagn
   an unused local or parameter, because `tsconfig.json` sets `noUnusedLocals` and `noUnusedParameters`.
 - **TS6192 (all imports in import declaration are unused)**: an import line of two or more names, none used. Its
   message names nothing, so the histogram prints it as `(import line with no name used)`.
+- **TS18016 (private identifiers are not allowed outside class bodies)**: a leaked open marker, `#$open: unknown`. Its
+  message names nothing, so the histogram prints it as `(private identifier outside a class body)`. A leaked `$gapN`
+  arm is TS2304.
 
 A leaked `toResource()` convention guess, the failure `PublishedResourceRegistry` prevents, shows up as TS2305 or
 TS2724 in the modular files, or as a relative TS2307 when the run writes nothing to the guessed class's directory. In
 `laravel-ts-global.ts` it shows up as TS2304 or TS2552. The gate counts each of them. The analyzer page covers
 [guess gating](../components/resource-ast-analyzer.md#toresource-convention-guesses-are-gated-on-the-published-set).
-TS2307 has [its own two counts](#the-ts2307-sub-gates), and a leaked DOM-named token has
-[a count of its own](#the-dom-global-count).
+TS2307 has [its own two counts](#the-ts2307-sub-gates), and a leaked DOM-named token and a leaked gap each have a
+count of their own, [the DOM-global count](#the-dom-global-count) and [the leak count](#the-leak-count).
 
 `tsconfig.json` checks `default-example`, and `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
 `tsconfig.split-template-example.json` check the other trees, one program each, because every tree's
@@ -122,7 +125,7 @@ Each argument is a baseline that arms one more gate, and fewer arguments leave t
 
 ```bash
 .github/scripts/unimportable-token-gate.sh          # report only
-.github/scripts/unimportable-token-gate.sh 0        # gate the main count and the DOM-global count
+.github/scripts/unimportable-token-gate.sh 0        # gate the main, DOM-global and leak counts
 .github/scripts/unimportable-token-gate.sh 0 0      # also gate relative-specifier TS2307s
 .github/scripts/unimportable-token-gate.sh 0 0 0    # also gate bare-specifier TS2307s, as CI does
 TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0
@@ -142,6 +145,15 @@ fixture that maps a type to another DOM name, such as the shipped config's comme
 `DOM_GLOBALS` by hand. `Date`, `Record`, `Pick` and the other names the package writes without an import come from the
 ES lib, which both programs load. The first argument arms this count with no baseline of its own, so any reading above
 `0` fails, after the TS2307 sub-gates report.
+
+### The leak count
+
+The publish strips every gap arm and open marker
+([AST engine § Visible gaps](../components/ast-engine.md#visible-gaps)), so one in a published file is a leak. The
+gate greps every file under `workbench/` or `tests/` that `tsc --listFilesOnly` lists for `$gap` followed by digits
+and for `#$open`. This also catches a spelling `tsc` accepts, such as one in a comment, which the main count cannot
+see. The first argument arms it like the DOM-global count. A fixture key or string literal spelled that way fails it
+too, so name none that way.
 
 ### The TS2307 sub-gates
 
@@ -248,7 +260,10 @@ rm tests/types/dom-global-control.ts
 `--selftest` automates the relative-specifier control, for a `.ts` and a `.d.ts` file, and the DOM-global control.
 It also plants an interface that extends two interfaces giving one key different types, and fails unless the main
 count reads exactly one TS2320 and the histogram names that interface, then an import line whose names all go unused,
-which must read exactly one TS6192 under its own label. CI runs it on every push that runs the workflow:
+which must read exactly one TS6192 under its own label. For the leak count, it plants a `$gap1` arm and an `#$open`
+member, which the main count and the leak count must each read as `2`, then both spellings in a comment, which only
+the leak count may fail, then the keys `$gap` and `$open`, which must pass. CI runs it on every push that runs the
+workflow:
 
 ```bash
 .github/scripts/unimportable-token-gate.sh --selftest
@@ -359,7 +374,7 @@ The gates miss these cases:
   an object arm can sit at another index than at the base, and a key that gains a second object arm renames each
   `prop.member` key to `prop[0].member`, which no base key matches, leaving only the parent key compared. This limit
   is accepted. Do not fix it with content-hashed arm keys.
-- **A leaked gap or open marker**: CI does not run `gap-gate.sh`. A `$gapN` arm left in a published type fails the
-  token gate as TS2304, but the open marker, `#$open: unknown`, is TS18016 to `tsc`, a code no count reads, and the
-  regression gate sees it only as an `unknown` in the object holding it. After a change to the gap mode, run
-  `gap-gate.sh` and grep the trees for `$gap` and `#$open`.
+- **A reader that decides on a gap**: CI never runs `gap-gate.sh`. The token gate fails a `$gapN` arm or an open
+  marker that reaches a published file ([the leak count](#the-leak-count)), but a reader that decides on one before
+  the frame strips it changes a published type and leaves nothing to grep. After a change to the gap mode, run
+  `gap-gate.sh`.
