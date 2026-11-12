@@ -215,7 +215,7 @@ final class InlineArrayHandler implements ExpressionHandler
         if (! $printedArm && self::holdsUnnamedKeys($result)) {
             $writes->holdUnnamedKeys();
 
-            // A mark or the marker opens the host, but only a value that reads open counts, in either mode alike.
+            // The marker opens the host, but only a value that reads open counts, so either mode counts alike.
             if (self::readsOpen($result)) {
                 UnreadSpreads::record();
             }
@@ -665,8 +665,8 @@ final class InlineArrayHandler implements ExpressionHandler
     }
 
     /**
-     * Whether a spread value holds keys no name names: an open literal or signature, or an object its own mark or its
-     * open marker opens. A gap arm beside the object opens nothing: it is no object a rule read.
+     * Whether a spread value holds keys no name names: an open literal or signature, or an object its open marker
+     * opens. A gap arm beside the object opens nothing: it is no object a rule read.
      *
      * @param  ValueExpressionResult  $result
      */
@@ -674,9 +674,7 @@ final class InlineArrayHandler implements ExpressionHandler
     {
         $object = self::spreadObject($result);
 
-        return self::readsOpen($result)
-            || ($object !== null && in_array("\0".VisibleGaps::stripped($object)[0], $result['openReadings'] ?? [], true))
-            || ($object !== null && (VisibleGaps::members($object)[1] ?? false));
+        return self::readsOpen($result) || ($object !== null && (VisibleGaps::members($object)[1] ?? false));
     }
 
     /**

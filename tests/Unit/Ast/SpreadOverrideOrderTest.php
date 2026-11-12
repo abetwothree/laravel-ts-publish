@@ -298,11 +298,6 @@ it('reads the keys a PHP function\'s array writes, as any value\'s', function ()
     expect(spreadValueKeys('{ a: string }', [], new FuncCall(new Name('array_merge'))))->toBe(['a: string']);
 });
 
-// A mark is no fact of the value: the keys a marked object names are written, and the object they go into is open too.
-it('reads the keys of a value a mark says is open, as of any other closed object', function () {
-    expect(spreadValueKeys('{ a: string }', ['openReadings' => ["\0{ a: string }"]]))->toBe(['a: string']);
-});
-
 it('reads the value a spread of a map may write under any key', function (string $type, ?string $value) {
     $scope = new AnalysisScope(new ReflectionClass(SpreadValueOverrideResource::class), Post::class);
 
@@ -405,23 +400,17 @@ function spreadWritten(array $result): array
     return [$written, $analysis];
 }
 
-// Only a value that reads open counts as an unread spread: its own mark, or the marker, opens the host and counts none.
-it('writes a spread\'s keys in place, the object it writes into open where the value itself is', function (array $result, bool $open, bool $counts) {
+it('writes a spread\'s keys in place, the object it writes into open where the value itself is', function (array $result, bool $open) {
     $unread = UnreadSpreads::count();
     [$written, $analysis] = spreadWritten(['optional' => false, ...$result]);
 
     expect($written)->toBeTrue()
         ->and(array_column($analysis->properties, 'type', 'name'))->toBe(['id' => 'number', 'by' => 'boolean'])
         ->and($analysis->holdsUnnamedKeys)->toBe($open)
-        ->and(UnreadSpreads::count() - $unread)->toBe($counts ? 1 : 0);
+        ->and(UnreadSpreads::count() - $unread)->toBe($open ? 1 : 0);
 })->with([
-    'a closed object' => [['type' => '{ by: boolean }'], false, false],
-    'an object whose own mark says it holds more keys' => [['type' => '{ by: boolean }', 'openReadings' => ["\0{ by: boolean }"]], true, false],
-    'a member\'s mark, which is the member\'s' => [['type' => '{ by: boolean }', 'openReadings' => [".by\0boolean"]], false, false],
-    'a union\'s mark beside null, which is no fact of the object' => [
-        ['type' => '{ by: boolean } | null', 'openReadings' => ["\0{ by: boolean } | null"]], false, false,
-    ],
-    'a value that holds keys no name names (D14)' => [['type' => '{ by: boolean }', 'unnamedKeys' => true], true, true],
+    'a closed object' => [['type' => '{ by: boolean }'], false],
+    'a value that holds keys no name names (D14)' => [['type' => '{ by: boolean }', 'unnamedKeys' => true], true],
 ]);
 
 it('joins each held key with the value a spread of a map may write over it', function () {

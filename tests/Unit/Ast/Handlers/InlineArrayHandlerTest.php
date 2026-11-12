@@ -657,7 +657,7 @@ it('reads a map spread\'s value past its gap arms and open marker', function (st
     'a signature beside the marker' => ['{ [key: string]: string; #$open: unknown }'],
 ]);
 
-it('opens the host for a value its marker opens, as for its mark, and neither for a gap; each counts as the other mode', function (array $result, bool $opens, int $counts) {
+it('opens the host for a value its marker opens and not for a gap, counting only a value that reads open', function (array $result, bool $opens, int $counts) {
     $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
     $writes = new LiteralWrites;
     $unread = UnreadSpreads::count();
@@ -671,9 +671,7 @@ it('opens the host for a value its marker opens, as for its mark, and neither fo
         ->and(UnreadSpreads::count() - $unread)->toBe($counts);
 })->with([
     'the open marker' => [['type' => '{ by: string; #$open: unknown }'], true, 0],
-    'its mark, as the gap mode off reads it' => [['type' => '{ by: string }', 'openReadings' => ["\0{ by: string }"]], true, 0],
     'the marker beside a signature, which reads open' => [['type' => '{ by: string; [key: string]: number; #$open: unknown }'], true, 1],
-    'its mark beside a signature' => [['type' => '{ by: string; [key: string]: number }', 'openReadings' => ["\0{ by: string; [key: string]: number }"]], true, 1],
     'a gap arm' => [['type' => '{ by: string } | $gap1'], false, 0],
 ]);
 

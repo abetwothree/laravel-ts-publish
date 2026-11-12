@@ -5,7 +5,6 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
-use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\User;
@@ -62,8 +61,7 @@ it('prints the open marker in the gap mode where the object may hold keys no nam
     $read = fn (): array => new InlineObjectResult()->of($analysis, $arms);
     $printed = $shows ? resolve(AnalysisMemo::class)->showingGaps($read) : $read();
 
-    expect($printed['type'])->toBe($type)
-        ->and($printed['openReadings'] ?? [])->toContain("\0".VisibleGaps::stripped($type)[0]);
+    expect($printed['type'])->toBe($type);
 })->with([
     'a literal, the mode off' => [['a' => 'string'], [], false, '{ a: string }'],
     'a literal, the mode on' => [['a' => 'string'], [], true, '{ a: string; #$open: unknown }'],

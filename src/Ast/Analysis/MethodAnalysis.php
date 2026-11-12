@@ -96,7 +96,8 @@ class MethodAnalysis
 
     /**
      * Whether a key these hold may be one no name the engine reads names: a key no literal or constant names, or a
-     * spread of a value that is no closed shape. An inline object of them holds keys a docblock may name, set or not.
+     * spread of a value that is no closed shape. In the gap mode an inline object of them carries the open marker, so
+     * the merge keeps a key only its docblock declares.
      */
     public bool $holdsUnnamedKeys = false;
 
@@ -126,14 +127,6 @@ class MethodAnalysis
      * @var array<array-key, true>
      */
     public array $closedToDottedKeys = [];
-
-    /**
-     * Property name => each reading its value leaves open (ValueResult `openReadings`): its path in `.key`, `[]` and
-     * `{}` steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
-     *
-     * @var array<array-key, list<string>>
-     */
-    public array $openReadings = [];
 
     /**
      * The spreads a nested literal's print intersects with its keys, in item order, as its fold left them. They print
@@ -284,12 +277,6 @@ class MethodAnalysis
             unset($this->closedToDottedKeys[$name]);
         }
 
-        if (($result['openReadings'] ?? []) === []) {
-            unset($this->openReadings[$name]);
-        } else {
-            $this->openReadings[$name] = $result['openReadings'];
-        }
-
         $this->dispatchFqcnResults(
             $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
             $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes,
@@ -345,8 +332,8 @@ class MethodAnalysis
      * `properties` appends: each caller hands keys this analysis does not hold, as a literal's fold writes each key
      * once; a signature entry is one more runtime key.
      *
-     * The class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings` replace-merge, the source
-     * winning, a key it sets with none losing its own; the inline maps append undeduped, as read by position.
+     * The class maps, `casts`, `declaredTokenFqcns` and `closedToDottedKeys` replace-merge, the source winning, a key
+     * it sets with none losing its own; the inline maps append undeduped, as read by position.
      *
      * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      */
@@ -377,14 +364,13 @@ class MethodAnalysis
                 unset($this->declaredTokenFqcns[$property['name']]);
             }
 
-            unset($this->closedToDottedKeys[$property['name']], $this->openReadings[$property['name']]);
+            unset($this->closedToDottedKeys[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
         $this->declaredTokenFqcns = array_replace($this->declaredTokenFqcns, $source->declaredTokenFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
-        $this->openReadings = array_replace($this->openReadings, $source->openReadings);
         $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
@@ -436,7 +422,6 @@ class MethodAnalysis
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
         $this->heldObjectKeys = $source->heldObjectKeys;
         $this->closedToDottedKeys = $source->closedToDottedKeys;
-        $this->openReadings = $source->openReadings;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -864,7 +849,6 @@ class MethodAnalysis
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
         $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
-        $this->openReadings = TopLevelRenumbering::rekey($this->openReadings, $names);
     }
 
     /**
@@ -891,7 +875,6 @@ class MethodAnalysis
         $slice->declaredTokenFqcns = array_intersect_key($this->declaredTokenFqcns, $key);
         $slice->heldObjectKeys = array_intersect_key($this->heldObjectKeys, $key);
         $slice->closedToDottedKeys = array_intersect_key($this->closedToDottedKeys, $key);
-        $slice->openReadings = array_intersect_key($this->openReadings, $key);
 
         foreach ($slice->inlineEnumFqcns[$name] ?? [] as $fqcn) {
             $slice->directEnumFqcns += array_intersect_key($this->directEnumFqcns, [$fqcn => true]);

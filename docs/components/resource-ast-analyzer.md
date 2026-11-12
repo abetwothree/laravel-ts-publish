@@ -176,13 +176,8 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
 
 A shape is open only where the engine cannot name every key it holds: the array literal walk flags a key no literal
 or constant names and a spread whose value is no closed shape (`MethodAnalysis::$holdsUnnamedKeys`), and a variable's
-walk an unnameable write (`$holdsUnreadKeys`). `InlineObjectResult::of()` records such an object as its path in the
-value, in `.key`, `[]` and `{}` steps, beside its type, so two of one text stay apart. `array_map()`, a collection's
-`map()` and a list literal's items move it under their element (`ValueResult::holdingOpenReadings()`); taking an
-element, as a list literal's spread or a bound callback parameter does, moves it back out
-(`ValueResult::takingElementReadings()`); and a spread object's marks follow into the literal it spreads into. The
-mark reaches the key as `MethodAnalysis::$openReadings`. The merge reads a shape open by the open marker the gap mode
-prints in its place (`InlineObjectResult::of()`), which every reader carries with the object.
+walk an unnameable write (`$holdsUnreadKeys`). The merge reads a shape open by the open marker the gap mode prints on
+it (`InlineObjectResult::of()`), which every reader carries with the object.
 
 Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
 or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an

@@ -730,13 +730,11 @@ describe('gap arms', function () {
             ->and(ValueResult::closedToDottedKeys([...$closed, 'type' => '{ a: string } | $gap1']))->toBeTrue();
     });
 
-    test('unions a `null` beside a gap as the null Inertia replaces, and marks a dropped arm\'s null on gap-free text', function () {
+    test('unions a `null` beside a gap as the null Inertia replaces', function () {
         $closed = ValueResult::closeToDottedKeys(['type' => '{ a: string }', 'optional' => false]);
         $union = ValueResult::unionResults([$closed, ['type' => 'null | $gap1', 'optional' => false]]);
-        $marked = ValueResult::unionResults([['type' => 'string | $gap1', 'optional' => false], ['type' => 'null', 'optional' => false], ValueResult::unknown()]);
 
-        expect(ValueResult::closedToDottedKeys($union))->toBeTrue()
-            ->and($marked['openReadings'] ?? [])->toBe(["\0string | null"]);
+        expect(ValueResult::closedToDottedKeys($union))->toBeTrue();
     });
 });
 

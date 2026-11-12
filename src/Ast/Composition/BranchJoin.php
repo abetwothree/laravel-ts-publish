@@ -74,9 +74,6 @@ final class BranchJoin
         /** @var array<array-key, bool> $closed whether every branch setting the key closes it */
         $closed = [];
 
-        /** @var array<array-key, list<string>> $openReadings the readings any branch holds open under the key */
-        $openReadings = [];
-
         /** @var array<array-key, list<array{string, Slots}>> $declaredMap each branch's type and declared slots */
         $declaredMap = [];
 
@@ -90,7 +87,6 @@ final class BranchJoin
                 $classed[$prop['name']][] = self::classedValue($analysis, $prop);
                 $declaredMap[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
-                $openReadings[$prop['name']] = [...$openReadings[$prop['name']] ?? [], ...$analysis->openReadings[$prop['name']] ?? []];
             }
 
             $channels->merge($analysis);
@@ -194,7 +190,6 @@ final class BranchJoin
         $target->holdsUnreadKeys = $channels->holdsUnreadKeys;
         $target->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
         $target->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
-        $target->openReadings = array_map(static fn (array $shapes): array => array_values(array_unique($shapes)), array_filter($openReadings));
         $target->declaredTokenFqcns = $slots;
         $target->queueSplitClasses($analyses);
 

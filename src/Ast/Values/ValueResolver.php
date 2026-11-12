@@ -247,7 +247,7 @@ final class ValueResolver
 
                 // A spread copies a collection's items into this array, where a resource's filter enters each one.
                 unset($element['keepsKeys']);
-                $element = ValueResult::takingElementReadings([...$element, 'type' => $elementType], $element);
+                $element = [...$element, 'type' => $elementType];
             }
 
             $elements[] = $element;
@@ -263,12 +263,7 @@ final class ValueResolver
 
         unset($union['listKeys']);
 
-        return ValueResult::holdingOpenReadings($union, [
-            ...$union,
-            'type' => ValueResult::arrayWrapType($union['type']),
-            'optional' => false,
-            ...($listed ? ['listKeys' => true] : []),
-        ], '[]');
+        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false, ...($listed ? ['listKeys' => true] : [])];
     }
 
     /**

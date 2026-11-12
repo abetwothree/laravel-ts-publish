@@ -6,7 +6,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
@@ -51,8 +50,6 @@ final class ObjectMembers
         $analysis = new MethodAnalysis;
 
         foreach ($members as [$name, $member]) {
-            // Only a spread written in place carries a member's readings; a seeded walk reads its keys as it did.
-            unset($member['openReadings']);
             $analysis->addProperty($name, $member);
         }
 
@@ -64,8 +61,8 @@ final class ObjectMembers
 
     /**
      * The keys of the one object literal a value's type spells, each as the value it holds with the classes behind its
-     * own tokens and the readings it leaves open, in the order the type spells them; null for any other type, or a
-     * class it cannot place. The value's custom imports and carried classes stay on it.
+     * own tokens, in the order the type spells them; null for any other type, or a class it cannot place. The value's
+     * custom imports and carried classes stay on it.
      *
      * Its gap arms and its open marker name no key, so the keys are read as with both stripped.
      *
@@ -98,7 +95,6 @@ final class ObjectMembers
             }
 
             $holdsObject = TsTypeShape::holdsKeyedObject($type);
-            $readings = self::memberReadings($value, $name);
 
             $members[] = [$name, [
                 'type' => $type,
@@ -109,7 +105,6 @@ final class ObjectMembers
                 ...self::memberChannel($enums->take($type), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
                 // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
                 ...(($value['keepsKeys'] ?? false) && $holdsObject ? ['keepsKeys' => true] : []),
-                ...($readings === [] ? [] : ['openReadings' => $readings]),
             ]];
         }
 
@@ -291,26 +286,5 @@ final class ObjectMembers
     {
         return ValueResult::namesOnlyExportedClasses($value)
             && ($carriesImports || ! TsTypeString::shapeValueHasUnimportableToken($value['type']));
-    }
-
-    /**
-     * The readings a value leaves open under one member's key, each moved to the member's own path; the object's own
-     * stays with it.
-     *
-     * @param  ValueExpressionResult  $value
-     * @return list<string>
-     */
-    private static function memberReadings(array $value, string $name): array
-    {
-        $key = '.'.JsEmitter::validJsObjectKey($name, allowIndexSignature: true);
-
-        return array_values(array_map(
-            static fn (string $reading): string => substr($reading, strlen($key)),
-            array_filter(
-                $value['openReadings'] ?? [],
-                static fn (string $reading): bool => str_starts_with($reading, $key)
-                    && in_array($reading[strlen($key)] ?? '', ['.', '[', '{', "\0"], true),
-            ),
-        ));
     }
 }

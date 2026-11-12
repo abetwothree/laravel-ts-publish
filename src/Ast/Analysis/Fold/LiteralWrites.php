@@ -282,7 +282,7 @@ final class LiteralWrites
 
     /**
      * One map's arm for several map spreads: their values joined in one union, so a class two of them hold is one
-     * member, and an `unknown` one leaves the value unknown. Each spread's open readings already stand under its `{}`.
+     * member, and an `unknown` one leaves the value unknown.
      *
      * @param  non-empty-list<PrintedMapArm>  $maps
      * @return PrintedArm
@@ -294,16 +294,10 @@ final class LiteralWrites
             ? ValueResult::unknown()
             : ValueResult::unionResults($values, countMembers: true);
         $type = 'Record<string, '.$value['type'].'>';
-        $result = [...$value, 'type' => $type];
-        $readings = array_values(array_unique(array_merge([], ...array_map(
-            static fn (array $map): array => $map['arm']['result']['openReadings'] ?? [],
-            $maps,
-        ))));
-        unset($result['openReadings']);
 
         // The joined map stands where the last map does, after another item, so every key must fit its value.
         return [
-            'arm' => ['type' => $type, 'result' => $readings === [] ? $result : [...$result, 'openReadings' => $readings]],
+            'arm' => ['type' => $type, 'result' => [...$value, 'type' => $type]],
             'map' => ['value' => $value, 'checksKeys' => true, 'mayBeEmpty' => false],
         ];
     }

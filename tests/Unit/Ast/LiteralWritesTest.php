@@ -102,14 +102,6 @@ it('keeps a held untyped value untyped, and leaves out a later untyped value tha
         ->and(foldedKeys(foldedInto($later)))->toBe(['by' => 'string']);
 });
 
-it('keeps what both sides of a joined key leave open', function () {
-    $writes = new LiteralWrites;
-    $writes->recordKey('by', ['type' => '{ a: string }', 'optional' => false, 'openReadings' => [".a\0string"]], 0);
-    $writes->recordKey('by', ['type' => '{ b: number }', 'optional' => true, 'absent' => true, 'openReadings' => [".b\0number"]], 1);
-
-    expect(foldedInto($writes)->openReadings)->toBe(['by' => [".a\0string", ".b\0number"]]);
-});
-
 it('marks a key whose later value may be removed optional and removed, never sending the value before it', function () {
     $writes = new LiteralWrites;
     $writes->recordKey('by', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class], 0);
@@ -208,14 +200,14 @@ it('leaves out a joined map\'s arm where a key does not fit the joined value, as
     expect(foldedInto($writes)->spreadArms())->toBe([]);
 });
 
-it('joins a map whose value is unknown into an unknown map, keeping each spread\'s open readings', function () {
+it('joins a map whose value is unknown into an unknown map', function () {
     $writes = new LiteralWrites;
     $writes->recordArm(literalMapArm('unknown', checksKeys: false));
-    $writes->recordArm(literalMapArm('{ a: string }', checksKeys: true, wide: ['openReadings' => ["{}\0{ a: string }"]]));
+    $writes->recordArm(literalMapArm('{ a: string }', checksKeys: true));
 
     expect(foldedInto($writes)->spreadArms())->toBe([[
         'type' => 'Record<string, unknown>',
-        'result' => ['type' => 'Record<string, unknown>', 'optional' => false, 'openReadings' => ["{}\0{ a: string }"]],
+        'result' => ['type' => 'Record<string, unknown>', 'optional' => false],
     ]]);
 });
 

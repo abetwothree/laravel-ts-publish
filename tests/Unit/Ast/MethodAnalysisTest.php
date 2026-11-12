@@ -388,7 +388,6 @@ it('takes over every field of another analysis, both flags included', function (
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
     $source->closedToDottedKeys = ['a' => true];
-    $source->openReadings = ['a' => ['{ b: number }']];
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);
@@ -721,9 +720,9 @@ it('moves every per-key map with its key, through every method that moves, slice
     $forgotten = $filled();
     $forgotten->forgetChannels('k');
     // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
-    $keptByForget = ['heldObjectKeys', 'closedToDottedKeys', 'openReadings'];
+    $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
 
-    expect($maps)->toHaveCount(15);
+    expect($maps)->toHaveCount(14);
 
     foreach ($maps as $map) {
         expect($slice->{$map})->toBe(['k' => ['K']], $map)
