@@ -28,6 +28,8 @@ use WeakMap;
  * and holds each gap's warnings by its id: a strip or a read that consumes the gap raises them, as does the end of the
  * extent the gap was made in unless a merge filled it.
  *
+ * A read consumes a gap that reached it and that its result no longer spells, unless a merge inside it filled the gap.
+ *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type LeftOutWrite from ReceiverType
  *
@@ -69,7 +71,10 @@ final class DroppedUnionArms
     /** The last gap id this run gave out. */
     private static int $lastGapId = 0;
 
-    /** @var list<int> each gap id made or replayed this run, in order, which gapMark() marks a place in */
+    /**
+     * @var list<int> each gap id made, replayed or spelled by a read's result this run, in order, and each id a merge
+     *                filled, negated, which gapMark() marks a place in
+     */
     private static array $gapLog = [];
 
     /** @var array<int, array<string, GapWarning>> the warnings each gap id holds, by subject and message */
@@ -142,14 +147,16 @@ final class DroppedUnionArms
 
     /**
      * Count the arms a reused analysis dropped when it was first computed, as computing it again would, and announce
-     * the gaps it made again, so the extent under way raises their warnings as it raises its own.
+     * the gaps it made and filled again, so the extent and the reads under way see them as they see their own.
      *
      * @param  list<int>  $gaps
+     * @param  list<int>  $fills
      */
-    public static function replay(int $dropped, array $gaps = []): void
+    public static function replay(int $dropped, array $gaps = [], array $fills = []): void
     {
         self::$dropped += $dropped;
         array_push(self::$gapLog, ...$gaps);
+        self::filled($fills);
     }
 
     /** Record one union arm that was left out because it resolved to unknown, naming the site that dropped it. */
@@ -261,13 +268,38 @@ final class DroppedUnionArms
     }
 
     /**
-     * Each gap made or replayed since gapMark() gave $mark, once, in the order first logged.
+     * Each gap made, replayed or spelled by a read's result since gapMark() gave $mark, once, in the order first
+     * logged.
      *
      * @return list<int>
      */
     public static function gapsSince(int $mark): array
     {
-        return $mark >= count(self::$gapLog) ? [] : array_values(array_unique(array_slice(self::$gapLog, $mark)));
+        if ($mark >= count(self::$gapLog)) {
+            return [];
+        }
+
+        $made = array_filter(array_slice(self::$gapLog, $mark), static fn (int $id): bool => $id > 0);
+
+        return array_values(array_unique($made));
+    }
+
+    /**
+     * Each gap a merge filled, or a reused analysis replayed as filled, since gapMark() gave $mark, once, in order.
+     *
+     * @return list<int>
+     */
+    public static function filledSince(int $mark): array
+    {
+        $filled = [];
+
+        foreach (array_slice(self::$gapLog, $mark) as $logged) {
+            if ($logged < 0) {
+                $filled[-$logged] = -$logged;
+            }
+        }
+
+        return array_values($filled);
     }
 
     /**
@@ -292,6 +324,7 @@ final class DroppedUnionArms
     {
         foreach ($ids as $id) {
             self::$filled[$id] = true;
+            self::$gapLog[] = -$id;
         }
     }
 
@@ -308,21 +341,24 @@ final class DroppedUnionArms
     }
 
     /**
-     * Raise the warnings of each gap made or replayed since gapMark() gave $mark that a read's type no longer spells:
-     * the read consumed it, so no merge can fill it there, whatever a merge fills under another key.
+     * Raise the warnings of each gap that reached a read since gapMark() gave $mark, made, replayed or spelled by an
+     * inner read's result, that the read's type no longer spells and no merge inside the read filled: the read consumed
+     * it, whatever a merge filled before it. The gaps the type spells are logged for the read around it.
      */
     public static function consumed(int $mark, string $type): void
     {
-        if ($mark >= count(self::$gapLog)) {
-            return;
-        }
+        $spelled = VisibleGaps::ids($type);
 
-        foreach (array_diff(self::gapsSince($mark), VisibleGaps::ids($type)) as $id) {
-            // The holds stay for a strip or the extent: a read under way may still discard the warning raised here.
-            foreach (self::$gapWarnings[$id] ?? [] as $warning) {
-                self::warn($warning['subject'], $warning['message'], $warning['arm']);
+        if ($mark < count(self::$gapLog)) {
+            foreach (array_diff(self::gapsSince($mark), $spelled, self::filledSince($mark)) as $id) {
+                // The holds stay for a strip or the extent: a read under way may still discard the warning raised here.
+                foreach (self::$gapWarnings[$id] ?? [] as $warning) {
+                    self::warn($warning['subject'], $warning['message'], $warning['arm']);
+                }
             }
         }
+
+        array_push(self::$gapLog, ...$spelled);
     }
 
     /**

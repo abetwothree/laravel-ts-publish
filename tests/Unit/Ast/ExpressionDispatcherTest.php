@@ -196,6 +196,61 @@ it('raises the warnings of a gap a handler\'s reads made that its result, or a d
     'a decline' => [null, true],
 ]);
 
+// A gap a value carries in, as a bound argument does, was made before the read: an inner result spelling it brings it.
+it('raises the warnings of a gap an inner dispatch\'s result spelled that the outer result drops, unless a merge inside filled it', function (string $outer, bool $fills, bool $raises) {
+    $scope = dispatcherTestScope();
+    $arm = new Variable('arm', ['startLine' => 7]);
+    $id = DroppedUnionArms::gap($scope, 'match-arm', $arm, 'null');
+    DroppedUnionArms::hold($id, 'held', $arm, stdClass::class);
+    $dispatcher = null;
+    $bound = new class(['type' => 'null | '.VisibleGaps::arm($id), 'optional' => false]) implements ExpressionHandler
+    {
+        public function __construct(private array $bound) {}
+
+        public function nodeClasses(): array
+        {
+            return [Variable::class];
+        }
+
+        public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+        {
+            return $this->bound;
+        }
+    };
+    $reads = function (AnalysisScope $scope, ExpressionEngine $engine) use (&$dispatcher, $outer, $fills, $id): array {
+        $dispatcher->dispatch(new Variable('x'), $scope, $engine);
+
+        if ($fills) {
+            DroppedUnionArms::filled([$id]);
+        }
+
+        return ['type' => str_replace('$gap', VisibleGaps::arm($id), $outer), 'optional' => false];
+    };
+    $reader = new class($reads) implements ExpressionHandler
+    {
+        public function __construct(private Closure $reads) {}
+
+        public function nodeClasses(): array
+        {
+            return [String_::class];
+        }
+
+        public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+        {
+            return ($this->reads)($scope, $engine);
+        }
+    };
+
+    $dispatcher = new ExpressionDispatcher([$bound, $reader]);
+    $dispatcher->dispatch(new String_('x'), $scope, dispatcherTestEngine());
+
+    expect(array_column(AnalysisWarnings::all(), 'message'))->toBe($raises ? ['held'] : []);
+})->with([
+    'an outer result spelling the gap' => ['null | $gap', false, false],
+    'an outer result without it' => ['number', false, true],
+    'a merge inside the outer read filling it' => ['number', true, false],
+]);
+
 /**
  * A configurable spy handler: claims a fixed node-class list and returns a canned result (or
  * declines with null), counting calls to both methods so tests can prove dispatch order and memoization.

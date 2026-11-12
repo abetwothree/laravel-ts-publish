@@ -16,8 +16,8 @@ use PhpParser\Node\Expr;
  * Tries registered handlers, in registration order, for an expression's concrete class, returning
  * the first non-null resolution. Order is load-bearing: it IS the legacy guard-chain's order.
  *
- * A gap a handler's reads made that its resolution, or the `unknown` left where every handler declines, no longer
- * spells was consumed there, so its warnings rise (DroppedUnionArms::consumed()).
+ * A gap a handler's reads made or carried in that its resolution, or the `unknown` left where every handler declines,
+ * no longer spells was consumed there, so its warnings rise, unless a merge in those reads filled it (consumed()).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *

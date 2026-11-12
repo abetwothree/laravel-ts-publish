@@ -342,6 +342,29 @@ test('replays the gap ids a reused answer logged when it was computed, its own a
         ->and(DroppedUnionArms::gapsSince($mark))->toBe($ids);
 });
 
+test('replays the gaps a reused answer filled when it was computed, and no fill made outside it', function () {
+    $memo = new AnalysisMemo;
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    [$own, $outside] = [new Variable('own'), new Variable('outside')];
+    $fills = function () use ($scope, $own): int {
+        $id = DroppedUnionArms::gap($scope, 'match-arm', $own, 'null');
+        DroppedUnionArms::filled([$id]);
+
+        return $id;
+    };
+    $leaves = fn (): int => DroppedUnionArms::gap($scope, 'match-arm', $outside, 'null');
+
+    $filled = $memo->remember('fills', $fills);
+    $left = $memo->remember('leaves', $leaves);
+    DroppedUnionArms::filled([$left]);
+    $mark = DroppedUnionArms::gapMark();
+    $memo->remember('fills', $fills);
+    $memo->remember('leaves', $leaves);
+
+    expect(DroppedUnionArms::filledSince($mark))->toBe([$filled])
+        ->and(DroppedUnionArms::gapsSince($mark))->toBe([$filled, $left]);
+});
+
 test('keeps an answer read with gaps shown apart from one read with them hidden, whichever comes first', function () use ($counting) {
     $memo = new AnalysisMemo;
     [$offFirst, $onFirst] = [new ArrayObject, new ArrayObject];

@@ -77,7 +77,7 @@ final class VisibleGaps
      */
     public static function ids(string $type): array
     {
-        return self::stripped($type)[1];
+        return str_contains($type, self::GAP_PREFIX) ? self::stripped($type)[1] : [];
     }
 
     /**

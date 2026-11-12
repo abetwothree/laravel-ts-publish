@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillAliasResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedArgumentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedUnfilledResource;
@@ -25,10 +26,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelpersRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueReversedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillMixedRecordResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillNestedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillResourceArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillReusedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillTopHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillUndeclaredResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillWholeWriteResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
@@ -839,4 +843,17 @@ test('a gap a key consumes warns once with today\'s text, whether a merge fills 
     'filled under a typed key, consumed under an untyped one' => [GapFillConsumedUntypedResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
     'filled and consumed in a spread helper' => [GapFillConsumedHelperResource::class, ['a' => 'number[] | null', 'b' => 'number', 'n' => 'number'], 27],
     'consumed and filled nowhere' => [GapFillConsumedUnfilledResource::class, ['b' => 'number'], 21],
+    'a documented helper\'s argument filled under its typed key, consumed under another' => [GapFillConsumedArgumentResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
+])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);
+
+// A merge inside the read that holds the gap filled it, so the placeholder the warning names is never published.
+test('a gap a merge fills inside the read that holds it warns nothing, whether the read computes the merge or reuses it', function (string $resource, array $expected, bool $everyKey) {
+    ReturnMembers::$typesEveryKey = $everyKey;
+
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toBe([]);
+})->with([
+    'a helper spread under an undocumented key' => [GapFillNestedHelperResource::class, ['meta' => '{ a: number[] | null }']],
+    'the same helper spread at the top' => [GapFillTopHelperResource::class, ['a' => 'number[] | null']],
+    'a reused read of a vague helper spreading it' => [GapFillReusedHelperResource::class, ['meta' => '{ a: number[] | null }', 'more' => '{ a: number[] | null }']],
 ])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);

@@ -224,6 +224,18 @@ test('the gap log gives each gap made or replayed since a mark, each once, and a
         ->and(DroppedUnionArms::dropped() - $dropped)->toBe(3);
 });
 
+test('the gap log tells the gaps filled since a mark from those made, and a replay logs the fills it carries', function () {
+    $scope = droppedArmsScope();
+    $id = DroppedUnionArms::gap($scope, 'match-arm', new Variable('arm'), 'string');
+    $mark = DroppedUnionArms::gapMark();
+    DroppedUnionArms::filled([$id]);
+    DroppedUnionArms::replay(0, [$id + 40], [$id + 41]);
+
+    expect(DroppedUnionArms::gapsSince($mark))->toBe([$id + 40])
+        ->and(DroppedUnionArms::filledSince($mark))->toBe([$id, $id + 41])
+        ->and(DroppedUnionArms::filledSince(DroppedUnionArms::gapMark()))->toBe([]);
+});
+
 test('a strip raises a held gap warning once, worded as the run words it', function () {
     $id = heldDroppedArmGap(droppedArm('arm'));
     $held = AnalysisWarnings::all();
@@ -252,10 +264,12 @@ test('a gap filled under one key and stripped under another warns once, in eithe
         ->and(droppedArmsRunMessages())->toBe([]);
 })->with(['filled first' => [true], 'stripped first' => [false]]);
 
-test('a gap a read no longer spells raises its held warning once, even where a merge filled it under another key', function () {
-    $mark = DroppedUnionArms::gapMark();
-    $id = heldDroppedArmGap(droppedArm('arm'));
+test('a gap a read no longer spells raises its held warning once, even where a merge filled it before the read', function () {
+    $arm = droppedArm('arm');
+    $id = heldDroppedArmGap($arm);
     DroppedUnionArms::filled([$id]);
+    $mark = DroppedUnionArms::gapMark();
+    heldDroppedArmGap($arm);
     DroppedUnionArms::consumed($mark, 'null | '.VisibleGaps::arm($id));
     $spelled = droppedArmsRunMessages();
     DroppedUnionArms::consumed($mark, 'number');
@@ -267,6 +281,44 @@ test('a gap a read no longer spells raises its held warning once, even where a m
     expect($spelled)->toBe([])
         ->and($consumed)->toBe([droppedArmPlaceholderMessage('$arm')])
         ->and(droppedArmsRunMessages())->toBe([]);
+});
+
+test('a gap an inner read\'s result spells counts as read by the read around it, which raises it where it drops it', function () {
+    $id = heldDroppedArmGap(droppedArm('arm'));
+    $reads = function (string $outer) use ($id): array {
+        $mark = DroppedUnionArms::gapMark();
+        DroppedUnionArms::consumed(DroppedUnionArms::gapMark(), 'null | '.VisibleGaps::arm($id));
+        $inner = droppedArmsRunMessages();
+        DroppedUnionArms::consumed($mark, $outer);
+
+        return [$inner, droppedArmsRunMessages()];
+    };
+
+    $kept = $reads('null | '.VisibleGaps::arm($id));
+    $dropped = $reads('number');
+
+    expect($kept)->toBe([[], []])
+        ->and($dropped)->toBe([[], [droppedArmPlaceholderMessage('$arm')]]);
+});
+
+test('a gap filled since a read began is no gap the read consumed, whether the fill was made or replayed', function () {
+    $arm = droppedArm('arm');
+    $mark = DroppedUnionArms::gapMark();
+    $id = heldDroppedArmGap($arm);
+    DroppedUnionArms::filled([$id]);
+    DroppedUnionArms::consumed($mark, 'number');
+    $made = droppedArmsRunMessages();
+    $mark = DroppedUnionArms::gapMark();
+    DroppedUnionArms::replay(0, [$id], [$id]);
+    DroppedUnionArms::consumed($mark, 'number');
+    $replayed = droppedArmsRunMessages();
+    $mark = DroppedUnionArms::gapMark();
+    DroppedUnionArms::replay(0, [$id]);
+    DroppedUnionArms::consumed($mark, 'number');
+
+    expect($made)->toBe([])
+        ->and($replayed)->toBe([])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmPlaceholderMessage('$arm')]);
 });
 
 test('a read that consumes a gap and does not stand raises nothing, and leaves the gap\'s other holds to a strip', function () {

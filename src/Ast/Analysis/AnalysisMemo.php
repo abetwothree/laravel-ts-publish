@@ -13,7 +13,7 @@ use LogicException;
 
 /**
  * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
- * computing it again could not differ, and a reuse replays the cache dependencies, dropped union arms, gaps and unread
+ * computing it again could not differ, and a reuse replays the cache dependencies, dropped arms, gaps, fills and unread
  * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
  *
  * It also holds whether a read under way needs each enum case as its enum, and whether it shows gaps (the gap mode),
@@ -41,6 +41,7 @@ use LogicException;
  *     recording: bool,
  *     dropped: int,
  *     gaps: list<int>,
+ *     fills: list<int>,
  *     unreadSpreads: int,
  *     reentries: int|null,
  *     cuts: array<string, int>,
@@ -501,7 +502,7 @@ final class AnalysisMemo
             DependencyRecorder::record($path);
         }
 
-        DroppedUnionArms::replay($entry['dropped'], $entry['gaps']);
+        DroppedUnionArms::replay($entry['dropped'], $entry['gaps'], $entry['fills']);
         UnreadSpreads::replay($entry['unreadSpreads']);
         $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
         foreach ($entry['cuts'] as $guard => $count) {
@@ -576,6 +577,7 @@ final class AnalysisMemo
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
             'gaps' => DroppedUnionArms::gapsSince($frame['gapMark']),
+            'fills' => DroppedUnionArms::filledSince($frame['gapMark']),
             'unreadSpreads' => UnreadSpreads::count() - $frame['unreadSpreads'],
             'reentries' => $cut ? $this->reentries - $frame['reentries'] : null,
             'cuts' => $this->cutsSince($frame['cuts']),

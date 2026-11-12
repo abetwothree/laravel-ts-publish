@@ -958,9 +958,10 @@ cast on the key leaves the reading, and so the warning, as it is.
 
 `DroppedUnionArms` also holds the gap mode's state: `gap()` gives the gap a drop leaves an id stable for the run, and a
 gap's warnings are held by that id until a strip raises them, or the outermost `extent()` ends with the gap unfilled.
-A read that consumes a gap raises them too, filled elsewhere or not: `ExpressionDispatcher` hands `consumed()` each gap
-a handler's reads made that its result no longer spells. `replaceable()` and `provisional()` settle a held warning as
-they settle a raised one.
+A read that consumes a gap raises them too, whatever a merge filled before it: `ExpressionDispatcher` hands `consumed()`
+each gap a handler's reads made, replayed or carried in (an inner read's result spelled it) that its result no longer
+spells, skipping one a merge inside those reads filled; a reused answer replays its fills with its gaps.
+`replaceable()` and `provisional()` settle a held warning as they settle a raised one.
 
 The mode turns on per frame. `ResourceAstAnalyzer` reads its subject's body, and each spread helper's, with the keys
 that method's `@return` types (`ReturnMembers::typedKeys()`) as `AnalysisScope::$typedKeys`: `readingKey()` reads a
