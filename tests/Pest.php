@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -20,7 +21,10 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Stmt\Expression;
 
-uses(TestCase::class)->in(__DIR__);
+// The gap gate (.github/scripts/gap-gate.sh) reads every key in the gap mode, which must change no published byte.
+uses(TestCase::class)
+    ->beforeEach(fn () => ReturnMembers::$typesEveryKey = (bool) getenv('TS_PUBLISH_GAP_GATE'))
+    ->in(__DIR__);
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or

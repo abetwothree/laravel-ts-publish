@@ -484,4 +484,4 @@ test('keys a static call through a class\'s name that forwards nothing as a read
         ->and($own['type'] ?? null)->toBe('string')
         ->and($memo->computations())->toBe($computed)
         ->and(new SevenHelperLevelResource(new Post)->resolve(request())['static_named'])->toBe('base');
-});
+})->group('gap-mode');

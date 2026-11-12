@@ -465,7 +465,7 @@ it('reads properties written through each other\'s helpers as the cut read does,
         // The caps leave room above 118 and 121.
         ->and($fannedWork)->toBeLessThanOrEqual(160)
         ->and($wrappedWork)->toBeLessThanOrEqual(196);
-});
+})->group('gap-mode');
 
 // The known gap: the engine cannot type an untyped parameter, which may hold anything.
 it('leaves an untyped property `unknown` where a subclass writes it an untyped parameter', function () {

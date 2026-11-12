@@ -6,7 +6,8 @@ type starts emitting `unknown`, and [`unimportable-token-gate.sh`](../../.github
 compiles the generated trees and fails when a token is emitted without its import or two imports collide. A green test
 suite does not prove the types are right, since a helper's unit test can pass while the pipeline emits a wrong type, so
 the gates read the output itself. They do not overlap, because a leaked token is a new property with a plausible type,
-which the regression gate cannot see. [Performance gate](performance-gate.md) covers speed.
+which the regression gate cannot see. [`gap-gate.sh`](#gap-gatesh) proves the gap mode changes no published byte, and
+[Performance gate](performance-gate.md) covers speed.
 
 ## Running the gates
 
@@ -273,6 +274,27 @@ A token reached the output without its import, or two names collided, and the ge
 Never add the import by hand. Make the type resolution that produced the token carry its FQCN through to the import
 machinery, or degrade to `unknown`. The usual cause is a `return` that fires before a guard, and the durable fix is one
 check over all fields that accepts or rejects them together, rather than two reordered branches.
+
+## `gap-gate.sh`
+
+[`gap-gate.sh`](../../.github/scripts/gap-gate.sh) proves the gap mode is invisible in the published output. Under a
+`@return` that types a key, the reader keeps each union arm it cannot type as a gap arm and an object that may hold
+unnamed keys as an open marker, and the frame strips both before its merge. With `TS_PUBLISH_GAP_GATE=1`,
+`tests/Pest.php` turns on `ReturnMembers::$typesEveryKey`, so every key of every such body reads in the mode, and
+every reader those reads reach must decide as it does on gap-free text:
+
+```bash
+.github/scripts/gap-gate.sh
+```
+
+It resets the trees, runs the suite under the switch without the `gap-mode` group, the tests that pin which reads run
+in the mode, and fails when the suite is red, when a tree file differs from `HEAD` or is new, or when
+`tests/Unit/Ast/GapGateTest.php` skips instead of passing, which means the switch never reached the analyzer. It
+resets the trees again on the way out. A test whose expectation depends on which reads run in the mode, such as a
+memo key or a count of computed answers, belongs in the `gap-mode` group.
+
+When it fails, a reader decided on a gap arm or the marker. Make that reader set them aside and carry them, never
+widen the group.
 
 ## The `@tolki/ts` type guard
 

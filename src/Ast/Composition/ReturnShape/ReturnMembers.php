@@ -21,17 +21,24 @@ use ReflectionMethod;
  *
  * @internal
  */
-final readonly class ReturnMembers
+final class ReturnMembers
 {
+    /**
+     * The gap gate's switch: while on, every key reads as typed, so a run proves the gap mode changes no published byte.
+     *
+     * @internal
+     */
+    public static bool $typesEveryKey = false;
+
     /**
      * @param  array<array-key, ShapeTypeInfo>  $shape  each member by its key, an optional one's spelled `key?`
      * @param  ShapeTypeInfo|null  $value  the value of an `array<string, V>`, which has no shape
      * @param  TypedKeys  $typedKeys
      */
     private function __construct(
-        private array $shape,
-        private ?array $value,
-        private array|true $typedKeys,
+        private readonly array $shape,
+        private readonly ?array $value,
+        private readonly array|true $typedKeys,
     ) {}
 
     /**
@@ -65,13 +72,13 @@ final readonly class ReturnMembers
 
     /**
      * The keys whose member tells something of their value, each spelled as PHP reads its key: `rows?` as `rows` and
-     * `0` as `'0'`; true where an informative `array<string, V>` types every key.
+     * `0` as `'0'`; true where an informative `array<string, V>` types every key, or the gap gate is on.
      *
      * @return TypedKeys
      */
     public function typedKeys(): array|true
     {
-        return $this->typedKeys;
+        return self::$typesEveryKey ? true : $this->typedKeys;
     }
 
     /**
