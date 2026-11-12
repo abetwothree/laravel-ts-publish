@@ -6,5 +6,5 @@
  */
 export interface ShiftWindowResource
 {
-    label: string;
+    label: 'early' | 'late';
 }

@@ -9,8 +9,8 @@ export interface DeclaredGapsResource
 {
     scores: { score: number | null }[];
     contacts: ({ email: string | null } | null)[];
-    rows: { name: string | null }[];
-    branches: { name: string | null }[];
+    rows: { name: string | null; locale: string }[];
+    branches: { name: string | null; locale: string }[];
     pairs: unknown[][];
-    summary: { label: string; count: null };
+    summary: { label: string; count: number | null };
 }

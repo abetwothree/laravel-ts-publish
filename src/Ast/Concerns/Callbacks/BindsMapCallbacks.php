@@ -33,6 +33,8 @@ trait BindsMapCallbacks
      * PHP throws on it; null where an arm is no array or the callback cannot be read. Each element binds with
      * $elementModel, guarded where $guarded says so; $arrayed says filter() reaches the result as an array.
      *
+     * An element binds the classes $declaredElement says the array holds too, as resolveArrayCallback() binds them.
+     *
      * @param  ValueExpressionResult  $input
      * @param  class-string<Model>|null  $elementModel
      * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the array left out
@@ -47,6 +49,7 @@ trait BindsMapCallbacks
         ?string $elementModel = null,
         bool $guarded = false,
         array $leftOut = [],
+        ?ReceiverType $declaredElement = null,
     ): ?array {
         $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::elementOf($arm) === null ? null : $arm);
 
@@ -68,7 +71,17 @@ trait BindsMapCallbacks
                 $model = $elementModel ?? ($carried !== null && $element === class_basename($carried) && is_a($carried, Model::class, true)
                     ? $carried
                     : null);
-                $body = $this->resolveArrayCallback($callback, [$value], $model, $arrayed, $scope, $engine, guardsElement: $guarded, leftOut: $leftOut);
+                $body = $this->resolveArrayCallback(
+                    $callback,
+                    [$value],
+                    $model,
+                    $arrayed,
+                    $scope,
+                    $engine,
+                    guardsElement: $guarded,
+                    leftOut: $leftOut,
+                    declaredElements: $declaredElement === null ? [] : [$declaredElement],
+                );
 
                 if ($body === null || $body['type'] === 'unknown') {
                     return null;
@@ -83,7 +96,7 @@ trait BindsMapCallbacks
         $body = count($bodies) === 1 ? array_values($bodies)[0] : ValueResult::unionResults(array_values($bodies));
 
         // The body's channels ride along, as the transformer rewrites an enum or a resource in whatever shape results.
-        return [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false];
+        return ValueResult::holdingOpenReadings($body, [...$body, 'type' => implode(' | ', array_values(array_unique($mapped))), 'optional' => false], '[]', '{}');
     }
 
     /**
@@ -138,11 +151,14 @@ trait BindsMapCallbacks
      * $parameters bound to the parameter at its position as an array's element, the first with $elementModel and the
      * guards. Null for a callable that reads as no closure, or a variadic first parameter.
      *
+     * Each parameter declaring no class also binds the classes $declaredElements says its array holds.
+     *
      * $arrayed says JsonResource::filter() reaches the result as an array.
      *
      * @param  list<ValueExpressionResult>  $parameters
      * @param  class-string<Model>|null  $elementModel
      * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the element left out
+     * @param  array<int, ReceiverType>  $declaredElements  each array's declared element classes, by position
      * @return ValueExpressionResult|null
      */
     protected function resolveArrayCallback(
@@ -155,6 +171,7 @@ trait BindsMapCallbacks
         bool $unread = false,
         bool $guardsElement = false,
         array $leftOut = [],
+        array $declaredElements = [],
     ): ?array {
         $callback = CallableForms::asOneValueClosure(CallableForms::heldCallable($callback, $scope), count($parameters));
 
@@ -167,7 +184,18 @@ trait BindsMapCallbacks
             null,
             $engine,
             fn (): array => $engine->resolve($callback),
-            fn () => ParameterBinder::bindCallbackArguments($callback, $parameters, $scope, $engine, $elementModel, true, $unread, $guardsElement, $leftOut),
+            fn () => ParameterBinder::bindCallbackArguments(
+                $callback,
+                $parameters,
+                $scope,
+                $engine,
+                $elementModel,
+                true,
+                $unread,
+                $guardsElement,
+                $leftOut,
+                $declaredElements,
+            ),
             function () use ($scope, $arrayed): void {
                 $scope->filtersNestedResources = $scope->filtersNestedResources && $arrayed;
                 $scope->mapResultArrayed = false;

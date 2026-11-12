@@ -109,7 +109,7 @@ final class ValueResult
      */
     public static function elementOf(array $list, string $element): array
     {
-        $value = [...self::withoutHeldObject($list), 'type' => $element, 'optional' => false];
+        $value = self::takingElementReadings([...self::withoutHeldObject($list), 'type' => $element, 'optional' => false], $list);
         unset($value['keepsKeys'], $value['absentReadsNull']);
 
         $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
@@ -445,6 +445,8 @@ final class ValueResult
      * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
      * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
+     * A union keeping a `null` beside a dropped branch is marked in `openReadings`, so a declared type can fill it.
+     *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
@@ -482,8 +484,55 @@ final class ValueResult
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
         $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
 
-        return self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
+        // A `null` kept beside an arm no rule types left out says nothing of that arm, which a declared type may fill.
+        if (count($branchResults) < count($results) && TsTypeString::hasNullArm($union['type'])) {
+            $union['openReadings'] = [...$union['openReadings'] ?? [], "\0".$union['type']];
+        }
+
+        return $union;
+    }
+
+    /**
+     * A value its container holds as each element or value, taking the container's open readings one step down: each
+     * whose path leads with the container's `[]` or `{}` step, that step dropped, and none of the container's own.
+     *
+     * @param  ValueExpressionResult  $value  the element or value, its type set
+     * @param  ValueExpressionResult  $container
+     * @return ValueExpressionResult
+     */
+    public static function takingElementReadings(array $value, array $container): array
+    {
+        $readings = array_values(array_unique(array_map(
+            static fn (string $reading): string => substr($reading, 2),
+            array_filter(
+                $container['openReadings'] ?? [],
+                static fn (string $reading): bool => str_starts_with($reading, '[]') || str_starts_with($reading, '{}'),
+            ),
+        )));
+        unset($value['openReadings']);
+
+        return $readings === [] ? $value : [...$value, 'openReadings' => $readings];
+    }
+
+    /**
+     * A value its container holds as each element or value, its open shapes' paths, which lead each entry, moved under
+     * the container's step for it: `[]` for a list element, `{}` for a record value.
+     *
+     * @param  ValueExpressionResult  $held  the element or value
+     * @param  ValueExpressionResult  $container  the container's own result, its type set
+     * @return ValueExpressionResult
+     */
+    public static function holdingOpenReadings(array $held, array $container, string ...$steps): array
+    {
+        $paths = array_merge([], ...array_map(
+            static fn (string $step): array => array_map(static fn (string $path): string => $step.$path, $held['openReadings'] ?? []),
+            $steps,
+        ));
+        unset($container['openReadings']);
+
+        return $paths === [] ? $container : [...$container, 'openReadings' => array_values(array_unique($paths))];
     }
 
     /**
@@ -947,6 +996,15 @@ final class ValueResult
 
         if (array_any($branchResults, fn (array $inner): bool => $inner['unnamedKeys'] ?? false)) {
             $result['unnamedKeys'] = true;
+        }
+
+        $openReadings = array_values(array_unique(array_merge([], ...array_map(
+            static fn (array $inner): array => $inner['openReadings'] ?? [],
+            $branchResults,
+        ))));
+
+        if ($openReadings !== []) {
+            $result['openReadings'] = $openReadings;
         }
 
         // Every list arm keeps its int keys only where each branch spelling one says so.

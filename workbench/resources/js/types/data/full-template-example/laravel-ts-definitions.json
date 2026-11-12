@@ -13539,12 +13539,12 @@
                 },
                 {
                     "name": "rows",
-                    "type": "{ name: string | null }[]",
+                    "type": "{ name: string | null; locale: string }[]",
                     "optional": false
                 },
                 {
                     "name": "branches",
-                    "type": "{ name: string | null }[]",
+                    "type": "{ name: string | null; locale: string }[]",
                     "optional": false
                 },
                 {
@@ -13554,7 +13554,7 @@
                 },
                 {
                     "name": "summary",
-                    "type": "{ label: string; count: null }",
+                    "type": "{ label: string; count: number | null }",
                     "optional": false
                 }
             ]
@@ -13754,17 +13754,17 @@
             "properties": [
                 {
                     "name": "entries",
-                    "type": "{ label: unknown }[]",
+                    "type": "{ label: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "labels",
-                    "type": "{ label: unknown }[]",
+                    "type": "{ label: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "flags",
-                    "type": "{ note?: unknown; weight?: number }",
+                    "type": "{ note?: string; weight?: number }",
                     "optional": false
                 }
             ]
@@ -14103,12 +14103,12 @@
             "properties": [
                 {
                     "name": "recipients",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "copied",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {
@@ -14937,7 +14937,7 @@
             "properties": [
                 {
                     "name": "rows",
-                    "type": "{ name: unknown }[]",
+                    "type": "{ name: string }[]",
                     "optional": false
                 },
                 {
@@ -15242,22 +15242,22 @@
                 },
                 {
                     "name": "spreads",
-                    "type": "{ k: string; id: unknown }[]",
+                    "type": "{ k: string; id: number }[]",
                     "optional": false
                 },
                 {
                     "name": "relays",
-                    "type": "{ k?: string; id: unknown }[]",
+                    "type": "{ k?: string; id: number }[]",
                     "optional": false
                 },
                 {
                     "name": "receivers",
-                    "type": "{ name: unknown }[]",
+                    "type": "{ name: string }[]",
                     "optional": false
                 },
                 {
                     "name": "named",
-                    "type": "{ name: unknown }[]",
+                    "type": "{ name: string }[]",
                     "optional": false
                 }
             ]
@@ -16677,7 +16677,7 @@
             "properties": [
                 {
                     "name": "entries",
-                    "type": "{ label: unknown }[]",
+                    "type": "{ label: string | null }[]",
                     "optional": false
                 }
             ]
@@ -19403,6 +19403,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\RecipientSettingsResource": {
+            "name": "RecipientSettingsResource",
+            "properties": [
+                {
+                    "name": "recipients",
+                    "type": "{ name: string | null; settings: { digest: boolean } | null }[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\ReflectedMethodChannelResource": {
             "name": "ReflectedMethodChannelResource",
             "properties": [
@@ -20067,7 +20077,7 @@
             "properties": [
                 {
                     "name": "label",
-                    "type": "string",
+                    "type": "'early' | 'late'",
                     "optional": false
                 }
             ]
@@ -21762,12 +21772,12 @@
             "properties": [
                 {
                     "name": "recipients",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {
                     "name": "copied",
-                    "type": "{ name: unknown; email: unknown }[]",
+                    "type": "{ name: string | null; email: string | null }[]",
                     "optional": false
                 },
                 {

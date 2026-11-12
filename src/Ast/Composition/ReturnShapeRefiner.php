@@ -7,20 +7,27 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use Illuminate\Support\Facades\Config;
 use ReflectionMethod;
 
 /**
  * Types what a method's body could not, from that same method's own `@return` docblock.
  *
- * Only a property the body left vague is filled, so a stale docblock can never overwrite a type the body resolved.
+ * A property the body left vague takes the member whole; one it typed merges with it position by position, so the body
+ * decides which members are sent and a declaration only refines a reading it is a subtype of (DeclaredTypeMerge).
  *
  * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
  * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @internal
  */
@@ -30,9 +37,16 @@ final class ReturnShapeRefiner
      * Fill each key the body left vague, its `null` kept, from the method's own `@return array{...}` shape or
      * `array<string, V>` value, queue the classes the fill names as a cast's are, and mark a `key?:` key optional.
      * Only a spread helper keeps a bare name no class answers to: the analyzed method's may be a class never imported.
+     *
+     * A key the body typed merges with its member at every position (merged()), unless $fillsPositions says the caller
+     * lays the docblock over every key itself.
      */
-    public function refine(MethodAnalysis $analysis, ReflectionMethod $method, bool $keepsUnresolvedNames = true): void
-    {
+    public function refine(
+        MethodAnalysis $analysis,
+        ReflectionMethod $method,
+        bool $keepsUnresolvedNames = true,
+        bool $fillsPositions = true,
+    ): void {
         $shape = LaravelTsPublish::docblockReturnShapeInfos($method);
         $valueType = $shape === [] ? $this->recordValueType($method) : null;
         $untypedSignature = TsTypeString::orUndefined('unknown');
@@ -65,6 +79,9 @@ final class ReturnShapeRefiner
                     $property['type'] = TsTypeString::orUndefined($resolved['type']);
                     $property['fillType'] = $property['type'];
                 }
+            } elseif (! $isSignature && $fillsPositions) {
+                [$property['type'], $brought, $resolved] = $this->merged($analysis, $name, $property['type'], $doc);
+                $imports[] = $brought;
             }
 
             if ($resolved !== null) {
@@ -89,6 +106,230 @@ final class ReturnShapeRefiner
         }
 
         resolve(CastChannels::class)->fit($analysis, $filled);
+    }
+
+    /**
+     * A key the body typed, merged with the member $doc gives it position by position (DeclaredTypeMerge), the body's
+     * classes read as the publisher reads the key and the member's from its slots.
+     *
+     * Each class the merged type names is queued on the key's channels in print order, as its body's are (requeued()),
+     * or, where they cannot say which token is whose, declared token by token as a whole key's fill is.
+     *
+     * @param  ShapeTypeInfo|null  $doc
+     * @return array{string, TypesImportMap, ShapeTypeInfo|null} the type, the imports it brings, and a fill to lay over
+     *                                                           the key's channels as a cast is
+     */
+    private function merged(MethodAnalysis $analysis, string $name, string $type, ?array $doc): array
+    {
+        $member = $doc === null ? null : LaravelTsPublish::shapeMemberForKey($doc);
+
+        // One text merges to itself, whichever classes either side means by it.
+        if ($member === null || $member['type'] === $type) {
+            return [$type, [], null];
+        }
+
+        $declaredSlots = $member['tokenFqcns'] ?? [];
+        $names = TokenSlots::namesOf('classes', array_values(array_unique(array_filter([
+            ...$analysis->channelFqcns($name),
+            ...$analysis->declaredTokenFqcns[$name] ?? [],
+            ...$declaredSlots,
+        ]))));
+        $wraps = [
+            ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
+            ...$analysis->multiEnumResourceFqcns[$name] ?? [],
+        ];
+        $written = $this->writtenWrap($analysis, $name);
+        $read = $written === null ? $type : TsTypeString::substituteEnumType(
+            $type,
+            ValueResult::enumTypeName($written),
+            'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
+        );
+        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $analysis->openReadings[$name] ?? [])->merge(
+            [$read, $this->readSlots($analysis, $name, $read, $names)],
+            [$member['type'], array_column(TokenSlots::declaredTokens($member['type'], $declaredSlots, $names), 'slot')],
+        );
+
+        if ($merged === $read) {
+            return [$type, [], null];
+        }
+
+        // The publisher's rewrite would wrap every bare token of the enum, a bare one the member fills included.
+        if ($written !== null) {
+            unset($analysis->enumResources[$name], $analysis->enumResourceArmShapes[$name]);
+            $analysis->inlineEnumResourceFqcns[$name] = [$written, ...$analysis->inlineEnumResourceFqcns[$name] ?? []];
+        }
+
+        $imports = $this->importsSpelled($member['customImports'], $merged);
+
+        if ($this->requeued($analysis, $name, $merged, $slots, $names)) {
+            return [$merged, $imports, null];
+        }
+
+        return [$merged, [], [
+            'type' => $merged,
+            'customImports' => $imports,
+            'tokenFqcns' => $this->ownSlots($merged, $slots, $names),
+        ]];
+    }
+
+    /**
+     * The one enum a key wraps in an `EnumResource` and spells bare at its top, which the publisher rewrites as
+     * `AsEnum<typeof …>` with the tolki package on; null for a key wrapping none, several, or one it reads bare too.
+     *
+     * @return class-string|null
+     */
+    private function writtenWrap(MethodAnalysis $analysis, string $name): ?string
+    {
+        $wrapped = $analysis->enumResources[$name] ?? null;
+
+        return $wrapped === null || ($analysis->directEnumFqcns[$name] ?? null) === $wrapped
+            || isset($analysis->multiEnumResourceFqcns[$name]) || ! Config::boolean('ts-publish.enums.use_tolki_package')
+            ? null
+            : $wrapped;
+    }
+
+    /**
+     * The class behind each token of $names a key's text spells, as the publisher reads the key: by the slots a
+     * docblock declared for it, else by its channels' queue in print order; null where no class answers to the name.
+     *
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    private function readSlots(MethodAnalysis $analysis, string $name, string $text, array $names): array
+    {
+        $declared = $analysis->declaredTokenFqcns[$name] ?? null;
+
+        return $declared === null
+            ? $this->queueRead($analysis->channelFqcns($name), $text, $names)
+            : array_column(TokenSlots::declaredTokens($text, $declared, $names), 'slot');
+    }
+
+    /**
+     * The class a queue of classes, as a key's channels list them, gives each token of $names a text spells, as the
+     * publisher's aliasing walk hands them out; null for a token of a name the queue holds no class of.
+     *
+     * @param  list<class-string>  $queue
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    private function queueRead(array $queue, string $text, array $names): array
+    {
+        $spellings = new ClassTokenQueue($queue, TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))->spellings($text);
+        $slots = [];
+
+        foreach ($names === [] ? [] : TokenSlots::tokens('classes', $names, $text) as [$token]) {
+            $next = $spellings === [] || $spellings[0][1] !== $token ? null : array_shift($spellings);
+            $slots[] = $next[0] ?? null;
+        }
+
+        return $slots;
+    }
+
+    /**
+     * Queue the classes a merged key names on its channels so the publisher reads each token's class from them, as it
+     * reads a body's: each new class appended after the ones the key holds, else every class in print order after the
+     * single entries that lead each name's queue.
+     *
+     * False, with no channel touched, where neither reads it so, as for an override spelled like a class beside it.
+     *
+     * @param  Slots  $slots
+     * @param  list<string>  $names
+     */
+    private function requeued(MethodAnalysis $analysis, string $name, string $text, array $slots, array $names): bool
+    {
+        // A class no channel holds, as an override's, is the custom import's to bring: no queue reads its token.
+        $expected = array_map(
+            static fn (?string $class): ?string => $class !== null && MethodAnalysis::queuesEmbedded($class) ? $class : null,
+            $slots,
+        );
+        $classes = array_values(array_filter($expected));
+        $held = $analysis->channelFqcns($name);
+        $added = array_values(array_unique(array_diff($classes, $held)));
+
+        if ($this->queueRead([...$held, ...$added], $text, $names) === $expected) {
+            $analysis->queueEmbeddedClasses($name, $added);
+            unset($analysis->declaredTokenFqcns[$name]);
+
+            return true;
+        }
+
+        $singles = array_values(array_filter([
+            $analysis->enumResources[$name] ?? null,
+            $analysis->directEnumFqcns[$name] ?? null,
+            ...$analysis->multiEnumResourceFqcns[$name] ?? [],
+            $analysis->modelFqcns[$name] ?? null,
+            $analysis->nestedResources[$name] ?? null,
+        ]));
+        $leading = [];
+
+        foreach ($singles as $single) {
+            $leading[TokenSlots::typeName($single)][] = $single;
+        }
+
+        $inline = [];
+
+        foreach ($classes as $class) {
+            if (($leading[TokenSlots::typeName($class)][0] ?? null) === $class) {
+                array_shift($leading[TokenSlots::typeName($class)]);
+            } else {
+                $inline[] = $class;
+            }
+        }
+
+        if ($this->queueRead([...$singles, ...$inline], $text, $names) !== $expected) {
+            return false;
+        }
+
+        unset(
+            $analysis->inlineEnumFqcns[$name], $analysis->inlineModelFqcns[$name], $analysis->inlineResourceFqcns[$name],
+            $analysis->declaredTokenFqcns[$name],
+        );
+        $analysis->queueEmbeddedClasses($name, $inline);
+
+        return true;
+    }
+
+    /**
+     * The slots a merged key declares: the class behind each token of the names of the classes it holds, null for an
+     * override spelled like one, as a whole key's fill declares them.
+     *
+     * @param  Slots  $slots
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    private function ownSlots(string $text, array $slots, array $names): array
+    {
+        $own = TokenSlots::namesOf('classes', array_values(array_unique(array_filter($slots))));
+        $declared = [];
+
+        foreach ($names === [] ? [] : TokenSlots::tokens('classes', $names, $text) as $index => [$token]) {
+            if (in_array($token, $own, true)) {
+                $declared[] = $slots[$index] ?? null;
+            }
+        }
+
+        return $declared;
+    }
+
+    /**
+     * The custom imports among $imports whose names a filled type reads.
+     *
+     * @param  TypesImportMap  $imports
+     * @return TypesImportMap
+     */
+    private function importsSpelled(array $imports, string $filled): array
+    {
+        $spelled = [];
+
+        foreach ($imports as $path => $names) {
+            $read = array_values(array_filter($names, static fn (string $import): bool => TokenSlots::readsName(ImportMaps::localName($import), $filled)));
+
+            if ($read !== []) {
+                $spelled[$path] = $read;
+            }
+        }
+
+        return $spelled;
     }
 
     /**

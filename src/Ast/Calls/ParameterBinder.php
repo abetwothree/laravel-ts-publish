@@ -166,6 +166,8 @@ final class ParameterBinder
      * declaration names where it names none or another, else by its value; null for neither. A bound model is guarded
      * where $unread or $guardsElement says so, and keeps the writes the join holding it left out.
      *
+     * A parameter declaring no class also binds the classes $declaredElement says the array holds, guarded as it is.
+     *
      * @param  class-string<Model>|null  $elementModel
      * @param  ValueExpressionResult|null  $elementValue
      * @param  string|null  $docComment  the callback's, whose `@param` declares a parameter with no native type
@@ -181,27 +183,29 @@ final class ParameterBinder
         bool $guardsElement = false,
         ?string $docComment = null,
         array $leftOut = [],
+        ?ReceiverType $declaredElement = null,
     ): ?array {
         $declaredModel = self::declaredClosureModel($param, $scope, $docComment);
         $documented = $param?->type === null;
         $model = $elementModel !== null && ($declaredModel === null || $documented || is_a($elementModel, $declaredModel, true))
             ? $elementModel
             : $declaredModel;
+        $classes = $model === null ? self::undeclaredElementClasses($param, $declaredElement, $scope, $docComment) : null;
 
-        if ($model === null && $elementValue === null) {
+        if ($model === null && $elementValue === null && $classes === null) {
             return null;
         }
 
         $binding = [
             'model' => $model,
-            'classes' => null,
+            'classes' => $classes,
             'elementModel' => null,
             'value' => $model === null ? $elementValue : null,
             'unsaved' => false,
             'refines' => false,
             'declaredOnly' => $model !== null && $model !== $elementModel && $param !== null && self::spellsRelativeClass($param),
             'guard' => match (true) {
-                $model === null => null,
+                $model === null => $classes !== null && $declaredElement?->guarded === true ? 'guarded' : null,
                 $unread => 'unread',
                 $guardsElement && $model !== $declaredModel => 'guarded',
                 default => null,
@@ -269,6 +273,7 @@ final class ParameterBinder
      * @param  list<Expr|ValueExpressionResult>  $passed
      * @param  class-string<Model>|null  $firstElementModel
      * @param  list<LeftOutWrite>  $leftOut  the writes the join holding the first element left out
+     * @param  array<int, ReceiverType>  $declaredElements  each array's declared element classes, by position
      */
     public static function bindCallbackArguments(
         ArrowFunction|ClosureExpr $callback,
@@ -280,6 +285,7 @@ final class ParameterBinder
         bool $unread = false,
         bool $guardsElement = false,
         array $leftOut = [],
+        array $declaredElements = [],
     ): void {
         foreach ($passed as $position => $argument) {
             $param = $callback->params[$position] ?? null;
@@ -312,9 +318,10 @@ final class ParameterBinder
             // An element nothing types binds nothing, so the parameter's own declaration binds it.
             $value = $argument['type'] === 'unknown' ? null : self::coercedValue($param, $argument);
             $docComment = (string) $callback->getDocComment();
+            $declared = $declaredElements[$position] ?? null;
             $binding = $position === 0
-                ? self::elementBinding($firstElementModel, $value, $param, $scope, $unread, $guardsElement, $docComment, $leftOut)
-                : self::elementBinding(null, $value, $param, $scope, docComment: $docComment);
+                ? self::elementBinding($firstElementModel, $value, $param, $scope, $unread, $guardsElement, $docComment, $leftOut, $declared)
+                : self::elementBinding(null, $value, $param, $scope, docComment: $docComment, declaredElement: $declared);
 
             if ($binding !== null) {
                 resolve(self::class)->bindPassed([$param->var->name => $binding], $scope);
@@ -766,6 +773,21 @@ final class ParameterBinder
                 (string) $method->getDocComment(),
                 LaravelTsPublish::methodDeclaringFileClass($method),
             ) === null;
+    }
+
+    /**
+     * The classes an array declares its element as, for a parameter that declares no class of its own, natively or by
+     * `@param`, which ClosureHandler binds instead; null for a model, which binds by the model the element carries.
+     *
+     * @return non-empty-list<class-string>|null
+     */
+    private static function undeclaredElementClasses(?Param $param, ?ReceiverType $declared, AnalysisScope $scope, ?string $docComment): ?array
+    {
+        if ($declared === null || $param === null || $param->type !== null || self::declaredClass($param, $scope, $docComment) !== null) {
+            return null;
+        }
+
+        return array_any($declared->classes, static fn (string $class): bool => is_a($class, Model::class, true)) ? null : $declared->classes;
     }
 
     /**

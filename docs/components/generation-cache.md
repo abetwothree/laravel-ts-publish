@@ -29,8 +29,9 @@ output file it wrote still exists.
 
 A hit never renders, so the header also hashes the template each cached feature renders and every view it includes by
 a literal name: editing or deleting one rebuilds everything, publishing an unedited copy does not.
-`BaseRunner::resetRunState()` flushes Laravel's view lookups and compile checks, so a template edited between two runs
-in one process renders fresh.
+Each run renders through a `SourceCompilerEngine` (`BaseRunner::renderingViewsFromSource()`), which compiles every
+view from its source on its first render: a dist install keeps the release's file times, so an upgrade's templates
+can be older than the copies Blade compiled from the previous version, and the rebuild would cache their output.
 
 `GenerationManifest::fingerprint()` hashes each dependency file once per run, however many classes depend on it, and
 `save()` ends that run so the next one reads every file again.

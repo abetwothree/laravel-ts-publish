@@ -7,7 +7,7 @@
  */
 export interface DeclaredReadingsResource
 {
-    entries: { label: unknown }[];
-    labels: { label: unknown }[];
-    flags: { note?: unknown; weight?: number };
+    entries: { label: string | null }[];
+    labels: { label: string | null }[];
+    flags: { note?: string; weight?: number };
 }
