@@ -818,16 +818,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->seedVarBindings($method, $stmts, $passed);
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        resolve(ReturnShapeRefiner::class)->refine($analysis, $method, relists: $this->relistsIntKeys());
-
-        if (! $this->isInertiaShare($method)) {
-            $this->applyTsCastsFromMethod($method, $analysis);
-        }
-
-        // The refiner and #[TsCasts] can each change a key after the merge above reconciled it.
-        resolve(IndexSignatureReconciler::class)->reconcile($analysis);
-
-        return $analysis;
+        return $this->methodShaped($analysis, $method, keepsUnresolvedNames: true, fillsPositions: true);
     }
 
     /**
@@ -1300,21 +1291,38 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $analysis;
         }
 
-        $ownMethod = $this->scope->subjectReflection->getMethod($this->methodName);
-
-        resolve(ReturnShapeRefiner::class)->refine(
+        return $this->methodShaped(
             $analysis,
-            $ownMethod,
+            $this->scope->subjectReflection->getMethod($this->methodName),
             keepsUnresolvedNames: false,
             fillsPositions: ! $this->docblockOutranksBody(),
+        );
+    }
+
+    /**
+     * Lay a method's own `@return` shape and `#[TsCasts]` over what its body returns, its subject's or a spread
+     * helper's, then reconcile each key either changed.
+     */
+    private function methodShaped(
+        ResourceAnalysis $analysis,
+        ReflectionMethod $method,
+        bool $keepsUnresolvedNames,
+        bool $fillsPositions,
+    ): ResourceAnalysis {
+        resolve(ReturnShapeRefiner::class)->refine(
+            $analysis,
+            $method,
+            keepsUnresolvedNames: $keepsUnresolvedNames,
+            fillsPositions: $fillsPositions,
             relists: $this->relistsIntKeys(),
         );
 
         // InertiaSharedDataAnalyzer lays the casts of each share() it reads over the props itself, with the `?`.
-        if (! $this->isInertiaShare($ownMethod)) {
-            $this->applyTsCastsFromMethod($ownMethod, $analysis);
+        if (! $this->isInertiaShare($method)) {
+            $this->applyTsCastsFromMethod($method, $analysis);
         }
 
+        // The refiner and #[TsCasts] can each change a key after the body's own reconcile.
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
 
         return $analysis;
