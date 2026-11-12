@@ -25,8 +25,8 @@ use WeakMap;
  * leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
  *
  * It also numbers the gap a dropped arm leaves, the same arm the same gap for the run, a file parsed again included,
- * and holds each gap's warnings by its id: a strip raises them, as does the end of the extent the gap was made in
- * unless a merge filled it.
+ * and holds each gap's warnings by its id: a strip or a read that consumes the gap raises them, as does the end of the
+ * extent the gap was made in unless a merge filled it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type LeftOutWrite from ReceiverType
@@ -304,6 +304,24 @@ final class DroppedUnionArms
     {
         foreach ($ids as $id) {
             self::raise($id);
+        }
+    }
+
+    /**
+     * Raise the warnings of each gap made or replayed since gapMark() gave $mark that a read's type no longer spells:
+     * the read consumed it, so no merge can fill it there, whatever a merge fills under another key.
+     */
+    public static function consumed(int $mark, string $type): void
+    {
+        if ($mark >= count(self::$gapLog)) {
+            return;
+        }
+
+        foreach (array_diff(self::gapsSince($mark), VisibleGaps::ids($type)) as $id) {
+            // The holds stay for a strip or the extent: a read under way may still discard the warning raised here.
+            foreach (self::$gapWarnings[$id] ?? [] as $warning) {
+                self::warn($warning['subject'], $warning['message'], $warning['arm']);
+            }
         }
     }
 

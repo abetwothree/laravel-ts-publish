@@ -3,14 +3,18 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
@@ -157,6 +161,40 @@ it('reads a handler that keeps no held object away from a closure\'s returned va
     expect($seen)->toBe(['plain' => false, 'keeping' => true])
         ->and($scope->readsCallableReturn)->toBeTrue();
 });
+
+// A handler that reads a gap and returns without it consumed the gap, so no merge fills it and its warning rises.
+it('raises the warnings of a gap a handler\'s reads made that its result, or a decline, no longer spells', function (?string $spelled, bool $raises) {
+    $scope = dispatcherTestScope();
+    $reads = function () use ($scope, $spelled): ?array {
+        $arm = new Variable('arm', ['startLine' => 7]);
+        $id = DroppedUnionArms::gap($scope, 'match-arm', $arm, 'null');
+        DroppedUnionArms::hold($id, 'held', $arm, stdClass::class);
+
+        return $spelled === null ? null : ['type' => str_replace('$gap', VisibleGaps::arm($id), $spelled), 'optional' => false];
+    };
+    $handler = new class($reads) implements ExpressionHandler
+    {
+        public function __construct(private Closure $reads) {}
+
+        public function nodeClasses(): array
+        {
+            return [String_::class];
+        }
+
+        public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+        {
+            return ($this->reads)();
+        }
+    };
+
+    new ExpressionDispatcher([$handler])->dispatch(new String_('x'), $scope, dispatcherTestEngine());
+
+    expect(array_column(AnalysisWarnings::all(), 'message'))->toBe($raises ? ['held'] : []);
+})->with([
+    'a result spelling the gap' => ['null | $gap', false],
+    'a result without it' => ['number', true],
+    'a decline' => [null, true],
+]);
 
 /**
  * A configurable spy handler: claims a fixed node-class list and returns a canned result (or

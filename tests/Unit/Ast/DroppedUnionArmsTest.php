@@ -252,6 +252,46 @@ test('a gap filled under one key and stripped under another warns once, in eithe
         ->and(droppedArmsRunMessages())->toBe([]);
 })->with(['filled first' => [true], 'stripped first' => [false]]);
 
+test('a gap a read no longer spells raises its held warning once, even where a merge filled it under another key', function () {
+    $mark = DroppedUnionArms::gapMark();
+    $id = heldDroppedArmGap(droppedArm('arm'));
+    DroppedUnionArms::filled([$id]);
+    DroppedUnionArms::consumed($mark, 'null | '.VisibleGaps::arm($id));
+    $spelled = droppedArmsRunMessages();
+    DroppedUnionArms::consumed($mark, 'number');
+    DroppedUnionArms::consumed($mark, 'unknown');
+    $consumed = droppedArmsRunMessages();
+    AnalysisWarnings::reset();
+    DroppedUnionArms::consumed(DroppedUnionArms::gapMark(), 'number');
+
+    expect($spelled)->toBe([])
+        ->and($consumed)->toBe([droppedArmPlaceholderMessage('$arm')])
+        ->and(droppedArmsRunMessages())->toBe([]);
+});
+
+test('a read that consumes a gap and does not stand raises nothing, and leaves the gap\'s other holds to a strip', function () {
+    $arm = droppedArm('arm');
+    $id = heldDroppedArmGap($arm);
+    $consumes = function () use ($arm): string {
+        $mark = DroppedUnionArms::gapMark();
+        heldDroppedArmGap($arm);
+        DroppedUnionArms::consumed($mark, 'number');
+
+        return 'number';
+    };
+
+    DroppedUnionArms::provisional($consumes, fn (): bool => false);
+    $discarded = droppedArmsRunMessages();
+    DroppedUnionArms::provisional($consumes, fn (): bool => true);
+    $stood = droppedArmsRunMessages();
+    AnalysisWarnings::reset();
+    DroppedUnionArms::stripped([$id]);
+
+    expect($discarded)->toBe([])
+        ->and($stood)->toBe([droppedArmPlaceholderMessage('$arm')])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmPlaceholderMessage('$arm')]);
+});
+
 test('an extent raises an unfilled, unstripped gap warning when it ends, a throw included, and skips a filled one', function () {
     $during = DroppedUnionArms::extent(function (): array {
         heldDroppedArmGap(droppedArm('open'));

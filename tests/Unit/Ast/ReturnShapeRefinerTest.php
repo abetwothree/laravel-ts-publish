@@ -16,6 +16,10 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillAliasResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedUnfilledResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedUntypedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillDocumentedArgumentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueResource;
@@ -820,3 +824,19 @@ test('an arm no @return position types is left out as the body reads it, and war
         'tags' => '(number[] | null)[]',
     ], 1],
 ]);
+
+// A key that consumes a gap, as an offset read does, publishes no gap a merge could fill, so the drop warns as it did.
+test('a gap a key consumes warns once with today\'s text, whether a merge fills it under another key or not', function (string $resource, array $expected, int $line, bool $everyKey) {
+    ReturnMembers::$typesEveryKey = $everyKey;
+
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toBe([
+            "The value on line {$line} publishes `null`, as if it were always null, because `cache('l')` could not be typed "
+            .'and was left out of its union. Give what it reads a return type or a `@return` docblock.',
+        ]);
+})->with([
+    'filled under a typed key, consumed under another' => [GapFillConsumedResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
+    'filled under a typed key, consumed under an untyped one' => [GapFillConsumedUntypedResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
+    'filled and consumed in a spread helper' => [GapFillConsumedHelperResource::class, ['a' => 'number[] | null', 'b' => 'number', 'n' => 'number'], 27],
+    'consumed and filled nowhere' => [GapFillConsumedUnfilledResource::class, ['b' => 'number'], 21],
+])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);
