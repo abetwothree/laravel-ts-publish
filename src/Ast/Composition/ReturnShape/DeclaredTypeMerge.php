@@ -304,15 +304,17 @@ final readonly class DeclaredTypeMerge
      */
     private function relistedTuple(array $body, array $declared): ?array
     {
-        if (! $this->relists) {
+        // Most declared types hold no tuple, and testing that costs far less than parsing the body's shape.
+        $elements = $this->relists && str_contains($declared[0], '[') ? self::tupleElementsOf($declared[0]) : null;
+
+        if ($elements === null) {
             return null;
         }
 
         $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body[0]), ['null']));
         $relisting = self::relisting(count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : []);
-        $elements = self::tupleElementsOf($declared[0]);
 
-        if ($relisting === null || $elements === null || count($elements) !== count($relisting[0])) {
+        if ($relisting === null || count($elements) !== count($relisting[0])) {
             return null;
         }
 
