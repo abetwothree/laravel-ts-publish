@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\SourceFileVisitor;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -23,8 +24,9 @@ use WeakMap;
  * The count is always kept, so leftNullSince() tells a `null` a dropped arm left from a literal one. A drop that
  * leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
  *
- * It also numbers the gap a dropped arm leaves, the same arm the same gap for the run, and holds each gap's warnings by
- * its id: a strip raises them, as does the end of the extent the gap was made in unless a merge filled it.
+ * It also numbers the gap a dropped arm leaves, the same arm the same gap for the run, a file parsed again included, and
+ * holds each gap's warnings by its id: a strip raises them, as does the end of the extent the gap was made in unless a
+ * merge filled it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type LeftOutWrite from ReceiverType
@@ -53,8 +55,14 @@ final class DroppedUnionArms
     /** @var list<list<HeldWarning>> the warnings each replaceable() read under way holds, innermost last */
     private static array $held = [];
 
-    /** @var WeakMap<Node, array<string, int>>|null each dropped node's gap ids, by subject, site and gap-free union */
-    private static ?WeakMap $gapIds = null;
+    /** @var array<string, int> each gap id, by the subject, site, gap-free union and place of the arm that left it */
+    private static array $gapIds = [];
+
+    /** @var WeakMap<Node, int>|null a number for each node with no place in a file, as one built by hand has none */
+    private static ?WeakMap $unplaced = null;
+
+    /** The last number unplaced nodes were given. */
+    private static int $lastUnplaced = 0;
 
     /** The last gap id this run gave out. */
     private static int $lastGapId = 0;
@@ -93,7 +101,9 @@ final class DroppedUnionArms
     /** Forget every gap this run numbered, the warnings each holds, the fills and the extents, as a run starts. */
     public static function reset(): void
     {
-        self::$gapIds = null;
+        self::$gapIds = [];
+        self::$unplaced = null;
+        self::$lastUnplaced = 0;
         self::$lastGapId = 0;
         self::$gapLog = [];
         self::$gapWarnings = [];
@@ -189,11 +199,8 @@ final class DroppedUnionArms
      */
     public static function gap(AnalysisScope $scope, string $site, Node $at, string $union): int
     {
-        self::$gapIds ??= new WeakMap;
-        $key = implode("\0", [$scope->subjectReflection->getName(), $site, VisibleGaps::stripped($union)[0]]);
-        $ids = self::$gapIds[$at] ?? [];
-        $id = $ids[$key] ??= ++self::$lastGapId;
-        self::$gapIds[$at] = $ids;
+        $key = implode("\0", [$scope->subjectReflection->getName(), $site, VisibleGaps::stripped($union)[0], self::place($at)]);
+        $id = self::$gapIds[$key] ??= ++self::$lastGapId;
         self::$gapLog[] = $id;
 
         return $id;
@@ -493,6 +500,23 @@ final class DroppedUnionArms
         self::warnOfLeftOut($dropped, $scope);
 
         return $union;
+    }
+
+    /**
+     * Where a node stands, its file and span, which a file parsed again keeps; a node built by hand has none, so it
+     * stands for itself.
+     */
+    private static function place(Node $at): string
+    {
+        if ($at->getStartFilePos() >= 0) {
+            $file = $at->getAttribute(SourceFileVisitor::ATTRIBUTE);
+
+            return (is_string($file) ? $file : '')."\0".$at->getStartFilePos()."\0".$at->getEndFilePos();
+        }
+
+        self::$unplaced ??= new WeakMap;
+
+        return '#'.(self::$unplaced[$at] ??= ++self::$lastUnplaced);
     }
 
     /**

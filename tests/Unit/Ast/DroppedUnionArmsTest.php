@@ -5,10 +5,15 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\SourceFileVisitor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeKeysResource;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\NodeFinder;
 
 /**
  * A scope analysing stdClass, the subject every warning below names.
@@ -171,6 +176,22 @@ test('one arm node, site, union and subject give one gap id for the run, and cha
             DroppedUnionArms::gap($scope, 'match-arm', $arm, 'string | null'),
             DroppedUnionArms::gap(new AnalysisScope(new ReflectionClass(ArrayObject::class)), 'match-arm', $arm, 'string'),
         ]))->toHaveCount(5);
+});
+
+test('an arm keeps its gap id when its file is parsed again, as once the parser cache has let the file go', function () {
+    $path = (string) new ReflectionClass(GapModeKeysResource::class)->getFileName();
+    $calls = static fn (AstParser $parser): array => new NodeFinder()->findInstanceOf($parser->parseFile($path), MethodCall::class);
+    [$first, $second] = $calls(new AstParser);
+    $again = $calls(new AstParser)[0];
+    $scope = droppedArmsScope();
+    $id = DroppedUnionArms::gap($scope, 'match-arm', $first, 'string');
+    $elsewhere = new Variable('arm', [...$first->getAttributes(), SourceFileVisitor::ATTRIBUTE => $path.'.other']);
+
+    expect($again)->not->toBe($first)
+        ->and($again->getAttribute(SourceFileVisitor::ATTRIBUTE))->toBe($path)
+        ->and(DroppedUnionArms::gap($scope, 'match-arm', $again, 'string'))->toBe($id)
+        ->and(DroppedUnionArms::gap($scope, 'match-arm', $second, 'string'))->not->toBe($id)
+        ->and(DroppedUnionArms::gap($scope, 'match-arm', $elsewhere, 'string'))->not->toBe($id);
 });
 
 test('the gap log gives each gap made or replayed since a mark, each once, and a replay counts its dropped arms', function () {
