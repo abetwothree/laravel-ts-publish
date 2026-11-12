@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The gap gate: with TS_PUBLISH_GAP_GATE set, every key of every body a `@return` shapes reads in the gap mode, as if
-# its docblock typed it. Each frame strips its gaps before its own merge, so the generated trees must not change a byte.
+# its docblock typed it. Only a member that tells something fills a gap, and the frame strips the rest, so the generated
+# trees must not change a byte.
 #
 # It resets the generated trees, runs the suite under the switch without the `gap-mode` group (the tests that pin which
 # reads run in the mode), requires it green, requires the self-test (tests/Unit/Ast/GapGateTest.php) to pass rather

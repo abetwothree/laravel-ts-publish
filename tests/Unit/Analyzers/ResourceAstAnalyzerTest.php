@@ -37,6 +37,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelp
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FirstClassMapChainResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillBranchesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeLevelsResource;
@@ -111,6 +113,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\Variable;
@@ -8107,3 +8110,46 @@ it('keeps a gap in the gap mode for a spread helper\'s return that leaves a key 
     expect(VisibleGaps::stripped($type)[0])->toBe('string')
         ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
 })->with([false, true]);
+
+it('strips the gaps its @return leaves only in a frame entered with the gap mode off, so a caller can fill them', function () {
+    $analyze = fn (): string => new ResourceAstAnalyzer(new ReflectionClass(GapFillParentResource::class))->analyze()->properties[0]['type'];
+    $shown = resolve(AnalysisMemo::class)->showingGaps($analyze);
+
+    expect($analyze())->toBe('null[]')
+        ->and(VisibleGaps::ids($shown))->toHaveCount(1)
+        ->and(VisibleGaps::stripped($shown)[0])->toBe('null[]');
+});
+
+it('strips a key its @return leaves untyped before the frame joins its returns, and keeps a typed key\'s gaps for the merge', function () {
+    $analyzer = new class(new ReflectionClass(GapFillBranchesResource::class)) extends ResourceAstAnalyzer
+    {
+        /** @var list<array<string, string>> each branch's keys as the join reads them, `gaps` where one holds a gap */
+        public array $joined = [];
+
+        /**
+         * Record each branch's keys, then join the branches as the analyzer does.
+         *
+         * @param  list<ResourceAnalysis>  $analyses
+         * @param  list<Node>  $returns
+         */
+        public function mergeReturnBranches(
+            array $analyses,
+            bool $dropsUntypedBranches = false,
+            bool $keepsLoneNull = false,
+            array $returns = [],
+            ?AnalysisScope $scope = null,
+        ): ResourceAnalysis {
+            foreach ($analyses as $branch) {
+                $this->joined[] = array_map(
+                    fn (string $type): string => VisibleGaps::ids($type) === [] ? 'plain' : 'gaps',
+                    array_column($branch->properties, 'type', 'name'),
+                );
+            }
+
+            return parent::mergeReturnBranches($analyses, $dropsUntypedBranches, $keepsLoneNull, $returns, $scope);
+        }
+    };
+
+    expect(array_column($analyzer->analyze()->properties, 'type', 'name'))->toBe(['k' => 'string | number[]', 'loose' => 'string'])
+        ->and($analyzer->joined)->toBe([['k' => 'gaps', 'loose' => 'plain'], ['k' => 'plain', 'loose' => 'plain']]);
+})->group('gap-mode');

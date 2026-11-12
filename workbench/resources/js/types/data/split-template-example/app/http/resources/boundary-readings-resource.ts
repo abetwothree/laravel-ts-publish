@@ -5,7 +5,7 @@
  */
 export interface BoundaryReadingsResource
 {
-    tags: string[];
+    tags: (string | number[])[];
     id: number;
     extra: boolean;
 }

@@ -2830,7 +2830,7 @@ declare global {
         }
         /** Spreads a custom parent's `toArray()` that drops an arm beside a string, under a `@return` typing both (GH-154). */
         export interface BoundaryReadingsResource {
-            tags: string[];
+            tags: (string | number[])[];
             id: number;
             extra: boolean;
         }
@@ -3469,10 +3469,10 @@ declare global {
          * out-of-order int keys, and a value with no type beside a member the docblock declares more loosely than the body.
          */
         export interface DeclaredGapsResource {
-            scores: { score: number | null }[];
-            contacts: ({ email: string | null } | null)[];
+            scores: { score: number | null | string }[];
+            contacts: ({ email: string | null } | null | { email: string; name: string | null })[];
             rows: { name: string | null; locale: string }[];
-            branches: { name: string | null; locale: string }[];
+            branches: ({ name: string | null } | { name: string | null; locale: string })[];
             pairs: [string, number][];
             summary: { label: string; count: number | null };
         }
@@ -3906,8 +3906,8 @@ declare global {
         }
         /** Undocumented helpers that drop an arm, one spread and one read as a value, under a `@return` typing them (GH-154). */
         export interface HelperReadingsResource {
-            rows: { name: string }[];
-            sections: { items: { t: number[] }[] };
+            rows: { name: string | number }[];
+            sections: { items: { t: number[] | string }[] };
         }
         /** Same morphTo union, reached through the model-delegated analysis rather than an array literal. */
         export interface ImageDelegatedResource {
@@ -4010,12 +4010,12 @@ declare global {
         }
         /** Joins where one branch writes a value no rule types, under a `@return` member typing both branches (GH-154). */
         export interface JoinReadingsResource {
-            params: { t: string }[];
-            walks: { k: string }[];
-            spreads: { k: string; id: number }[];
-            relays: { k?: string; id: number }[];
-            receivers: { name: string }[];
-            named: { name: string }[];
+            params: { t: string | number[] }[];
+            walks: { k: string | number[] }[];
+            spreads: { k: string | number[]; id: number }[];
+            relays: { k?: string | number[]; id: number }[];
+            receivers: { name: string | number }[];
+            named: { name: string | number }[];
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
@@ -4694,8 +4694,8 @@ declare global {
         }
         /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
         export interface PlaceholderReadingsResource {
-            fills: { f: never[] }[];
-            pairs: unknown[][];
+            fills: { f: never[] | number[] }[];
+            pairs: [string | null, number][];
         }
         /**
          * Exercises a morphTo reached through a relation filter, where the union lands inside an inline shape.
@@ -5768,7 +5768,7 @@ declare global {
         }
         /** Reads a model's undocumented accessor that maps a cast array, under a `@return` typing it (GH-154). */
         export interface TaggedImageResource {
-            tag_lists: null[];
+            tag_lists: (number[] | null)[];
             url: string;
         }
         /**

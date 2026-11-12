@@ -279,9 +279,10 @@ check over all fields that accepts or rejects them together, rather than two reo
 
 [`gap-gate.sh`](../../.github/scripts/gap-gate.sh) proves the gap mode is invisible in the published output. Under a
 `@return` that types a key, the reader keeps each union arm it cannot type as a gap arm and an object that may hold
-unnamed keys as an open marker, and the frame strips both before its merge. With `TS_PUBLISH_GAP_GATE=1`,
-`tests/Pest.php` turns on `ReturnMembers::$typesEveryKey`, so every key of every such body reads in the mode, and
-every reader those reads reach must decide as it does on gap-free text:
+unnamed keys as an open marker, the merge fills what the docblock types, and the frame strips the rest. With
+`TS_PUBLISH_GAP_GATE=1`, `tests/Pest.php` turns on `ReturnMembers::$typesEveryKey`, so every key of every such body
+reads in the mode, and every reader those reads reach must decide as it does on gap-free text; a fill needs a member
+that tells something, which only a key the docblock types has:
 
 ```bash
 .github/scripts/gap-gate.sh

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Support\Facades\Config;
 use ReflectionMethod;
 
@@ -39,8 +41,8 @@ final class ReturnShapeRefiner
      * Only a spread helper keeps a bare name no class answers to: the analyzed method's may be a class never imported.
      *
      * A key the body typed merges with its member at every position (merged()), unless $fillsPositions says the caller
-     * lays the docblock over every key itself. $relists says the client gets the body's arrays keyed only by ints as
-     * lists, as a resource that keeps no keys re-lists them, but for a key whose value keeps its own.
+     * lays the docblock over every key itself; a gap a fill takes out of a key never warns. $relists says the client
+     * gets the body's int-keyed arrays as lists, as a resource keeping no keys sends them, bar a key keeping its own.
      */
     public function refine(
         MethodAnalysis $analysis,
@@ -61,16 +63,19 @@ final class ReturnShapeRefiner
             $doc = $members->member($name);
             $isSignature = JsEmitter::isIndexSignatureKey($name);
             $resolved = null;
+            // A gap stands for what the body could not type, so the key is vague where the rest of it is.
+            $read = VisibleGaps::aside($property['type'])[0];
 
             // A signature fills only through the branch below, which keeps the floor a reconcile can put back; a spread
             // helper's own fill, kept beside a put-back floor, outranks this method's docblock.
-            if (! $isSignature && TsTypeString::isVagueOnly($property['type'])) {
-                $resolved = $this->resolvedType($doc, $property['type'] === 'unknown', $method, $keepsUnresolvedNames);
+            if (! $isSignature && TsTypeString::isVagueOnly($read)) {
+                $resolved = $this->resolvedType($doc, $read === 'unknown', $method, $keepsUnresolvedNames);
 
                 if ($resolved !== null) {
-                    $property['type'] = TsTypeString::withNullArmOf($property['type'], $resolved['type']);
+                    DroppedUnionArms::filled(VisibleGaps::ids($property['type']));
+                    $property['type'] = TsTypeString::withNullArmOf($read, $resolved['type']);
                 }
-            } elseif ($property['type'] === $untypedSignature && $isSignature && ! isset($property['fillType'])) {
+            } elseif ($read === $untypedSignature && $isSignature && ! isset($property['fillType'])) {
                 $resolved = $this->resolvedType($doc, true, $method, $keepsUnresolvedNames);
 
                 // A key matching the pattern may still be absent at runtime, so the value keeps its `| undefined`;
@@ -163,7 +168,7 @@ final class ReturnShapeRefiner
             ValueResult::enumTypeName($written),
             'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
         );
-        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $analysis->openReadings[$name] ?? [], $relists)->merge(
+        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $relists)->merge(
             [$read, $this->readSlots($analysis, $name, $read, $names)],
             [$member['type'], TokenSlots::declaredSlots($member['type'], $declaredSlots, $names)],
         );
@@ -171,6 +176,8 @@ final class ReturnShapeRefiner
         if ($merged === $read) {
             return [$type, [], null];
         }
+
+        DroppedUnionArms::filled(array_values(array_diff(VisibleGaps::ids($read), VisibleGaps::ids($merged))));
 
         // The publisher's rewrite would wrap every bare token of the enum, a bare one the member fills included.
         if ($written !== null) {

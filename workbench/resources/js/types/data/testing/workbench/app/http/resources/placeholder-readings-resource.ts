@@ -5,6 +5,6 @@
  */
 export interface PlaceholderReadingsResource
 {
-    fills: { f: never[] }[];
-    pairs: unknown[][];
+    fills: { f: never[] | number[] }[];
+    pairs: [string | null, number][];
 }

@@ -968,8 +968,11 @@ return or write, a helper's bound arguments or a `merge()` closure's defaults. A
 
 In the mode, each drop entry appends a `$gapN` arm and holds its warning, and `InlineObjectResult::of()` marks an object
 that may hold unnamed keys with `#$open: unknown`. Every reader decides on the text with both set aside
-(`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The frames' shared tail strips them
-(`MethodAnalysis::stripGaps()`) before the merge, so nothing published moves; `.github/scripts/gap-gate.sh` proves it.
+(`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The merge fills a gap with the declared arms
+the rest of its union leaves out and marks it filled (`DeclaredTypeMerge::merge()`). A frame entered with the mode off
+strips what is left (`MethodAnalysis::stripGaps()`): an untyped key's gaps at each return, the rest after its refine;
+one entered with the mode on strips nothing, so its gaps reach the merge of the frame that turned it on. Forcing every
+key into the mode moves no published byte; `.github/scripts/gap-gate.sh` proves it.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also

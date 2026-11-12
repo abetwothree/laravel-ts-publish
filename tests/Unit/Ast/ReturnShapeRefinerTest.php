@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ReviewOutOfOrderPairsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthorEditorRowsResource;
@@ -12,6 +15,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillAliasResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillDocumentedArgumentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueReversedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillMixedRecordResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentReturnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillResourceArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillUndeclaredResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillWholeWriteResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
@@ -735,3 +750,73 @@ test('a workbench resource\'s @return fills the member a cache read leaves unkno
         '{"recipients":[{"name":"Ann","settings":{"digest":true}},{"name":"Bob","settings":null}]}',
     );
 });
+
+/**
+ * The placeholder warnings one fresh analysis of a resource raises.
+ *
+ * @param  class-string  $resource
+ * @return list<string>
+ */
+function gapFillWarnings(string $resource): array
+{
+    AnalysisWarnings::reset();
+    DroppedUnionArms::reset();
+    resolve(AnalysisMemo::class)->reset();
+    analyzedKeyTypes($resource);
+
+    return array_values(array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'was left out of its union'),
+    ));
+}
+
+// D2: an arm a union left out is filled where it was left, with each arm the docblock types beside the body's.
+test('a key\'s @return member fills each arm a union left out beside a typed arm or a placeholder, and never warns of it', function () {
+    expect(analyzedKeyTypes(GapFillRowsResource::class))->toBe([
+        'top' => '{ s: string; t: number[] | null }',
+        'mapped' => '{ s: string; t: number[] | null }[]',
+        'collected' => '{ s: string; t: number[] | null }[]',
+        'empty' => 'number[]',
+    ])->and(gapFillWarnings(GapFillRowsResource::class))->toBe([]);
+});
+
+// Review Focus 1: an arm a union left out in another frame reaches the merge of the frame whose @return types its key.
+test('the @return that types a key fills the arm a union left out in a helper, a parent, a resource arm or an argument', function (string $resource, array $expected) {
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toBe([]);
+})->with([
+    'an undocumented spread helper and an eagerly bound argument' => [GapFillHelpersResource::class, [
+        'names' => '{ name: string | number }[]',
+        'tags' => '(number[] | null)[]',
+    ]],
+    'a parent::toArray() spread' => [GapFillParentSpreadResource::class, ['tags' => '(number[] | null)[]', 'extra' => 'boolean']],
+    'a parent::toArray() returned whole' => [GapFillParentReturnResource::class, ['tags' => '(number[] | null)[]']],
+    'a resource arm' => [GapFillResourceArmResource::class, ['tags' => '(number[] | null)[]']],
+    'a returned local a helper writes whole' => [GapFillWholeWriteResource::class, ['tags' => '(number[] | null)[]']],
+    'a documented helper\'s argument under an undocumented caller' => [GapFillDocumentedArgumentResource::class, ['tags' => '(number[] | null)[]']],
+]);
+
+// Review Focus 2: an undocumented key reads the same helper as it does with no docblock, before or after a typed key.
+test('a helper read under a typed key and an undocumented one fills only the typed one, in either order', function (string $resource) {
+    expect(analyzedKeyTypes($resource))->toEqualCanonicalizing([
+        'typed' => '(number[] | string)[]',
+        'untyped' => 'number[][]',
+    ]);
+})->with([GapFillHelperValueResource::class, GapFillHelperValueReversedResource::class]);
+
+// Review Focus 3: a gap no docblock position types is stripped as the body reads it, and warns once with today's text.
+test('an arm no @return position types is left out as the body reads it, and warns once', function (string $resource, array $expected, int $warnings) {
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toHaveCount($warnings)
+        ->each->toContain('publishes `null`');
+})->with([
+    'a mixed member and a key the @return does not name' => [GapFillUndeclaredResource::class, [
+        'rows' => '{ t: null; id: number }[]',
+        'loose' => 'null[]',
+    ], 2],
+    'an array<string, mixed> docblock' => [GapFillMixedRecordResource::class, ['rows' => '{ t: null }[]'], 1],
+    'a gap filled under one key and left in another' => [GapFillAliasResource::class, [
+        'raw' => 'null[]',
+        'tags' => '(number[] | null)[]',
+    ], 1],
+]);

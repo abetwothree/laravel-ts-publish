@@ -987,11 +987,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        $analyses = array_map(fn (Array_|ResourceAnalysis $branch): ResourceAnalysis => match (true) {
+        $analyses = array_map(fn (Array_|ResourceAnalysis $branch): ResourceAnalysis => $this->untypedKeysStripped(match (true) {
             $branch instanceof ResourceAnalysis => $branch,
             $branch->items === [] => new ResourceAnalysis,
             default => $this->analyzeReturnArray($branch),
-        }, $branches);
+        }), $branches);
 
         $merged = count($analyses) === 1 ? $analyses[0] : $this->mergeReturnBranches($analyses);
 
@@ -1361,7 +1361,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
     /**
      * Lay a method's own `@return` shape and `#[TsCasts]` over what its body returns, its subject's or a spread
-     * helper's, then reconcile each key either changed.
+     * helper's, then reconcile each key either changed. A frame entered with the gap mode off then strips each gap
+     * and open marker the refine left; one entered with it on hands them to the frame that turned it on.
      */
     private function methodShaped(
         ResourceAnalysis $analysis,
@@ -1370,8 +1371,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         bool $keepsUnresolvedNames,
         bool $fillsPositions,
     ): ResourceAnalysis {
-        // Until the merge fills them, every gap and open marker the body read leaves is stripped before it.
-        $analysis->stripGaps();
+        $strips = ! ($this->memo ??= resolve(AnalysisMemo::class))->showsGaps();
 
         resolve(ReturnShapeRefiner::class)->refine(
             $analysis,
@@ -1387,8 +1387,25 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $this->applyTsCastsFromMethod($method, $analysis);
         }
 
+        if ($strips) {
+            $analysis->stripGaps();
+        }
+
         // The refiner and #[TsCasts] can each change a key after the body's own reconcile.
         resolve(IndexSignatureReconciler::class)->reconcile($analysis);
+
+        return $analysis;
+    }
+
+    /**
+     * Strip the gaps of each key the frame's `@return` does not type, in a frame entered with the gap mode off: no
+     * merge fills them, so the joins and readers past a return read them as the frame publishes them.
+     */
+    private function untypedKeysStripped(ResourceAnalysis $analysis): ResourceAnalysis
+    {
+        if ($this->scope->typedKeys !== [] && ! ($this->memo ??= resolve(AnalysisMemo::class))->showsGaps()) {
+            $analysis->stripGaps(fn (string $name): bool => ! $this->scope->typesKey($name));
+        }
 
         return $analysis;
     }
@@ -1411,7 +1428,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         $parentMethod = $this->readParentCall($returned);
         $frameworkMethod = $this->readThisFrameworkCall($returned);
         // A whole return lands its keys at this level, beside any key the method's `@return` types.
-        $analysis = match (true) {
+        $analysis = $this->untypedKeysStripped(match (true) {
             $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($stmts, $returned->name),
             $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
             $parentMethod !== null => $this->scope->readingLevel(
@@ -1421,7 +1438,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 fn (): ?ResourceAnalysis => $this->frameworkMethodAnalysis($frameworkMethod, $this->returnedWhole),
             ),
             default => $this->scope->readingLevel(fn (): ?ResourceAnalysis => $this->analyzeArrayExpression($returned)),
-        } ?? ResourceAnalysis::unreadAnalysis();
+        } ?? ResourceAnalysis::unreadAnalysis());
 
         // The fallback reads one return of several, so the others are unread.
         if (count($returns) > 1) {
@@ -1546,12 +1563,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $returns = $this->collectReturnExpressions($stmts);
 
             foreach ($returns as $returned) {
-                $branches[] = match (true) {
+                $branch = match (true) {
                     $returned instanceof Array_ && $returned->items === [] => new ResourceAnalysis,
                     $returned instanceof Array_ => $this->literalBranch($returned, $this->analyzeReturnArray($returned, $topLevel)),
                     $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($stmts, $returned->name, $topLevel),
                     default => null,
                 };
+                $branches[] = $branch === null ? null : $this->untypedKeysStripped($branch);
             }
 
             // Every branch classified: each is a shape the method can return, so a key missing from
@@ -1564,7 +1582,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                         $branches,
                         $returns,
                     ))
-                : $this->analyzeFirstReturn($stmts, $topLevel);
+                : $this->untypedKeysStripped($this->analyzeFirstReturn($stmts, $topLevel));
         } finally {
             $this->readsKeylessAttributeNames = $readsAttributeNames;
         }

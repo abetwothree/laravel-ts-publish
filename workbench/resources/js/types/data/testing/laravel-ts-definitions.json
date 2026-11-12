@@ -11465,7 +11465,7 @@
             "properties": [
                 {
                     "name": "tags",
-                    "type": "string[]",
+                    "type": "(string | number[])[]",
                     "optional": false
                 },
                 {
@@ -13529,12 +13529,12 @@
             "properties": [
                 {
                     "name": "scores",
-                    "type": "{ score: number | null }[]",
+                    "type": "{ score: number | null | string }[]",
                     "optional": false
                 },
                 {
                     "name": "contacts",
-                    "type": "({ email: string | null } | null)[]",
+                    "type": "({ email: string | null } | null | { email: string; name: string | null })[]",
                     "optional": false
                 },
                 {
@@ -13544,7 +13544,7 @@
                 },
                 {
                     "name": "branches",
-                    "type": "{ name: string | null; locale: string }[]",
+                    "type": "({ name: string | null } | { name: string | null; locale: string })[]",
                     "optional": false
                 },
                 {
@@ -14937,12 +14937,12 @@
             "properties": [
                 {
                     "name": "rows",
-                    "type": "{ name: string }[]",
+                    "type": "{ name: string | number }[]",
                     "optional": false
                 },
                 {
                     "name": "sections",
-                    "type": "{ items: { t: number[] }[] }",
+                    "type": "{ items: { t: number[] | string }[] }",
                     "optional": false
                 }
             ]
@@ -15232,32 +15232,32 @@
             "properties": [
                 {
                     "name": "params",
-                    "type": "{ t: string }[]",
+                    "type": "{ t: string | number[] }[]",
                     "optional": false
                 },
                 {
                     "name": "walks",
-                    "type": "{ k: string }[]",
+                    "type": "{ k: string | number[] }[]",
                     "optional": false
                 },
                 {
                     "name": "spreads",
-                    "type": "{ k: string; id: number }[]",
+                    "type": "{ k: string | number[]; id: number }[]",
                     "optional": false
                 },
                 {
                     "name": "relays",
-                    "type": "{ k?: string; id: number }[]",
+                    "type": "{ k?: string | number[]; id: number }[]",
                     "optional": false
                 },
                 {
                     "name": "receivers",
-                    "type": "{ name: string }[]",
+                    "type": "{ name: string | number }[]",
                     "optional": false
                 },
                 {
                     "name": "named",
-                    "type": "{ name: string }[]",
+                    "type": "{ name: string | number }[]",
                     "optional": false
                 }
             ]
@@ -17691,12 +17691,12 @@
             "properties": [
                 {
                     "name": "fills",
-                    "type": "{ f: never[] }[]",
+                    "type": "{ f: never[] | number[] }[]",
                     "optional": false
                 },
                 {
                     "name": "pairs",
-                    "type": "unknown[][]",
+                    "type": "[string | null, number][]",
                     "optional": false
                 }
             ]
@@ -21227,7 +21227,7 @@
             "properties": [
                 {
                     "name": "tag_lists",
-                    "type": "null[]",
+                    "type": "(number[] | null)[]",
                     "optional": false
                 },
                 {

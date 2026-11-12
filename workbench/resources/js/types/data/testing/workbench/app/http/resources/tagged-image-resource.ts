@@ -5,6 +5,6 @@
  */
 export interface TaggedImageResource
 {
-    tag_lists: null[];
+    tag_lists: (number[] | null)[];
     url: string;
 }

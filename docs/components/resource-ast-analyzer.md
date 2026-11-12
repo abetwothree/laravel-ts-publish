@@ -154,14 +154,17 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
   (`keepsKeys`: a kept Collection, an object cast); elsewhere it keeps its keys;
 - where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
   does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
-  only `null` takes a vague member, or any member where a union kept that `null` beside an arm no rule types;
+  only `null` takes a vague member;
+- a gap arm (`$gapN`), the arm a union left out, takes each member arm the body's other arms do not cover, after them,
+  every container arm of the member included; beside only `null` it takes the member whole with the `null`, and under
+  a member that tells nothing it stays for the strip;
 - a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member of the
   key it names (`0`, `"0"` and `'0'` are one key, printed as declared), the best matched shape of a declared list's
   element, or a declared `Record`'s value or list's other element, as fits it best
   (`DeclaredTypeMerge::acrossFromShape()`). An intersection of objects, as a spread beside keys prints, merges as the
   one object it sends (`TsTypeShape::intersectedObjects()`). A member only the declaration has merges with the union of
   the values of every body index signature whose pattern covers it, each widening to admit it; else it follows where
-  it is optional or the shape is open, and goes where the body never sends it;
+  it is optional or the shape holds the open marker, and goes where the body never sends it;
 - a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
   declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
   both spell first, then the keys both name (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
@@ -178,7 +181,8 @@ value, in `.key`, `[]` and `{}` steps, beside its type, so two of one text stay 
 `map()` and a list literal's items move it under their element (`ValueResult::holdingOpenReadings()`); taking an
 element, as a list literal's spread or a bound callback parameter does, moves it back out
 (`ValueResult::takingElementReadings()`); and a spread object's marks follow into the literal it spreads into. The
-mark reaches the key as `MethodAnalysis::$openReadings`, as a `null` a union kept beside an arm no rule types does.
+mark reaches the key as `MethodAnalysis::$openReadings`. The merge reads a shape open by the open marker the gap mode
+prints in its place (`InlineObjectResult::of()`), which every reader carries with the object.
 
 Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
 or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an

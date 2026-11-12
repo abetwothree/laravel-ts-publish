@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredTypeMerge;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -98,19 +102,44 @@ test('a reading takes the side that tells more of it: unknown, then a vague cont
 ]);
 
 test('a lone null a union kept beside an arm no rule types takes the declared type beside it', function () {
-    $merge = new DeclaredTypeMerge([], [], [".tags\0null"]);
-
-    expect($merge->merge(['{ tags: null; n: null }', []], ['{ tags: number[]; n: number }', []])[0])->toBe('{ tags: number[] | null; n: null }')
-        ->and($merge->merge(['{ tags: null }', []], ['{ tags: unknown }', []])[0])->toBe('{ tags: null }');
+    expect(mergedType('{ tags: null | $gap1; n: null }', '{ tags: number[]; n: number }'))->toBe('{ tags: number[] | null; n: null }')
+        ->and(mergedType('{ tags: null | $gap1 }', '{ tags: unknown }'))->toBe('{ tags: null | $gap1 }')
+        ->and(VisibleGaps::stripped(mergedType('{ tags: null | $gap1 }', '{ tags: unknown }'))[0])->toBe('{ tags: null }');
 });
 
 // R27: the arm a union left out beside a typed arm and its `null` reads as the declaration, beside the body's arms.
 test('a typed arm and null a union kept beside an arm no rule types take the declared type beside them', function () {
-    $merge = new DeclaredTypeMerge([], [], [".tags\0number | null"]);
-
-    expect($merge->merge(['{ tags: number | null }', []], ['{ tags: number[] }', []])[0])->toBe('{ tags: number | null | number[] }')
-        ->and($merge->merge(['{ tags: number | null }', []], ['{ tags: number }', []])[0])->toBe('{ tags: number | null }')
+    expect(mergedType('{ tags: number | null | $gap1 }', '{ tags: number[] }'))->toBe('{ tags: number | null | number[] }')
+        ->and(mergedType('{ tags: number | null | $gap1 }', '{ tags: number }'))->toBe('{ tags: number | null }')
         ->and(mergedType('{ tags: number | null }', '{ tags: number[] }'))->toBe('{ tags: number | null }');
+});
+
+// D2: a gap stands for an arm the body cannot type, so each declared arm the body's other arms do not cover joins them,
+// after them; a reading of only `null` and gaps takes the declared type whole, as an `unknown` beside `null` does.
+test('a gap the body kept takes each declared arm its other arms do not cover, after them', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a list beside null' => ['number[] | null | $gap1', 'string[]', 'number[] | null | string[]'],
+    'a shape beside null' => ['{ a: number } | null | $gap1', '{ a: number; b: string }', '{ a: number } | null | { a: number; b: string }'],
+    'a scalar beside null' => ['number | null | $gap1', 'number[]', 'number | null | number[]'],
+    'a gap before the null' => ['number | $gap1 | null', 'number[]', 'number | null | number[]'],
+    'a lone null' => ['null | $gap1', 'number[]', 'number[] | null'],
+    'only gaps' => ['$gap1 | $gap2', 'number[]', 'number[]'],
+    'a literal a body arm covers' => ['string | $gap1', "'a' | number", 'string | number'],
+    'an empty list' => ['never[] | $gap1', 'number[]', 'never[] | number[]'],
+    'a declared null' => ['number | $gap1', 'number[] | null', 'number | number[] | null'],
+    'a nested gap' => ['{ tags: (number | $gap1)[] }[]', '{ tags: (number | string)[] }[]', '{ tags: (number | string)[] }[]'],
+    'an arrow beside the declared arm' => ['(() => string) | $gap1', 'string', '(() => string) | string'],
+    'an arrow alone' => ['(() => string) | $gap1', '() => string', '() => string'],
+]);
+
+test('a gap stays beside the body\'s arms where the declared type tells nothing, for the strip to take out', function (string $declared) {
+    expect(mergedType('number | null | $gap1', $declared))->toBe('number | null | $gap1');
+})->with(['mixed', 'unknown', 'unknown | null']);
+
+test('an unknown arm the body reads keeps taking only the declared arms no other body arm covers', function () {
+    expect(mergedType('string | unknown', "'a' | number"))->toBe('string | number')
+        ->and(mergedType('string | unknown', 'number | null'))->toBe('string | number | null');
 });
 
 // R28: a member pairs with the declared member of the key it names, however either spells it.
@@ -134,13 +163,14 @@ test('pairs a body shape with a declared one by the key it decodes to', function
 
 // R29: an intersection of objects, as a spread beside keys prints, merges as the one object it sends.
 test('an intersection of objects merges as the one object it sends', function () {
-    $open = new DeclaredTypeMerge([], [], ["[]\0Omit<{ by: unknown }, 'n'> & { n: number }"]);
     $classes = new DeclaredTypeMerge(['User']);
 
     expect(mergedType("Omit<{ by: unknown; n: string }, 'n'> & { n: number }", '{ by: string; n: number; extra: string }'))
         ->toBe('{ by: string; n: number }')
-        ->and($open->merge(["(Omit<{ by: unknown }, 'n'> & { n: number })[]", []], ['{ by: string; n: number; extra: string }[]', []])[0])
+        ->and(mergedType("(Omit<{ by: unknown; #\$open: unknown }, 'n'> & { n: number })[]", '{ by: string; n: number; extra: string }[]'))
         ->toBe('{ by: string; n: number; extra: string }[]')
+        ->and(mergedType("(Omit<{ by: unknown }, 'n'> & { n: number })[]", '{ by: string; n: number; extra: string }[]'))
+        ->toBe('{ by: string; n: number }[]')
         ->and(mergedType("{ n: unknown } & Omit<{ n: string }, 'n'>", '{ n: number }'))->toBe('{ n: number }')
         ->and(mergedType("Omit<Record<string, string>, 'by'> & { by: unknown }", '{ by: number }'))
         ->toBe("Omit<Record<string, string>, 'by'> & { by: unknown }")
@@ -212,6 +242,18 @@ test('a shape keyed 0 to n-1 no filter re-lists keeps its keys under a declared 
     expect(mergedType($body, '[number, string]'))->toBe($body);
 })->with(['{ "1": unknown; "0": unknown }', '{ "0": unknown; "1": unknown }', '{ "1": unknown; "0": unknown } | null']);
 
+// A value a union left only gaps or `null` beside them holds what no rule typed, as an `unknown` one does (GH-154).
+test('a re-listed shape whose values hold only gaps beside unknown or null takes the declared tuple in its key order', function () {
+    $relisted = new DeclaredTypeMerge([], relists: true);
+
+    expect($relisted->merge(['{ "1": null | $gap1; "0": unknown }', []], ['[number, string | null]', []])[0])->toBe('[string | null, number]')
+        ->and($relisted->merge(['{ "1": $gap1 | $gap2; "0": unknown }', []], ['[number, string]', []])[0])->toBe('[string, number]')
+        ->and($relisted->merge(['{ "1": unknown; "0": unknown; #$open: unknown }', []], ['[number, string]', []])[0])->toBe('[string, number]')
+        ->and($relisted->merge(['{ "1": null; "0": unknown }', []], ['[number, string | null]', []])[0])->toBe('{ "1": null; "0": unknown }')
+        ->and($relisted->merge(['{ "1": string | $gap1; "0": unknown }', []], ['[number, string]', []])[0])->toBe('{ "1": string | $gap1; "0": unknown }')
+        ->and(mergedType('{ "1": null | $gap1; "0": unknown }', '[number, string | null]'))->toBe('{ "1": null | $gap1; "0": unknown }');
+});
+
 test('a re-listed tuple keeps each declared element\'s class beside it in its key order', function () {
     $merge = new DeclaredTypeMerge(['User', 'Post'], relists: true);
 
@@ -222,20 +264,24 @@ test('a re-listed tuple keeps each declared element\'s class beside it in its ke
 });
 
 // R12, R15 and R19: a member only the declaration has is kept where it may be left out, and dropped where it must be
-// sent from a shape whose every key the body names; a shape open at its path keeps it as declared.
-test('a member only the declaration has stays where it is optional or the body\'s shape is open at its path', function () {
-    $open = new DeclaredTypeMerge([], [], ["\0{ a: string }"]);
-    $inner = new DeclaredTypeMerge([], [], [".inner\0{ a: number }"]);
-    $elements = new DeclaredTypeMerge([], [], ["[]\0{ a: string }", "[]\0{ b: string }"]);
-    $shapes = ['{ inner: { a: number }; other: { a: number } }', []];
-
+// sent from a shape whose every key the body names; a shape the open marker says may hold more keys keeps it.
+test('a member only the declaration has stays where it is optional or the body\'s shape holds the open marker', function () {
     expect(mergedType('{ a: string }', '{ a: string; b: number; c?: string }'))->toBe('{ a: string; c?: string }')
-        ->and($open->merge(['{ a: string }', []], ['{ a: string; b: number; c?: string }', []])[0])->toBe('{ a: string; b: number; c?: string }')
-        ->and($inner->merge($shapes, ['{ inner: { a: number; b: string }; other: { a: number; b: string } }', []])[0])
+        ->and(mergedType('{ a: string; #$open: unknown }', '{ a: string; b: number; c?: string }'))->toBe('{ a: string; b: number; c?: string }')
+        ->and(mergedType('{ inner: { a: number; #$open: unknown }; other: { a: number } }', '{ inner: { a: number; b: string }; other: { a: number; b: string } }'))
         ->toBe('{ inner: { a: number; b: string }; other: { a: number } }')
-        ->and($elements->merge(['{ a: string }[]', []], ['{ a: string; b: number }[]', []])[0])->toBe('{ a: string; b: number }[]')
-        ->and($elements->merge(['({ a: string } | { c: string })[]', []], ['({ a: string; b: number } | { c: string; b: number })[]', []])[0])
-        ->toBe('({ a: string; b: number } | { c: string })[]');
+        ->and(mergedType('{ a: string; #$open: unknown }[]', '{ a: string; b: number }[]'))->toBe('{ a: string; b: number }[]')
+        ->and(mergedType('({ a: string; #$open: unknown } | { c: string })[]', '({ a: string; b: number } | { c: string; b: number })[]'))
+        ->toBe('({ a: string; b: number } | { c: string })[]')
+        ->and(mergedType('{ a: string; #$open: unknown }', 'Record<string, number>'))->toBe('{ a: string }');
+});
+
+// D2: a closed arm beside an open one with the same keys stays apart from it, each merged as it reads.
+test('a closed shape beside an open one of the same keys merges apart from it', function () {
+    expect(mergedType('({ by: string } | { by: string; #$open: unknown })[]', '{ by: string; extra: number }[]'))
+        ->toBe('({ by: string } | { by: string; extra: number })[]')
+        ->and(mergedType('{ by: string }[] | { by: string; #$open: unknown }[]', '{ by: string; extra: number }[]'))
+        ->toBe('{ by: string }[] | { by: string; extra: number }[]');
 });
 
 // R20: a declared member a body index signature's pattern covers merges with that signature's value, which widens to
@@ -361,4 +407,82 @@ test('a wrapped enum beside a list keeps the body\'s arm and merges the list', f
 
     expect($merge->merge($body, $declared))
         ->toBe(['StatusType | { by: User; other: User | null }[]', [Status::class, CrmUser::class, User::class]]);
+});
+
+/**
+ * Seeded body and declared types for the merge's properties: each body one to three typed arms with one or two gap
+ * arms placed among them, and each declared type one to three arms, none of which tells only its container.
+ *
+ * @return list<array{string, string}>
+ */
+function gapMergeCases(int $seed, int $cases): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $bodyArms = ['number', 'string', 'boolean', 'null', "'a'", '1', 'number[]', 'string[]', '{ a: number }', '{ a: string; b: number }', 'Record<string, number>', '(number | null)[]', '{ a: number }[]'];
+    $declaredArms = ['number', 'string', 'boolean', 'null', "'a'", "'b'", '1', 'number[]', 'string[]', '{ a: number }', '{ a: number; b: string }', 'Record<string, string>', '{ a: number }[]', '(string | null)[]'];
+    $made = [];
+
+    foreach (range(1, $cases) as $case) {
+        $body = array_slice($random->shuffleArray($bodyArms), 0, $random->getInt(1, 3));
+
+        foreach (range(1, $random->getInt(1, 2)) as $gap) {
+            array_splice($body, $random->getInt(0, count($body)), 0, [VisibleGaps::arm($gap)]);
+        }
+
+        $made[] = [implode(' | ', $body), implode(' | ', array_slice($random->shuffleArray($declaredArms), 0, $random->getInt(1, 3)))];
+    }
+
+    return $made;
+}
+
+/**
+ * The kind of container one arm is, as the merge pairs arms, or null for an arm compared whole.
+ */
+function mergedArmKind(string $arm): ?string
+{
+    return match (true) {
+        str_starts_with($arm, '{') => 'object',
+        str_starts_with($arm, 'Record<') => 'record',
+        str_ends_with($arm, '[]') => 'list',
+        default => null,
+    };
+}
+
+test('a merge keeps each arm the body proves is sent and every declared arm beside the gaps they leave', function (string $body, string $declared) {
+    $merged = TsTypeString::splitTopLevelUnion(mergedType($body, $declared));
+    $declaredArms = TsTypeString::splitTopLevelUnion($declared);
+    $covers = fn (string $arm): bool => in_array($arm, $merged, true)
+        || array_any($merged, fn (string $other): bool => DeclaredTypeMerge::armWithin($arm, $other));
+
+    foreach (VisibleGaps::aside($body)[0] === 'null' ? [] : TsTypeString::splitTopLevelUnion(VisibleGaps::aside($body)[0]) as $arm) {
+        $kind = mergedArmKind($arm);
+        $refined = array_any($declaredArms, fn (string $other): bool => in_array($other, $merged, true) && DeclaredTypeMerge::armWithin($other, $arm));
+
+        expect($kind === null ? in_array($arm, $merged, true) || $refined : array_any($merged, fn (string $other): bool => mergedArmKind($other) === $kind))
+            ->toBeTrue("{$arm} of {$body} under {$declared}");
+    }
+
+    expect(array_all($declaredArms, $covers))->toBeTrue("{$declared} beside {$body}")
+        ->and(VisibleGaps::ids(implode(' | ', $merged)))->toBe([]);
+})->with(fn (): array => gapMergeCases(154, 300));
+
+test('a gap the body kept stays where the declared type tells nothing', function (string $body) {
+    expect(mergedType($body, 'mixed'))->toBe($body)
+        ->and(mergedType($body, 'unknown | null'))->toBe($body);
+})->with(fn (): array => array_column(gapMergeCases(155, 50), 0));
+
+test('a body with no gap merges as it did before gaps were kept', function (string $body, string $declared, bool $relists, string $merged) {
+    expect(new DeclaredTypeMerge([], relists: $relists)->merge([$body, []], [$declared, []])[0])->toBe($merged);
+})->with(array_map(
+    static fn (array $case): array => [$case['body'], $case['declared'], $case['relists'], $case['merged']],
+    (array) json_decode((string) file_get_contents(__DIR__.'/Fixtures/declared-type-merge-baseline.json'), true),
+));
+
+test('a merge reads the same each time, whatever merge ran before it', function () {
+    $cases = gapMergeCases(156, 100);
+    $first = array_map(fn (array $case): string => mergedType(...$case), $cases);
+    $shared = new DeclaredTypeMerge([]);
+    $again = array_map(fn (array $case): string => $shared->merge([$case[0], []], [$case[1], []])[0], array_reverse($cases));
+
+    expect(array_reverse($again))->toBe($first);
 });

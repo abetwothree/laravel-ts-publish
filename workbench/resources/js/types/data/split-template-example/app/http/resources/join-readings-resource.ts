@@ -5,10 +5,10 @@
  */
 export interface JoinReadingsResource
 {
-    params: { t: string }[];
-    walks: { k: string }[];
-    spreads: { k: string; id: number }[];
-    relays: { k?: string; id: number }[];
-    receivers: { name: string }[];
-    named: { name: string }[];
+    params: { t: string | number[] }[];
+    walks: { k: string | number[] }[];
+    spreads: { k: string | number[]; id: number }[];
+    relays: { k?: string | number[]; id: number }[];
+    receivers: { name: string | number }[];
+    named: { name: string | number }[];
 }
