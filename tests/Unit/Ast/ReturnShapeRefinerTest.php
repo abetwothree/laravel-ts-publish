@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelpersRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueReversedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillMixedRecordResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillNestedDecisionArgumentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillNestedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentSpreadResource;
@@ -846,7 +847,8 @@ test('a gap a key consumes warns once with today\'s text, whether a merge fills 
     'a documented helper\'s argument filled under its typed key, consumed under another' => [GapFillConsumedArgumentResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
 ])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);
 
-// A merge inside the read that holds the gap filled it, so the placeholder the warning names is never published.
+// A merge inside the read that holds the gap filled it, so the placeholder the warning names is never published, and a
+// key that only decides on the gap, as `$x ? 1 : 0` does, types nothing with it.
 test('a gap a merge fills inside the read that holds it warns nothing, whether the read computes the merge or reuses it', function (string $resource, array $expected, bool $everyKey) {
     ReturnMembers::$typesEveryKey = $everyKey;
 
@@ -856,4 +858,5 @@ test('a gap a merge fills inside the read that holds it warns nothing, whether t
     'a helper spread under an undocumented key' => [GapFillNestedHelperResource::class, ['meta' => '{ a: number[] | null }']],
     'the same helper spread at the top' => [GapFillTopHelperResource::class, ['a' => 'number[] | null']],
     'a reused read of a vague helper spreading it' => [GapFillReusedHelperResource::class, ['meta' => '{ a: number[] | null }', 'more' => '{ a: number[] | null }']],
+    'a nested helper\'s argument another key only decides on' => [GapFillNestedDecisionArgumentResource::class, ['meta' => '{ a: number[] | null; b: number }']],
 ])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);

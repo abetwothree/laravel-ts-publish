@@ -261,7 +261,10 @@ final class DroppedUnionArms
         return $id;
     }
 
-    /** Where the gap log stands, for gapsSince() to read the gaps made or replayed after it. */
+    /**
+     * Where the gap log stands, so gapsSince() and filledSince() read only what was logged after it: the gaps made or
+     * replayed, the ids a read's result spelled, and the fills.
+     */
     public static function gapMark(): int
     {
         return count(self::$gapLog);
@@ -316,7 +319,8 @@ final class DroppedUnionArms
     }
 
     /**
-     * Mark gaps a merge filled, whose warnings the end of their extent then leaves unraised.
+     * Mark gaps a merge filled, whose warnings the end of their extent then leaves unraised, and log each fill in the
+     * gap log's order, so a read whose mark came before the fill does not count the gap as consumed.
      *
      * @param  list<int>  $ids
      */
@@ -363,7 +367,8 @@ final class DroppedUnionArms
 
     /**
      * Run a stripping frame's read or a documented helper's argument read, and on every way out of the outermost one
-     * under way raise the warnings of each gap made or replayed in it that no merge filled and no strip raised.
+     * under way raise the warnings of each gap made, replayed or spelled by a read's result in it that no merge filled
+     * and no strip raised.
      *
      * @template TRead
      *

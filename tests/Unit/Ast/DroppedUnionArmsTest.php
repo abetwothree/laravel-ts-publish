@@ -283,6 +283,17 @@ test('a gap a read no longer spells raises its held warning once, even where a m
         ->and(droppedArmsRunMessages())->toBe([]);
 });
 
+test('a gap made and filled since a read began raises nothing where the read\'s result drops it: a merge inside filled it', function () {
+    $mark = DroppedUnionArms::gapMark();
+    $id = heldDroppedArmGap(droppedArm('arm'));
+    DroppedUnionArms::filled([$id]);
+    DroppedUnionArms::consumed($mark, 'null | '.VisibleGaps::arm($id));
+    DroppedUnionArms::consumed($mark, 'number');
+    DroppedUnionArms::consumed($mark, 'unknown');
+
+    expect(droppedArmsRunMessages())->toBe([]);
+});
+
 test('a gap an inner read\'s result spells counts as read by the read around it, which raises it where it drops it', function () {
     $id = heldDroppedArmGap(droppedArm('arm'));
     $reads = function (string $outer) use ($id): array {
