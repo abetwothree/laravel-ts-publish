@@ -2,7 +2,7 @@
 
 ## Guidelines
 
-You must remember to follow all instructions in this AGENTS.md file, and you must not deviate from them unless they are incorrect and you have a better widely accepted standard from top programmers or largely used projects. You must ensure that the code is clean, well-documented, and follows best practices for TypeScript development.
+You must remember to follow all instructions in this CLAUDE.md file, and you must not deviate from them unless they are incorrect and you have a better widely accepted standard from top programmers or largely used projects. You must ensure that the code is clean, well-documented, and follows best practices for TypeScript development.
 
 ## What is the abetwothree/laravel-ts-publish project?
 
