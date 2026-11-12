@@ -7,7 +7,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\SourceFileVisitor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
@@ -199,10 +198,10 @@ test('an arm keeps its gap id when its file is parsed again, as once the parser 
     $again = $calls(new AstParser)[0];
     $scope = droppedArmsScope();
     $id = DroppedUnionArms::gap($scope, 'match-arm', $first, 'string');
-    $elsewhere = new Variable('arm', [...$first->getAttributes(), SourceFileVisitor::ATTRIBUTE => $path.'.other']);
+    $elsewhere = new Variable('arm', [...$first->getAttributes(), AstParser::SOURCE_FILE => $path.'.other']);
 
     expect($again)->not->toBe($first)
-        ->and($again->getAttribute(SourceFileVisitor::ATTRIBUTE))->toBe($path)
+        ->and($again->getAttribute(AstParser::SOURCE_FILE))->toBe($path)
         ->and(DroppedUnionArms::gap($scope, 'match-arm', $again, 'string'))->toBe($id)
         ->and(DroppedUnionArms::gap($scope, 'match-arm', $second, 'string'))->not->toBe($id)
         ->and(DroppedUnionArms::gap($scope, 'match-arm', $elsewhere, 'string'))->not->toBe($id);

@@ -15,8 +15,8 @@ use PhpParser\Parser;
 use PhpParser\ParserFactory;
 
 /**
- * Single php-parser entry point: name-resolved ASTs, a closure argument's docblock on the closure, cached per file and
- * recorded as cache dependencies.
+ * Single php-parser entry point: name-resolved ASTs, a closure argument's docblock on the closure, each node marked
+ * with its file, cached per file and recorded as cache dependencies.
  *
  * @phpstan-type MethodsByName = array<string, list<ClassMethod>>
  *
@@ -24,6 +24,9 @@ use PhpParser\ParserFactory;
  */
 class AstParser
 {
+    /** The node attribute holding the file a node was parsed from, so it keeps its identity across a file's parses. */
+    public const string SOURCE_FILE = 'sourceFile';
+
     /** Spread analysis re-reads the same file many times per run; the cap keeps a large app from ballooning memory. */
     private const int MAX_CACHED_FILES = 256;
 
@@ -113,11 +116,7 @@ class AstParser
 
         $traverser = new NodeTraverser;
         $traverser->addVisitor(new NameResolver);
-        $traverser->addVisitor(new ArgumentDocCommentVisitor);
-
-        if ($path !== null) {
-            $traverser->addVisitor(new SourceFileVisitor($path));
-        }
+        $traverser->addVisitor(new ArgumentDocCommentVisitor($path));
 
         return $traverser->traverse($stmts);
     }

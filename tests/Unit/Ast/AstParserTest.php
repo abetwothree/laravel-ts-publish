@@ -60,6 +60,20 @@ it('hands a closure argument\'s doc comment to the closure, and leaves a closure
     ])->and($docs($args))->toBe([null, null, null, '/** @return float */', '/** @return null */', null]);
 });
 
+it('marks every node with the file it was parsed from as it moves a closure argument\'s doc comment', function () {
+    $source = '<?php f(/** @return int */ fn () => 1);';
+    $files = static fn (array $stmts): array => array_values(array_unique(array_map(
+        static fn (Node $node): mixed => $node->getAttribute(AstParser::SOURCE_FILE),
+        new NodeFinder()->find($stmts, static fn (): bool => true),
+    )));
+    $marked = new AstParser()->parseSource($source, '/app/Example.php');
+
+    expect($files($marked))->toBe(['/app/Example.php'])
+        ->and(new NodeFinder()->findFirstInstanceOf($marked, ArrowFunction::class)?->getDocComment()?->getText())
+        ->toBe('/** @return int */')
+        ->and($files(new AstParser()->parseSource($source)))->toBe([null]);
+});
+
 it('returns an empty array for unparseable source', function () {
     expect(new AstParser()->parseSource(''))->toBe([]);
 });

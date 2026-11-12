@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\SourceFileVisitor;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
@@ -607,7 +607,7 @@ final class DroppedUnionArms
     private static function place(Node $at): string
     {
         if ($at->getStartFilePos() >= 0) {
-            $file = $at->getAttribute(SourceFileVisitor::ATTRIBUTE);
+            $file = $at->getAttribute(AstParser::SOURCE_FILE);
 
             return (is_string($file) ? $file : '')."\0".$at->getStartFilePos()."\0".$at->getEndFilePos();
         }
