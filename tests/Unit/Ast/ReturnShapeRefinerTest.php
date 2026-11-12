@@ -811,7 +811,10 @@ test('a helper read under a typed key and an undocumented one fills only the typ
         'typed' => '(number[] | string)[]',
         'untyped' => 'number[][]',
     ]);
-})->with([GapFillHelperValueResource::class, GapFillHelperValueReversedResource::class]);
+})->with([
+    'the typed key first' => [GapFillHelperValueResource::class],
+    'the untyped key first' => [GapFillHelperValueReversedResource::class],
+]);
 
 // Review Focus 3: a gap no docblock position types is stripped as the body reads it, and warns once with today's text.
 test('an arm no @return position types is left out as the body reads it, and warns once', function (string $resource, array $expected, int $warnings) {
