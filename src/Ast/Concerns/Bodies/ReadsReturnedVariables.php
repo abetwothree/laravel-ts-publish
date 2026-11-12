@@ -46,6 +46,8 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\ClassLike;
@@ -453,14 +455,15 @@ trait ReadsReturnedVariables
 
             $assigned = $this->assignedValue($stmt, $varName);
 
-            // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
+            // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment; a whole
+            // write, as a `+=` below, lands its keys at the level of the walk.
             if ($assigned !== null) {
-                $baseAnalysis = $this->readAgainstWalk(
+                $baseAnalysis = $this->analysisScope()->readingLevel(fn (): ?MethodAnalysis => $this->readAgainstWalk(
                     $assigned,
                     $varName,
                     $into,
                     fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
-                );
+                ));
 
                 if ($baseAnalysis === null) {
                     $keepsKeys = $stmt instanceof ExpressionStmt && $this->keepsEveryKey($stmt->expr, $varName);
@@ -491,12 +494,13 @@ trait ReadsReturnedVariables
                 && $stmt->expr instanceof Plus
                 && $stmt->expr->var instanceof Variable
                 && $stmt->expr->var->name === $varName) {
-                $addedAnalysis = $this->readAgainstWalk(
-                    $stmt->expr->expr,
+                $added = $stmt->expr->expr;
+                $addedAnalysis = $this->analysisScope()->readingLevel(fn (): ?MethodAnalysis => $this->readAgainstWalk(
+                    $added,
                     $varName,
                     $into,
                     fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
-                );
+                ));
 
                 if ($addedAnalysis === null) {
                     $into->holdUnreadKeys();
@@ -520,7 +524,11 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->var->name === $varName
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
-                $result = $this->readAgainstWalk($stmt->expr->expr, $varName, $into, $this->analyzeValueExpression(...));
+                $written = $stmt->expr->expr;
+                $result = $this->analysisScope()->readingKey(
+                    $keyName,
+                    fn (): array => $this->readAgainstWalk($written, $varName, $into, $this->analyzeValueExpression(...)),
+                );
                 $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
@@ -800,7 +808,10 @@ trait ReadsReturnedVariables
                 $this->noteOptionalValues($seed);
             }
 
-            $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+            $walk = fn () => $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+
+            // A typed key written from the variable reads the keys written before it, so each reads as that key does.
+            $this->typedWriteReadsVariable($live, $varName) ? $this->analysisScope()->readingLevel($walk) : $walk();
             $this->branchNotes ??= new WeakMap;
             $this->branchNotes[$analysis] = $this->untypedKeyWrites;
         } finally {
@@ -1572,7 +1583,10 @@ trait ReadsReturnedVariables
             return;
         }
 
-        $default = $this->readAgainstWalk($value, $varName, $into, $this->analyzeValueExpression(...));
+        $default = $this->analysisScope()->readingKey(
+            $keyName,
+            fn (): array => $this->readAgainstWalk($value, $varName, $into, $this->analyzeValueExpression(...)),
+        );
 
         // A signature stands for many runtime keys, so the default is one more it may cover.
         if ($signature) {
@@ -1724,6 +1738,34 @@ trait ReadsReturnedVariables
         $reads = fn (Node $node): bool => $node instanceof Variable && $node->name === $varName;
 
         return new NodeFinder()->findFirst($expr, $reads) !== null;
+    }
+
+    /**
+     * Whether a write of a key the frame's `@return` may type reads the variable it writes; a key no literal spells may
+     * be one.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function typedWriteReadsVariable(array $stmts, string $varName): bool
+    {
+        $scope = $this->analysisScope();
+
+        if ($scope->typedKeys === []) {
+            return false;
+        }
+
+        return new NodeFinder()->findFirst($stmts, function (Node $node) use ($scope, $varName): bool {
+            if (! ($node instanceof Assign || $node instanceof CoalesceAssign) || ! $node->var instanceof ArrayDimFetch
+                || ! $node->var->var instanceof Variable || $node->var->var->name !== $varName || $node->var->dim === null
+                || ! $this->readsVariableIn($node->expr, $varName)
+            ) {
+                return false;
+            }
+
+            $dim = $node->var->dim;
+
+            return ! ($dim instanceof String_ || $dim instanceof Int_) || $scope->typesKey((string) $dim->value);
+        }) !== null;
     }
 
     /**

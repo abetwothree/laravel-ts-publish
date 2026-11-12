@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
@@ -506,7 +507,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        return ['name' => $value->value, 'result' => $this->analyzeValueExpression($this->modelAttributeRead($value->value))];
+        return ['name' => $value->value, 'result' => $this->scope->readingKey(
+            $value->value,
+            fn (): array => $this->analyzeValueExpression($this->modelAttributeRead($value->value)),
+        )];
     }
 
     /**
@@ -708,8 +712,9 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return $branch === null ? [[], false] : [[$branch], true];
         }
 
-        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default.
-        return $this->scope->readClaimedClosure($expr, 0, $this, function () use ($expr): array {
+        // merge()/mergeWhen() call their closure with no argument: each parameter owns its name and holds its default,
+        // read where the closure's keys land, at this level.
+        return $this->scope->readingLevel(fn (): array => $this->scope->readClaimedClosure($expr, 0, $this, function () use ($expr): array {
             ModelFills::markDefaults($expr, $this->scope);
 
             // Seeded as ClosureHandler seeds a closure, so a local the body assigns shadows the method's of its name.
@@ -719,7 +724,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             return $this->closureReturnBranches($expr);
-        });
+        }));
     }
 
     /**
@@ -805,20 +810,25 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return null;
         }
 
-        // Read in the caller's tables, before they are set aside.
-        $passed = $call instanceof CallLike ? new CallSite($call, $this->scope, $this)->passedTo($method) : [];
+        $members = ReturnMembers::of($method);
+        // Read in the caller's tables, before they are set aside; a value bound here may reach a key the helper types.
+        $passed = $call instanceof CallLike ? $this->scope->readingLevel(
+            fn (): array => new CallSite($call, $this->scope, $this)->passedTo($method),
+            $members->typedKeys(),
+        ) : [];
         $proofs = $this->proofsAcrossCall($this->scope, $call);
         $stmts = $targetMethod->stmts;
         $rewritten = $this->rewrittenThisPaths($stmts, $this->scope);
 
-        $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $proofs, $rewritten, $stmts, $passed): void {
+        $analysis = $this->scope->within(function (AnalysisScope $scope) use ($method, $members, $proofs, $rewritten, $stmts, $passed): void {
             $scope->enterMethod($method, $proofs, $rewritten);
+            $scope->typedKeys = $members->typedKeys();
             // The helper's body is seeded with its own locals, whatever local read the caller is in.
             $scope->readingLocals = [];
             $this->seedVarBindings($method, $stmts, $passed);
         }, fn (): ResourceAnalysis => $this->spreadReturnAnalysis($methodName, $stmts, $topLevel));
 
-        return $this->methodShaped($analysis, $method, keepsUnresolvedNames: true, fillsPositions: true);
+        return $this->methodShaped($analysis, $method, $members, keepsUnresolvedNames: true, fillsPositions: true);
     }
 
     /**
@@ -836,15 +846,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         } elseif ($returned instanceof Variable && is_string($returned->name)) {
             $analysis = $this->resolveVariableReturnAnalysis($stmts, $returned->name, $topLevel);
         } elseif ($returned instanceof MethodCall) {
-            $filtered = $this->analyzeThisAttributeFilter($returned);
+            // A whole return lands its keys at this level, beside any key the method's `@return` types.
+            $analysis = $this->scope->readingLevel(function () use ($returned, $topLevel): ResourceAnalysis {
+                $filtered = $this->analyzeThisAttributeFilter($returned);
 
-            if ($filtered !== null) {
-                $analysis = $filtered;
-            } elseif ($this->hasThisReceiver($returned) && $returned->name instanceof Identifier) {
-                $analysis = $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? ResourceAnalysis::unreadAnalysis();
-            } else {
-                $analysis = ResourceAnalysis::unreadAnalysis();
-            }
+                if ($filtered !== null) {
+                    return $filtered;
+                }
+
+                return $this->hasThisReceiver($returned) && $returned->name instanceof Identifier
+                    ? $this->analyzeThisMethodSpread($returned->name->toString(), $topLevel, $returned) ?? ResourceAnalysis::unreadAnalysis()
+                    : ResourceAnalysis::unreadAnalysis();
+            });
         } else {
             // A scalar, `null` or a constant holds no key; any other value holds keys nothing here reads.
             $holdsNoKey = $returned === null || $returned instanceof Scalar || $returned instanceof ConstFetch;
@@ -1115,7 +1128,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         if ($this->toArraySendsCollectedList()) {
             $response = $this->buildCollectionDelegatedAnalysis();
 
-            return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response);
+            return $toArrayMethod?->stmts === null ? $response : $this->ownMethodShaped($response, $this->ownReturnMembers());
         }
 
         if ($toArrayMethod === null || $toArrayMethod->stmts === null) {
@@ -1167,8 +1180,13 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         $passesKeys = $this->returnsUnseededParameter($toArrayMethod);
-        $analysis = $this->analyzeAllReturnBranches($toArrayMethod->stmts)
-            ?? $this->ownFirstReturnAnalysis($toArrayMethod->stmts);
+        $stmts = $toArrayMethod->stmts;
+        $members = $this->ownReturnMembers();
+        // share() and provide() lay their own `@return` over every key, so no key of theirs reads in the gap mode.
+        $analysis = $this->scope->typingKeys(
+            $members === null || $this->docblockOutranksBody() ? [] : $members->typedKeys(),
+            fn (): ?ResourceAnalysis => $this->analyzeAllReturnBranches($stmts) ?? $this->ownFirstReturnAnalysis($stmts),
+        );
 
         if ($analysis === null) {
             return new ResourceAnalysis; // @codeCoverageIgnore
@@ -1178,7 +1196,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $analysis->holdUnreadKeys();
         }
 
-        return $this->ownMethodShaped($analysis);
+        return $this->ownMethodShaped($analysis, $members);
     }
 
     /**
@@ -1209,7 +1227,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function dispatchValue(Expr $expr): array
     {
-        return $this->atValueSite(fn (): array => $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown());
+        $read = fn (): array => $this->dispatcher()->dispatch($expr, $this->scope, $this) ?? ValueResult::unknown();
+
+        // A value's own keys are a level of their own, which no `@return` around the value types.
+        return $this->scope->typedKeys === []
+            ? $this->atValueSite($read)
+            : $this->scope->typingKeys([], fn (): array => $this->atValueSite($read));
     }
 
     /**
@@ -1283,20 +1306,31 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Lay the analyzed method's own `@return` shape and `#[TsCasts]` over what its body returns.
+     * Lay the analyzed method's own `@return` shape, its $members, and `#[TsCasts]` over what its body returns.
      */
-    private function ownMethodShaped(ResourceAnalysis $analysis): ResourceAnalysis
+    private function ownMethodShaped(ResourceAnalysis $analysis, ?ReturnMembers $members): ResourceAnalysis
     {
-        if (! $this->scope->subjectReflection->hasMethod($this->methodName)) {
+        if ($members === null) {
             return $analysis;
         }
 
         return $this->methodShaped(
             $analysis,
             $this->scope->subjectReflection->getMethod($this->methodName),
+            $members,
             keepsUnresolvedNames: false,
             fillsPositions: ! $this->docblockOutranksBody(),
         );
+    }
+
+    /**
+     * The analyzed method's own `@return` members, null where the subject has no such method.
+     */
+    private function ownReturnMembers(): ?ReturnMembers
+    {
+        $subject = $this->scope->subjectReflection;
+
+        return $subject->hasMethod($this->methodName) ? ReturnMembers::of($subject->getMethod($this->methodName)) : null;
     }
 
     /**
@@ -1306,12 +1340,14 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function methodShaped(
         ResourceAnalysis $analysis,
         ReflectionMethod $method,
+        ReturnMembers $members,
         bool $keepsUnresolvedNames,
         bool $fillsPositions,
     ): ResourceAnalysis {
         resolve(ReturnShapeRefiner::class)->refine(
             $analysis,
             $method,
+            $members,
             keepsUnresolvedNames: $keepsUnresolvedNames,
             fillsPositions: $fillsPositions,
             relists: $this->relistsIntKeys(),
@@ -1345,12 +1381,17 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
         $parentMethod = $this->readParentCall($returned);
         $frameworkMethod = $this->readThisFrameworkCall($returned);
+        // A whole return lands its keys at this level, beside any key the method's `@return` types.
         $analysis = match (true) {
             $returned instanceof Variable && is_string($returned->name) => $this->resolveVariableReturnAnalysis($stmts, $returned->name),
             $this->toArrayReturnsCollectedList($returned) => $this->buildCollectionDelegatedAnalysis(),
-            $parentMethod !== null => $this->analyzeParentCall($parentMethod, $this->returnedWhole),
-            $frameworkMethod !== null => $this->frameworkMethodAnalysis($frameworkMethod, $this->returnedWhole),
-            default => $this->analyzeArrayExpression($returned),
+            $parentMethod !== null => $this->scope->readingLevel(
+                fn (): ?ResourceAnalysis => $this->analyzeParentCall($parentMethod, $this->returnedWhole),
+            ),
+            $frameworkMethod !== null => $this->scope->readingLevel(
+                fn (): ?ResourceAnalysis => $this->frameworkMethodAnalysis($frameworkMethod, $this->returnedWhole),
+            ),
+            default => $this->scope->readingLevel(fn (): ?ResourceAnalysis => $this->analyzeArrayExpression($returned)),
         } ?? ResourceAnalysis::unreadAnalysis();
 
         // The fallback reads one return of several, so the others are unread.
@@ -1521,13 +1562,18 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             if ($readsAttributeNames && $item->key === null && ! $item->unpack && $item->value instanceof String_) {
-                $writes->recordKey($item->value->value, $this->analyzeValueExpression($this->modelAttributeRead($item->value->value)), $index);
+                $name = $item->value->value;
+                $writes->recordKey($name, $this->scope->readingKey(
+                    $name,
+                    fn (): array => $this->analyzeValueExpression($this->modelAttributeRead($name)),
+                ), $index);
 
                 continue;
             }
 
+            // Each keyless row below lands its keys at this level, beside any key the method's `@return` types.
             if ($readsAttributeNames && $this->spreadsFrameworkToAttributes($item)) {
-                $writes->record($this->jsonApiFrameworkAttributesAnalysis(), $index);
+                $writes->record($this->scope->readingLevel($this->jsonApiFrameworkAttributesAnalysis(...)), $index);
 
                 continue;
             }
@@ -1536,7 +1582,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $parentMethod = $item->key === null && $item->unpack ? $this->readParentCall($item->value) : null;
 
             if ($parentMethod !== null) {
-                $parentAnalysis = $this->analyzeParentCall($parentMethod);
+                $parentAnalysis = $this->scope->readingLevel(fn (): ?ResourceAnalysis => $this->analyzeParentCall($parentMethod));
 
                 if ($parentAnalysis !== null) {
                     $writes->record($parentAnalysis, $index);
@@ -1552,7 +1598,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             if ($item->key === null && $item->unpack
                 && $item->value instanceof MethodCall
                 && $this->filtersOwnModel($item->value)) {
-                $filterAnalysis = $this->analyzeThisAttributeFilter($item->value);
+                $filtered = $item->value;
+                $filterAnalysis = $this->scope->readingLevel(fn (): ?ResourceAnalysis => $this->analyzeThisAttributeFilter($filtered));
 
                 if ($filterAnalysis !== null) {
                     $writes->record($filterAnalysis, $index);
@@ -1566,7 +1613,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
             // ...$post->only([...]) on any other receiver holding one model flattens as the own-model spread does.
             if ($topLevel && $item->key === null && $item->unpack && $item->value instanceof MethodCall) {
-                $filterAnalysis = $this->analyzeReceiverModelFilter($item->value);
+                $filtered = $item->value;
+                $filterAnalysis = $this->scope->readingLevel(fn (): ?ResourceAnalysis => $this->analyzeReceiverModelFilter($filtered));
 
                 if ($filterAnalysis !== null) {
                     $writes->record($filterAnalysis, $index);
@@ -1581,21 +1629,28 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 && $item->value->var instanceof Variable
                 && $item->value->var->name === 'this'
                 && $item->value->name instanceof Identifier) {
-                $writes->record($this->ownMethodSpread($item->value->name->toString(), $topLevel, $item->value), $index);
+                $call = $item->value;
+                $helper = $item->value->name->toString();
+                $writes->record($this->scope->readingLevel(fn (): ResourceAnalysis => $this->ownMethodSpread($helper, $topLevel, $call)), $index);
 
                 continue;
             }
 
             // ...self::helper(), ...static::helper() or ...parent::helper() spreads the method the call reaches, as
             // ...$this->helper() does.
-            if ($item->key === null && $item->unpack
-                && $item->value instanceof StaticCall
-                && $item->value->name instanceof Identifier
-                && ($spread = $this->relativeMethodSpread($item->value, $item->value->name->toString(), $topLevel)) !== null
-            ) {
-                $writes->record($spread, $index);
+            $static = $item->key === null && $item->unpack && $item->value instanceof StaticCall ? $item->value : null;
 
-                continue;
+            if ($static !== null && $static->name instanceof Identifier) {
+                $staticName = $static->name->toString();
+                $spread = $this->scope->readingLevel(
+                    fn (): ?ResourceAnalysis => $this->relativeMethodSpread($static, $staticName, $topLevel),
+                );
+
+                if ($spread !== null) {
+                    $writes->record($spread, $index);
+
+                    continue;
+                }
             }
 
             // Handle ...functionCall() spread (bare trait method calls without $this->)
@@ -1604,12 +1659,15 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 $funcCallName = $item->value->name;
 
                 $funcName = $funcCallName instanceof Name ? $funcCallName->getLast() : null;
+                $call = $item->value;
 
                 if ($funcName !== null && $this->scope->declaringClass->hasMethod($funcName)) {
-                    $writes->record($this->ownMethodSpread($funcName, $topLevel, $item->value, $this->scope->declaringClass), $index);
+                    $writes->record($this->scope->readingLevel(
+                        fn (): ResourceAnalysis => $this->ownMethodSpread($funcName, $topLevel, $call, $this->scope->declaringClass),
+                    ), $index);
                 } else {
                     // A PHP function's array, as array_merge()'s, writes its keys where it stands as any value does.
-                    $value = $this->analyzeValueExpression($item->value);
+                    $value = $this->scope->readingLevel(fn (): array => $this->analyzeValueExpression($call));
 
                     if (! InlineArrayHandler::recordSpread($writes, $item->value, $value, $this->scope, $index)) {
                         UnreadSpreads::record();
@@ -1625,7 +1683,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
             // Handle a top-level resolve()/toArray() spread — flatten it into this resource's own properties.
             if ($topLevel && $item->key === null && $item->unpack) {
-                $armAnalysis = $this->analyzeSpreadArm($item->value);
+                $armed = $item->value;
+                $armAnalysis = $this->scope->readingLevel(fn (): ?MethodAnalysis => $this->analyzeSpreadArm($armed));
 
                 if ($armAnalysis !== null) {
                     $writes->record($armAnalysis, $index);
@@ -1634,7 +1693,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 }
             }
 
-            $spread = $item->key === null && $item->unpack ? $this->analyzeValueExpression($item->value) : null;
+            $spreadValue = $item->value;
+            $spread = $item->key === null && $item->unpack
+                ? $this->scope->readingLevel(fn (): array => $this->analyzeValueExpression($spreadValue))
+                : null;
 
             if ($spread !== null) {
                 // A printed arm stands before every key, so a spread a later arm follows stays an arm, over the keys
@@ -1655,7 +1717,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                     UnreadSpreads::record();
                 }
 
-                $mergeResult = $this->analyzeMergeExpression($item->value);
+                $merged = $item->value;
+                $mergeResult = $this->scope->readingLevel(fn (): ResourceAnalysis => $this->analyzeMergeExpression($merged));
                 $mergeResult->holdsUnnamedKeys = $mergeResult->holdsUnnamedKeys || ($spread !== null && ! $this->spreadsClosedShape($spread));
                 $writes->record($mergeResult, $index, fromMerge: true);
 
@@ -1682,7 +1745,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 continue;
             }
 
-            $result = $this->reading->arrayValue($this->analyzeValueExpression($item->value));
+            $value = $item->value;
+            $result = $this->reading->arrayValue($this->scope->readingKey($keyName, fn (): array => $this->analyzeValueExpression($value)));
 
             if (JsEmitter::isIndexSignatureKey($keyName)) {
                 $writes->recordSignature($keyName, $result);

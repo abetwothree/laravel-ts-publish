@@ -960,6 +960,12 @@ cast on the key leaves the reading, and so the warning, as it is.
 gap's warnings are held by that id until a strip raises them, or the outermost `extent()` ends with the gap unfilled.
 `replaceable()` and `provisional()` settle a held warning as they settle a raised one.
 
+The mode turns on per frame. `ResourceAstAnalyzer` reads its subject's body, and each spread helper's, with the keys
+that method's `@return` types (`ReturnMembers::typedKeys()`) as `AnalysisScope::$typedKeys`: `readingKey()` reads a
+typed key's value in the mode, and `readingLevel()` each read landing keys beside one, such as a keyless item, a whole
+return or write, a helper's bound arguments or a `merge()` closure's defaults. A value read clears the set, `share()` and
+`provide()` type no key of their own, and a caster body reads with the mode hidden.
+
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
 proves each recording site still fires. A `DroppedUnionArms::record()` call, or an `[$arm, '<site>']` pair an entry

@@ -3771,9 +3771,12 @@ class LaravelTsPublish
                 return null;
             }
 
-            // A nested read answers for its own column and reading, so neither flag reaches it or the memo it fills.
+            // A nested read answers for its own column and reading, so neither flag reaches it or the memo it fills,
+            // nor does the gap mode: a body that drops an arm proves nothing here.
             try {
-                return $this->readingCast(false, false, fn (): mixed => DroppedUnionArms::provisional($read, $kept));
+                return $this->readingCast(false, false, fn (): mixed => $memo->hidingGaps(
+                    fn (): mixed => DroppedUnionArms::provisional($read, $kept),
+                ));
             } finally {
                 $memo->leave($key);
             }

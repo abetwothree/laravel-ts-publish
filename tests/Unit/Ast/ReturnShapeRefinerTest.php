@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ReviewOutOfOrderPairsEvent;
@@ -64,7 +65,8 @@ function refinedAnalysis(array $properties, string $method, bool $keepsUnresolve
         $properties,
     ));
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, $method), $keepsUnresolvedNames);
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, $method);
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected), $keepsUnresolvedNames);
 
     return $analysis;
 }
@@ -139,7 +141,8 @@ test('a fill keeps a key whose value may be removed so, and a fill naming no cla
         ['name' => 'chart', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
     ]);
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overridden'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'overridden');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect(array_column($analysis->properties, 'removed', 'name'))->toBe(['owner' => true, 'chart' => true])
         ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
@@ -313,7 +316,8 @@ test('an unknown position whose member names a class fills beside the classes th
     $analysis = new MethodAnalysis(properties: [['name' => $name, 'type' => $inferred, 'optional' => false, 'description' => '']]);
     $analysis->inlineModelFqcns = [$name => [Post::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe($expected)
         ->and($analysis->inlineModelFqcns)->toBe([$name => $queued])
@@ -329,7 +333,8 @@ test('an unknown position whose member names the class the body already queued f
     ]);
     $analysis->inlineModelFqcns = ['reviewers' => [User::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ by: User; other: User | null }[]')
         ->and($analysis->inlineModelFqcns)->toBe(['reviewers' => [User::class]]);
@@ -343,7 +348,8 @@ test('a fill naming a class another class of the key is spelled like queues the 
     ]);
     $analysis->inlineModelFqcns = ['owned' => [CrmUser::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ by: User; owner: User; n: number }[]')
         ->and($analysis->declaredTokenFqcns)->toBe([])
@@ -356,7 +362,8 @@ test('a fill printed before the class the body reads by its name requeues both i
     ]);
     $analysis->inlineModelFqcns = ['reviewers' => [CrmUser::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ other: User | null; by: User }[]')
         ->and($analysis->declaredTokenFqcns)->toBe([])
@@ -550,7 +557,8 @@ test('a merge naming an override spelled like a class the key holds declares the
     ]);
     $analysis->inlineModelFqcns = ['pair' => [User::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overrideBesideModel'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'overrideBesideModel');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ a: User; b: User }')
         ->and($analysis->declaredTokenFqcns)->toBe(['pair' => [User::class, null]])
@@ -672,7 +680,8 @@ test('a caller that lays the docblock over every key itself fills no position in
         ['name' => 'pair', 'type' => 'unknown', 'optional' => false, 'description' => ''],
     ]);
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'), fillsPositions: false);
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected), fillsPositions: false);
 
     expect(array_column($analysis->properties, 'type', 'name'))
         ->toBe(['owned' => '{ owner: unknown; n: unknown }[]', 'pair' => '{ first: User; second: Post | null }'])

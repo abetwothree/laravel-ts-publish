@@ -15,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Illuminate\Support\Facades\Config;
 use ReflectionMethod;
 
@@ -35,8 +34,8 @@ use ReflectionMethod;
 final class ReturnShapeRefiner
 {
     /**
-     * Fill each key the body left vague, its `null` kept, from the method's own `@return array{...}` shape or
-     * `array<string, V>` value, queue the classes the fill names as a cast's are, and mark a `key?:` key optional.
+     * Fill each key the body left vague, its `null` kept, from $members, the method's own `@return array{...}` shape
+     * or `array<string, V>` value, queue the classes the fill names as a cast's are, and mark a `key?:` key optional.
      * Only a spread helper keeps a bare name no class answers to: the analyzed method's may be a class never imported.
      *
      * A key the body typed merges with its member at every position (merged()), unless $fillsPositions says the caller
@@ -46,12 +45,11 @@ final class ReturnShapeRefiner
     public function refine(
         MethodAnalysis $analysis,
         ReflectionMethod $method,
+        ReturnMembers $members,
         bool $keepsUnresolvedNames = true,
         bool $fillsPositions = true,
         bool $relists = false,
     ): void {
-        $shape = LaravelTsPublish::docblockReturnShapeInfos($method);
-        $valueType = $shape === [] ? $this->recordValueType($method) : null;
         $untypedSignature = TsTypeString::orUndefined('unknown');
         $imports = [];
 
@@ -60,7 +58,7 @@ final class ReturnShapeRefiner
 
         foreach ($analysis->properties as &$property) {
             $name = $property['name'];
-            $doc = $shape[$name] ?? $shape[$name.'?'] ?? $valueType;
+            $doc = $members->member($name);
             $isSignature = JsEmitter::isIndexSignatureKey($name);
             $resolved = null;
 
@@ -99,7 +97,7 @@ final class ReturnShapeRefiner
                 ];
             }
 
-            $property['optional'] = $property['optional'] || isset($shape[$name.'?']);
+            $property['optional'] = $property['optional'] || $members->isOptional($name);
         }
 
         unset($property);
@@ -307,21 +305,6 @@ final class ReturnShapeRefiner
         }
 
         return $spelled;
-    }
-
-    /**
-     * The value type of a `@return array<string, V>` docblock, one `Record<string, V>`, with the custom imports it
-     * spells and the class behind each of its tokens, or null for any other return type.
-     *
-     * @return ShapeTypeInfo|null
-     */
-    private function recordValueType(ReflectionMethod $method): ?array
-    {
-        $info = LaravelTsPublish::docblockReturnTypeInfo($method);
-        $arguments = TsTypeShape::recordArguments($info['type']);
-
-        // `Record<string, ` names no class, so the record's token slots are its value's.
-        return $arguments !== null && $arguments[0] === 'string' ? [...$info, 'type' => $arguments[1]] : null;
     }
 
     /**
