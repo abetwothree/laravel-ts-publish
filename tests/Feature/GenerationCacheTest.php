@@ -861,7 +861,7 @@ test('a template edited in place between two runs in one process reaches the sec
         expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
             ->and(file_get_contents($enumFile))->toStartWith("// v1\n");
 
-        // Blade skips the expiry check for a view this process compiled already, so only a flush makes it read v2.
+        // Blade skips the expiry check for a view this process rendered already, so each run must compile it afresh.
         file_put_contents($template, "// v2\n".$package);
         touch($template, time() + 5);
 

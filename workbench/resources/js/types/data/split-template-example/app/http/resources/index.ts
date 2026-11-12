@@ -197,6 +197,7 @@ export * from './quirky-resource';
 export * from './reassigned-parameter-resource';
 export * from './receiver-method-resource';
 export * from './receiver-property-resource';
+export * from './recipient-settings-resource';
 export * from './reflected-method-channel-resource';
 export * from './registrar';
 export * from './registrar-group-collection';

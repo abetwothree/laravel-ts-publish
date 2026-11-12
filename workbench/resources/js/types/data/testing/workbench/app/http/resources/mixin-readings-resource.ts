@@ -6,5 +6,5 @@
  */
 export interface MixinReadingsResource
 {
-    entries: { label: unknown }[];
+    entries: { label: string | null }[];
 }

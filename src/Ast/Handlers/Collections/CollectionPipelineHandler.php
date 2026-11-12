@@ -99,6 +99,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         $keys = $walk['keys'] ? $rootResult : null;
         $map = $walk['map'];
         $element = $walk['keys'] ? null : $this->elementReceiver($items, $scope);
+        $declared = $walk['keys'] ? null : resolve(ReceiverClassResolver::class)->elementClasses($items, $scope);
         $mapped = fn (bool $arrayedItems): ?array => $map === null ? $rootResult : $this->mappedItems(
             $map,
             $rootResult,
@@ -114,6 +115,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
             resolve(ReceiverClassResolver::class)->readsGuarded($items, $scope),
             $scope,
             $engine,
+            $declared,
         );
         $result = $serializer === null ? $mapped($arrayed) : $this->serializedMapResult($serializer, $mapped);
 
@@ -153,7 +155,8 @@ final class CollectionPipelineHandler implements ExpressionHandler
 
     /**
      * What one `map()` makes of a root's items, read again with each enum case as its enum where the first read leaves
-     * its callback unread; $guarded says the items are read off a guarded receiver.
+     * its callback unread; $guarded says the items are read off a guarded receiver, and $declaredElement names the
+     * classes the root declares them as.
      *
      * @param  ValueExpressionResult  $items
      * @param  Closure(): (ValueExpressionResult|null)  $read
@@ -171,13 +174,24 @@ final class CollectionPipelineHandler implements ExpressionHandler
         bool $guarded,
         AnalysisScope $scope,
         ExpressionEngine $engine,
+        ?ReceiverType $declaredElement,
     ): ?array {
         $callback = CallArguments::for($map, new ReflectionMethod(Collection::class, 'map'))->named('callback')?->value;
 
         return $callback === null ? null : $this->mappedReadingCases(
             $items,
             $read,
-            fn (array $root): ?array => $this->mappedArrayResult($callback, $root, $arrayed, $scope, $engine, $elementModel, $guarded, $leftOut),
+            fn (array $root): ?array => $this->mappedArrayResult(
+                $callback,
+                $root,
+                $arrayed,
+                $scope,
+                $engine,
+                $elementModel,
+                $guarded,
+                $leftOut,
+                $declaredElement,
+            ),
             $scope,
         );
     }

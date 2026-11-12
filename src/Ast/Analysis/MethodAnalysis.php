@@ -80,6 +80,12 @@ class MethodAnalysis
     public bool $holdsUnreadKeys = false;
 
     /**
+     * Whether a key these hold may be one no name the engine reads names: a key no literal or constant names, or a
+     * spread of a value that is no closed shape. An inline object of them holds keys a docblock may name, set or not.
+     */
+    public bool $holdsUnnamedKeys = false;
+
+    /**
      * Property name => the class behind each token of a class's name in the text a declaration retypes it with, null
      * where an override spells that name, recorded by CastChannels::fit(): a share() docblock entry's at publish time,
      * and a key ReturnShapeRefiner fills from a method's `@return` when the analysis reads it.
@@ -114,6 +120,14 @@ class MethodAnalysis
      * @var array<array-key, true>
      */
     public array $closedToDottedKeys = [];
+
+    /**
+     * Property name => each reading its value leaves open (ValueResult `openReadings`): its path in `.key`, `[]` and
+     * `{}` steps, a NUL, and its type. A merge takes the source's; a join keeps every branch's.
+     *
+     * @var array<array-key, list<string>>
+     */
+    public array $openReadings = [];
 
     /**
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
@@ -158,6 +172,14 @@ class MethodAnalysis
         public ?string $flatTypeAlias = null,
         public ?string $flatTypeAliasFqcn = null,
     ) {}
+
+    /**
+     * Whether a class has an inline channel a key can queue it on: an enum, a model or an API resource.
+     */
+    public static function queuesEmbedded(string $fqcn): bool
+    {
+        return enum_exists($fqcn) || is_a($fqcn, Model::class, true) || is_a($fqcn, JsonResource::class, true);
+    }
 
     /**
      * Record one resolved value as a property and route every FQCN channel it carries.
@@ -206,6 +228,12 @@ class MethodAnalysis
             $this->closedToDottedKeys[$name] = true;
         } else {
             unset($this->closedToDottedKeys[$name]);
+        }
+
+        if (($result['openReadings'] ?? []) === []) {
+            unset($this->openReadings[$name]);
+        } else {
+            $this->openReadings[$name] = $result['openReadings'];
         }
 
         $this->dispatchFqcnResults(
@@ -260,15 +288,16 @@ class MethodAnalysis
     /**
      * Merge another analysis's maps into this one.
      *
-     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns` and `closedToDottedKeys` replace-merge, the
-     * source winning, a key it sets with none losing its own. The inline maps append WITHOUT deduping, as read by
-     * position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, `holdsUnreadKeys` ORs.
+     * `properties` appends; the class maps, `casts`, `declaredTokenFqcns`, `closedToDottedKeys` and `openReadings`
+     * replace-merge, the source winning, a key it sets with none losing its own; the inline maps append undeduped, as
+     * read by position. `carried` and `leftOutValues` union; `readsCompletely` ANDs, the `holds…Keys` flags OR.
      */
     public function merge(self $source): void
     {
         $this->properties = [...$this->properties, ...$source->properties];
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
+        $this->holdsUnnamedKeys = $this->holdsUnnamedKeys || $source->holdsUnnamedKeys;
         // A spread would renumber a numeric property name, which PHP stores as an int.
         $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
@@ -287,13 +316,14 @@ class MethodAnalysis
                 unset($this->declaredTokenFqcns[$property['name']]);
             }
 
-            unset($this->closedToDottedKeys[$property['name']]);
+            unset($this->closedToDottedKeys[$property['name']], $this->openReadings[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
         $this->declaredTokenFqcns = array_replace($this->declaredTokenFqcns, $source->declaredTokenFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
+        $this->openReadings = array_replace($this->openReadings, $source->openReadings);
         $this->carry($source->carried);
 
         foreach ($source->customImports as $path => $types) {
@@ -328,6 +358,7 @@ class MethodAnalysis
         $this->properties = $source->properties;
         $this->readsCompletely = $source->readsCompletely;
         $this->holdsUnreadKeys = $source->holdsUnreadKeys;
+        $this->holdsUnnamedKeys = $source->holdsUnnamedKeys;
         $this->enumResources = $source->enumResources;
         $this->nestedResources = $source->nestedResources;
         $this->customImports = $source->customImports;
@@ -345,6 +376,7 @@ class MethodAnalysis
         $this->heldObjectKeys = $source->heldObjectKeys;
         $this->leftOutValues = $source->leftOutValues;
         $this->closedToDottedKeys = $source->closedToDottedKeys;
+        $this->openReadings = $source->openReadings;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
     }
@@ -412,6 +444,28 @@ class MethodAnalysis
             array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
         );
         $this->listSplitEnumResources($branches);
+    }
+
+    /**
+     * Queue classes a key's text spells inside its value, as addProperty() queues an embedded class: on the key's
+     * inline channel of its kind, and keyed by itself. A class of no such kind is left out.
+     *
+     * @param  list<class-string>  $fqcns
+     */
+    public function queueEmbeddedClasses(string $name, array $fqcns): void
+    {
+        foreach ($fqcns as $fqcn) {
+            if (enum_exists($fqcn)) {
+                $this->inlineEnumFqcns[$name][] = $fqcn;
+                $this->directEnumFqcns[$fqcn] = $fqcn;
+            } elseif (is_a($fqcn, Model::class, true)) {
+                $this->inlineModelFqcns[$name][] = $fqcn;
+                $this->modelFqcns[$fqcn] = $fqcn;
+            } elseif (is_a($fqcn, JsonResource::class, true)) {
+                $this->inlineResourceFqcns[$name][] = $fqcn;
+                $this->nestedResources[$fqcn] = $fqcn;
+            }
+        }
     }
 
     /**
@@ -684,6 +738,7 @@ class MethodAnalysis
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
         $this->leftOutValues = TopLevelRenumbering::rekey($this->leftOutValues, $names);
         $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
+        $this->openReadings = TopLevelRenumbering::rekey($this->openReadings, $names);
     }
 
     /**

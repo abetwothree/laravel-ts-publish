@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -128,6 +129,11 @@ final class InlineObjectResult
         };
 
         $result = ['type' => $type, 'optional' => false];
+        $openReadings = $this->openReadings($analysis, $type, $spreadArms);
+
+        if ($openReadings !== []) {
+            $result['openReadings'] = $openReadings;
+        }
 
         if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
             $result['keepsKeys'] = true;
@@ -361,6 +367,46 @@ final class InlineObjectResult
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * Each reading this object holds open, as its path, a NUL and its type: itself, where its analysis holds a key no
+     * name names, each member's own, under the member's key as the object prints it, and each a spread object holds
+     * under a key no member of the literal replaces.
+     *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms
+     * @return list<string>
+     */
+    private function openReadings(MethodAnalysis $analysis, string $type, array $spreadArms): array
+    {
+        $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys)
+            && (TsTypeShape::members($type) !== null || TsTypeShape::intersectedObjects($type) !== null);
+        $paths = $open ? ["\0".$type] : [];
+        $spread = array_merge([], ...array_map(
+            static fn (array $arm): array => isset($arm['result']) ? $arm['result']['openReadings'] ?? [] : [],
+            $spreadArms,
+        ));
+
+        if ($spread !== []) {
+            $replaced = array_map(
+                static fn (string $name): string => '.'.JsEmitter::validJsObjectKey($name, allowIndexSignature: true),
+                array_column($analysis->properties, 'name'),
+            );
+            array_push($paths, ...array_filter(
+                $spread,
+                static fn (string $path): bool => ! str_starts_with($path, "\0") && ! array_any(
+                    $replaced,
+                    static fn (string $key): bool => str_starts_with($path, $key) && in_array($path[strlen($key)], ['.', '[', '{', "\0"], true),
+                ),
+            ));
+        }
+
+        foreach ($analysis->openReadings as $name => $memberPaths) {
+            $key = JsEmitter::validJsObjectKey((string) $name, allowIndexSignature: true);
+            array_push($paths, ...array_map(static fn (string $path): string => '.'.$key.$path, $memberPaths));
+        }
+
+        return array_values(array_unique($paths));
     }
 
     /**

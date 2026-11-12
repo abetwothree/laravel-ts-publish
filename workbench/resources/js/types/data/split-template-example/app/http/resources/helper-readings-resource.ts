@@ -5,6 +5,6 @@
  */
 export interface HelperReadingsResource
 {
-    rows: { name: unknown }[];
+    rows: { name: string }[];
     sections: { items: { t: number[] }[] };
 }

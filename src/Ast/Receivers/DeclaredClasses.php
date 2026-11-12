@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +46,9 @@ final class DeclaredClasses
 {
     /** The keys a collection generic may spell, either kind written as a union too. */
     private const string COLLECTION_KEY = '/^(?:int\s*\|\s*string|string\s*\|\s*int|array-key|string|int)$/';
+
+    /** The PHPDoc array types whose last generic argument types every element. */
+    private const array LIST_TYPES = ['list', 'non-empty-list', 'array', 'non-empty-array', 'iterable'];
 
     /** Type keywords PHP never lets a class or an import alias take, so an arm naming one is no class in any file. */
     private const array RESERVED_TYPES = [
@@ -152,6 +156,23 @@ final class DeclaredClasses
         return $tag === null
             ? null
             : self::docblockType($tag['type'], $tag['context'], $receiverClass, $declaring->getName());
+    }
+
+    /**
+     * The classes each element of a property's array is declared as, by the docblock propertyType() reads, as
+     * `@var list<X>` spells them; null where that docblock lists no class.
+     *
+     * @param  ReflectionClass<object>  $subject
+     * @return DeclaredType|null
+     */
+    public static function propertyElementType(ReflectionProperty $property, ReflectionClass $subject, string $receiverClass): ?array
+    {
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($property, $subject);
+        $element = $tag === null ? null : self::listedElement($tag['type']);
+
+        return $element === null
+            ? null
+            : self::docblockType($element, $tag['context'], $receiverClass, $property->getDeclaringClass()->getName());
     }
 
     /**
@@ -340,6 +361,34 @@ final class DeclaredClasses
         $model = DocblockNames::resolve($element, $context);
 
         return ['key' => ReceiverType::keyKind($key), 'element' => ReceiverType::isConcreteModel($model) ? $model : null];
+    }
+
+    /**
+     * The element type a docblock spells for its one array, as `list<X>`, `array<string, X>`, `iterable<X>` or `X[]`
+     * does, a `null` arm or a `?` aside; null for any other spelling.
+     */
+    public static function listedElement(string $phpDocType): ?string
+    {
+        $arms = array_values(array_filter(
+            LaravelTsPublish::splitPhpDocUnionType($phpDocType),
+            fn (string $arm): bool => strtolower($arm) !== 'null',
+        ));
+        $arm = count($arms) === 1 ? ltrim($arms[0], '?') : '';
+
+        if (str_ends_with($arm, '[]')) {
+            $element = trim(substr($arm, 0, -2));
+
+            return match (true) {
+                $element === '' => null,
+                TsTypeShape::isWrapped($element, '(', ')') => trim(substr($element, 1, -1)),
+                default => $element,
+            };
+        }
+
+        $listed = preg_match('/^([a-z-]+)\s*<(.+)>$/is', $arm, $match) === 1 && in_array(strtolower($match[1]), self::LIST_TYPES, true);
+        $arguments = $listed ? LaravelTsPublish::splitAtTopLevelCommas($match[2]) : [];
+
+        return in_array(count($arguments), [1, 2], true) ? $arguments[count($arguments) - 1] : null;
     }
 
     /**

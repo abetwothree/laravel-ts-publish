@@ -397,10 +397,12 @@ it('takes over every field of another analysis, both flags included', function (
     );
     $source->readsCompletely = false;
     $source->holdsUnreadKeys = true;
+    $source->holdsUnnamedKeys = true;
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
     $source->leftOutValues = ['a' => true];
     $source->closedToDottedKeys = ['a' => true];
+    $source->openReadings = ['a' => ['{ b: number }']];
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);

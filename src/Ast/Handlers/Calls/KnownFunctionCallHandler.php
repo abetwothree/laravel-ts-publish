@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -382,7 +383,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $read,
             fn (array $inputs): ?array => count($inputs) === 1
                 ? $this->mappedOneArray($callback, $inputs[0], $arrays[0], $zips, $scope, $engine)
-                : $this->mappedArrays($callback, $inputs, $zips, $scope, $engine),
+                : $this->mappedArrays($callback, $inputs, $arrays, $zips, $scope, $engine),
             $scope,
         );
 
@@ -421,7 +422,8 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * What array_map() returns for one array: the array itself for a `null` callback, else each arm mapped with its
-     * keys kept, the callback's parameter guarded where the array is read off a guarded receiver.
+     * keys kept, the callback's parameter guarded where the array is read off a guarded receiver and bound to the
+     * classes the array declares its elements as.
      *
      * @param  ValueExpressionResult  $input
      * @return ValueExpressionResult|null
@@ -429,9 +431,17 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     private function mappedOneArray(Expr $callback, array $input, Expr $array, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if (! $zips) {
-            $guarded = resolve(ReceiverClassResolver::class)->readsGuarded($array, $scope);
+            $resolver = resolve(ReceiverClassResolver::class);
 
-            return $this->mappedArrayResult($callback, $input, true, $scope, $engine, guarded: $guarded);
+            return $this->mappedArrayResult(
+                $callback,
+                $input,
+                true,
+                $scope,
+                $engine,
+                guarded: $resolver->readsGuarded($array, $scope),
+                declaredElement: $resolver->elementClasses($array, $scope),
+            );
         }
 
         $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::isArray($arm) ? $arm : null);
@@ -441,12 +451,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
     /**
      * What array_map() returns for two or more arrays, re-indexed into a list: tuples of each array's element for a
-     * `null` callback, else what the callback returns, each element `| null` as a shorter array pads with it.
+     * `null` callback, else what the callback returns, each element `| null` as a shorter array pads with it, and
+     * each parameter bound to the classes its array declares its elements as.
      *
      * @param  non-empty-list<ValueExpressionResult>  $inputs
+     * @param  non-empty-list<Expr>  $arrays
      * @return ValueExpressionResult|null
      */
-    private function mappedArrays(Expr $callback, array $inputs, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    private function mappedArrays(Expr $callback, array $inputs, array $arrays, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $parameters = [];
 
@@ -467,11 +479,13 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             return [...ValueResult::unionResults($parameters), 'type' => '['.implode(', ', array_column($parameters, 'type')).'][]', 'optional' => false];
         }
 
-        $body = $this->resolveArrayCallback($callback, $parameters, null, true, $scope, $engine);
+        $resolver = resolve(ReceiverClassResolver::class);
+        $declared = array_filter(array_map(fn (Expr $array): ?ReceiverType => $resolver->elementClasses($array, $scope), $arrays));
+        $body = $this->resolveArrayCallback($callback, $parameters, null, true, $scope, $engine, declaredElements: $declared);
 
         return $body === null || $body['type'] === 'unknown'
             ? null
-            : [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
+            : ValueResult::holdingOpenReadings($body, [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false], '[]');
     }
 
     /**

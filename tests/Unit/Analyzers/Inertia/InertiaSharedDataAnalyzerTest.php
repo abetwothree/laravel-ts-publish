@@ -27,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithConflictingImports;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockOverEmbeddedModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocblockReturn;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDocumentedSpreadHelper;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDottedKeys;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDottedSignatureHead;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithDuplicateImports;
@@ -158,6 +159,12 @@ test('each spread body derives its own Request variable names', function () {
 
     expect($result)->not->toBeNull()
         ->and($result['sharedPageProps'])->toBe('{ spreadUrl: string, decoy: unknown, top: string }');
+});
+
+// share()'s own docblock is laid over its keys by the analyzer, but a spread helper's is read only by the refiner.
+test('a helper spread into share() fills a member its own @return types where its body leaves it unknown', function () {
+    expect(analyzeSharedDataFor(MiddlewareWithDocumentedSpreadHelper::class)['sharedPageProps'] ?? null)
+        ->toContain('recipients: { name: string; settings: { digest: boolean } | null }[]');
 });
 
 // Inertia calls a callable wherever it sits, so a helper holding one, read as a value or spread, holds what it returns.

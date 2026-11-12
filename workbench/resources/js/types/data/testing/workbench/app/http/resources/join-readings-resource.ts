@@ -7,8 +7,8 @@ export interface JoinReadingsResource
 {
     params: { t: string }[];
     walks: { k: string }[];
-    spreads: { k: string; id: unknown }[];
-    relays: { k?: string; id: unknown }[];
-    receivers: { name: unknown }[];
-    named: { name: unknown }[];
+    spreads: { k: string; id: number }[];
+    relays: { k?: string; id: number }[];
+    receivers: { name: string }[];
+    named: { name: string }[];
 }

@@ -3471,10 +3471,10 @@ declare global {
         export interface DeclaredGapsResource {
             scores: { score: number | null }[];
             contacts: ({ email: string | null } | null)[];
-            rows: { name: string | null }[];
-            branches: { name: string | null }[];
+            rows: { name: string | null; locale: string }[];
+            branches: { name: string | null; locale: string }[];
             pairs: unknown[][];
-            summary: { label: string; count: null };
+            summary: { label: string; count: number | null };
         }
         /**
          * An inline `@var` types a local only where the engine's reading of the assigned value is vague: a value it cannot
@@ -3532,9 +3532,9 @@ declare global {
          * value with no type.
          */
         export interface DeclaredReadingsResource {
-            entries: { label: unknown }[];
-            labels: { label: unknown }[];
-            flags: { note?: unknown; weight?: number };
+            entries: { label: string | null }[];
+            labels: { label: string | null }[];
+            flags: { note?: string; weight?: number };
         }
         /**
          * Reads helpers that add keys to the array they are passed through each call path: a container instance, a static
@@ -3628,8 +3628,8 @@ declare global {
          * untyped callback parameter over a promoted and a plain `@var list<MailRecipient>` property, and a typed one.
          */
         export interface DocumentedRecipientsResource {
-            recipients: { name: unknown; email: unknown }[];
-            copied: { name: unknown; email: unknown }[];
+            recipients: { name: string | null; email: string | null }[];
+            copied: { name: string | null; email: string | null }[];
             typed: { name: string | null; email: string | null }[];
         }
         /**
@@ -3906,7 +3906,7 @@ declare global {
         }
         /** Undocumented helpers that drop an arm, one spread and one read as a value, under a `@return` typing them (GH-154). */
         export interface HelperReadingsResource {
-            rows: { name: unknown }[];
+            rows: { name: string }[];
             sections: { items: { t: number[] }[] };
         }
         /** Same morphTo union, reached through the model-delegated analysis rather than an array literal. */
@@ -4012,10 +4012,10 @@ declare global {
         export interface JoinReadingsResource {
             params: { t: string }[];
             walks: { k: string }[];
-            spreads: { k: string; id: unknown }[];
-            relays: { k?: string; id: unknown }[];
-            receivers: { name: unknown }[];
-            named: { name: unknown }[];
+            spreads: { k: string; id: number }[];
+            relays: { k?: string; id: number }[];
+            receivers: { name: string }[];
+            named: { name: string }[];
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
@@ -4373,7 +4373,7 @@ declare global {
          * `toArray()` `@return` docblock types (GH-154).
          */
         export interface MixinReadingsResource {
-            entries: { label: unknown }[];
+            entries: { label: string | null }[];
         }
         /** Resource for testing that $this->resource->prop on a model-backed resource resolves to the model attribute type. */
         export interface ModelWrappedPropResource {
@@ -5201,6 +5201,13 @@ declare global {
             post_title_via_resource: string | null;
         }
         /**
+         * Maps a value object's recipients to each one's cached settings, a read no rule types, under a `toArray()` `@return`
+         * docblock that types it (GH-154): the docblock fills that member alone, and the body types the name.
+         */
+        export interface RecipientSettingsResource {
+            recipients: { name: string | null; settings: { digest: boolean } | null }[];
+        }
+        /**
          * Regression fixture: analyzeThisMethodCall() spread a reflected TypeScriptTypeInfo straight into its
          * result, whose enumFqcns/classFqcns keys no dispatcher reads — so both properties emitted a token
          * with no import (TS2304). The reflection now goes through acceptReflectedTypeInfo() like every other
@@ -5451,7 +5458,7 @@ declare global {
          * holds (GH-154).
          */
         export interface ShiftWindowResource {
-            label: string;
+            label: 'early' | 'late';
         }
         /**
          * A tag is read whole, whatever its spacing: the wrapped `$resource`'s spaced `@var` still names its model, and a
@@ -5950,8 +5957,8 @@ declare global {
          * parameter over a promoted and a plain `@var list<MailRecipient>` property, and a typed one.
          */
         export interface UndocumentedRecipientsResource {
-            recipients: { name: unknown; email: unknown }[];
-            copied: { name: unknown; email: unknown }[];
+            recipients: { name: string | null; email: string | null }[];
+            copied: { name: string | null; email: string | null }[];
             typed: { name: string | null; email: string | null }[];
         }
         /**

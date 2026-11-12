@@ -25,12 +25,14 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 92, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DeclaredPrecedenceResource', 'line' => 98, 'expression' => 'json_decode(\'"x"\')', 'site' => 'closure-union'],
     // Deliberate (GH-154): each arm has no type in an undocumented helper whose caller's `@return` types it.
-    ['subject' => 'Workbench\\App\\Http\\Resources\\HelperReadingsResource', 'line' => 34, 'expression' => '$r->x', 'site' => 'coalesce-left'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\HelperReadingsResource', 'line' => 34, 'expression' => 'cache(\'k\')', 'site' => 'coalesce-right'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\HelperReadingsResource', 'line' => 42, 'expression' => 'cache(\'k\')', 'site' => 'ternary-narrowed'],
     // Deliberate (GH-154): each is a join's branch writing a value with no type that the `@return` member types.
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 35, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 44, 'expression' => 'cache(\'k\')', 'site' => 'walk-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 81, 'expression' => 'cache(\'k\')', 'site' => 'merge-branch-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 57, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 67, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
     // Deliberate: each default reads opaqueTotal(), untyped so that a merge call's join leaves that side out, as that
     // fixture's own comments say.
     ['subject' => 'Workbench\\App\\Http\\Resources\\MergeDefaultResource', 'line' => 63, 'expression' => '$this->opaqueTotal()', 'site' => 'merge-branch-join'],
