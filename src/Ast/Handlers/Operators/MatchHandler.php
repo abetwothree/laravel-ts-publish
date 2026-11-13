@@ -41,7 +41,7 @@ final class MatchHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         $results = [];
-        $dropped = [];
+        $left = [];
 
         foreach ($expr->arms as $arm) {
             // A `throw` arm returns nothing, so it is neither a union member nor an arm the engine failed to type.
@@ -52,8 +52,7 @@ final class MatchHandler implements ExpressionHandler, KeepsHeldObjects
             $result = $engine->resolve($arm->body);
 
             if ($result['type'] === 'unknown') {
-                DroppedUnionArms::record($arm->body, $scope, 'match-arm');
-                $dropped[] = $arm->body;
+                $left[] = [$arm->body, 'match-arm'];
             }
 
             $results[] = $result;
@@ -63,7 +62,7 @@ final class MatchHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        $union = DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults($results), $dropped, $scope);
+        $union = DroppedUnionArms::leftOut(ValueResult::unionResults($results), $left, $scope);
 
         return ValueResult::withEnumArmShapes($union, $results);
     }

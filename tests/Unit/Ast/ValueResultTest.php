@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\App\Enums\Priority;
@@ -287,6 +288,35 @@ describe('ValueResult::unionResults() over enum-resource branches', function () 
             ],
             false,
             ['type' => 'StatusType | VisibilityType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, Visibility::class]],
+        ],
+    ]);
+
+    // No rewrite can place an arm's own wraps inside a wider union, so they read bare and are queued like bare reads.
+    test('queues the enums an arm wraps on its own, in arm order', function (array $branches, array $union) {
+        expect(ValueResult::unionResults($branches))->toBe($union);
+    })->with([
+        'after an arm naming no enum' => [
+            [
+                ['type' => '{ c: unknown }[]', 'optional' => false],
+                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
+            ],
+            [
+                'type' => '{ c: unknown }[] | StatusType | VisibilityType',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
+        ],
+        'after an arm wrapping one enum' => [
+            [
+                ['type' => 'PriorityType', 'optional' => false, 'enumFqcn' => Priority::class],
+                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
+            ],
+            [
+                'type' => 'PriorityType | StatusType | VisibilityType',
+                'optional' => false,
+                'enumFqcn' => Priority::class,
+                'embeddedEnumFqcns' => [Status::class, Visibility::class],
+            ],
         ],
     ]);
 });
@@ -678,4 +708,46 @@ it('marks a held object\'s kind, and a callable that may return a callable', fun
         ->and(ValueResult::unionResults([$prop, $plain])['heldProp'] ?? null)->toBeTrue()
         ->and(ValueResult::unionResults([$returnsClosure, $plain])['returnsCallable'] ?? null)->toBeTrue()
         ->and(ValueResult::withoutHeldObject([...$returnsClosure, 'heldProp' => true]))->toBe(['type' => 'number', 'optional' => false]);
+});
+
+describe('gap arms', function () {
+    test('gapTransparent() reads a value with its gap arms set aside and gives the result they make back', function () {
+        $read = static fn (array $value): array => [...$value, 'type' => str_replace('[]', '', $value['type'])];
+
+        expect(ValueResult::gapTransparent(['type' => 'string[] | $gap1', 'optional' => false], $read)['type'] ?? null)
+            ->toBe('string | $gap1')
+            ->and(ValueResult::gapTransparent(['type' => 'string[]', 'optional' => false], $read)['type'] ?? null)->toBe('string')
+            ->and(ValueResult::gapTransparent(['type' => 'string[] | $gap1', 'optional' => false], static fn (): null => null))
+            ->toBeNull();
+    });
+
+    test('reads a list-shaped value, an element\'s model and a value closed to dotted keys past their gap arms', function () {
+        $element = ValueResult::elementOf(['type' => '(User | $gap2)[]', 'optional' => false, 'modelFqcn' => User::class], 'User | $gap2');
+        $closed = ValueResult::closeToDottedKeys(['type' => '{ a: string }', 'optional' => false]);
+
+        expect(ValueResult::isListShaped('string[] | $gap1'))->toBeTrue()
+            ->and($element['modelFqcn'] ?? null)->toBe(User::class)
+            ->and(ValueResult::closedToDottedKeys([...$closed, 'type' => '{ a: string } | $gap1']))->toBeTrue();
+    });
+
+    test('unions a `null` beside a gap as the null Inertia replaces', function () {
+        $closed = ValueResult::closeToDottedKeys(['type' => '{ a: string }', 'optional' => false]);
+        $union = ValueResult::unionResults([$closed, ['type' => 'null | $gap1', 'optional' => false]]);
+
+        expect(ValueResult::closedToDottedKeys($union))->toBeTrue();
+    });
+});
+
+test('keeps two same-named classes apart through a strip: their arms\' gaps rise to the union\'s top', function () {
+    $union = ValueResult::unionResults([
+        ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class]],
+        ['type' => '(User | $gap1)[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+    ]);
+    $plain = ValueResult::unionResults([
+        ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [User::class]],
+        ['type' => 'User[]', 'optional' => false, 'embeddedModelFqcns' => [CrmUser::class]],
+    ]);
+
+    expect(VisibleGaps::stripped($union['type'])[0])->toBe($plain['type'])
+        ->and(VisibleGaps::ids($union['type']))->toBe([1]);
 });

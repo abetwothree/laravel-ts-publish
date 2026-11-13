@@ -238,6 +238,19 @@ describe('members', function () {
     ]);
 });
 
+describe('memberSeparator', function () {
+    test('reads the separator an object literal prints its members with', function (string $object, string $separator) {
+        expect(TsTypeShape::memberSeparator($object))->toBe($separator);
+    })->with([
+        'semicolons' => ['{ a: string; b: number }', '; '],
+        'commas, as an Inertia page prints its props' => ['{ a: string, b: number }', ', '],
+        'both' => ['{ a: string, b: number; c: boolean }', '; '],
+        'one member' => ['{ a: string }', '; '],
+        'none' => ['{}', '; '],
+        'commas inside a member only' => ['{ a: Record<string, number> }', '; '],
+    ]);
+});
+
 describe('intersectedObjects', function () {
     test('reads each object of an intersection beside the keys its Omit<> drops', function (string $type, ?array $parts) {
         expect(TsTypeShape::intersectedObjects($type))->toBe($parts);
@@ -339,6 +352,19 @@ describe('unionArm', function () {
         'a list of arrows' => ['(() => void)[]', '(() => void)[]'],
         'an arrow in a string literal' => ["'() => void'", "'() => void'"],
         'a union' => ['A | B', 'A | B'],
+    ]);
+});
+
+describe('loneArm', function () {
+    test('takes off the parentheses unionArm() gives an arrow, and leaves any other arm', function (string $arm, string $expected) {
+        expect(TsTypeShape::loneArm($arm))->toBe($expected);
+    })->with([
+        'a grouped arrow' => ['(() => void)', '() => void'],
+        'a grouped arrow returning a union' => ['((a: string) => A | B)', '(a: string) => A | B'],
+        'a bare arrow' => ['() => void', '() => void'],
+        'a grouped union' => ['(A | B)', '(A | B)'],
+        'a list of arrows' => ['(() => void)[]', '(() => void)[]'],
+        'two groups side by side' => ['(() => A) & (() => B)', '(() => A) & (() => B)'],
     ]);
 });
 

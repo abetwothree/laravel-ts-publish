@@ -19,7 +19,9 @@ use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 
@@ -87,7 +89,9 @@ it('tags every class under src/Ast except the two the engine exposes', function 
         ScanDialect::class,
         StringSerialization::class,
         TopLevelRenumbering::class,
+        TypeRewriter::class,
         TypeScanner::class,
+        VisibleGaps::class,
     ];
     $untagged = [];
 

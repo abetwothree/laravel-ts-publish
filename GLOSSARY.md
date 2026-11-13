@@ -157,8 +157,16 @@ Proving a value's class for the reads a test covers, such as an `instanceof` che
 _Avoid_: type guard, refinement
 
 **Dropped arm**:
-A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left.
+A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left. Where the method's `@return` types the key, the arm is a visible gap instead.
 _Avoid_: lost arm, untyped branch
+
+**Visible gap**:
+A dropped arm, or the keys an object may hold that inference cannot name, kept in a key's type so the method's `@return` can type it where it stands. A gap the docblock leaves untyped is dropped before the type publishes.
+_Avoid_: mark, placeholder
+
+**Gap mode**:
+How inference reads the keys a method's own `@return` types, the analyzed method's or a spread helper's, keeping each visible gap for that docblock. Unlike a reading, it changes what a type keeps, not how values reach the client.
+_Avoid_: showing gaps, gap flag
 
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
@@ -17,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
@@ -520,7 +522,7 @@ function analysisScopeFieldValue(ReflectionProperty $field, string $phase, strin
     $name = $field->getName();
 
     return match ((string) $field->getType()) {
-        'array', '?array' => [$name.$phase => true],
+        'array', '?array', 'array|true' => [$name.$phase => true],
         '?string' => "{$name}:{$phase}",
         'bool' => ($phase === 'before') === ($name === $odd),
         'ReflectionClass' => new ReflectionClass($phase === 'before' ? User::class : Post::class),
@@ -536,7 +538,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     $ambient = [
         'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
         'runtime', 'collectedElement', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods',
-        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed', 'readsCallableReturn',
+        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed', 'readsCallableReturn', 'typedKeys',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(
@@ -874,3 +876,112 @@ it('binds a default to the value PHP evaluates it to, and one the evaluator cann
         'date' => 'string',
     ]);
 });
+
+// No PHP variable can be named `@…`, so a read of the alias reaches only the keys the walk binds to it.
+it('names a walked variable\'s alias with a name no PHP variable has', function () {
+    expect(AnalysisScope::walkAlias('data'))->toBe('@data')
+        ->and(AnalysisScope::walkAlias('row'))->not->toBe(AnalysisScope::walkAlias('data'));
+});
+
+it('tells the walk\'s alias from a variable PHP reads', function (Expr $value, bool $alias) {
+    expect(AnalysisScope::isWalkAlias($value))->toBe($alias);
+})->with([
+    'the alias' => [fn (): Expr => new Variable(AnalysisScope::walkAlias('data')), true],
+    'the variable it stands for' => [fn (): Expr => new Variable('data'), false],
+    'a variable variable' => [fn (): Expr => new Variable(new Variable('name')), false],
+    'a read of the alias\'s key' => [fn (): Expr => new ArrayDimFetch(new Variable(AnalysisScope::walkAlias('data'))), false],
+]);
+
+/**
+ * A scope over a resource, its frame typing $typed.
+ *
+ * @param  list<string>|true  $typed
+ */
+function scopeTyping(array|bool $typed): AnalysisScope
+{
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->typedKeys = $typed;
+
+    return $scope;
+}
+
+it('reads a key in the gap mode only where the frame types it, never an index signature', function (array|bool $typed, string $name, bool $shows) {
+    $memo = resolve(AnalysisMemo::class);
+
+    expect(scopeTyping($typed)->readingKey($name, fn (): bool => $memo->showsGaps()))->toBe($shows)
+        ->and($memo->showsGaps())->toBeFalse();
+})->with([
+    'a typed key' => [['title', 'body'], 'body', true],
+    'an int key' => [['0'], '0', true],
+    'every key' => [true, 'body', true],
+    'an untyped key' => [['title'], 'body', false],
+    'no typed key' => [[], 'body', false],
+    'an index signature the set names' => [['[key: string]'], '[key: string]', false],
+    'an index signature under every key' => [true, '[key: `${string}_tag`]', false],
+])->group('gap-mode');
+
+it('reads a level in the gap mode where the set given, else the frame\'s own, types a key', function (array|bool $typed, array|bool|null $given, bool $shows) {
+    $memo = resolve(AnalysisMemo::class);
+
+    expect(scopeTyping($typed)->readingLevel(fn (): bool => $memo->showsGaps(), $given))->toBe($shows)
+        ->and($memo->showsGaps())->toBeFalse();
+})->with([
+    'the frame types a key' => [['title'], null, true],
+    'the frame types every key' => [true, null, true],
+    'the frame types none' => [[], null, false],
+    'a set given types a key' => [[], ['title'], true],
+    'a set given types every key' => [[], true, true],
+    'a set given types none' => [['title'], [], false],
+])->group('gap-mode');
+
+it('never turns off a gap mode a key or level read is already in', function () {
+    $memo = resolve(AnalysisMemo::class);
+    $scope = scopeTyping([]);
+
+    $reads = $memo->showingGaps(fn (): array => [
+        $scope->readingKey('body', fn (): bool => $memo->showsGaps()),
+        $scope->readingKey('[key: string]', fn (): bool => $memo->showsGaps()),
+        $scope->readingLevel(fn (): bool => $memo->showsGaps()),
+        $scope->readingLevel(fn (): bool => $memo->showsGaps(), []),
+    ]);
+
+    expect($reads)->toBe([true, true, true, true]);
+})->group('gap-mode');
+
+it('reads with the typed keys given and puts the frame\'s own back, a throw included', function () {
+    $scope = scopeTyping(['title']);
+    $inside = [];
+
+    try {
+        $scope->typingKeys(true, function () use ($scope, &$inside): never {
+            $inside[] = $scope->typedKeys;
+
+            throw new RuntimeException('The read failed.');
+        });
+    } catch (RuntimeException) {
+    }
+
+    $inside[] = $scope->typingKeys([], fn (): array|bool => $scope->typedKeys);
+
+    expect([...$inside, $scope->typedKeys])->toBe([true, [], ['title']]);
+})->group('gap-mode');
+
+it('puts the typed keys back after a read within() runs, a throw included, and enters a method with none', function () {
+    $scope = scopeTyping(['title']);
+    $inside = null;
+
+    try {
+        $scope->within(
+            fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(Post::class, 'publishable'), []),
+            function () use ($scope, &$inside): never {
+                $inside = $scope->typedKeys;
+
+                throw new RuntimeException('The read failed.');
+            },
+        );
+    } catch (RuntimeException) {
+    }
+
+    expect($inside)->toBe([])
+        ->and($scope->typedKeys)->toBe(['title']);
+})->group('gap-mode');

@@ -16,6 +16,9 @@
 # TS2320 is one interface extending two that declare the same key with different types, as a model's
 # combined interface does when a column and a relation share a name.
 #
+# TS18016 is a leaked open marker, `#$open: unknown`. The publish strips every marker and `$gapN` arm, so a leak count
+# also greps the files tsc lists for both, which catches a spelling tsc accepts, such as one in a comment.
+#
 # A leaked token named like a DOM global (`Comment`) binds to the DOM type and raises none of those, so a second
 # program per tree runs without the DOM lib and counts, on its own line, each name only it cannot find, minus
 # DOM_GLOBALS. The first argument arms that count too.
@@ -60,7 +63,9 @@ if [[ "${1:-}" == "--selftest" ]]; then
   ts="tests/types/__selftest_relative.ts"; dts="tests/types/__selftest_relative.d.ts"; dom="tests/types/__selftest_dom.ts"
   clash="tests/types/__selftest_clash.ts"
   unused="tests/types/__selftest_unused.ts"; unused_dep="tests/types/__selftest_unused_dep.ts"
-  trap 'rm -f "$ts" "$dts" "$dom" "$clash" "$unused" "$unused_dep"' EXIT
+  leak="tests/types/__selftest_leak.ts"; noted="tests/types/__selftest_leak_comment.ts"
+  near="tests/types/__selftest_near.ts"
+  trap 'rm -f "$ts" "$dts" "$dom" "$clash" "$unused" "$unused_dep" "$leak" "$noted" "$near"' EXIT
   for scratch in "$ts" "$dts"; do
     printf "import type { Nope } from './does-not-exist';\nexport type SelfTest = Nope;\n" > "$scratch"
     if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
@@ -136,6 +141,55 @@ TS
   fi
   rm -f "$unused" "$unused_dep"
   echo "PASS - selftest: the main count fires for an import line with no name used (TS6192)"
+
+  # A leaked gap arm is TS2304 and a leaked open marker TS18016, so the main count and the leak count must each read 2.
+  cat > "$leak" <<'TS'
+export type SelfTestGap = string | $gap1;
+export interface SelfTestOpen {
+    k: string;
+    #$open: unknown;
+}
+TS
+  if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+    echo "FAIL - selftest: the gate passed with a leaked gap arm and open marker in $leak"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  if ! grep -qE '^TS2300/.* in generated tree: 2$' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^Gap arms .* in generated tree: 2$' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^FAIL - token count' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^ +1 +\(private identifier outside a class body\)$' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^ +1 +#\$open$' /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate failed, but not on both counts for one gap arm and one open marker, for $leak"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$leak"
+  echo "PASS - selftest: a leaked gap arm and open marker fail the main count (TS2304, TS18016) and the leak count"
+
+  # In a comment tsc accepts both spellings, so every tsc count stays 0 and only the leak count can fail the gate.
+  printf '// string | $gap1, { #$open: unknown }\nexport type SelfTestNoted = string;\n' > "$noted"
+  if TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1; then
+    echo "FAIL - selftest: the gate passed with a gap arm and open marker in a comment in $noted"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  if ! grep -qE '^TS2300/.* in generated tree: 0$' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^Gap arms .* in generated tree: 2$' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^FAIL - 2 gap arm' /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate failed, but not on the leak count alone, for $noted"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$noted"
+  echo "PASS - selftest: the leak count alone fails a gap arm and open marker that tsc accepts"
+
+  # Keys the publish may print, `$gap` with no digits and `$open`, are not leaks: the gate must pass and read 0.
+  printf 'export interface SelfTestNear {\n    $gap: string;\n    $open: unknown;\n}\n' > "$near"
+  if ! TSCONFIGS=tsconfig.json "$0" 0 0 0 > /tmp/token-gate-selftest.out 2>&1 \
+      || ! grep -qE '^Gap arms .* in generated tree: 0$' /tmp/token-gate-selftest.out \
+      || ! grep -qE '^PASS - no gap arm' /tmp/token-gate-selftest.out; then
+    echo "FAIL - selftest: the gate did not pass the near spellings, the keys \$gap and \$open, in $near"
+    cat /tmp/token-gate-selftest.out; exit 1
+  fi
+  rm -f "$near"
+  echo "PASS - selftest: a tree with only near spellings passes with no leak"
   exit 0
 fi
 
@@ -190,12 +244,12 @@ gate_one() {
   owned=$(printf '%s\n' "$out" | grep -E "^(workbench|tests)/" || true)
 
   local errs count
-  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2320|2344|2440|2552|2724|6133|6192|6196)" || true)
+  errs=$(printf '%s\n' "$owned" | grep -E "error TS(2300|2304|2305|2320|2344|2440|2552|2724|6133|6192|6196|18016)" || true)
   count=$(printf '%s' "$errs" | grep -c . || true)
 
-  echo "TS2300/TS2304/TS2305/TS2320/TS2344/TS2440/TS2552/TS2724/TS6133/TS6192/TS6196 (duplicate identifier / cannot find name / unexported name / clashing extends / bad type argument / import-local conflict / value import, local or parameter never read / import line with no name used / unused type import) in generated tree: $count"
+  echo "TS2300/TS2304/TS2305/TS2320/TS2344/TS2440/TS2552/TS2724/TS6133/TS6192/TS6196/TS18016 (duplicate identifier / cannot find name / unexported name / clashing extends / bad type argument / import-local conflict / value import, local or parameter never read / import line with no name used / unused type import / private identifier outside a class body) in generated tree: $count"
   if [ "$count" -gt 0 ]; then
-    printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but (never used|its value is never read)\.?.*/  \1/; s/.*Interface '([^']+)' cannot simultaneously extend.*/  \1/; s/.*All imports in import declaration are unused.*/  (import line with no name used)/" | sort | uniq -c | sort -rn
+    printf '%s\n' "$errs" | sed -E "s/.*(Cannot find name|Duplicate identifier|conflicts with local declaration of) '([^']+)'.*/  \2/; s/.*has no exported member (named )?'([^']+)'.*/  \2/; s/.*'([^']+)' is declared but (never used|its value is never read)\.?.*/  \1/; s/.*Interface '([^']+)' cannot simultaneously extend.*/  \1/; s/.*All imports in import declaration are unused.*/  (import line with no name used)/; s/.*Private identifiers are not allowed outside class bodies.*/  (private identifier outside a class body)/" | sort | uniq -c | sort -rn
   fi
 
   # A relative specifier (./ or ../) only ever resolves against a file this package itself writes, so an
@@ -246,9 +300,27 @@ gate_one() {
     printf '%s\n' "$dom_errs" | sed -E 's/.* //' | sort | uniq -c | sort -rn
   fi
 
+  # Every file under workbench/ or tests/ that tsc reads. An empty list would read as no leak, so it fails closed.
+  local files
+  files=$(npx tsc -p "$cfg" --listFilesOnly 2>&1 | sed "s|^$PWD/||" | grep -E "^(workbench|tests)/" || true)
+
+  if [ -z "$files" ]; then
+    echo "FAIL - tsc listed no file under workbench/ or tests/, so there is nothing to grep for a leaked gap or marker"
+    return 1
+  fi
+
+  local leak_errs leak_count
+  leak_errs=$(printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 grep -HnoE '\$gap[0-9]+|#\$open' || true)
+  leak_count=$(printf '%s' "$leak_errs" | grep -c . || true)
+
+  echo "Gap arms (\$gapN) and open markers (#\$open) in generated tree: $leak_count"
+  if [ "$leak_count" -gt 0 ]; then
+    printf '%s\n' "$leak_errs" | sed -E 's/.*://' | sort | uniq -c | sort -rn
+  fi
+
   if [ "$have_baseline" -eq 1 ]; then
     if [ "$count" -gt "$baseline" ]; then
-      echo "FAIL - token count rose from $baseline to $count: a token lost its import, two names or keys clash, a type argument is rejected, or an import, local or parameter goes unused"
+      echo "FAIL - token count rose from $baseline to $count: a token lost its import, two names or keys clash, a type argument is rejected, an import, local or parameter goes unused, or an open marker leaked"
       printf '%s\n' "$errs"
       return 1
     fi
@@ -263,6 +335,16 @@ gate_one() {
       dom_failed=1
     else
       echo "PASS - no token named like a DOM global emitted without its import"
+    fi
+
+    # No baseline either: the publish strips every gap arm and open marker, so any reading is a leak.
+    local leak_failed=0
+    if [ "$leak_count" -gt 0 ]; then
+      echo "FAIL - $leak_count gap arm(s) or open marker(s) reached the generated tree, which the publish always strips"
+      printf '%s\n' "$leak_errs"
+      leak_failed=1
+    else
+      echo "PASS - no gap arm or open marker in the generated tree"
     fi
 
     if [ "$have_relative_baseline" -eq 1 ]; then
@@ -283,7 +365,7 @@ gate_one() {
       fi
     fi
 
-    if [ "$dom_failed" -eq 1 ]; then
+    if [ "$dom_failed" -eq 1 ] || [ "$leak_failed" -eq 1 ]; then
       return 1
     fi
   fi

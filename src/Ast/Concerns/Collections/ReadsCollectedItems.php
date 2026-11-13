@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
@@ -48,33 +49,35 @@ trait ReadsCollectedItems
         } catch (ConstExprEvaluationException) {
         }
 
-        $result = $engine->resolve($items);
-        $type = $result['type'];
+        // A gap is an arm no rule typed: the items are read as without it, and it stays beside them.
+        return ValueResult::gapTransparent($engine->resolve($items), static function (array $result): ?array {
+            $type = $result['type'];
 
-        if ($type === 'unknown') {
-            return [...$result, 'optional' => false];
-        }
+            if ($type === 'unknown') {
+                return [...$result, 'optional' => false];
+            }
 
-        $arms = TsTypeString::splitTopLevelUnion($type);
-        $kept = array_values(array_diff($arms, ['null']));
+            $arms = TsTypeString::splitTopLevelUnion($type);
+            $kept = array_values(array_diff($arms, ['null']));
 
-        if (count($kept) > 1) {
-            return null;
-        }
+            if (count($kept) > 1) {
+                return null;
+            }
 
-        // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
-        $type = $kept === [] || $kept[0] === '[]' ? 'never[]' : $kept[0];
-        $listed = str_ends_with($type, '[]');
+            // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
+            $type = $kept === [] || $kept[0] === '[]' ? 'never[]' : $kept[0];
+            $listed = str_ends_with($type, '[]');
 
-        if (! $listed && ! str_starts_with($type, '{') && TsTypeShape::recordArguments($type) === null) {
-            return null;
-        }
+            if (! $listed && ! str_starts_with($type, '{') && TsTypeShape::recordArguments($type) === null) {
+                return null;
+            }
 
-        // collect(null), and collect() of the MissingValue a when*() call leaves, hold no items, which json_encode()
-        // writes as `[]`: a list admits that, a Record or a shape does not.
-        $empties = count($arms) > 1 || $result['optional'];
+            // collect(null), and collect() of the MissingValue a when*() call leaves, hold no items, which
+            // json_encode() writes as `[]`: a list admits that, a Record or a shape does not.
+            $empties = count($arms) > 1 || $result['optional'];
 
-        return [...$result, 'type' => $listed || ! $empties ? $type : $type.' | never[]', 'optional' => false];
+            return [...$result, 'type' => $listed || ! $empties ? $type : $type.' | never[]', 'optional' => false];
+        });
     }
 
     /**

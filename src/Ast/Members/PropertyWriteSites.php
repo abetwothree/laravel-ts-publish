@@ -99,7 +99,7 @@ final class PropertyWriteSites
      */
     public function of(ReflectionClass $class, string $name): ?array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'property-writes:'.$class->getName().'::'.$name,
             fn (): ?array => $this->find($class, $name),
         );

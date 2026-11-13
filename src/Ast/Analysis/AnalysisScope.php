@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Closure;
@@ -97,6 +98,7 @@ use ReflectionMethod;
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type KeyBuiltLocalsMap array<string, list<Node\Stmt>>
+ * @phpstan-type TypedKeys list<string>|true
  * @phpstan-type NameBindingsSnapshot array{
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
  *      varClassBindings: VarClassBindingsMap,
@@ -134,7 +136,8 @@ use ReflectionMethod;
  *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
  *      mapResultArrayed: bool,
- *      readsCallableReturn: bool
+ *      readsCallableReturn: bool,
+ *      typedKeys: TypedKeys
  * }
  *
  * @internal
@@ -256,6 +259,15 @@ final class AnalysisScope
      * `{}`. ClosureHandler sets it for its body; the dispatcher clears it below a handler that keeps no held object.
      */
     public bool $readsCallableReturn = false;
+
+    /**
+     * The keys the `@return` of the method whose own level is being read types, true where it types every key: a key
+     * among them reads in the gap mode, and so does a read bringing keys beside them (readingKey(), readingLevel()).
+     * A frame sets it as its body's read starts, and a value read, a level of its own, reads with none.
+     *
+     * @var TypedKeys
+     */
+    public array|true $typedKeys = [];
 
     /**
      * Closure parameter names bound to an expression: a required `when()` parameter to its condition's `$this->prop`,
@@ -657,6 +669,23 @@ final class AnalysisScope
         }
 
         return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
+    }
+
+    /**
+     * The name a returned variable's walk reads the variable under, bound in varValueBindings to the keys it holds.
+     */
+    public static function walkAlias(string $name): string
+    {
+        // No PHP variable can be named `@…`, so a read of the alias reaches only the keys bound to it.
+        return '@'.$name;
+    }
+
+    /**
+     * Whether a value is a read of the name walkAlias() gives a walked variable.
+     */
+    public static function isWalkAlias(Expr $value): bool
+    {
+        return $value instanceof Variable && is_string($value->name) && str_starts_with($value->name, '@');
     }
 
     /**
@@ -1090,6 +1119,69 @@ final class AnalysisScope
     }
 
     /**
+     * Whether the frame's `@return` types a key, which an index signature, standing for many keys, never is.
+     */
+    public function typesKey(string $name): bool
+    {
+        return $this->typedKeys !== []
+            && ($this->typedKeys === true || in_array($name, $this->typedKeys, true))
+            && ! JsEmitter::isIndexSignatureKey($name);
+    }
+
+    /**
+     * Run a key's value read in the gap mode where the frame's `@return` types the key, so a merge can fill each arm
+     * the read drops in place; any other read keeps the mode it is in.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function readingKey(string $name, Closure $read): mixed
+    {
+        return $this->typesKey($name) ? resolve(AnalysisMemo::class)->showingGaps($read) : $read();
+    }
+
+    /**
+     * Run a read whose keys land at the frame's own level without a key of their own, as a spread or a whole return
+     * does, in the gap mode where $set, by default the frame's typed keys, holds one; else it keeps its mode.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @param  TypedKeys|null  $set
+     * @return TRead
+     */
+    public function readingLevel(Closure $read, array|true|null $set = null): mixed
+    {
+        return ($set ?? $this->typedKeys) === [] ? $read() : resolve(AnalysisMemo::class)->showingGaps($read);
+    }
+
+    /**
+     * Run a read with $typed as the frame's typed keys, then put the frame's own back, even on a throw.
+     *
+     * @template TRead
+     *
+     * @param  TypedKeys  $typed
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function typingKeys(array|true $typed, Closure $read): mixed
+    {
+        if ($typed === $this->typedKeys) {
+            return $read();
+        }
+
+        [$own, $this->typedKeys] = [$this->typedKeys, $typed];
+
+        try {
+            return $read();
+        } finally {
+            $this->typedKeys = $own;
+        }
+    }
+
+    /**
      * Run a read with one gap of a name lifted, so a value a write inside it assigns reads the name as it was before.
      *
      * @template TRead
@@ -1271,8 +1363,8 @@ final class AnalysisScope
     }
 
     /**
-     * Set the caller's state aside to read any method's body, as within()'s $enter: no caller name reaches the body,
-     * which reads its own file's imports and its own declaring class, and only $proofs of `$this` reads hold.
+     * Set the caller's state aside to read any method's body, as within()'s $enter: no caller name or typed key reaches
+     * the body, which reads its own file's imports and its own declaring class, and only $proofs of `$this` reads hold.
      *
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
@@ -1298,6 +1390,7 @@ final class AnalysisScope
         $this->varGuardBindings = $paths;
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
+        $this->typedKeys = [];
         $this->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
         $this->declaringClass = $method->getDeclaringClass();
     }
@@ -1553,7 +1646,7 @@ final class AnalysisScope
      */
     private static function collectionFacts(ReflectionClass $class): array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'collection-facts:'.$class->getName(),
             static fn (): array => [
                 ResourceCollections::reindexesNumericKeys($class),
@@ -1570,7 +1663,7 @@ final class AnalysisScope
      */
     private static function picksItems(ReflectionClass $collection): bool
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'collection-picks:'.$collection->getName(),
             static fn (): bool => ! ResourceCollections::keepsRawItems($collection),
         );
@@ -1799,6 +1892,7 @@ final class AnalysisScope
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
             'readsCallableReturn' => $this->readsCallableReturn,
+            'typedKeys' => $this->typedKeys,
         ];
     }
 
@@ -1824,5 +1918,6 @@ final class AnalysisScope
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];
         $this->readsCallableReturn = $state['readsCallableReturn'];
+        $this->typedKeys = $state['typedKeys'];
     }
 }

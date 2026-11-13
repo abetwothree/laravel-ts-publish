@@ -25,7 +25,7 @@ final class ArrayArms
 
     /**
      * Each top-level arm of a type through $map, in order, a `null` arm left out where $skipNull; null where $map
-     * declines an arm.
+     * declines an arm. A gap arm, which no rule typed, is no arm to read: a caller that builds a type gives it back.
      *
      * @param  Closure(string): ?string  $map
      * @return list<string>|null
@@ -33,6 +33,7 @@ final class ArrayArms
     public static function arms(string $type, Closure $map, bool $skipNull = true): ?array
     {
         $arms = [];
+        $type = VisibleGaps::aside($type)[0];
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $arm) {
             if ($skipNull && $arm === 'null') {
@@ -86,7 +87,7 @@ final class ArrayArms
             return TsTypeShape::listType([$record[1]]);
         }
 
-        $members = TsTypeShape::members($arm);
+        $members = VisibleGaps::members($arm)[0] ?? null;
 
         if ($members !== null) {
             return TsTypeShape::listType(array_column($members, 1));
@@ -101,15 +102,17 @@ final class ArrayArms
      */
     public static function valuesList(string $type): ?string
     {
-        $lists = self::arms($type, static fn (string $arm): ?string => $arm === 'null' ? $arm : self::valuesOf($arm), skipNull: false);
+        return VisibleGaps::carried($type, static function (string $type): ?string {
+            $lists = self::arms($type, static fn (string $arm): ?string => $arm === 'null' ? $arm : self::valuesOf($arm), skipNull: false);
 
-        if ($lists === null || $lists === []) {
-            return null;
-        }
+            if ($lists === null || $lists === []) {
+                return null;
+            }
 
-        $filled = array_values(array_diff($lists, ['never[]', 'null']));
+            $filled = array_values(array_diff($lists, ['never[]', 'null']));
 
-        return TsTypeString::hoistNull($filled === [] ? $lists : array_values(array_diff($lists, ['never[]'])));
+            return TsTypeString::hoistNull($filled === [] ? $lists : array_values(array_diff($lists, ['never[]'])));
+        });
     }
 
     /**
@@ -140,9 +143,11 @@ final class ArrayArms
      */
     public static function keysList(string $type, bool $listed = false): ?string
     {
-        $keys = self::arms($type, static fn (string $arm): ?string => self::keysOf($arm, $listed));
+        return VisibleGaps::carried($type, static function (string $type) use ($listed): ?string {
+            $keys = self::arms($type, static fn (string $arm): ?string => self::keysOf($arm, $listed));
 
-        return $keys === null || $keys === [] ? null : TsTypeShape::listType(array_values(array_diff($keys, ['never'])));
+            return $keys === null || $keys === [] ? null : TsTypeShape::listType(array_values(array_diff($keys, ['never'])));
+        });
     }
 
     /**
@@ -201,14 +206,17 @@ final class ArrayArms
     {
         $list = TsTypeShape::listType([$value]);
         $record = TsTypeShape::recordArguments($arm);
-        $members = TsTypeShape::members($arm);
+        [$members, $open] = VisibleGaps::members($arm) ?? [null, false];
 
         return match (true) {
             $arm === 'unknown' => $list.' | Record<string, '.$value.'>',
             $record !== null => 'Record<'.$record[0].', '.$value.'>',
             // json_encode() writes an empty array as `[]`.
             $members === [] => 'never[]',
-            $members !== null => '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$value, $members)).' }',
+            $members !== null => VisibleGaps::opened(
+                '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$value, $members)).' }',
+                $open,
+            ),
             TsTypeShape::isWrapped($arm, '[', ']') || TsTypeShape::elementType($arm) !== null => $list,
             default => null,
         };
@@ -227,10 +235,12 @@ final class ArrayArms
             return 'Record<'.$record[0].', '.self::filteredValue($record[1], $dropsNull).'>';
         }
 
-        $members = TsTypeShape::members($arm);
+        [$members, $open] = VisibleGaps::members($arm) ?? [null, false];
 
         if ($members !== null) {
-            return self::filteredObject($members, $dropsNull);
+            $object = self::filteredObject($members, $dropsNull);
+
+            return $object === null ? null : VisibleGaps::opened($object, $open);
         }
 
         $element = self::listElement($arm);
@@ -257,7 +267,7 @@ final class ArrayArms
      */
     public static function keyedList(string $list): string
     {
-        return $list.' | Record<string, '.substr($list, 0, -2).'>';
+        return (string) VisibleGaps::carried($list, static fn (string $list): string => $list.' | Record<string, '.substr($list, 0, -2).'>');
     }
 
     /**
@@ -305,7 +315,7 @@ final class ArrayArms
     {
         return match (true) {
             ! $dropsNull || ! TsTypeString::hasNullArm($type) => $type,
-            $type === 'null' => 'never',
+            VisibleGaps::aside($type)[0] === 'null' => 'never',
             default => TsTypeString::withoutNullArm($type),
         };
     }

@@ -42,3 +42,12 @@ it('keeps every array that holds a named key, and every named type', function (s
     'a quoted key holding a colon' => ['{ "a:b": string }'],
     'a spread arm' => ["Omit<UserResource, 'x'> & { x: string }"],
 ]);
+
+it('lists an object keyed only by numbers past its open marker, which a listed arm drops and an object arm keeps', function (string $type, string $sent) {
+    expect(ResourceReindexing::reindexedType($type))->toBe($sent);
+})->with([
+    'the marker beside number keys' => ['{ 0: string; 1: number; #$open: unknown }', '(string | number)[]'],
+    'the marker as its own part' => ['{ 0: string } & { #$open: unknown }', 'string[]'],
+    'the marker beside a named key' => ['{ a: { 0: string }; #$open: unknown }', '{ a: string[]; #$open: unknown }'],
+    'a gap arm beside a listed one' => ['{ 0: string } | $gap1', 'string[] | $gap1'],
+]);

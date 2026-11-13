@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
@@ -19,8 +20,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Support\Arr;
+use LogicException;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -32,6 +35,7 @@ use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignOp\Coalesce as CoalesceAssign;
 use PhpParser\Node\Expr\AssignOp\Plus;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
@@ -45,6 +49,9 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\InterpolatedString;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\ClassLike;
@@ -75,6 +82,7 @@ use WeakMap;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
+ * @phpstan-import-type LeftOutArm from DroppedUnionArms
  *
  * @phpstan-type UntypedKeyWrite = array{string, Expr}
  * @phpstan-type KeyPaths = array{unset: bool, object: bool, objectNull: bool, plainNull: bool}
@@ -102,7 +110,7 @@ trait ReadsReturnedVariables
     /** @var WeakMap<MethodAnalysis, list<UntypedKeyWrite>>|null each walked or literal branch's untyped key writes */
     private ?WeakMap $branchNotes = null;
 
-    /** @var array<string, true> each key the walk under way gave a value that may be left out itself, as `when()` is */
+    /** @var array<string, true> each key the walk under way gave a value that may be removed, as `when()`'s is */
     private array $optionalValueKeys = [];
 
     /**
@@ -451,14 +459,15 @@ trait ReadsReturnedVariables
 
             $assigned = $this->assignedValue($stmt, $varName);
 
-            // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment
+            // $var = [...], or any other whole array analyzeArrayExpression() reads — base array assignment; a whole
+            // write, as a `+=` below, lands its keys at the level of the walk.
             if ($assigned !== null) {
-                $baseAnalysis = $this->readAgainstWalk(
+                $baseAnalysis = $this->analysisScope()->readingLevel(fn (): ?MethodAnalysis => $this->readAgainstWalk(
                     $assigned,
                     $varName,
                     $into,
                     fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
-                );
+                ));
 
                 if ($baseAnalysis === null) {
                     $keepsKeys = $stmt instanceof ExpressionStmt && $this->keepsEveryKey($stmt->expr, $varName);
@@ -489,12 +498,13 @@ trait ReadsReturnedVariables
                 && $stmt->expr instanceof Plus
                 && $stmt->expr->var instanceof Variable
                 && $stmt->expr->var->name === $varName) {
-                $addedAnalysis = $this->readAgainstWalk(
-                    $stmt->expr->expr,
+                $added = $stmt->expr->expr;
+                $addedAnalysis = $this->analysisScope()->readingLevel(fn (): ?MethodAnalysis => $this->readAgainstWalk(
+                    $added,
                     $varName,
                     $into,
                     fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
-                );
+                ));
 
                 if ($addedAnalysis === null) {
                     $into->holdUnreadKeys();
@@ -518,7 +528,11 @@ trait ReadsReturnedVariables
                 && $stmt->expr->var->var->name === $varName
                 && $stmt->expr->var->dim !== null
                 && ($keyName = $this->namedKey($stmt->expr->var->dim)) !== null) {
-                $result = $this->readAgainstWalk($stmt->expr->expr, $varName, $into, $this->analyzeValueExpression(...));
+                $written = $stmt->expr->expr;
+                $result = $this->analysisScope()->readingKey(
+                    $keyName,
+                    fn (): array => $this->readAgainstWalk($written, $varName, $into, $this->analyzeValueExpression(...)),
+                );
                 $this->noteUntypedWrite($keyName, $stmt->expr->expr, $result);
 
                 if (JsEmitter::isIndexSignatureKey($keyName)) {
@@ -631,13 +645,13 @@ trait ReadsReturnedVariables
      *
      * @param  TAnalysis  $joined
      * @param  list<TAnalysis>  $branches
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      * @return TAnalysis
      */
-    protected function recordedMergeJoin(MethodAnalysis $joined, array $branches): MethodAnalysis
+    protected function recordedMergeJoin(MethodAnalysis $joined, array $branches, array $returns = []): MethodAnalysis
     {
         $notes = array_map(fn (MethodAnalysis $branch): array => $this->branchNotes[$branch] ?? [], $branches);
-        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'merge-branch-join');
-        $this->recordJoinDrops($joined, $branches, $notes, $record);
+        $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'merge-branch-join'], $returns);
         // A join can be a branch of another, as a merged spread helper's is, which names what its branches saw.
         $this->branchNotes ??= new WeakMap;
         $this->branchNotes[$joined] = array_merge(...$notes);
@@ -799,7 +813,10 @@ trait ReadsReturnedVariables
                 $this->noteOptionalValues($seed);
             }
 
-            $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+            $walk = fn () => $this->collectVariableArrayAssignments($live, $varName, false, $analysis, $topLevel);
+
+            // A typed key written from the variable reads the keys written before it, so each reads as that key does.
+            $this->typedWriteReadsVariable($live, $varName) ? $this->analysisScope()->readingLevel($walk) : $walk();
             $this->branchNotes ??= new WeakMap;
             $this->branchNotes[$analysis] = $this->untypedKeyWrites;
         } finally {
@@ -1037,23 +1054,12 @@ trait ReadsReturnedVariables
         $unset = $this->keysLeftUnset($value, $write);
         $properties = $into->properties;
         $names = array_column($properties, 'name');
-        $written = [];
-        $positions = [];
-
-        // A named key the write itself repeats is one key with its last value, as the same literal returned would
-        // publish; each signature entry is one more runtime key, kept as addSignatureEntry() keeps one.
-        foreach ($write->properties as $prop) {
-            if (! JsEmitter::isIndexSignatureKey($prop['name']) && isset($positions[$prop['name']])) {
-                $written[$positions[$prop['name']]] = $prop;
-
-                continue;
-            }
-
-            $positions[$prop['name']] = count($written);
-            $written[] = $prop;
+        // A literal's fold writes each named key once, so the rows below never meet a key the write repeats.
+        if (count($write->writtenProperties()) !== count($write->properties)) {
+            throw new LogicException('A whole write holds each named key once; a signature entry is one more runtime key.');
         }
 
-        foreach ($written as $prop) {
+        foreach ($write->properties as $prop) {
             // A signature entry is one more runtime key its signature covers, so it replaces no earlier entry.
             $index = JsEmitter::isIndexSignatureKey($prop['name']) ? false : array_search($prop['name'], $names, true);
 
@@ -1068,16 +1074,28 @@ trait ReadsReturnedVariables
             );
 
             if ($index === false) {
-                $properties[] = [...$prop, 'optional' => $isConditional || $prop['optional']];
+                $properties[] = MethodAnalysis::withPresence(
+                    $prop,
+                    optional: $isConditional || $prop['optional'],
+                    absent: $isConditional || ($prop['absent'] ?? false),
+                    removed: $prop['removed'] ?? false,
+                );
 
                 continue;
             }
 
             $into->forgetChannels($prop['name']);
-            $optional = $prop['optional'] || ($isConditional && $properties[$index]['optional']);
-            $properties[$index] = [...$prop, 'optional' => $optional];
+            $held = $properties[$index];
+            $properties[$index] = MethodAnalysis::withPresence(
+                $prop,
+                optional: $prop['optional'] || ($isConditional && $held['optional']),
+                absent: ($prop['absent'] ?? false) || ($isConditional && ($held['absent'] ?? false)),
+                removed: ($prop['removed'] ?? false) || ($isConditional && ($held['removed'] ?? false)),
+            );
         }
 
+        // merge() takes keys the variable does not hold, so only the channels move; the rows are the ones laid above.
+        $into->properties = [];
         $into->merge($write);
         $into->properties = $properties;
     }
@@ -1304,8 +1322,7 @@ trait ReadsReturnedVariables
         }
 
         $joined = $this->joinedBranches($branches);
-        $record = fn (Expr $write) => DroppedUnionArms::record($write, $this->analysisScope(), 'walk-branch-join');
-        $this->recordJoinDrops($joined, $branches, $notes, $record);
+        $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'walk-branch-join']);
         $into->replaceWith($joined);
     }
 
@@ -1315,11 +1332,14 @@ trait ReadsReturnedVariables
      *
      * @param  list<TAnalysis>  $branches
      * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
-     * @param  Closure(Expr): void  $record  records one value left out, under its join's site
+     * @param  Closure(Expr): LeftOutArm  $leftOut  one value left out, beside its join's site
+     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
      */
-    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $record): void
+    private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $leftOut, array $returns = []): void
     {
         if (array_merge(...$notes) === []) {
+            $this->gapDroppedReturns($joined, $branches, $returns);
+
             return;
         }
 
@@ -1328,12 +1348,12 @@ trait ReadsReturnedVariables
             $branches,
         );
 
-        foreach ($joined->properties as $property) {
+        foreach ($joined->properties as $at => $property) {
             if ($property['type'] === 'unknown') {
                 continue;
             }
 
-            $dropped = [];
+            $left = [];
 
             foreach ($types as $index => $branchTypes) {
                 $write = ($branchTypes[$property['name']] ?? null) === 'unknown'
@@ -1341,14 +1361,46 @@ trait ReadsReturnedVariables
                     : null;
 
                 if ($write !== null) {
-                    $record($write);
-                    $dropped[] = $write;
+                    $left[] = $leftOut($write);
                 }
             }
 
-            if ($dropped !== []) {
+            if ($left !== []) {
                 $union = [...ValueResult::unknown(), 'type' => $property['type']];
-                DroppedUnionArms::warnOfJoinDrop($union, $dropped, $this->analysisScope());
+                $union = DroppedUnionArms::leftOutOfJoin($union, $left, $this->analysisScope());
+                $joined->properties[$at]['type'] = $union['type'];
+            }
+        }
+    }
+
+    /**
+     * In the gap mode, give a key a gap arm for each method return whose branch left it untyped beside a typed one, a
+     * drop no untyped write names; out of it, the join stays as it is.
+     *
+     * @param  list<TAnalysis>  $branches
+     * @param  list<Node>  $returns  each branch's returned value
+     */
+    private function gapDroppedReturns(MethodAnalysis $joined, array $branches, array $returns): void
+    {
+        if ($returns === [] || ! resolve(AnalysisMemo::class)->showsGaps()) {
+            return;
+        }
+
+        $types = array_map(
+            fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'),
+            $branches,
+        );
+
+        foreach ($joined->properties as $at => $property) {
+            if ($property['type'] === 'unknown') {
+                continue;
+            }
+
+            foreach ($types as $index => $branchTypes) {
+                if (isset($returns[$index]) && ($branchTypes[$property['name']] ?? null) === 'unknown') {
+                    $id = DroppedUnionArms::gap($this->analysisScope(), 'merge-branch-join', $returns[$index], $property['type']);
+                    $joined->properties[$at]['type'] = VisibleGaps::withArm($joined->properties[$at]['type'], $id);
+                }
             }
         }
     }
@@ -1520,20 +1572,26 @@ trait ReadsReturnedVariables
             $this->optionalValueKeys[$keyName] = true;
         }
 
-        $heldType = $existingIndex === null ? null : $into->properties[$existingIndex]['type'];
+        $held = $existingIndex === null ? null : $into->properties[$existingIndex];
+        $heldType = $held['type'] ?? null;
         $this->recordWrite($keyName, $isConditional, $heldType, false, ValueResult::heldNullsOf($result), $result['type']);
         $appendedIndex = count($into->properties);
+        $value = $this->reading()->arrayValue($result);
 
-        $into->addProperty($keyName, $this->reading()->arrayValue($result), $isConditional || $result['optional']);
+        $into->addProperty($keyName, $value, $isConditional || $result['optional']);
 
-        // A re-set key is absent where its new value vanishes, or where this write is skipped and the old one was
-        // absent.
-        if ($existingIndex !== null && isset($into->properties[$appendedIndex])) {
-            $appended = $into->properties[$appendedIndex];
-            $appended['optional'] = $result['optional']
-                || ($isConditional && $into->properties[$existingIndex]['optional']);
+        // A key is missing where its new value vanishes, or where this write is skipped and no key, or a missing one,
+        // was held.
+        if (isset($into->properties[$appendedIndex])) {
+            $into->properties[$existingIndex ?? $appendedIndex] = MethodAnalysis::withPresence(
+                $into->properties[$appendedIndex],
+                optional: $result['optional'] || ($isConditional && ($held === null || $held['optional'])),
+                absent: $isConditional && ($held === null || ($held['absent'] ?? false)),
+                removed: $value['optional'] || ($isConditional && ($held['removed'] ?? false)),
+            );
+        }
 
-            $into->properties[$existingIndex] = $appended;
+        if ($existingIndex !== null) {
             array_splice($into->properties, $appendedIndex, 1);
         }
     }
@@ -1565,7 +1623,10 @@ trait ReadsReturnedVariables
             return;
         }
 
-        $default = $this->readAgainstWalk($value, $varName, $into, $this->analyzeValueExpression(...));
+        $default = $this->analysisScope()->readingKey(
+            $keyName,
+            fn (): array => $this->readAgainstWalk($value, $varName, $into, $this->analyzeValueExpression(...)),
+        );
 
         // A signature stands for many runtime keys, so the default is one more it may cover.
         if ($signature) {
@@ -1577,13 +1638,19 @@ trait ReadsReturnedVariables
         $kept = clone $into;
         $kept->properties = array_map(
             fn (array $property): array => $property['name'] === $keyName
-                ? [...$property, 'type' => $keptType, 'optional' => false]
+                ? MethodAnalysis::withPresence(
+                    [...$property, 'type' => $keptType],
+                    optional: false,
+                    absent: false,
+                    removed: $property['removed'] ?? false,
+                )
                 : $property,
             $into->properties,
         );
         $filled = clone $into;
         $this->writeKey($filled, $keyName, $default, false);
-        $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($held['type']) === ['null'];
+        [$heldBare, $heldGaps] = VisibleGaps::aside($held['type']);
+        $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($heldBare) === ['null'];
         $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
 
         foreach ($branches as $index => $branch) {
@@ -1600,12 +1667,14 @@ trait ReadsReturnedVariables
         }
 
         // A value left out itself may still be on each path the default does not land, as a `when()` holding null is.
+        // A gap held beside the null is a value `??=` keeps, which the default's lone branch would drop.
         $joined->properties = array_map(
-            fn (array $property): array => $property['name'] === $keyName ? [
-                ...$property,
-                'type' => $untyped ? 'unknown' : $property['type'],
-                'optional' => $property['optional'] || ($leftOut && $held['optional']),
-            ] : $property,
+            fn (array $property): array => $property['name'] === $keyName ? MethodAnalysis::withPresence(
+                [...$property, 'type' => $untyped ? 'unknown' : ($onlyNull ? VisibleGaps::restored($property['type'], $heldGaps) : $property['type'])],
+                optional: $property['optional'] || ($leftOut && $held['optional']),
+                absent: $property['absent'] ?? false,
+                removed: ($property['removed'] ?? false) || ($leftOut && $held['optional']),
+            ) : $property,
             $joined->properties,
         );
 
@@ -1647,8 +1716,7 @@ trait ReadsReturnedVariables
         $held = clone $state;
         resolve(IndexSignatureReconciler::class)->reconcile($held);
         $bound = new InlineObjectResult()->of($held);
-        // No PHP variable can be named `@…`, so the copy's reads reach only the state bound to it.
-        $alias = '@'.$varName;
+        $alias = AnalysisScope::walkAlias($varName);
         [$copy] = new NodeTraverser(new CloningVisitor, new class($varName, $alias) extends NodeVisitorAbstract
         {
             /**
@@ -1692,12 +1760,13 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Note each key a write sets optional, which its value made so, since the walk's own writes go through writeKey().
+     * Note each key a write sets to a value that may be removed, since the walk's own writes go through writeKey().
      */
     private function noteOptionalValues(MethodAnalysis $write): void
     {
         foreach ($write->properties as $property) {
-            if ($property['optional']) {
+            // A removed value is set and not null, so `??=` leaves it; a key a merge may leave unset takes the default.
+            if ($property['removed'] ?? false) {
                 $this->optionalValueKeys[$property['name']] = true;
             }
         }
@@ -1711,6 +1780,48 @@ trait ReadsReturnedVariables
         $reads = fn (Node $node): bool => $node instanceof Variable && $node->name === $varName;
 
         return new NodeFinder()->findFirst($expr, $reads) !== null;
+    }
+
+    /**
+     * Whether a write that may set a key the frame's `@return` types reads the variable it writes: a whole write or
+     * `+=` of the variable, which may set any key, or a write of one key a literal names typed, or none names.
+     *
+     * @param  array<Node\Stmt>  $stmts
+     */
+    private function typedWriteReadsVariable(array $stmts, string $varName): bool
+    {
+        $scope = $this->analysisScope();
+
+        if ($scope->typedKeys === []) {
+            return false;
+        }
+
+        return new NodeFinder()->findFirst($stmts, function (Node $node) use ($scope, $varName): bool {
+            if (! ($node instanceof Assign || $node instanceof CoalesceAssign || $node instanceof Plus)
+                || ! $this->readsVariableIn($node->expr, $varName)
+            ) {
+                return false;
+            }
+
+            if ($node->var instanceof Variable) {
+                return $node->var->name === $varName;
+            }
+
+            if (! $node->var instanceof ArrayDimFetch || ! $node->var->var instanceof Variable
+                || $node->var->var->name !== $varName || $node->var->dim === null
+            ) {
+                return false;
+            }
+
+            $dim = $node->var->dim;
+
+            // A key built around a variable is an index signature, which no `@return` member types.
+            return match (true) {
+                $dim instanceof String_, $dim instanceof Int_ => $scope->typesKey((string) $dim->value),
+                $dim instanceof InterpolatedString, $dim instanceof Concat => false,
+                default => true,
+            };
+        }) !== null;
     }
 
     /**
@@ -1773,7 +1884,9 @@ trait ReadsReturnedVariables
 
                 $into->properties = array_map(
                     fn (array $property): array => $property['name'] === $key
-                        ? [...$property, 'optional' => true]
+                        ? MethodAnalysis::withPresence(
+                            $property, optional: true, absent: true, removed: $property['removed'] ?? false,
+                        )
                         : $property,
                     $into->properties,
                 );
@@ -1796,7 +1909,9 @@ trait ReadsReturnedVariables
     private function loosenHeldKeys(MethodAnalysis $into, bool $bringsKeys): void
     {
         $into->properties = array_map(
-            fn (array $property): array => [...$property, 'optional' => true],
+            fn (array $property): array => MethodAnalysis::withPresence(
+                $property, optional: true, absent: true, removed: $property['removed'] ?? false,
+            ),
             $into->properties,
         );
 

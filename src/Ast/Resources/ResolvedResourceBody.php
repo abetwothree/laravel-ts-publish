@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Http\Resources\Json\JsonResource;
 use ReflectionClass;
 
@@ -110,7 +111,8 @@ final class ResolvedResourceBody
             // A cast's key publishes as declared, and an `Omit<>` cannot name an index signature.
             if (JsEmitter::isIndexSignatureKey($name)
                 || in_array($name, $cast, true)
-                || ($mine !== null && $mine['type'] === $property['type'] && $mine['optional'] === $property['optional'])
+                || ($mine !== null && VisibleGaps::stripped($mine['type'])[0] === VisibleGaps::stripped($property['type'])[0]
+                    && $mine['optional'] === $property['optional'])
             ) {
                 continue;
             }

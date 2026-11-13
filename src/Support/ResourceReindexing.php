@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+
 /**
  * The type an API resource response sends a published type as, where it re-indexes an array into a list.
  *
@@ -151,7 +153,12 @@ final class ResourceReindexing
                 continue;
             }
 
-            $members = TsTypeShape::members($part) ?? [];
+            [$members, $open] = VisibleGaps::members($part) ?? [[], false];
+
+            // The open marker names no key: a part holding only it adds none, and a listed part drops it.
+            if ($members === [] && $open) {
+                continue;
+            }
 
             if ($members === [] || ! array_all(array_column($members, 0), TsTypeShape::isNumericKey(...))) {
                 return null;

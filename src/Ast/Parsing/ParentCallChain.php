@@ -68,7 +68,7 @@ final class ParentCallChain
      */
     private function returnsParentKeys(string $class, string $method): bool
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'parent-keys:'.$class.'::'.strtolower($method),
             function () use ($class, $method): bool {
                 $context = resolve(MethodLocator::class)->locate($class, $method);

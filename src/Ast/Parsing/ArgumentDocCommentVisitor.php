@@ -11,7 +11,8 @@ use PhpParser\Node\Expr\Closure;
 use PhpParser\NodeVisitorAbstract;
 
 /**
- * Hands a call argument's comments to the closure it holds, so a docblock written before a closure argument types it.
+ * Hands a call argument's comments to the closure it holds, so a docblock written before a closure argument types it,
+ * and writes the file a node was parsed from onto it (AstParser::SOURCE_FILE).
  *
  * php-parser gives a comment to the first node that starts after it. One after an array key's `=>` or a named
  * argument's `:` lands on the closure; one before a positional argument, which starts on its closure's token, or before
@@ -22,7 +23,13 @@ use PhpParser\NodeVisitorAbstract;
 final class ArgumentDocCommentVisitor extends NodeVisitorAbstract
 {
     /**
-     * Move an argument's comments onto the closure it holds, unless the closure has a docblock of its own.
+     * Visit the nodes of the file at $path, or of a source no file holds.
+     */
+    public function __construct(private readonly ?string $path = null) {}
+
+    /**
+     * Move an argument's comments onto the closure it holds, unless the closure has a docblock of its own, and mark
+     * the node with its file.
      */
     public function enterNode(Node $node): null
     {
@@ -33,6 +40,10 @@ final class ArgumentDocCommentVisitor extends NodeVisitorAbstract
         ) {
             $node->value->setAttribute('comments', [...$node->getComments(), ...$node->value->getComments()]);
             $node->setAttribute('comments', []);
+        }
+
+        if ($this->path !== null) {
+            $node->setAttribute(AstParser::SOURCE_FILE, $this->path);
         }
 
         return null;

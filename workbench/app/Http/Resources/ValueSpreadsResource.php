@@ -9,7 +9,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\ValueObjects\CreditLine;
 
 /**
- * Spreads a value that writes a key again, after a helper or a key and before a resource arm (GH-154).
+ * Spreads a value that writes a key again, after a helper, a key or a merge and before a resource arm (GH-154).
  *
  * @property-read CreditLine $resource
  */
@@ -33,6 +33,8 @@ class ValueSpreadsResource extends JsonResource
         }
 
         $untyped = ['by' => json_decode('{"a":1}')];
+        $removable = ['by' => $this->when($this->resource->flag, $this->resource->title)];
+        $open = [...(array) json_decode('{"z":"q"}', true), 'by' => $this->resource->title];
 
         return [
             'helper_then_value' => [...$this->credited(), ...$afterHelper],
@@ -44,6 +46,11 @@ class ValueSpreadsResource extends JsonResource
                 ...$maybe,
                 ...MailRecipientResource::make($this->resource->author)->resolve($request),
             ],
+            'merged_when' => ['id' => 1, $this->mergeWhen($this->resource->flag, ['by' => $this->resource->author, ...$afterKey])],
+            'key_then_removable' => ['id' => 1, 'by' => $this->resource->author, ...$removable],
+            'merge_when_then_value' => ['id' => 1, $this->mergeWhen($this->resource->flag, ['by' => $this->resource->author]), ...$afterKey],
+            'key_then_open' => ['by' => $this->resource->author, ...$open],
+            'map_then_map' => [...$this->resource->labels, ...$this->resource->counts],
             'by' => $this->resource->author,
             ...$untyped,
         ];

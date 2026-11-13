@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -269,7 +270,7 @@ final class BinaryOpHandler implements ExpressionHandler
      */
     private function operandKind(array $result): string
     {
-        $type = TsTypeString::withoutNullArm($result['type']);
+        $type = TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0]);
         // An enum's import channel rides a list of the enum too, so only the enum's own token counts as a scalar.
         $enumTokens = array_map(
             ValueResult::enumTypeName(...),

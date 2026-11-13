@@ -34,7 +34,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\FallOffGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\HelperCycleTypedGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\IfElseReturnsGetSerializeCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LabelColumnCastable;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LiteralNullCycleBodyCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LiteralNullCycleGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\LoopingGetSerializeCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingGetCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\MemoizingTypedGetCast;
@@ -638,6 +640,7 @@ describe('a cast whose caster serializes', function () {
         'a typed serialize() over a get() declaring mixed with a null ternary arm' => [MixedNullGetSerializeCast::class, 'string | null'],
         'an undeclared serialize() returning a key whose name holds unknown' => [UnknownCountSerializeCast::class, '{ unknown_count: number }'],
         'an undeclared serialize() over a get() with a literal null read through a caster cycle' => [LiteralNullCycleBodyCast::class, 'string | null'],
+        'a typed serialize() over a get() with a literal null read through a caster cycle' => [LiteralNullCycleGetSerializeCast::class, 'string | null'],
         'an undeclared serialize() over a get() with a literal null and a recursive helper' => [RecursiveHelperGetCast::class, 'string | null'],
         'a typed serialize() over a get() with a literal null and a recursive helper' => [RecursiveHelperTypedGetCast::class, 'string | null'],
         'an undeclared serialize() over a get() with a literal null and two helpers calling each other' => [MutualHelperGetCast::class, 'string | null'],
@@ -679,6 +682,25 @@ describe('a cast whose caster serializes', function () {
         'a typed serialize() over an untyped get() ending in a match whose every arm throws' => [ThrowingMatchGetSerializeCast::class, 'string'],
         'a Castable declaring a base caster with no serialize(), returning a serializing subclass' => [BaseDeclaringCastable::class, 'string'],
         'a Castable declaring a non-null base caster, returning a subclass whose serialize() may write null' => [NonNullBaseDeclaringCastable::class, 'string | null'],
+    ]);
+
+    // Laravel serializes a cast only for a set value get() returned, and a NOT NULL column never hands get() a null.
+    test('a NOT NULL column takes no null from get() into serialize()', function (string $cast) {
+        expect($this->service->columnCastToTsType($cast, false)['type'])->toBe('string')
+            ->and($this->service->castToTsType($cast)['type'])->toBe('string | null')
+            ->and($this->service->columnCastToTsType($cast, true))->toBe($this->service->castToTsType($cast))
+            ->and($this->service->columnCastToTsType($cast, null))->toBe($this->service->castToTsType($cast));
+    })->with([
+        'a typed serialize()' => [NullableGetSerializedLabelCast::class],
+        'an undeclared serialize() typed by its returns' => [NullableGetReturnTypedSerializeCast::class],
+        'a Castable whose castUsing() names a typed serialize()' => [LabelColumnCastable::class],
+    ]);
+
+    test('a NOT NULL column keeps the null serialize() itself declares or returns', function (string $cast) {
+        expect($this->service->columnCastToTsType($cast, false)['type'])->toBe('string | null');
+    })->with([
+        'a ?string serialize()' => [NullableSerializedLabelCast::class],
+        'a Castable declaring a non-null base caster, returning a subclass whose serialize() may write null' => [NonNullBaseDeclaringCastable::class],
     ]);
 
     test('reads no serialize() body in a dependency\'s caster, which leaves the type to get()', function () {

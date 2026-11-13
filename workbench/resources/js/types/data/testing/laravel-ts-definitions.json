@@ -8505,7 +8505,7 @@
                 },
                 {
                     "name": "opens_at",
-                    "type": "string | null"
+                    "type": "string"
                 },
                 {
                     "name": "closes_at",
@@ -8513,7 +8513,7 @@
                 },
                 {
                     "name": "break_starts_at",
-                    "type": "string | null"
+                    "type": "string"
                 },
                 {
                     "name": "break_ends_at",
@@ -11465,7 +11465,7 @@
             "properties": [
                 {
                     "name": "tags",
-                    "type": "string[]",
+                    "type": "(string | number[])[]",
                     "optional": false
                 },
                 {
@@ -11885,7 +11885,7 @@
             "properties": [
                 {
                     "name": "byline",
-                    "type": "Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } }",
+                    "type": "{ id: number; author: string }",
                     "optional": false
                 }
             ]
@@ -13529,12 +13529,12 @@
             "properties": [
                 {
                     "name": "scores",
-                    "type": "{ score: number | null }[]",
+                    "type": "{ score: number | null | string }[]",
                     "optional": false
                 },
                 {
                     "name": "contacts",
-                    "type": "({ email: string | null } | null)[]",
+                    "type": "({ email: string | null } | null | { email: string; name: string | null })[]",
                     "optional": false
                 },
                 {
@@ -13544,12 +13544,12 @@
                 },
                 {
                     "name": "branches",
-                    "type": "{ name: string | null; locale: string }[]",
+                    "type": "({ name: string | null } | { name: string | null; locale: string })[]",
                     "optional": false
                 },
                 {
                     "name": "pairs",
-                    "type": "unknown[][]",
+                    "type": "[string, number][]",
                     "optional": false
                 },
                 {
@@ -14937,12 +14937,12 @@
             "properties": [
                 {
                     "name": "rows",
-                    "type": "{ name: string }[]",
+                    "type": "{ name: string | number }[]",
                     "optional": false
                 },
                 {
                     "name": "sections",
-                    "type": "{ items: { t: number[] }[] }",
+                    "type": "{ items: { t: number[] | string }[] }",
                     "optional": false
                 }
             ]
@@ -15232,32 +15232,32 @@
             "properties": [
                 {
                     "name": "params",
-                    "type": "{ t: string }[]",
+                    "type": "{ t: string | number[] }[]",
                     "optional": false
                 },
                 {
                     "name": "walks",
-                    "type": "{ k: string }[]",
+                    "type": "{ k: string | number[] }[]",
                     "optional": false
                 },
                 {
                     "name": "spreads",
-                    "type": "{ k: string; id: number }[]",
+                    "type": "{ k: string | number[]; id: number }[]",
                     "optional": false
                 },
                 {
                     "name": "relays",
-                    "type": "{ k?: string; id: number }[]",
+                    "type": "{ k?: string | number[]; id: number }[]",
                     "optional": false
                 },
                 {
                     "name": "receivers",
-                    "type": "{ name: string }[]",
+                    "type": "{ name: string | number }[]",
                     "optional": false
                 },
                 {
                     "name": "named",
-                    "type": "{ name: string }[]",
+                    "type": "{ name: string | number }[]",
                     "optional": false
                 }
             ]
@@ -17691,12 +17691,12 @@
             "properties": [
                 {
                     "name": "fills",
-                    "type": "{ f: never[] }[]",
+                    "type": "{ f: never[] | number[] }[]",
                     "optional": false
                 },
                 {
                     "name": "pairs",
-                    "type": "unknown[][]",
+                    "type": "[string | null, number][]",
                     "optional": false
                 }
             ]
@@ -21227,7 +21227,7 @@
             "properties": [
                 {
                     "name": "tag_lists",
-                    "type": "null[]",
+                    "type": "(number[] | null)[]",
                     "optional": false
                 },
                 {
@@ -22197,17 +22197,17 @@
             "properties": [
                 {
                     "name": "helper_then_value",
-                    "type": "Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } }",
+                    "type": "{ id: number; by: string }",
                     "optional": false
                 },
                 {
                     "name": "key_then_value",
-                    "type": "Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } }",
+                    "type": "{ by: string }",
                     "optional": false
                 },
                 {
                     "name": "helper_then_optional",
-                    "type": "Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } }",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } | string }",
                     "optional": false
                 },
                 {
@@ -22217,12 +22217,37 @@
                 },
                 {
                     "name": "key_then_arm",
-                    "type": "Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } }",
+                    "type": "Omit<{ name?: number }, keyof MailRecipientResource> & MailRecipientResource",
+                    "optional": false
+                },
+                {
+                    "name": "merged_when",
+                    "type": "{ id: number; by?: string }",
+                    "optional": false
+                },
+                {
+                    "name": "key_then_removable",
+                    "type": "{ id: number; by?: string }",
+                    "optional": false
+                },
+                {
+                    "name": "merge_when_then_value",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } | string }",
+                    "optional": false
+                },
+                {
+                    "name": "key_then_open",
+                    "type": "{ by: string }",
+                    "optional": false
+                },
+                {
+                    "name": "map_then_map",
+                    "type": "Record<string, string | number>",
                     "optional": false
                 },
                 {
                     "name": "by",
-                    "type": "{ name: string | null; email: string | null }",
+                    "type": "unknown",
                     "optional": false
                 }
             ]
@@ -22574,6 +22599,31 @@
                     "name": "appended_status_label",
                     "type": "string | number",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\WrapsBesideAliasedRowsResource": {
+            "name": "WrapsBesideAliasedRowsResource",
+            "properties": [
+                {
+                    "name": "subject",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { crm: CrmStatusType; status: WorkbenchStatusType }[]",
+                    "optional": false
+                },
+                {
+                    "name": "crm_subject",
+                    "type": "AsEnum<typeof CrmStatus> | AsEnum<typeof Role> | { status: WorkbenchStatusType; crm: CrmStatusType }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\WrapsBesideFilledRowsResource": {
+            "name": "WrapsBesideFilledRowsResource",
+            "properties": [
+                {
+                    "name": "subject",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Role> | { status: StatusType; role: RoleType }[]",
+                    "optional": false
                 }
             ]
         },

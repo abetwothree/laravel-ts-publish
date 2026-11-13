@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
@@ -31,6 +32,7 @@ use ReflectionClass;
  * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type CarriedMap from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  *
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
@@ -88,7 +90,7 @@ final class ValueResult
      */
     public static function isListShaped(string $type): bool
     {
-        return str_ends_with(implode(' | ', self::filledArms($type)), '[]');
+        return str_ends_with(implode(' | ', self::filledArms(VisibleGaps::aside($type)[0])), '[]');
     }
 
     /**
@@ -109,7 +111,7 @@ final class ValueResult
      */
     public static function elementOf(array $list, string $element): array
     {
-        $value = self::takingElementReadings([...self::withoutHeldObject($list), 'type' => $element, 'optional' => false], $list);
+        $value = [...self::withoutHeldObject($list), 'type' => $element, 'optional' => false];
         unset($value['keepsKeys'], $value['absentReadsNull']);
 
         $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
@@ -118,7 +120,8 @@ final class ValueResult
             $value['directEnumFqcn'] = $enums[0];
         }
 
-        if (isset($value['modelFqcn']) && class_basename($value['modelFqcn']) !== TsTypeString::withoutNullArm($element)) {
+        if (isset($value['modelFqcn'])
+            && class_basename($value['modelFqcn']) !== TsTypeString::withoutNullArm(VisibleGaps::aside($element)[0])) {
             unset($value['modelFqcn']);
         }
 
@@ -353,7 +356,8 @@ final class ValueResult
     {
         $closed = $result['closedToDottedKeys'] ?? null;
 
-        return $closed !== null && TsTypeString::withoutNullArm($closed) === TsTypeString::withoutNullArm($result['type']);
+        return $closed !== null && TsTypeString::withoutNullArm(VisibleGaps::stripped($closed)[0])
+            === TsTypeString::withoutNullArm(VisibleGaps::stripped($result['type'])[0]);
     }
 
     /**
@@ -395,6 +399,27 @@ final class ValueResult
     }
 
     /**
+     * What a read makes of a value with its top-level gap arms set aside, those gaps given back to the type it makes; a
+     * read that declines stays null, and the gaps' warnings stay held for the strip or the extent that raises them.
+     *
+     * @param  ValueExpressionResult  $input
+     * @param  Closure(ValueExpressionResult): (ValueExpressionResult|null)  $read
+     * @return ValueExpressionResult|null
+     */
+    public static function gapTransparent(array $input, Closure $read): ?array
+    {
+        [$rest, $gaps] = VisibleGaps::aside($input['type']);
+
+        if ($gaps === []) {
+            return $read($input);
+        }
+
+        $result = $read([...$input, 'type' => $rest]);
+
+        return $result === null ? null : [...$result, 'type' => VisibleGaps::restored($result['type'], $gaps)];
+    }
+
+    /**
      * Merge multiple branch expressions into a single union-typed ValueExpressionResult.
      *
      * Null returns (guard clauses) contribute `null` to the union instead of a full object shape;
@@ -422,16 +447,15 @@ final class ValueResult
 
         // Paired with their expressions here because unionResults() receives results only, and by then
         // the Expr an audit has to name is gone. The arm is still dropped, never widened to `unknown`.
-        $dropped = [];
+        $left = [];
 
         foreach ($results as $index => $result) {
             if ($result['type'] === 'unknown') {
-                DroppedUnionArms::record($returns[$index], $scope, 'closure-union');
-                $dropped[] = $returns[$index];
+                $left[] = [$returns[$index], 'closure-union'];
             }
         }
 
-        return DroppedUnionArms::warnOfPlaceholder(self::unionResults($results), $dropped, $scope);
+        return DroppedUnionArms::leftOut(self::unionResults($results), $left, $scope);
     }
 
     /**
@@ -445,13 +469,17 @@ final class ValueResult
      * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
      * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
-     * A union keeping a `null` beside a dropped branch is marked in `openReadings`, so a declared type can fill it.
-     *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
     public static function unionResults(array $results, bool $countMembers = false): array
     {
+        // Text alone keeps two same-named classes apart only while no strip collapses one of them onto the other.
+        if (array_any($results, static fn (array $inner): bool => VisibleGaps::stripped($inner['type'])[0] !== $inner['type'])
+            && self::spellsTwoClassesAlike(array_values(array_filter($results, static fn (array $inner): bool => $inner['type'] !== 'unknown')))) {
+            return self::unionLiftingGaps($results, $countMembers);
+        }
+
         /** @var list<string> $types the types mergeUnion() counts: each arm's whole type, or each member of it */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
@@ -469,7 +497,8 @@ final class ValueResult
         $types = array_values(array_unique($types));
         $optional = array_any($results, fn (array $inner): bool => $inner['optional']);
         $closed = array_any($results, self::closedToDottedKeys(...))
-            && array_all($results, fn (array $inner): bool => $inner['type'] === 'null' || self::closedToDottedKeys($inner));
+            && array_all($results, fn (array $inner): bool => VisibleGaps::aside($inner['type'])[0] === 'null'
+                || self::closedToDottedKeys($inner));
 
         if ($types === []) {
             $unknown = [...self::unknown(), 'optional' => $optional];
@@ -485,54 +514,13 @@ final class ValueResult
 
         $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
+        $presence = self::armsKeyPresence($results);
 
-        // A `null` kept beside an arm no rule types left out says nothing of that arm, which a declared type may fill.
-        if (count($branchResults) < count($results) && TsTypeString::hasNullArm($union['type'])) {
-            $union['openReadings'] = [...$union['openReadings'] ?? [], "\0".$union['type']];
+        if ($presence !== []) {
+            $union['keyPresence'] = $presence;
         }
 
         return $union;
-    }
-
-    /**
-     * A value its container holds as each element or value, taking the container's open readings one step down: each
-     * whose path leads with the container's `[]` or `{}` step, that step dropped, and none of the container's own.
-     *
-     * @param  ValueExpressionResult  $value  the element or value, its type set
-     * @param  ValueExpressionResult  $container
-     * @return ValueExpressionResult
-     */
-    public static function takingElementReadings(array $value, array $container): array
-    {
-        $readings = array_values(array_unique(array_map(
-            static fn (string $reading): string => substr($reading, 2),
-            array_filter(
-                $container['openReadings'] ?? [],
-                static fn (string $reading): bool => str_starts_with($reading, '[]') || str_starts_with($reading, '{}'),
-            ),
-        )));
-        unset($value['openReadings']);
-
-        return $readings === [] ? $value : [...$value, 'openReadings' => $readings];
-    }
-
-    /**
-     * A value its container holds as each element or value, its open shapes' paths, which lead each entry, moved under
-     * the container's step for it: `[]` for a list element, `{}` for a record value.
-     *
-     * @param  ValueExpressionResult  $held  the element or value
-     * @param  ValueExpressionResult  $container  the container's own result, its type set
-     * @return ValueExpressionResult
-     */
-    public static function holdingOpenReadings(array $held, array $container, string ...$steps): array
-    {
-        $paths = array_merge([], ...array_map(
-            static fn (string $step): array => array_map(static fn (string $path): string => $step.$path, $held['openReadings'] ?? []),
-            $steps,
-        ));
-        unset($container['openReadings']);
-
-        return $paths === [] ? $container : [...$container, 'openReadings' => array_values(array_unique($paths))];
     }
 
     /**
@@ -705,6 +693,51 @@ final class ValueResult
     public static function forgetEnumNames(): void
     {
         self::$enumNames = [];
+    }
+
+    /**
+     * The union of results spelling two classes alike, read on their texts with gaps and markers stripped, every gap
+     * their arms held lifted to the union's top, where a strip leaves the arms spelled alike as they are.
+     *
+     * @param  list<ValueExpressionResult>  $results
+     * @return ValueExpressionResult
+     */
+    private static function unionLiftingGaps(array $results, bool $countMembers): array
+    {
+        $gaps = [];
+        $bare = [];
+
+        foreach ($results as $inner) {
+            [$type, $ids] = VisibleGaps::stripped($inner['type']);
+            array_push($gaps, ...array_map(VisibleGaps::arm(...), $ids));
+            $bare[] = [...$inner, 'type' => $type];
+        }
+
+        $union = self::unionResults($bare, $countMembers);
+
+        return [...$union, 'type' => VisibleGaps::restored($union['type'], $gaps)];
+    }
+
+    /**
+     * Each arm's record of why its object's optional keys may be missing, keyed by the object's own text, so a spread
+     * of the union reads every arm as that arm was written; a text two arms record apart keeps both facts.
+     *
+     * @param  list<ValueExpressionResult>  $arms
+     * @return array<string, array<string, PresenceFacts>>
+     */
+    private static function armsKeyPresence(array $arms): array
+    {
+        $presence = [];
+
+        foreach ($arms as $arm) {
+            foreach ($arm['keyPresence'] ?? [] as $object => $keys) {
+                foreach ($keys as $name => $facts) {
+                    $presence[$object][$name] = [...$presence[$object][$name] ?? [], ...$facts];
+                }
+            }
+        }
+
+        return $presence;
     }
 
     /**
@@ -897,6 +930,11 @@ final class ValueResult
                 }
             }
 
+            // No rewrite can place an arm's own wraps inside this union, so their tokens read bare and need importing.
+            if (isset($inner['multiEnumResourceFqcns'])) {
+                array_push($embeddedEnumFqcns, ...$inner['multiEnumResourceFqcns']);
+            }
+
             if (isset($inner['embeddedEnumFqcns'])) {
                 array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
             }
@@ -996,15 +1034,6 @@ final class ValueResult
 
         if (array_any($branchResults, fn (array $inner): bool => $inner['unnamedKeys'] ?? false)) {
             $result['unnamedKeys'] = true;
-        }
-
-        $openReadings = array_values(array_unique(array_merge([], ...array_map(
-            static fn (array $inner): array => $inner['openReadings'] ?? [],
-            $branchResults,
-        ))));
-
-        if ($openReadings !== []) {
-            $result['openReadings'] = $openReadings;
         }
 
         // Every list arm keeps its int keys only where each branch spelling one says so.

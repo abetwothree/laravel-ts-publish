@@ -69,8 +69,9 @@ To assert that a name is left out, use `isOmittedMutator()`, which reads the acc
 ## A cast name is not a column type
 
 A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer `asTimestamp()` returns, which
-`toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()`, the
-`ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in order:
+`toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()` (by
+way of `columnCastToTsType()`), the `ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in
+order:
 
 1. A `custom_ts_mappings` key for the cast, or for the type `getCastType()` reads it as (`decimal` for `decimal:N`),
    goes to `toTsType()` under that name, so the user's entry wins.
@@ -127,6 +128,13 @@ type read from `serialize()`'s body keeps the null, since `get()` cannot rule it
 adds none. Only a `caster-body:` guard's cut counts as such a cycle (`AnalysisMemo::cuts()` by prefix). A helper's or a
 property's own guard carries no fallback into the reading, and an `accessor-body:` cut, which falls back to the model's
 declared type, is not counted either. `typeHoldsNull()` sees the arm, so a nullable column adds no second.
+
+A NOT NULL column takes no null from `get()`: Laravel never hands its `get()` a NULL, so `resolveAttribute()` reads
+the cast through `columnCastToTsType()`, whose flag makes `withGetNull()` add none; a null `serialize()` declares or
+returns stays. A `get()` mapping a stored value to null is left out
+([known gaps](../known-gaps.md#a-serializing-class-cast-whose-get-proves-nothing-publishes-serializes-type-wherever-it-is-read)).
+A resource's read keeps the null, since `resolveAttributeValue()` reads the cast with no column. `readingCast()` sets
+the flags and turns both off around a caster body's read, so neither a nested read nor its memo depends on them.
 
 ### Step 2: an override, resolved and composed
 

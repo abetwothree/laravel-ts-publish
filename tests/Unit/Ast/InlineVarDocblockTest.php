@@ -869,7 +869,7 @@ describe('an inline @var on a local assignment', function () {
                 'defaulted' => ['a' => 'x', 'b' => 1],
             ])
             ->and(droppedMemberVarSent(1)['both'])->toBe(['a' => 's', 'b' => 1]);
-    });
+    })->group('gap-mode');
 
     // The literal may match any arm of the tag, so the order its arms are written in is no order of the member's.
     test('fills a member from every arm of a union @var tag, in one order, and only where every arm answers', function () {

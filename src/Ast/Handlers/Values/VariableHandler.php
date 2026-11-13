@@ -34,6 +34,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -133,11 +134,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
                 // A parameter bound from a join's element warns of what that join left out, as a receiver's read does.
                 $held = isset($scope->leftOutParameters[$expr->var->name]) ? $receivers->resolve($expr->var, $scope) : null;
 
-                if ($held !== null) {
-                    $receivers->warnOfLeftOut($held, $attribute, $scope, $engine);
-                }
-
-                return $attribute;
+                return $held === null ? $attribute : $receivers->warnOfLeftOut($held, $attribute, $scope, $engine);
             }
         }
 
@@ -269,11 +266,13 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function keyedAll(string $type): string
     {
-        $list = count(TsTypeString::splitTopLevelUnion($type)) === 1 && str_starts_with($type, 'Record<')
-            ? ArrayArms::valuesList($type)
-            : null;
+        return VisibleGaps::carried($type, static function (string $type): string {
+            $list = count(TsTypeString::splitTopLevelUnion($type)) === 1 && str_starts_with($type, 'Record<')
+                ? ArrayArms::valuesList($type)
+                : null;
 
-        return $list === null ? $type : ArrayArms::keyedList($list);
+            return $list === null ? $type : ArrayArms::keyedList($list);
+        }) ?? $type;
     }
 
     /**
@@ -285,7 +284,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function provenNonNull(Variable $read, array $value, AnalysisScope $scope): array
     {
-        return $value['type'] !== 'null' && $this->isProvenNonNull($read, $scope) && TsTypeString::hasNullArm($value['type'])
+        return VisibleGaps::aside($value['type'])[0] !== 'null' && $this->isProvenNonNull($read, $scope)
+            && TsTypeString::hasNullArm($value['type'])
             ? [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])]
             : $value;
     }
@@ -344,13 +344,13 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $reaches = $gap[3] || array_any($written, fn (Expr $value): bool => ! in_array($value, $nested, true));
         $old = $gap[3] ? $this->heldValue($name, $scope, $engine) : null;
         $arms = [];
-        $dropped = [];
+        $left = [];
         // A value left out can still be a MissingValue, whose key Laravel drops.
         $optional = false;
 
         foreach ($values as $index => $arm) {
             if ($reaches && $untyped($arm) && in_array($written[$index], $nested, true)) {
-                $dropped[] = $written[$index];
+                $left[] = [$written[$index], 'binding-join'];
                 $optional = $optional || ($arm['optional'] ?? false);
             } else {
                 $arms[] = $arm;
@@ -358,8 +358,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         }
 
         if ($gap[3] && $untyped($old) && $arms !== [] && ! array_any($arms, $untyped)) {
-            $dropped[] = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
+            $binding = $scope->closureParamExprBindings[$name] ?? $scope->localVarBindings[$name]
                 ?? $scope->passedValues[$name] ?? $read;
+            $left[] = [$binding, 'binding-join'];
             $optional = $optional || ($old['optional'] ?? false);
         } elseif ($gap[3]) {
             array_unshift($arms, $old);
@@ -369,14 +370,10 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        foreach ($dropped as $arm) {
-            DroppedUnionArms::record($arm, $scope, 'binding-join');
-        }
-
         $typed = array_values(array_filter($arms));
         $union = count($typed) === 1 ? $typed[0] : ValueResult::unionResults($typed);
 
-        return DroppedUnionArms::warnOfJoinDrop([...$union, 'optional' => $union['optional'] || $optional], $dropped, $scope);
+        return DroppedUnionArms::leftOutOfJoin([...$union, 'optional' => $union['optional'] || $optional], $left, $scope);
     }
 
     /**
@@ -550,7 +547,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     {
         $stands = $this->readingStands($reading, $dropped);
         $drops = $stands && DroppedUnionArms::dropped() !== $dropped;
-        $listed = $drops && $reading['type'] === 'never[]';
+        $listed = $drops && VisibleGaps::aside($reading['type'])[0] === 'never[]';
         $left = $drops && ! $listed ? $this->leftMembers($reading, $span['expr']) : [];
 
         if ($stands && ! $listed && $left === []) {
@@ -579,7 +576,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function leftMembers(array $reading, Expr $assigned): array
     {
-        $members = TsTypeShape::members($reading['type']);
+        $members = VisibleGaps::members($reading['type'])[0] ?? null;
         $arms = DroppedUnionArms::heldPlaceholderArms();
 
         if ($members === null || $arms === [] || ! $assigned instanceof Array_) {
@@ -590,7 +587,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $left = [];
 
         foreach ($members as [$printed, $type]) {
-            $key = in_array($type, self::PLACEHOLDERS, true) ? PrintedKey::decode($printed) : null;
+            $key = in_array(VisibleGaps::aside($type)[0], self::PLACEHOLDERS, true) ? PrintedKey::decode($printed) : null;
             $item = $key === null ? null : $items[$key] ?? null;
             $own = $item === null ? [] : array_values(array_filter(
                 $arms,
@@ -623,7 +620,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         foreach ($members as $index => [$printed, $type]) {
             $tagged = isset($left[$printed]) ? $this->taggedMember($declared['type'], (string) PrintedKey::decode($printed)) : null;
 
-            if ($tagged !== null && $this->admitsPlaceholder($tagged, $type)) {
+            if ($tagged !== null && $this->admitsPlaceholder($tagged, VisibleGaps::aside($type)[0])) {
                 $members[$index][1] = $filled[] = $tagged;
                 array_push($arms, ...$left[$printed]);
             }
@@ -942,7 +939,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function listElement(array $list): ?array
     {
-        $element = ArrayArms::listElement($list['type']);
+        $element = ArrayArms::listElement(VisibleGaps::aside($list['type'])[0]);
 
         return $element === null || $element === 'unknown' || $element === 'never'
             ? null

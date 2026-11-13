@@ -39,11 +39,26 @@ inline `@var` replaces a whole `null` the drop left, a whole `never[]` where the
 its own item's drop left where the tag's member admits it; a member a nested literal, a helper or another local left
 stays as it is.
 
+A `@return` that types the key, on `toArray()` or a spread helper, types the arm where it stands, beside every arm the
+body proves is sent: `DeclaredGapsResource`'s `score`, which holds `null`, a length or an untypable value, publishes
+`number | null | string` under `int|string|null`. A drop that warned no longer does: `count` in the same resource's
+`summary`, `null` or an untypable value, publishes `number | null` under `int|null` with no warning. Only what the
+docblock leaves untyped, such as a `mixed` member or a key it does not name, is left out as above.
+
+The exception is a key that a spread of a local or of a ternary writes into the literal `toArray()` returns, or into
+the one a spread helper returns under its own `@return` where `toArray()` has none: such a literal writes its keys out
+of the [gap mode](./components/ast-engine.md#visible-gaps). Under `@return array{k: string|list<int>}`,
+`return ['k' => 'x', ...$maybe];`, where `$maybe` may be `['k' => cache('k')]`, publishes `k: string` with no warning,
+and so does a spread of `$c ? ['k' => 'a'] : ['k' => cache('k')]`. The same literal assigned to a local before the
+return, returned by a spread helper under `toArray()`'s `@return`, or built as each row of a list the docblock types
+publishes `k` as `string | number[]`.
+
 A spread helper's or a merge call's join drops a branch whose `@return array{…}` fill names a class whose name another
 branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or
 `k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
 the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
-override's among them, are left out with no warning.
+override's among them, are left out with no warning. In a spread helper, a `@return` that types the key, the helper's
+own or `toArray()`'s, types the dropped branch in place instead.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -181,6 +196,35 @@ the `null` the call can write.
 `['o' => 1, ...$this->opaque()]` publishes `o: number` even when `opaque()` can return `['o' => 'x']`. A `$this->`,
 `self::` or `static::` spread whose helper the engine cannot read adds no key, so the keys before it keep their own
 types; one read by its first return alone adds that return's keys over them, though a later return may send others.
+So can the spread of a resource, model or collection inside a merged array, or inside a helper read for a nested value,
+which the package leaves unread: the keys written before it, a spread's too, keep their own types.
+
+### A ternary of literals returned whole publishes none of their keys
+
+`return $c ? ['by' => $this->author] : ['id' => 1];` in `toArray()` publishes neither literal's keys: a ternary is not
+one of the returns the analyzer reads. A spread helper that returns one is a helper the engine
+[cannot read](#a-spread-whose-helper-the-engine-cannot-read-whole-can-mistype-the-keys-it-writes), even under its own
+`@return array{by?: int}`: `['by' => 'x', ...$this->maybe()]`, where `maybe()` returns `$c ? ['by' => 1] : []`,
+publishes `by: string`, though `1` arrives. Return each literal from its own branch of an `if`.
+
+### A key an array writes twice follows PHP and `filter()`, except where the write is out of the literal's sight
+
+A literal's keys publish what PHP and Laravel send when the literal writes one key twice: a later write wins, one that
+may not land joins the earlier value, a `when()` value replaces it, and a `merge()` beats the keys after it. These
+writes stay outside that reading:
+
+- A `merge()` or `mergeWhen()` inside a helper's or a local's array lifts within that array, while Laravel lifts it
+  where the array is spread. `['k' => 1, ...$this->withMerge()]` publishes the helper's merged `k` beside `1`, though
+  only `1` is sent; `[...$this->withMerge(), 'k' => 1]` publishes `k: number`, though Laravel sends the merged value
+  wherever the merge runs.
+- An empty or list `merge()` renames the string keys after it to numbers, which publish under their names.
+- A value spread the walk cannot read leaves the key before it as it was, as a local written and spread inside one
+  block, or a map local given a named key: `['k' => 1, ...$map]` after `$map['k'] = 'x'` publishes `k: number`.
+- The keys an open value holds besides its named ones never replace an earlier key of their name.
+- A same-named enum a later write may set beside an `EnumResource` wrap publishes the wrap alone, as a ternary of the
+  two does.
+
+Write the key once, or type it with `#[TsCasts]`.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
@@ -272,7 +316,9 @@ the `null` the type admits, or build the wrap inline in the callback, which publ
 
 `'role' => EnumResource::make($this->role)` in an event's `broadcastWith()` publishes `RoleType` for every enum, though
 the payload sends the resource object, `{ name, value, backed, … }`. API resources, pages and shared data rewrite such a
-key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. An enum whose
+key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. Under a nested key, a
+single wrap publishes `{ w: AsEnum<typeof Status> }` instead and imports neither `AsEnum` nor `Status`, which is
+`TS2304` in a consumer's build. An enum whose
 `#[TsType]` or `custom_ts_mappings` entry types its values still publishes its own `…Type` here. Override the key with
 an import-aware `#[TsCasts]`, typed by a name your own module exports, such as
 `export type RoleResource = AsEnum<typeof Role>`.
@@ -632,6 +678,12 @@ or the key's `@return` docblock, which fills the member.
 An open shape, `array{a: int, ...}`, publishes only its named keys, and an open list shape publishes `unknown[]`.
 An open positional shape, `array{int, ...}`, publishes `unknown[]` too, though it may carry string keys and encode as an
 object.
+
+### A key named only at runtime is left out, even under `@return array<string, V>`
+
+`(string) $request->input('k') => $value` publishes no key, though Laravel sends it and `@return array<string, V>`
+types every key. A key with literal text around the variable, such as `"{$name}_label"`, publishes as an index
+signature, which that docblock types ([Interpolated keys](./components/resource-ast-analyzer.md#interpolated-keys)).
 
 ### An index signature its body types can fail to compile beside a key it cannot take in
 
@@ -1015,6 +1067,11 @@ model is left out, since the type published for that member may hold a null the 
 a null held in a local, as in `$out = null; … return $out;`, and one returned from a body the engine cannot read or
 that reads its cast back through itself.
 
+On a NOT NULL column, a class or `Castable` cast publishes `serialize()`'s type with no `| null` from `get()`, since
+the column never holds a NULL. A `get()` that maps a stored value to null, as one turning `''` into `null` does, still
+sends that null, which the type leaves out; a `null` that `serialize()` itself declares or returns stays. An API
+resource reading the attribute off the model keeps its `| null`.
+
 ### An `array`, `collection` or `AsCollection` cast publishes a list, though an object payload is sent as an object
 
 `'settings' => 'array'` publishes `unknown[]`, as do `collection`, `AsCollection` and their encrypted forms, but a
@@ -1146,12 +1203,13 @@ use string keys.
 `'tiers' => KeyedR::make($x)->resolve($request)` publishes `KeyedR`, whose interface keeps its numeric keys, but the
 outer resource's `filter()` enters the array `resolve()` returns and re-indexes it.
 
-### An explicit key written before a spread publishes its own type, though the spread's value wins
+### A key beside a spread of a map can publish a type PHP does not send
 
-`['id' => 'x', ...$arm]` publishes `Omit<Arm, 'id'> & { id: string }`, though PHP lets the later spread write the
-arm's own `id`. Every explicit key is subtracted from every spread arm, whatever their order. An array union reads as
-that spread with its operands swapped, so `$arm + ['id' => 'x']` publishes the same. Write the key after the spread,
-or on the left of `+`.
+`$request->all() + ['id' => 'x']` publishes `Omit<Record<string, unknown>, 'id'> & { id: string }`, though PHP's `+`
+keeps the request's own `id`. An array union reads as a spread with its operands swapped, and a map whose values the
+package cannot type leaves each key before it as it is; one it can type widens each with its value. A string map
+spread before a key its value does not fit reads that key as `never`, since TypeScript cannot drop a key from a
+signature: `[...$this->options, 'a' => 1]`. Write the key on the left of `+`, or type it with `#[TsCasts]`.
 
 ### A `parent::` spread that cycles back into itself types a parameter by the first call alone
 

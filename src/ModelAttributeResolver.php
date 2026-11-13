@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\ModelInfo;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Carbon\CarbonImmutable;
 use Closure;
 use Exception;
@@ -267,11 +268,9 @@ class ModelAttributeResolver
         }
 
         if ($cast !== null && $cast !== '' && $cast !== 'attribute' && $cast !== 'accessor') {
-            $tsInfo = LaravelTsPublish::castToTsType($cast);
+            $tsInfo = LaravelTsPublish::columnCastToTsType($cast, $attr['nullable']);
 
-            $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
-
-            return $this->appendNullable($tsInfo, $attr['nullable'], $cast);
+            return $this->castAttributeType($ctx['reflection'], $attr, $tsInfo);
         }
 
         if ($attr['type'] === null || $attr['type'] === '') {
@@ -313,16 +312,15 @@ class ModelAttributeResolver
 
         $tsInfo = LaravelTsPublish::castValueToTsType((string) $attr['cast']);
 
-        // A get() that says nothing leaves the reading as it was: an interface caster's serialize() type.
+        // A get() that says nothing leaves the reading as it was: an interface caster's serialize() type, read with no
+        // column, so a NOT NULL one keeps get()'s null here.
         if (TsTypeString::isUnknownOnly($tsInfo['type'])
             && array_all($casters ?? [], static fn (string $caster): bool => is_a($caster, SerializesCastableAttributes::class, true))
         ) {
-            return $this->resolveAttribute($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals);
+            $tsInfo = LaravelTsPublish::castToTsType((string) $attr['cast']);
         }
 
-        $tsInfo = $this->refineWithPropertyDocblock($ctx['reflection'], $attributeName, $tsInfo);
-
-        return $this->appendNullable($tsInfo, $attr['nullable'], $attr['cast']);
+        return $this->castAttributeType($ctx['reflection'], $attr, $tsInfo);
     }
 
     /**
@@ -823,7 +821,7 @@ class ModelAttributeResolver
         $type = $this->resolveAttribute($modelFqcn, $column)['type'];
 
         // Its callers carry no import, so a column typed by an enum or a class declines.
-        return array_diff(TsTypeString::splitTopLevelUnion($type), ['string', 'number', 'boolean', 'null']) === []
+        return array_diff(TsTypeString::splitTopLevelUnion(VisibleGaps::aside($type)[0]), ['string', 'number', 'boolean', 'null']) === []
             ? $type
             : null;
     }
@@ -1234,6 +1232,8 @@ class ModelAttributeResolver
     protected function isEntirelyVagueTsType(string $type): bool
     {
         // A lone `null` is exact, though withoutNullArm() leaves `unknown` for it.
+        $type = VisibleGaps::aside($type)[0];
+
         return $type !== 'null'
             && in_array(TsTypeString::withoutNullArm($type), ['unknown', 'unknown[]', 'object', 'unknown[] | Record<string, unknown>'], true);
     }
@@ -1979,6 +1979,21 @@ class ModelAttributeResolver
     private static function serializes(string $caster): bool
     {
         return method_exists($caster, 'serialize');
+    }
+
+    /**
+     * A cast attribute's type: its cast's reading, refined by the model's `@property` tag, with the column's null.
+     *
+     * @param  ReflectionClass<Model>  $reflection
+     * @param  AttributeInfo  $attr
+     * @param  TypeScriptTypeInfo  $tsInfo
+     * @return TypeScriptTypeInfo
+     */
+    private function castAttributeType(ReflectionClass $reflection, array $attr, array $tsInfo): array
+    {
+        $tsInfo = $this->refineWithPropertyDocblock($reflection, $attr['name'], $tsInfo);
+
+        return $this->appendNullable($tsInfo, $attr['nullable'], $attr['cast']);
     }
 
     /**

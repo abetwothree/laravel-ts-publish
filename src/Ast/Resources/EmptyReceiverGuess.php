@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ResourceWrapping;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use ReflectionClass;
 
@@ -67,7 +68,7 @@ final class EmptyReceiverGuess
         $key = ResourceWrapping::key(self::COLLECTION);
         $own = ResourceWrapping::key($collection);
 
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'admits-empty-response:'.$collection.'@'.($key ?? '').'@'.($own ?? ''),
             function () use ($collection, $key, $own): bool {
                 // The caller's type follows this body; the memo replays the files recorded here on every later read.
@@ -95,6 +96,8 @@ final class EmptyReceiverGuess
      */
     private static function isList(?string $type): bool
     {
+        $type = $type === null ? null : VisibleGaps::aside($type)[0];
+
         return $type !== null && str_ends_with($type, '[]') && count(TsTypeString::splitTopLevelUnion($type)) === 1;
     }
 }

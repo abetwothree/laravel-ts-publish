@@ -4,15 +4,21 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\GapModeLabelCast;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\GapModeShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
@@ -31,6 +37,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelp
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FirstClassMapChainResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillBranchesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeKeysResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeLevelsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeModelReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializableEnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
@@ -66,9 +78,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariadicWalkResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GapModeReadsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\GapModeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\GapModeHeldValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
@@ -98,6 +113,11 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
+use PhpParser\Node;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\Accounting\Models\Invoice;
 use Workbench\Accounting\Models\Payment;
@@ -7060,6 +7080,29 @@ test('mergeReturnBranches() unions the body values beside the types, and keeps t
         ->and($plain->properties[0])->not->toHaveKey('bodyType');
 });
 
+// A key a branch lacks leaves a held value there, while a value any branch removes takes the key with it.
+test('mergeReturnBranches() marks a key a branch lacks absent, and keeps a value a branch removes removed', function () {
+    $entry = fn (string $name, array $facts = []): array => [
+        'name' => $name, 'type' => 'string', 'optional' => $facts !== [], 'description' => '', ...$facts,
+    ];
+    $merged = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->mergeReturnBranches([
+        new ResourceAnalysis(properties: [
+            $entry('both'), $entry('one'), $entry('when', ['removed' => true]), $entry('[key: string]', ['removed' => true]),
+        ]),
+        new ResourceAnalysis(properties: [$entry('both'), $entry('when', ['absent' => true]), $entry('[key: string]')]),
+    ]);
+
+    expect(array_map(
+        static fn (array $property): array => array_intersect_key($property, ['optional' => true, 'absent' => true, 'removed' => true]),
+        array_column($merged->properties, null, 'name'),
+    ))->toBe([
+        'both' => ['optional' => false],
+        'one' => ['optional' => true, 'absent' => true],
+        'when' => ['optional' => true, 'absent' => true, 'removed' => true],
+        '[key: string]' => ['optional' => false],
+    ]);
+});
+
 /**
  * Branches setting `either`, each a type and the token slots a declaration recorded for it, if any.
  *
@@ -7905,3 +7948,208 @@ it('keeps today\'s reading for a getAttribute() key that is no literal, an unpac
         'original' => 'unknown',
     ]);
 });
+
+/**
+ * The memo's keys that match $pattern, by the name its first group captures, each with whether it was read with the
+ * gap mode on (`gaps`), off (`plain`) or both, in the order the reads stored them.
+ *
+ * @return array<string, string>
+ */
+function gapModeReads(string $pattern): array
+{
+    $reads = [];
+
+    foreach (resolve(AnalysisMemo::class)->keys() as $key) {
+        if (preg_match($pattern, $key, $match) === 1) {
+            $mode = str_ends_with($key, '@gaps') ? 'gaps' : 'plain';
+            $reads[$match[1]] = array_values(array_unique([...$reads[$match[1]] ?? [], $mode]));
+        }
+    }
+
+    return array_map(static fn (array $modes): string => implode(', ', $modes), $reads);
+}
+
+/**
+ * The helper methods a run read through MethodReturnTypeResolver, each with the gap mode it read them in.
+ *
+ * @return array<string, string>
+ */
+function gapModeHelperReads(): array
+{
+    return gapModeReads('/^method-return:[^@]+@(\w+)/');
+}
+
+it('reads a key its @return types in the gap mode, and neither a vague key nor one it leaves out', function () {
+    new ResourceAstAnalyzer(new ReflectionClass(GapModeKeysResource::class))->analyze();
+
+    expect(gapModeHelperReads())->toBe(['typedRead' => 'gaps', 'vagueRead' => 'plain', 'untypedRead' => 'plain']);
+})->group('gap-mode');
+
+it('reads the keys a record types as its @return spells them', function (string $method, array $reads) {
+    new ResourceAstAnalyzer(new ReflectionClass(GapModeKeysResource::class), methodName: $method)->analyze();
+
+    expect(gapModeHelperReads())->toBe($reads);
+})->with([
+    'an informative record, an index signature aside' => ['typedRecord', ['recordRead' => 'gaps', 'signatureRead' => 'plain']],
+    'a record of mixed' => ['mixedRecord', ['mixedRead' => 'plain']],
+    'an optional member and an int member' => ['spelledKeys', ['rowsRead' => 'gaps', 'zeroRead' => 'gaps']],
+])->group('gap-mode');
+
+it('reads no key of share() or provide() in the gap mode for their own @return, but a spread helper\'s own typed key', function (string $subject, string $method, string $own) {
+    new ResourceAstAnalyzer(new ReflectionClass($subject), methodName: $method)->analyze();
+
+    expect(gapModeHelperReads())->toBe([$own => 'plain', 'partRead' => 'gaps', 'looseRead' => 'plain']);
+})->with([
+    'share()' => [GapModeShareMiddleware::class, 'share', 'sharedRead'],
+    'provide()' => [GapModeMetadataProvider::class, 'provide', 'providedRead'],
+])->group('gap-mode');
+
+it('reads in the gap mode what a level read brings beside a key its @return types', function (string $method, string $helper) {
+    new ResourceAstAnalyzer(new ReflectionClass(GapModeLevelsResource::class), methodName: $method)->analyze();
+
+    expect(gapModeHelperReads())->toBe([$helper => 'gaps']);
+})->with([
+    'a spread helper' => ['spreadsHelper', 'spreadRead'],
+    'a whole return of a helper' => ['returnsHelper', 'returnedRead'],
+    'a returned local\'s whole write' => ['writesLocal', 'writtenRead'],
+    'the walk\'s alias' => ['aliasesWalk', 'aliasRead'],
+    'the walk\'s alias in a += of the variable' => ['addsAliasedKey', 'addedAliasRead'],
+    'the walk\'s alias in a whole write spreading the variable' => ['spreadsAliasedKey', 'spreadAliasRead'],
+    'a merge() call' => ['mergesLiteral', 'mergedRead'],
+    'a merge() literal\'s typed key' => ['mergesTypedKey', 'mergedTypedRead'],
+    'an eagerly bound helper argument' => ['passesArgument', 'argumentRead'],
+    'a documented helper\'s argument under an undocumented caller' => ['passesDocumentedArgument', 'documentedArgumentRead'],
+    'a value spread the fold writes in place' => ['spreadsValue', 'pairs'],
+    'a map spread' => ['spreadsMap', 'counts'],
+])->group('gap-mode');
+
+it('reads with the gap mode off what a level read brings where no @return types a key', function (string $method, string $helper) {
+    new ResourceAstAnalyzer(new ReflectionClass(GapModeLevelsResource::class), methodName: $method)->analyze();
+
+    expect(gapModeHelperReads())->toBe([$helper => 'plain']);
+})->with([
+    'an untyped key the walk writes beside a typed key that never reads the variable' => ['writesBesideKey', 'besideRead'],
+    'an index signature the walk writes from the variable' => ['writesSignatureAlias', 'signatureAliasRead'],
+    'an undocumented helper\'s argument under an undocumented caller' => ['passesPlainArgument', 'plainArgumentRead'],
+])->group('gap-mode');
+
+it('reads a whole return of parent::toArray() in the gap mode beside a key its @return types', function () {
+    new ResourceAstAnalyzer(new ReflectionClass(GapModeChildResource::class))->analyze();
+
+    expect(gapModeHelperReads())->toBe(['parentRead' => 'gaps']);
+})->group('gap-mode');
+
+it('reads a merge() closure\'s default in the gap mode beside a key its @return types', function () {
+    $analyzer = new class(new ReflectionClass(GapModeLevelsResource::class), null, 'mergesClosureDefault') extends ResourceAstAnalyzer
+    {
+        /**
+         * The subject's handlers behind one that remembers each `new` it sees, so its key says the read's gap mode.
+         *
+         * @return list<ExpressionHandler>
+         */
+        protected function handlers(): array
+        {
+            $probe = new class implements ExpressionHandler
+            {
+                /** @return list<class-string<Expr>> */
+                public function nodeClasses(): array
+                {
+                    return [New_::class];
+                }
+
+                /** Remember the class each `new` names, typing nothing. */
+                public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+                {
+                    if ($expr instanceof New_ && $expr->class instanceof Name) {
+                        resolve(AnalysisMemo::class)->remember('probe-new:'.$expr->class->toString(), static fn (): null => null);
+                    }
+
+                    return null;
+                }
+            };
+
+            return [$probe, ...parent::handlers()];
+        }
+    };
+
+    $analyzer->analyze();
+
+    expect(gapModeReads('/^probe-new:(.+?)(?:@|$)/'))->toBe([GapModeHeldValue::class => 'gaps']);
+})->group('gap-mode');
+
+it('reads a model accessor under a typed key in the gap mode, and a caster body with it off', function () {
+    new ResourceAstAnalyzer(new ReflectionClass(GapModeModelReadsResource::class), GapModeReadsPost::class)->analyze();
+
+    expect(gapModeReads('/^accessor-body:[^@]+@(\w+)/'))->toBe(['summary' => 'gaps'])
+        ->and(gapModeHelperReads())->toBe(['summaryText' => 'gaps', 'label' => 'plain'])
+        ->and(gapModeReads('/^caster-body:([^@]+)@/'))->toBe([GapModeLabelCast::class => 'plain']);
+})->group('gap-mode');
+
+it('keeps a gap in the gap mode for a spread helper\'s return that leaves a key untyped with no write to name (PJ3b)', function (bool $shows) {
+    $analyzer = new class(new ReflectionClass(GapModeKeysResource::class)) extends ResourceAstAnalyzer
+    {
+        /**
+         * The helper join of two returns, the second leaving `k` untyped.
+         */
+        public function joinedReturns(): string
+        {
+            [$typed, $untyped] = [new ResourceAnalysis, new ResourceAnalysis];
+            $typed->addProperty('k', ['type' => 'string', 'optional' => false]);
+            $untyped->addProperty('k', ['type' => 'unknown', 'optional' => false]);
+            $returns = [new Variable('typed'), new Variable('untyped')];
+
+            return $this->recordedMergeJoin(
+                $this->mergeReturnBranches([$typed, $untyped], dropsUntypedBranches: true, returns: $returns, scope: $this->analysisScope()),
+                [$typed, $untyped],
+                $returns,
+            )->properties[0]['type'];
+        }
+    };
+    $type = $shows ? resolve(AnalysisMemo::class)->showingGaps($analyzer->joinedReturns(...)) : $analyzer->joinedReturns();
+
+    expect(VisibleGaps::stripped($type)[0])->toBe('string')
+        ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
+})->with([false, true]);
+
+it('strips the gaps its @return leaves only in a frame entered with the gap mode off, so a caller can fill them', function () {
+    $analyze = fn (): string => new ResourceAstAnalyzer(new ReflectionClass(GapFillParentResource::class))->analyze()->properties[0]['type'];
+    $shown = resolve(AnalysisMemo::class)->showingGaps($analyze);
+
+    expect($analyze())->toBe('null[]')
+        ->and(VisibleGaps::ids($shown))->toHaveCount(1)
+        ->and(VisibleGaps::stripped($shown)[0])->toBe('null[]');
+});
+
+it('strips a key its @return leaves untyped before the frame joins its returns, and keeps a typed key\'s gaps for the merge', function () {
+    $analyzer = new class(new ReflectionClass(GapFillBranchesResource::class)) extends ResourceAstAnalyzer
+    {
+        /** @var list<array<string, string>> each branch's keys as the join reads them, `gaps` where one holds a gap */
+        public array $joined = [];
+
+        /**
+         * Record each branch's keys, then join the branches as the analyzer does.
+         *
+         * @param  list<ResourceAnalysis>  $analyses
+         * @param  list<Node>  $returns
+         */
+        public function mergeReturnBranches(
+            array $analyses,
+            bool $dropsUntypedBranches = false,
+            bool $keepsLoneNull = false,
+            array $returns = [],
+            ?AnalysisScope $scope = null,
+        ): ResourceAnalysis {
+            foreach ($analyses as $branch) {
+                $this->joined[] = array_map(
+                    fn (string $type): string => VisibleGaps::ids($type) === [] ? 'plain' : 'gaps',
+                    array_column($branch->properties, 'type', 'name'),
+                );
+            }
+
+            return parent::mergeReturnBranches($analyses, $dropsUntypedBranches, $keepsLoneNull, $returns, $scope);
+        }
+    };
+
+    expect(array_column($analyzer->analyze()->properties, 'type', 'name'))->toBe(['k' => 'string | number[]', 'loose' => 'string'])
+        ->and($analyzer->joined)->toBe([['k' => 'gaps', 'loose' => 'plain'], ['k' => 'plain', 'loose' => 'plain']]);
+})->group('gap-mode');

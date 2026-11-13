@@ -42,7 +42,7 @@ final class AuthUserResolver
     public function soleModel(): ?string
     {
         $model = $this->model();
-        $models = $model === null ? [] : resolve(AnalysisMemo::class)->remember('auth-guard-models', $this->guardModels(...));
+        $models = $model === null ? [] : resolve(AnalysisMemo::class)->rememberFact('auth-guard-models', $this->guardModels(...));
 
         return $model !== null && $models === [self::className($model)] ? $model : null;
     }

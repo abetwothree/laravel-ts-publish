@@ -12,8 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Closure;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Fits each key a `#[TsCasts]` entry retypes to the text that entry publishes.
@@ -161,16 +159,10 @@ final class CastChannels
             $wraps = $this->wrapsOf($analysis, $name);
 
             $cast = $analysis->casts[$name] ?? null;
-            $leftOut = isset($analysis->leftOutValues[$name]);
             $analysis->forgetChannels($name);
 
             if ($cast !== null) {
                 $analysis->casts[$name] = $cast;
-            }
-
-            // A text retypes the key's value, never whether that value may be left out; a refiner fill is read further.
-            if ($leftOut) {
-                $analysis->leftOutValues[$name] = true;
             }
 
             $named = $declared === null ? null : $this->byKind(array_values(array_filter($declared)));
@@ -317,12 +309,7 @@ final class CastChannels
         $kinds = ['enums' => [], 'models' => [], 'resources' => []];
 
         foreach ($fqcns as $fqcn) {
-            $kind = match (true) {
-                enum_exists($fqcn) => 'enums',
-                is_a($fqcn, Model::class, true) => 'models',
-                is_a($fqcn, JsonResource::class, true) => 'resources',
-                default => null,
-            };
+            $kind = MethodAnalysis::channelKind($fqcn);
 
             if ($kind !== null) {
                 $kinds[$kind][] = $fqcn;

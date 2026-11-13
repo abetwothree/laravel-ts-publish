@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -154,7 +155,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function bindsClassOrNull(?array $value): bool
     {
-        return $value !== null && ($value['type'] === 'null'
+        return $value !== null && (VisibleGaps::aside($value['type'])[0] === 'null'
             || isset($value['modelFqcn'])
             || isset($value['enumFqcn'])
             || isset($value['directEnumFqcn'])

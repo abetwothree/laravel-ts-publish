@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
@@ -71,6 +72,7 @@ class TestCase extends Orchestra
         PublishedResourceRegistry::reset();
         PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
+        DroppedUnionArms::reset();
         ClassTypeOverride::flush();
         ComposedClassTypes::flush();
         RoutedControllers::flush();

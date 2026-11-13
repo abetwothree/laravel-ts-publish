@@ -531,7 +531,7 @@ final class DeclaredClasses
      */
     private static function declaresOwnReturn(string $class, string $method, bool $generics): bool
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             ($generics ? 'returns-own-class:' : 'returns-static:').$class.'::'.$method,
             static function () use ($class, $method, $generics): bool {
                 $reflection = new ReflectionMethod($class, $method);

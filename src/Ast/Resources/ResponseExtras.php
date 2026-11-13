@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Http\Resources\Json\JsonResource;
 use ReflectionClass;
 use ReflectionMethod;
@@ -79,11 +80,14 @@ final readonly class ResponseExtras
      */
     public static function ofValue(array $value): self
     {
+        // A gap arm, which no rule typed, sends keys no rule names, which the extras read as they read none.
+        $value = [...$value, 'type' => VisibleGaps::aside($value['type'])[0]];
+
         if ($value['type'] === 'never[]') {
             return self::none();
         }
 
-        $members = TsTypeShape::members($value['type']);
+        $members = VisibleGaps::members($value['type'])[0] ?? null;
 
         return $members === null || $members === []
             ? new self(null, null, false)

@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -297,7 +298,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function listsItemsOf(string $type, string $model): bool
     {
         return array_all(
-            TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($type)),
+            TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm(VisibleGaps::aside($type)[0])),
             fn (string $arm): bool => $arm === $model.'[]' || $arm === $this->paginatorName($arm).'<'.$model.'>',
         );
     }
@@ -508,7 +509,7 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     {
         $paginators = [];
 
-        foreach (TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($type)) as $arm) {
+        foreach (TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm(VisibleGaps::aside($type)[0])) as $arm) {
             $paginator = $this->paginatorName($arm);
             $paginators[$paginator ?? ''] = $paginator;
         }

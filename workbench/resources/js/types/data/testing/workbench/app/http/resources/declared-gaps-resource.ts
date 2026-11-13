@@ -7,10 +7,10 @@
  */
 export interface DeclaredGapsResource
 {
-    scores: { score: number | null }[];
-    contacts: ({ email: string | null } | null)[];
+    scores: { score: number | null | string }[];
+    contacts: ({ email: string | null } | null | { email: string; name: string | null })[];
     rows: { name: string | null; locale: string }[];
-    branches: { name: string | null; locale: string }[];
-    pairs: unknown[][];
+    branches: ({ name: string | null } | { name: string | null; locale: string })[];
+    pairs: [string, number][];
     summary: { label: string; count: number | null };
 }

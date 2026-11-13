@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -18,9 +20,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
 
-uses(TestCase::class)->in(__DIR__);
+// The gap gate (.github/scripts/gap-gate.sh) reads every key in the gap mode, which must change no published byte.
+uses(TestCase::class)
+    ->beforeEach(fn () => ReturnMembers::$typesEveryKey = (bool) getenv('TS_PUBLISH_GAP_GATE'))
+    ->in(__DIR__);
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -228,4 +236,30 @@ function runtimeClassCall(string $php): Expr
     assert($statement instanceof Expression);
 
     return $statement->expr;
+}
+
+/**
+ * The value one expression resolves to through a resource's profile, where `gapped('T')` reads as the type T, so a test
+ * hands a reader a value holding gap arms or the open marker as a read in the gap mode leaves one.
+ *
+ * @param  class-string  $resource
+ * @param  class-string|null  $model
+ * @return array<string, mixed>
+ */
+function gappedValue(string $php, string $resource, ?string $model = null): array
+{
+    $analyzer = new class(new ReflectionClass($resource), $model) extends ResourceAstAnalyzer
+    {
+        /** Read `gapped('T')` as T, and every other value as the resource reads it. */
+        protected function analyzeValueExpression(Expr $expr): array
+        {
+            $type = $expr instanceof FuncCall && $expr->name instanceof Name && $expr->name->toString() === 'gapped'
+                ? ($expr->getArgs()[0]->value ?? null)
+                : null;
+
+            return $type instanceof String_ ? ['type' => $type->value, 'optional' => false] : parent::analyzeValueExpression($expr);
+        }
+    };
+
+    return $analyzer->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr);
 }

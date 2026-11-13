@@ -15,8 +15,8 @@ use PhpParser\Parser;
 use PhpParser\ParserFactory;
 
 /**
- * Single php-parser entry point: name-resolved ASTs, a closure argument's docblock on the closure, cached per file and
- * recorded as cache dependencies.
+ * Single php-parser entry point: name-resolved ASTs, a closure argument's docblock on the closure, each node marked
+ * with its file, cached per file and recorded as cache dependencies.
  *
  * @phpstan-type MethodsByName = array<string, list<ClassMethod>>
  *
@@ -24,6 +24,9 @@ use PhpParser\ParserFactory;
  */
 class AstParser
 {
+    /** The node attribute holding the file a node was parsed from, so it keeps its identity across a file's parses. */
+    public const string SOURCE_FILE = 'sourceFile';
+
     /** Spread analysis re-reads the same file many times per run; the cap keeps a large app from ballooning memory. */
     private const int MAX_CACHED_FILES = 256;
 
@@ -68,7 +71,7 @@ class AstParser
             unset($this->fileAsts[$evicted], $this->fileMethods[$evicted]);
         }
 
-        return $this->fileAsts[$path] = $this->parseSource((string) file_get_contents($path));
+        return $this->fileAsts[$path] = $this->parseSource((string) file_get_contents($path), $path);
     }
 
     /**
@@ -94,12 +97,12 @@ class AstParser
     }
 
     /**
-     * Parse raw PHP source into a name-resolved AST, each closure argument's docblock on its closure. Uncached; prefer
-     * parseFile() for on-disk code.
+     * Parse raw PHP source into a name-resolved AST, each closure argument's docblock on its closure, and each node
+     * marked with $path where the source is a file's. Uncached; prefer parseFile() for on-disk code.
      *
      * @return array<Node>
      */
-    public function parseSource(string $source): array
+    public function parseSource(string $source, ?string $path = null): array
     {
         try {
             $stmts = $this->parser->parse($source);
@@ -113,7 +116,7 @@ class AstParser
 
         $traverser = new NodeTraverser;
         $traverser->addVisitor(new NameResolver);
-        $traverser->addVisitor(new ArgumentDocCommentVisitor);
+        $traverser->addVisitor(new ArgumentDocCommentVisitor($path));
 
         return $traverser->traverse($stmts);
     }

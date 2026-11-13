@@ -24,3 +24,10 @@ test('an added key meets a response key or the body key by the key it names, how
     'a response key with an escaped quote' => ["{ 'it\\'s': number }", '{ "it\'s": string }', null, "{ 'it\\'s': unknown }"],
     'a bare decimal key, optional on one side' => ['{ 1.5?: number }', '{ 1.5: string }', null, '{ 1.5: unknown }'],
 ]);
+
+test('reads added keys past a gap arm beside them and their open marker', function () {
+    expect(responseExtrasApplied('{ a: number } | $gap1', 'UserCardResource', 'data'))
+        ->toBe(responseExtrasApplied('{ a: number }', 'UserCardResource', 'data'))
+        ->and(ResponseExtras::ofValue(['type' => 'never[] | $gap1', 'optional' => false])->object)->toBeNull()
+        ->and(ResponseExtras::ofValue(['type' => '{ a?: number; #$open: unknown }', 'optional' => false])->sent)->toBeNull();
+});

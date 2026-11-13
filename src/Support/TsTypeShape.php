@@ -142,6 +142,18 @@ final class TsTypeShape
     }
 
     /**
+     * The separator one object literal's members print with: `, ` where its top-level separators are all commas, as
+     * an Inertia page's props print, else `; `.
+     */
+    public static function memberSeparator(string $object): string
+    {
+        $inner = substr($object, 1, -1);
+        $commas = count(self::splitTopLevel($inner, [','])) > 1;
+
+        return $commas && count(self::splitTopLevel($inner, [';'])) === 1 ? ', ' : '; ';
+    }
+
+    /**
      * Each part of a type that is an intersection of object literals, each maybe `Omit<>`'d against quoted keys or an
      * object literal's `keyof`, as the object, the names of the keys it drops and the part as printed; null for any
      * other type.
@@ -265,6 +277,16 @@ final class TsTypeShape
     public static function unionArm(string $arm): string
     {
         return self::topLevelPosition($arm, '=') === null ? $arm : '('.$arm.')';
+    }
+
+    /**
+     * One union arm as it stands alone: an arrow without the parentheses unionArm() gives it beside others.
+     */
+    public static function loneArm(string $arm): string
+    {
+        $inner = self::isWrapped($arm, '(', ')') ? substr($arm, 1, -1) : null;
+
+        return $inner !== null && self::unionArm($inner) === $arm ? $inner : $arm;
     }
 
     /**

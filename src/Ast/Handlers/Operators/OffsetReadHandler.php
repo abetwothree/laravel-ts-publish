@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Scalar\Int_;
@@ -52,12 +53,14 @@ final class OffsetReadHandler implements ExpressionHandler
 
     /**
      * What a key reads from a holder: each arm's member, and `null` for a `null` arm, optional where a member is; an
-     * empty array arm holds none. Null where an arm declines, or no arm holds a member.
+     * empty array arm holds none. Null where an arm declines, or no arm holds a member. The member of a gap arm, which
+     * no rule typed, is that gap.
      *
      * @return ValueExpressionResult|null
      */
     private function keyRead(string $holder, string $key): ?array
     {
+        [$holder, $gaps] = VisibleGaps::aside($holder);
         $types = [];
         $optional = false;
         $nullOnly = true;
@@ -79,7 +82,7 @@ final class OffsetReadHandler implements ExpressionHandler
             $nullOnly = $nullOnly && $arm === 'null';
         }
 
-        return $nullOnly ? null : ['type' => TsTypeString::hoistNull($types), 'optional' => $optional];
+        return $nullOnly ? null : ['type' => VisibleGaps::restored(TsTypeString::hoistNull($types), $gaps), 'optional' => $optional];
     }
 
     /**

@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BracketedReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedItemsPostCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchRowsOfSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
@@ -104,6 +105,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChild
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RandomNotificationUserResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RandomPickPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RankNamedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RowsBeforeTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameBasenameListUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespacePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamespaceWrappedResource;
@@ -112,11 +114,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ScopedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SearchedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverHeldEnumsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TemplateSlugResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyClashResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitWrappedPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoWrapsBesideAliasedKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoWrapsUnderObjectKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnreadCallbackRelaysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarningBagResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WeekScheduleResource;
@@ -184,6 +190,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Http\Resources\InvoiceResource;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressExtendsResource;
 use Workbench\App\Http\Resources\AddressMixinResource;
@@ -259,6 +266,7 @@ use Workbench\App\Http\Resources\TraitSpreadCoverageResource;
 use Workbench\App\Http\Resources\UserExceptResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
+use Workbench\App\Http\Resources\WrapsBesideAliasedRowsResource;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Admin\Store as AdminStore;
 use Workbench\App\Models\Comment;
@@ -277,6 +285,7 @@ use Workbench\App\Models\Warehouse;
 use Workbench\App\Resources\DirectResource;
 use Workbench\App\ValueObjects\PostStats;
 use Workbench\Blog\Http\Resources\ApiArticleResource;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Http\Resources\DealEnumInlineResource;
 use Workbench\Crm\Http\Resources\DealEnumTrioResource;
 use Workbench\Crm\Http\Resources\DealResource;
@@ -1907,6 +1916,153 @@ describe('ResourceTransformer mergePropertyFqcnMaps() overlap guard', function (
     });
 });
 
+// The analysis queues a key's top wraps ahead of the bare enums the @return fills, so the publisher must read them in
+// that order too, or a bare token takes the other same-named enum's alias (GH-154).
+describe('ResourceTransformer two enum wraps beside bare enums that share a name', function () {
+    test('each bare token spells its own enum and the wraps keep theirs', function (bool $tolki, array $types, array $values, string $subject, string $crmSubject) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(WrapsBesideAliasedRowsResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))
+            ->toBe(['subject' => $subject, 'crm_subject' => $crmSubject])
+            ->and($data->typeImports)->toBe($types)
+            ->and($data->valueImports)->toBe($values);
+    })->with([
+        'tolki on' => [
+            true,
+            ['../../../crm/enums' => ['StatusType as CrmStatusType'], '../../enums' => ['StatusType as WorkbenchStatusType']],
+            ['../../../crm/enums' => ['Status as CrmStatus'], '../../enums' => ['Role', 'Status as WorkbenchStatus']],
+            'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { crm: CrmStatusType; status: WorkbenchStatusType }[]',
+            'AsEnum<typeof CrmStatus> | AsEnum<typeof Role> | { status: WorkbenchStatusType; crm: CrmStatusType }[]',
+        ],
+        'tolki off' => [
+            false,
+            ['../../../crm/enums' => ['StatusType as CrmStatusType'], '../../enums' => ['RoleType', 'StatusType as WorkbenchStatusType']],
+            [],
+            'WorkbenchStatusType | RoleType | { crm: CrmStatusType; status: WorkbenchStatusType }[]',
+            'CrmStatusType | RoleType | { status: WorkbenchStatusType; crm: CrmStatusType }[]',
+        ],
+    ]);
+
+    test('the publisher queues the wraps first, as the analysis does', function () {
+        $transformer = new ResourceTransformer(WrapsBesideAliasedRowsResource::class);
+        $analysis = new ResourceAstAnalyzer(new ReflectionClass(WrapsBesideAliasedRowsResource::class), $transformer->modelClass)->analyze();
+
+        $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
+
+        expect($merged['subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('subject'))
+            ->and($merged['crm_subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('crm_subject'));
+    });
+
+    test('two wraps with no @return spell each top arm by its own enum', function (bool $tolki, array $types, array $expected) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(TwoWrapsBesideAliasedKeyResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($expected)
+            ->and($data->typeImports)->toBe($types);
+    })->with([
+        'tolki on' => [
+            true,
+            ['../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'], '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType']],
+            [
+                'subject' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
+                'crm' => 'CrmStatusType',
+                'crm_subject' => 'AsEnum<typeof CrmStatus> | AsEnum<typeof Role>',
+                'app' => 'WorkbenchStatusType',
+            ],
+        ],
+        'tolki off' => [
+            false,
+            ['../../../../../../workbench/app/enums' => ['RoleType', 'StatusType as WorkbenchStatusType'], '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType']],
+            [
+                'subject' => 'WorkbenchStatusType | RoleType',
+                'crm' => 'CrmStatusType',
+                'crm_subject' => 'CrmStatusType | RoleType',
+                'app' => 'WorkbenchStatusType',
+            ],
+        ],
+    ]);
+
+    // A later spread replaces the wrapping key, but the merge keeps its wrap channel: it must not lead the alias queue.
+    test('a key a later spread replaces reads its own enums, not the wraps it replaced', function (bool $tolki) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(SpreadOverTwoWrapsResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'subject' => '{ c: CrmStatusType }',
+            'rows' => '{ c: CrmStatusType; s: WorkbenchStatusType }[]',
+        ])->and($data->valueImports)->toBe([]);
+    })->with(['tolki on' => [true], 'tolki off' => [false]]);
+
+    // The publisher spells two wraps `AsEnum` only where they lead a key's type; elsewhere each reads its bare type.
+    test('wraps the publisher cannot place print their own enums\' bare types, imported', function (string $resource, bool $tolki, string $key, string $type) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer($resource)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([$key => $type])
+            ->and($data->typeImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['RoleType', 'StatusType as WorkbenchStatusType'],
+                '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+            ])
+            ->and($data->valueImports)->toBe([]);
+    })->with([
+        'rows first, tolki on' => [
+            RowsBeforeTwoWrapsResource::class,
+            true,
+            'subject',
+            '{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType',
+        ],
+        'rows first, tolki off' => [
+            RowsBeforeTwoWrapsResource::class,
+            false,
+            'subject',
+            '{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType',
+        ],
+        'under an object key, tolki on' => [
+            TwoWrapsUnderObjectKeyResource::class,
+            true,
+            'row',
+            '{ first: CrmStatusType; subject: WorkbenchStatusType | RoleType | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
+        ],
+        'under an object key, tolki off' => [
+            TwoWrapsUnderObjectKeyResource::class,
+            false,
+            'row',
+            '{ first: CrmStatusType; subject: WorkbenchStatusType | RoleType | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
+        ],
+    ]);
+
+    // A later spread replaces each key, so the enums the replaced value read must not lead the key's alias queue.
+    test('a key a later spread replaces reads its own enum, not those the replaced value held', function (bool $tolki) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        $data = new ResourceTransformer(SpreadOverHeldEnumsResource::class)->data();
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+            'row' => '{ c: StatusType }',
+            'subject' => '{ c: StatusType }',
+            'bare' => '{ c: StatusType }',
+        ])
+            ->and($data->typeImports)->toBe(['../../../../../../workbench/crm/enums' => ['StatusType']])
+            ->and($data->valueImports)->toBe([]);
+    })->with(['tolki on' => [true], 'tolki off' => [false]]);
+
+    // A branch join merges each branch into one holder of no key, so every branch's enums stay queued.
+    test('a key two branches return keeps each branch\'s enum', function () {
+        $data = new ResourceTransformer(BranchRowsOfSameNamedEnumsResource::class)->data();
+
+        expect($data->properties['row']['type'])->toBe('{ c: CrmStatusType } | { s: WorkbenchStatusType }')
+            ->and($data->typeImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+                '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+            ]);
+    });
+});
+
 describe('ResourceTransformer resolveMultiEnumAccessorFqcns() overlap guard', function () {
     test('a property already carrying inline enum FQCNs is not re-queued by the accessor pass', function () {
         $transformer = new ResourceTransformer(WarehouseResource::class);
@@ -2740,7 +2896,7 @@ describe('ResourceTransformer with mixed-ternary collector regressions', functio
         expect($properties['wrapped_history_or_scalar']['type'])->toBe('AsEnum<typeof Status>[] | StatusType');
     });
 
-    test('ThisPropertyHandler::extractPropertiesFromArray() carries the arm shape through $this->merge()', function () {
+    test('a merged literal carries the arm shape through $this->merge()', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $properties = (new ResourceTransformer(MixedEnumMergedResource::class))->data()->properties;
 

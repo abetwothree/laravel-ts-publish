@@ -1518,9 +1518,9 @@ declare global {
             // Columns
             id: number;
             label: string;
-            opens_at: string | null;
+            opens_at: string;
             closes_at: string | null;
-            break_starts_at: string | null;
+            break_starts_at: string;
             break_ends_at: string | null;
             created_at: string | null;
             updated_at: string | null;
@@ -2830,7 +2830,7 @@ declare global {
         }
         /** Spreads a custom parent's `toArray()` that drops an arm beside a string, under a `@return` typing both (GH-154). */
         export interface BoundaryReadingsResource {
-            tags: string[];
+            tags: (string | number[])[];
             id: number;
             extra: boolean;
         }
@@ -2956,7 +2956,7 @@ declare global {
          * byline's `author` is the title string, not the helper's recipient.
          */
         export interface BylineResource {
-            byline: Omit<{ author: string }, 'id' | 'author'> & { id: number; author: { name: string | null; email: string | null } };
+            byline: { id: number; author: string };
         }
         /**
          * First-class callables as values. A key that holds one sends the `{}` json_encode() writes for a Closure, while a
@@ -3469,11 +3469,11 @@ declare global {
          * out-of-order int keys, and a value with no type beside a member the docblock declares more loosely than the body.
          */
         export interface DeclaredGapsResource {
-            scores: { score: number | null }[];
-            contacts: ({ email: string | null } | null)[];
+            scores: { score: number | null | string }[];
+            contacts: ({ email: string | null } | null | { email: string; name: string | null })[];
             rows: { name: string | null; locale: string }[];
-            branches: { name: string | null; locale: string }[];
-            pairs: unknown[][];
+            branches: ({ name: string | null } | { name: string | null; locale: string })[];
+            pairs: [string, number][];
             summary: { label: string; count: number | null };
         }
         /**
@@ -3906,8 +3906,8 @@ declare global {
         }
         /** Undocumented helpers that drop an arm, one spread and one read as a value, under a `@return` typing them (GH-154). */
         export interface HelperReadingsResource {
-            rows: { name: string }[];
-            sections: { items: { t: number[] }[] };
+            rows: { name: string | number }[];
+            sections: { items: { t: number[] | string }[] };
         }
         /** Same morphTo union, reached through the model-delegated analysis rather than an array literal. */
         export interface ImageDelegatedResource {
@@ -4010,12 +4010,12 @@ declare global {
         }
         /** Joins where one branch writes a value no rule types, under a `@return` member typing both branches (GH-154). */
         export interface JoinReadingsResource {
-            params: { t: string }[];
-            walks: { k: string }[];
-            spreads: { k: string; id: number }[];
-            relays: { k?: string; id: number }[];
-            receivers: { name: string }[];
-            named: { name: string }[];
+            params: { t: string | number[] }[];
+            walks: { k: string | number[] }[];
+            spreads: { k: string | number[]; id: number }[];
+            relays: { k?: string | number[]; id: number }[];
+            receivers: { name: string | number }[];
+            named: { name: string | number }[];
         }
         /**
          * Fixture: Kpi::reportable() morphs to two Report models sharing basename and parent segment,
@@ -4694,8 +4694,8 @@ declare global {
         }
         /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
         export interface PlaceholderReadingsResource {
-            fills: { f: never[] }[];
-            pairs: unknown[][];
+            fills: { f: never[] | number[] }[];
+            pairs: [string | null, number][];
         }
         /**
          * Exercises a morphTo reached through a relation filter, where the union lands inside an inline shape.
@@ -5768,7 +5768,7 @@ declare global {
         }
         /** Reads a model's undocumented accessor that maps a cast array, under a `@return` typing it (GH-154). */
         export interface TaggedImageResource {
-            tag_lists: null[];
+            tag_lists: (number[] | null)[];
             url: string;
         }
         /**
@@ -6083,14 +6083,19 @@ declare global {
             count_or_since: number | string;
             translated: unknown;
         }
-        /** Spreads a value that writes a key again, after a helper or a key and before a resource arm (GH-154). */
+        /** Spreads a value that writes a key again, after a helper, a key or a merge and before a resource arm (GH-154). */
         export interface ValueSpreadsResource {
-            helper_then_value: Omit<{ by: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
-            key_then_value: Omit<{ by: string }, 'by'> & { by: { name: string | null; email: string | null } };
-            helper_then_optional: Omit<{ by?: string }, 'id' | 'by'> & { id: number; by: { name: string | null; email: string | null } };
+            helper_then_value: { id: number; by: string };
+            key_then_value: { by: string };
+            helper_then_optional: { id: number; by: { name: string | null; email: string | null } | string };
             value_then_arm: Omit<{ name: number }, keyof MailRecipientResource> & MailRecipientResource;
-            key_then_arm: Omit<{ name?: number }, 'name' | keyof MailRecipientResource> & Omit<MailRecipientResource, 'name'> & { name: { name: string | null; email: string | null } };
-            by: { name: string | null; email: string | null };
+            key_then_arm: Omit<{ name?: number }, keyof MailRecipientResource> & MailRecipientResource;
+            merged_when: { id: number; by?: string };
+            key_then_removable: { id: number; by?: string };
+            merge_when_then_value: { id: number; by: { name: string | null; email: string | null } | string };
+            key_then_open: { by: string };
+            map_then_map: Record<string, string | number>;
+            by: unknown;
         }
         /** Fixture resource exercising variable-return trait method spreads. */
         export interface VarReturnSpreadResource {
@@ -6194,6 +6199,15 @@ declare global {
             title_unresolvable?: unknown;
             status_label?: string;
             appended_status_label?: string | number;
+        }
+        /** Wraps a status or a role beside rows only the `@return` types with two enums named `Status` bare (GH-154). */
+        export interface WrapsBesideAliasedRowsResource {
+            subject: workbench.app.enums.StatusType | workbench.app.enums.RoleType | { crm: workbench.crm.enums.StatusType; status: workbench.app.enums.StatusType }[];
+            crm_subject: workbench.crm.enums.StatusType | workbench.app.enums.RoleType | { status: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType }[];
+        }
+        /** Wraps a post's status or its author's role, else sends rows only the `@return` types with both enums bare (GH-154). */
+        export interface WrapsBesideFilledRowsResource {
+            subject: workbench.app.enums.StatusType | workbench.app.enums.RoleType | { status: workbench.app.enums.StatusType; role: workbench.app.enums.RoleType }[];
         }
     }
     export namespace workbench.app.http.resources.admin {

@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -678,12 +679,15 @@ final class ReceiverClassResolver
      * object no class names, and `$this` read as a class that cannot answer the member. A scalar, an array or `null`
      * holds no object a member read could answer, so it is left out quietly.
      *
+     * The read is handed back, with a gap arm for each write it warns of in the gap mode.
+     *
      * @param  ValueExpressionResult  $read
+     * @return ValueExpressionResult
      */
-    public function warnOfLeftOut(ReceiverType $receiver, array $read, AnalysisScope $scope, ExpressionEngine $engine): void
+    public function warnOfLeftOut(ReceiverType $receiver, array $read, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         if ($receiver->leftOut === [] || $read['type'] === 'unknown') {
-            return;
+            return $read;
         }
 
         $untyped = [];
@@ -714,9 +718,7 @@ final class ReceiverClassResolver
             }
         }
 
-        DroppedUnionArms::warnOfLeftOut($untyped, $scope);
-        DroppedUnionArms::warnOfUnnamedObject($objects, $scope);
-        DroppedUnionArms::warnOfDeclined($readAs, $scope);
+        return DroppedUnionArms::leftOutOfRead($read, $untyped, $objects, $readAs, $scope);
     }
 
     /**
@@ -1059,7 +1061,7 @@ final class ReceiverClassResolver
         return $value instanceof Array_
             || $value instanceof Cast\Array_
             || array_all(
-                TsTypeString::splitTopLevelUnion($type),
+                TsTypeString::splitTopLevelUnion(VisibleGaps::aside($type)[0]),
                 fn (string $arm): bool => preg_match('/^(?:string|number|boolean|bigint|null|true|false|-?[\d.]+|([\'"]).*\1|.+\[\]|\[.*\])$/s', $arm) === 1,
             );
     }
@@ -1832,7 +1834,7 @@ final class ReceiverClassResolver
         $key = 'forwarded-query:'.$class.'@'.$method.'@'.$queried.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
-        return $memo->remember($key, function () use ($memo, $key, $query, $queried, $method): ?ReceiverType {
+        return $memo->rememberFact($key, function () use ($memo, $key, $query, $queried, $method): ?ReceiverType {
             if (! $memo->enter($key)) {
                 return $this->unproven($query);
             }
@@ -1886,7 +1888,7 @@ final class ReceiverClassResolver
         $key = 'builder-method:'.$class.'@'.$method.'@'.$queried.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
-        return $memo->remember($key, function () use ($memo, $key, $class, $method, $queried): ?ReceiverType {
+        return $memo->rememberFact($key, function () use ($memo, $key, $class, $method, $queried): ?ReceiverType {
             $query = new ReceiverType([$class], relatedModel: $queried);
             $context = $memo->enter($key) ? resolve(MethodLocator::class)->locate($class, $method) : null;
 
@@ -2282,7 +2284,7 @@ final class ReceiverClassResolver
         $key = 'model-method-query:'.$model.'@'.$method.$this->modeKey();
         $memo = resolve(AnalysisMemo::class);
 
-        return $memo->remember($key, function () use ($memo, $key, $model, $method): ?ReceiverType {
+        return $memo->rememberFact($key, function () use ($memo, $key, $model, $method): ?ReceiverType {
             $query = new ReceiverType([QueryForwarding::builderClass($model)], relatedModel: $model);
             $context = $memo->enter($key) ? resolve(MethodLocator::class)->locate($model, $method) : null;
 

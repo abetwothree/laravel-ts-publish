@@ -109,7 +109,7 @@ final class ResourceCollectionBody
      */
     public function sendsCollectedList(ReflectionClass $collection): bool
     {
-        return resolve(AnalysisMemo::class)->remember('sends-collected-list:'.$collection->getName(), function () use ($collection): bool {
+        return resolve(AnalysisMemo::class)->rememberFact('sends-collected-list:'.$collection->getName(), function () use ($collection): bool {
             if (ResourceCollections::runsFrameworkToArray($collection)) {
                 return true;
             }

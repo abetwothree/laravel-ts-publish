@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Enumerable;
 use Illuminate\Support\Facades\Config;
@@ -246,15 +247,11 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $defaultResult = $engine->resolve($default);
 
         // This path resolves its arms itself, so it records its own drop: analyzeClosureUnion() never sees it.
-        $dropped = $defaultResult['type'] === 'unknown' ? [$default] : [];
-
-        if ($dropped !== []) {
-            DroppedUnionArms::record($default, $scope, 'data-get-default');
-        }
+        $left = $defaultResult['type'] === 'unknown' ? [[$default, 'data-get-default']] : [];
 
         // The default stands in only for a MISSING key, never for a present-but-null value, so it
         // unions alongside the chain's own `null` arm rather than removing it.
-        return DroppedUnionArms::warnOfPlaceholder(ValueResult::unionResults([$result, $defaultResult]), $dropped, $scope);
+        return DroppedUnionArms::leftOut(ValueResult::unionResults([$result, $defaultResult]), $left, $scope);
     }
 
     /**
@@ -279,20 +276,22 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         $callback = $args->named('callback')?->value;
         $dropsNull = $callback === null || ($callback instanceof ConstFetch && $callback->name->toLowerString() === 'null');
-        $result = $engine->resolve($array);
-        $unnamed = $result['unnamedKeys'] ?? false;
-        // A key the shape leaves out may be all the filter keeps, and its keys may re-index into a list.
-        $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => $unnamed && TsTypeShape::members($arm) !== null
-            ? null
-            : ArrayArms::filtered($arm, $dropsNull));
 
-        if ($arms === null || $arms === []) {
-            return null;
-        }
+        return ValueResult::gapTransparent($engine->resolve($array), static function (array $result) use ($dropsNull): ?array {
+            $unnamed = $result['unnamedKeys'] ?? false;
+            // A key the shape leaves out may be all the filter keeps, and its keys may re-index into a list.
+            $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => $unnamed && TsTypeShape::members($arm) !== null
+                ? null
+                : ArrayArms::filtered($arm, $dropsNull));
 
-        unset($result['keepsKeys']);
+            if ($arms === null || $arms === []) {
+                return null;
+            }
 
-        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+            unset($result['keepsKeys']);
+
+            return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+        });
     }
 
     /**
@@ -312,16 +311,17 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         $this->warnOfCollection('array_values', $array, $scope);
 
-        $result = $engine->resolve($array);
-        $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
+        return ValueResult::gapTransparent($engine->resolve($array), static function (array $result): ?array {
+            $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
 
-        if ($arms === null || $arms === []) {
-            return null;
-        }
+            if ($arms === null || $arms === []) {
+                return null;
+            }
 
-        unset($result['keepsKeys'], $result['unnamedKeys']);
+            unset($result['keepsKeys'], $result['unnamedKeys']);
 
-        return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false, 'listKeys' => true];
+            return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false, 'listKeys' => true];
+        });
     }
 
     /**
@@ -444,9 +444,11 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             );
         }
 
-        $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::isArray($arm) ? $arm : null);
+        return ValueResult::gapTransparent($input, static function (array $input): ?array {
+            $arms = ArrayArms::arms($input['type'], static fn (string $arm): ?string => ArrayArms::isArray($arm) ? $arm : null);
 
-        return $arms === null || $arms === [] ? null : [...$input, 'type' => implode(' | ', $arms), 'optional' => false];
+            return $arms === null || $arms === [] ? null : [...$input, 'type' => implode(' | ', $arms), 'optional' => false];
+        });
     }
 
     /**
@@ -470,7 +472,8 @@ final class KnownFunctionCallHandler implements ExpressionHandler
                 return null;
             }
 
-            $element = TsTypeString::withNullArm(implode(' | ', $elements));
+            // An array's gap is an element no rule typed, so it stays in the element's union.
+            $element = TsTypeString::withNullArm(VisibleGaps::restored(implode(' | ', $elements), VisibleGaps::aside($input['type'])[1]));
             $parameters[] = [...ValueResult::elementOf($input, $element), 'type' => $element];
         }
 
@@ -485,7 +488,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
         return $body === null || $body['type'] === 'unknown'
             ? null
-            : ValueResult::holdingOpenReadings($body, [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false], '[]');
+            : [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
     }
 
     /**

@@ -245,3 +245,10 @@ it('declines a write on an arm that is no array, or through a member an arm may 
     'a member of a list' => ['string[][]', [arrayArmWrite('c', 'number', ['0'])]],
     'a member holding no array' => ['{ a: string }', [arrayArmWrite('c', 'number', ['a'])]],
 ]);
+
+it('settles an array\'s arms past its gap arms and gives them back, and lists no open marker', function () {
+    expect(ArrayArm::written('string[] | $gap1', [arrayArmWrite(ElementKey::Next, 'number')], false, true))
+        ->toBe(ArrayArm::written('string[]', [arrayArmWrite(ElementKey::Next, 'number')], false, true).' | $gap1')
+        ->and(ArrayArm::written('{ a: string; #$open: unknown }', [arrayArmWrite('b', 'number')], false, true))
+        ->toBe('{ a: string; #$open: unknown; b?: number }');
+});

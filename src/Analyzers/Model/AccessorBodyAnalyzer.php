@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -140,7 +141,7 @@ final class AccessorBodyAnalyzer
     private function bodyStands(?array $result, int $dropped): bool
     {
         return $result !== null
-            && ! in_array($result['type'], ['unknown', 'never[]'], true)
+            && ! in_array(VisibleGaps::aside($result['type'])[0], ['unknown', 'never[]'], true)
             && ! DroppedUnionArms::leftNullSince($result['type'], $dropped);
     }
 

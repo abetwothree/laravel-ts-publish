@@ -167,7 +167,7 @@ trait GuessesModelResources
      */
     protected function resolveResourceForModel(string $modelFqcn): ?string
     {
-        return resolve(AnalysisMemo::class)->remember('model-resource:'.$modelFqcn, function () use ($modelFqcn): ?string {
+        return resolve(AnalysisMemo::class)->rememberFact('model-resource:'.$modelFqcn, function () use ($modelFqcn): ?string {
             $fromAttribute = $this->resolveUseResourceAttribute($modelFqcn);
 
             if ($fromAttribute !== null) {
@@ -194,7 +194,7 @@ trait GuessesModelResources
      */
     protected function resolveResourceCollectionForModel(string $modelFqcn): ?array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'model-resource-collection:'.$modelFqcn,
             fn (): ?array => $this->guessResourceCollectionForModel($modelFqcn),
         );

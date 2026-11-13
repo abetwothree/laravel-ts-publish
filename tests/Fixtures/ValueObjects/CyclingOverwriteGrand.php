@@ -10,7 +10,7 @@ class CyclingOverwriteGrand
     /** @return array<string, mixed> */
     protected function m(): array
     {
-        return [...static::m2(), 'g' => 1, ...array_merge(['g' => 'x'], [])];
+        return [...static::m2(), 'g' => 1, ...(array) json_decode('{"g":"x"}', true)];
     }
 
     /** @return array<string, mixed> */

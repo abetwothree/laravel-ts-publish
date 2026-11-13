@@ -158,6 +158,24 @@ final class ReturnShapeFixture
         return [];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function mixedRecord(): array
+    {
+        return [];
+    }
+
+    /**
+     * An optional member and an int-keyed one, which PHP reads as `rows` and `0`, beside one that tells nothing.
+     *
+     * @return array{rows?: list<int>, 0: string, any: mixed}
+     */
+    public function spelledKeys(): array
+    {
+        return [];
+    }
+
     public function undocumented(): array // @phpstan-ignore missingType.iterableValue
     {
         return [];

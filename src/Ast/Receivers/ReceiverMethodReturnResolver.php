@@ -291,9 +291,7 @@ final class ReceiverMethodReturnResolver
             return null;
         }
 
-        DroppedUnionArms::warnOfDeclined($declined, $scope);
-
-        return count($results) === 1 ? $results[0] : ValueResult::unionResults($results);
+        return DroppedUnionArms::declined(count($results) === 1 ? $results[0] : ValueResult::unionResults($results), $declined, $scope);
     }
 
     /**

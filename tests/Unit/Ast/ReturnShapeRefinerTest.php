@@ -2,26 +2,54 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ReviewOutOfOrderPairsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthorEditorRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AuthoredRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashHelperRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClashingAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredHelperRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillAliasResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedArgumentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedUnfilledResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillConsumedUntypedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillDocumentedArgumentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillHelperValueReversedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillMixedRecordResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillNestedDecisionArgumentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillNestedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentReturnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillResourceArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillReusedHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillTopHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillUndeclaredResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillWholeWriteResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LiteralKindRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedHelperSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReversedClashAuthorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewContainersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewExtrasResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptArmsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeptPairsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewKeySpellingsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewListedShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewLiteralsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewNamedKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOpenRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewOutOfOrderPairsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewPartialRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewShapesResource;
@@ -32,10 +60,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTiesResourc
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportedNullsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusWrapBesideBareRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
+use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Request;
 use Workbench\App\Http\Resources\RecipientSettingsResource;
+use Workbench\App\Http\Resources\WrapsBesideFilledRowsResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\App\Packages\Ui\Chart;
@@ -58,7 +89,8 @@ function refinedAnalysis(array $properties, string $method, bool $keepsUnresolve
         $properties,
     ));
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, $method), $keepsUnresolvedNames);
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, $method);
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected), $keepsUnresolvedNames);
 
     return $analysis;
 }
@@ -127,16 +159,16 @@ test('a filled key queues the model its member names, as a cast naming it does',
         ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
 });
 
-test('a fill keeps a key whose value may be left out so, and a fill naming no class declares no slots', function () {
+test('a fill keeps a key whose value may be removed so, and a fill naming no class declares no slots', function () {
     $analysis = new MethodAnalysis(properties: [
-        ['name' => 'owner', 'type' => 'unknown', 'optional' => true, 'description' => ''],
-        ['name' => 'chart', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+        ['name' => 'owner', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
+        ['name' => 'chart', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
     ]);
-    $analysis->leftOutValues = ['owner' => true, 'chart' => true];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overridden'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'overridden');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
-    expect($analysis->leftOutValues)->toEqual(['owner' => true, 'chart' => true])
+    expect(array_column($analysis->properties, 'removed', 'name'))->toBe(['owner' => true, 'chart' => true])
         ->and($analysis->declaredTokenFqcns)->toBe(['owner' => [User::class]]);
 });
 
@@ -308,7 +340,8 @@ test('an unknown position whose member names a class fills beside the classes th
     $analysis = new MethodAnalysis(properties: [['name' => $name, 'type' => $inferred, 'optional' => false, 'description' => '']]);
     $analysis->inlineModelFqcns = [$name => [Post::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe($expected)
         ->and($analysis->inlineModelFqcns)->toBe([$name => $queued])
@@ -324,7 +357,8 @@ test('an unknown position whose member names the class the body already queued f
     ]);
     $analysis->inlineModelFqcns = ['reviewers' => [User::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ by: User; other: User | null }[]')
         ->and($analysis->inlineModelFqcns)->toBe(['reviewers' => [User::class]]);
@@ -338,7 +372,8 @@ test('a fill naming a class another class of the key is spelled like queues the 
     ]);
     $analysis->inlineModelFqcns = ['owned' => [CrmUser::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ by: User; owner: User; n: number }[]')
         ->and($analysis->declaredTokenFqcns)->toBe([])
@@ -351,7 +386,8 @@ test('a fill printed before the class the body reads by its name requeues both i
     ]);
     $analysis->inlineModelFqcns = ['reviewers' => [CrmUser::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ other: User | null; by: User }[]')
         ->and($analysis->declaredTokenFqcns)->toBe([])
@@ -485,6 +521,31 @@ test('a mapped key keeps the open mark its value moves with and pairs keys by th
     ], ['User']],
 ]);
 
+// `filter()` re-lists a row keyed only by ints in the order it holds them, so a row whose values no rule types takes
+// each key's declared element in its key order; a value keeping its keys, or json_encode() alone, keeps them (GH-154).
+test('a mapped key whose rows are keyed 0 to n-1 out of order with no value typed takes the declared tuple in key order', function () {
+    $data = new ResourceTransformer(ReviewOutOfOrderPairsResource::class)->data();
+    $kept = new ResourceTransformer(ReviewKeptPairsResource::class)->data();
+    $event = new BroadcastEventTransformer(ReviewOutOfOrderPairsEvent::class)->data();
+    $types = fn (object $dto): array => array_map(fn (array $property): string => $property['type'], $dto->properties);
+
+    expect($types($data))->toBe([
+        'pairs' => '[string, number][]',
+        'maybe' => '([string, number] | null)[]',
+        'collected' => '{ "1": unknown; "0": unknown }',
+        'object' => '{ "1": unknown; "0": unknown }',
+        'twoWhen' => 'unknown[][]',
+    ])->and($data->typeImports)->toBe([])
+        ->and($types($kept))->toBe([
+            'pairs' => '{ "1": unknown; "0": unknown }[]',
+            'pair' => '{ "1": unknown; "0": unknown }',
+        ])
+        ->and($types($event))->toBe([
+            'pairs' => '{ "1": unknown; "0": unknown }[]',
+            'pair' => '{ "1": unknown; "0": unknown }',
+        ]);
+});
+
 // R20: the merged signature type-checks, where a member its pattern covers beside it unwidened is TS2411.
 test('a member an index signature covers publishes a type tsc accepts', function () {
     $tsc = dirname(__DIR__, 3).'/node_modules/.bin/tsc';
@@ -520,7 +581,8 @@ test('a merge naming an override spelled like a class the key holds declares the
     ]);
     $analysis->inlineModelFqcns = ['pair' => [User::class]];
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'overrideBesideModel'));
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'overrideBesideModel');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected));
 
     expect($analysis->properties[0]['type'])->toBe('{ a: User; b: User }')
         ->and($analysis->declaredTokenFqcns)->toBe(['pair' => [User::class, null]])
@@ -597,6 +659,35 @@ test('a mapped key merges with its @return member by class identity, member by m
     ], ['Post', 'User']],
 ]);
 
+// A wrap the publisher writes as `AsEnum` imports its enum's const, so each bare token the fill writes beside it needs
+// the enum's type import, two wraps as one (GH-154).
+test('a bare enum the @return fills beside two enum wraps keeps its type import', function (string $resource, string $expected, array $types, array $values) {
+    $data = new ResourceTransformer($resource)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe(['subject' => $expected])
+        ->and($data->typeImports)->toBe($types)
+        ->and($data->valueImports)->toBe($values);
+})->with([
+    'two wraps' => [
+        WrapsBesideFilledRowsResource::class,
+        'AsEnum<typeof Status> | AsEnum<typeof Role> | { status: StatusType; role: RoleType }[]',
+        ['../../enums' => ['RoleType', 'StatusType']],
+        ['../../enums' => ['Role', 'Status']],
+    ],
+    'one wrap' => [
+        ReviewStatusRowsResource::class,
+        'AsEnum<typeof Status> | { s: StatusType }[]',
+        ['../../../../../../workbench/app/enums' => ['StatusType']],
+        ['../../../../../../workbench/app/enums' => ['Status']],
+    ],
+    'a wrap beside the same enum bare' => [
+        StatusWrapBesideBareRowsResource::class,
+        'AsEnum<typeof Status> | { s: StatusType }[]',
+        ['../../../../../../workbench/app/enums' => ['StatusType']],
+        ['../../../../../../workbench/app/enums' => ['Status']],
+    ],
+]);
+
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
     expect(analyzedKeyTypes(AuthoredRowsResource::class))->toBe([
         'statuses' => '{ by: User; status: StatusType }[]',
@@ -613,7 +704,8 @@ test('a caller that lays the docblock over every key itself fills no position in
         ['name' => 'pair', 'type' => 'unknown', 'optional' => false, 'description' => ''],
     ]);
 
-    resolve(ReturnShapeRefiner::class)->refine($analysis, new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses'), fillsPositions: false);
+    $reflected = new ReflectionMethod(ReturnShapeFixture::class, 'nestedClasses');
+    resolve(ReturnShapeRefiner::class)->refine($analysis, $reflected, ReturnMembers::of($reflected), fillsPositions: false);
 
     expect(array_column($analysis->properties, 'type', 'name'))
         ->toBe(['owned' => '{ owner: unknown; n: unknown }[]', 'pair' => '{ first: User; second: Post | null }'])
@@ -667,3 +759,107 @@ test('a workbench resource\'s @return fills the member a cache read leaves unkno
         '{"recipients":[{"name":"Ann","settings":{"digest":true}},{"name":"Bob","settings":null}]}',
     );
 });
+
+/**
+ * The placeholder warnings one fresh analysis of a resource raises.
+ *
+ * @param  class-string  $resource
+ * @return list<string>
+ */
+function gapFillWarnings(string $resource): array
+{
+    AnalysisWarnings::reset();
+    DroppedUnionArms::reset();
+    resolve(AnalysisMemo::class)->reset();
+    analyzedKeyTypes($resource);
+
+    return array_values(array_filter(
+        array_column(AnalysisWarnings::all(), 'message'),
+        fn (string $message): bool => str_contains($message, 'was left out of its union'),
+    ));
+}
+
+// D2: an arm a union left out is filled where it was left, with each arm the docblock types beside the body's.
+test('a key\'s @return member fills each arm a union left out beside a typed arm or a placeholder, and never warns of it', function () {
+    expect(analyzedKeyTypes(GapFillRowsResource::class))->toBe([
+        'top' => '{ s: string; t: number[] | null }',
+        'mapped' => '{ s: string; t: number[] | null }[]',
+        'collected' => '{ s: string; t: number[] | null }[]',
+        'empty' => 'number[]',
+    ])->and(gapFillWarnings(GapFillRowsResource::class))->toBe([]);
+});
+
+// Review Focus 1: an arm a union left out in another frame reaches the merge of the frame whose @return types its key.
+test('the @return that types a key fills the arm a union left out in a helper, a parent, a resource arm or an argument', function (string $resource, array $expected) {
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toBe([]);
+})->with([
+    'an undocumented spread helper and an eagerly bound argument' => [GapFillHelpersResource::class, [
+        'names' => '{ name: string | number }[]',
+        'tags' => '(number[] | null)[]',
+    ]],
+    'a parent::toArray() spread' => [GapFillParentSpreadResource::class, ['tags' => '(number[] | null)[]', 'extra' => 'boolean']],
+    'a parent::toArray() returned whole' => [GapFillParentReturnResource::class, ['tags' => '(number[] | null)[]']],
+    'a resource arm' => [GapFillResourceArmResource::class, ['tags' => '(number[] | null)[]']],
+    'a returned local a helper writes whole' => [GapFillWholeWriteResource::class, ['tags' => '(number[] | null)[]']],
+    'a documented helper\'s argument under an undocumented caller' => [GapFillDocumentedArgumentResource::class, ['tags' => '(number[] | null)[]']],
+]);
+
+// Review Focus 2: an undocumented key reads the same helper as it does with no docblock, before or after a typed key.
+test('a helper read under a typed key and an undocumented one fills only the typed one, in either order', function (string $resource) {
+    expect(analyzedKeyTypes($resource))->toEqualCanonicalizing([
+        'typed' => '(number[] | string)[]',
+        'untyped' => 'number[][]',
+    ]);
+})->with([
+    'the typed key first' => [GapFillHelperValueResource::class],
+    'the untyped key first' => [GapFillHelperValueReversedResource::class],
+]);
+
+// Review Focus 3: a gap no docblock position types is stripped as the body reads it, and warns once with today's text.
+test('an arm no @return position types is left out as the body reads it, and warns once', function (string $resource, array $expected, int $warnings) {
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toHaveCount($warnings)
+        ->each->toContain('publishes `null`');
+})->with([
+    'a mixed member and a key the @return does not name' => [GapFillUndeclaredResource::class, [
+        'rows' => '{ t: null; id: number }[]',
+        'loose' => 'null[]',
+    ], 2],
+    'an array<string, mixed> docblock' => [GapFillMixedRecordResource::class, ['rows' => '{ t: null }[]'], 1],
+    'a gap filled under one key and left in another' => [GapFillAliasResource::class, [
+        'raw' => 'null[]',
+        'tags' => '(number[] | null)[]',
+    ], 1],
+]);
+
+// A key that consumes a gap, as an offset read does, publishes no gap a merge could fill, so the drop warns as it did.
+test('a gap a key consumes warns once with today\'s text, whether a merge fills it under another key or not', function (string $resource, array $expected, int $line, bool $everyKey) {
+    ReturnMembers::$typesEveryKey = $everyKey;
+
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toBe([
+            "The value on line {$line} publishes `null`, as if it were always null, because `cache('l')` could not be typed "
+            .'and was left out of its union. Give what it reads a return type or a `@return` docblock.',
+        ]);
+})->with([
+    'filled under a typed key, consumed under another' => [GapFillConsumedResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
+    'filled under a typed key, consumed under an untyped one' => [GapFillConsumedUntypedResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
+    'filled and consumed in a spread helper' => [GapFillConsumedHelperResource::class, ['a' => 'number[] | null', 'b' => 'number', 'n' => 'number'], 27],
+    'consumed and filled nowhere' => [GapFillConsumedUnfilledResource::class, ['b' => 'number'], 21],
+    'a documented helper\'s argument filled under its typed key, consumed under another' => [GapFillConsumedArgumentResource::class, ['a' => 'number[] | null', 'b' => 'number'], 21],
+])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);
+
+// A merge inside the read that holds the gap filled it, so the placeholder the warning names is never published, and a
+// key that only decides on the gap, as `$x ? 1 : 0` does, types nothing with it.
+test('a gap a merge fills inside the read that holds it warns nothing, whether the read computes the merge or reuses it', function (string $resource, array $expected, bool $everyKey) {
+    ReturnMembers::$typesEveryKey = $everyKey;
+
+    expect(analyzedKeyTypes($resource))->toBe($expected)
+        ->and(gapFillWarnings($resource))->toBe([]);
+})->with([
+    'a helper spread under an undocumented key' => [GapFillNestedHelperResource::class, ['meta' => '{ a: number[] | null }']],
+    'the same helper spread at the top' => [GapFillTopHelperResource::class, ['a' => 'number[] | null']],
+    'a reused read of a vague helper spreading it' => [GapFillReusedHelperResource::class, ['meta' => '{ a: number[] | null }', 'more' => '{ a: number[] | null }']],
+    'a nested helper\'s argument another key only decides on' => [GapFillNestedDecisionArgumentResource::class, ['meta' => '{ a: number[] | null; b: number }']],
+])->with(['typed keys in the gap mode' => [false], 'every key in the gap mode' => [true]]);

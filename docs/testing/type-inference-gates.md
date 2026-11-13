@@ -6,7 +6,8 @@ type starts emitting `unknown`, and [`unimportable-token-gate.sh`](../../.github
 compiles the generated trees and fails when a token is emitted without its import or two imports collide. A green test
 suite does not prove the types are right, since a helper's unit test can pass while the pipeline emits a wrong type, so
 the gates read the output itself. They do not overlap, because a leaked token is a new property with a plausible type,
-which the regression gate cannot see. [Performance gate](performance-gate.md) covers speed.
+which the regression gate cannot see. [`gap-gate.sh`](#gap-gatesh) proves the gap mode changes no published byte, and
+[Performance gate](performance-gate.md) covers speed.
 
 ## Running the gates
 
@@ -99,13 +100,16 @@ The gate runs `npx tsc --noEmit` over each generated tree and counts these diagn
   an unused local or parameter, because `tsconfig.json` sets `noUnusedLocals` and `noUnusedParameters`.
 - **TS6192 (all imports in import declaration are unused)**: an import line of two or more names, none used. Its
   message names nothing, so the histogram prints it as `(import line with no name used)`.
+- **TS18016 (private identifiers are not allowed outside class bodies)**: a leaked open marker, `#$open: unknown`. Its
+  message names nothing, so the histogram prints it as `(private identifier outside a class body)`. A leaked `$gapN`
+  arm is TS2304.
 
 A leaked `toResource()` convention guess, the failure `PublishedResourceRegistry` prevents, shows up as TS2305 or
 TS2724 in the modular files, or as a relative TS2307 when the run writes nothing to the guessed class's directory. In
 `laravel-ts-global.ts` it shows up as TS2304 or TS2552. The gate counts each of them. The analyzer page covers
 [guess gating](../components/resource-ast-analyzer.md#toresource-convention-guesses-are-gated-on-the-published-set).
-TS2307 has [its own two counts](#the-ts2307-sub-gates), and a leaked DOM-named token has
-[a count of its own](#the-dom-global-count).
+TS2307 has [its own two counts](#the-ts2307-sub-gates), and a leaked DOM-named token and a leaked gap each have a
+count of their own, [the DOM-global count](#the-dom-global-count) and [the leak count](#the-leak-count).
 
 `tsconfig.json` checks `default-example`, and `tsconfig.testing.json`, `tsconfig.full-template-example.json` and
 `tsconfig.split-template-example.json` check the other trees, one program each, because every tree's
@@ -121,7 +125,7 @@ Each argument is a baseline that arms one more gate, and fewer arguments leave t
 
 ```bash
 .github/scripts/unimportable-token-gate.sh          # report only
-.github/scripts/unimportable-token-gate.sh 0        # gate the main count and the DOM-global count
+.github/scripts/unimportable-token-gate.sh 0        # gate the main, DOM-global and leak counts
 .github/scripts/unimportable-token-gate.sh 0 0      # also gate relative-specifier TS2307s
 .github/scripts/unimportable-token-gate.sh 0 0 0    # also gate bare-specifier TS2307s, as CI does
 TSCONFIGS=tsconfig.testing.json .github/scripts/unimportable-token-gate.sh 0 0 0
@@ -141,6 +145,15 @@ fixture that maps a type to another DOM name, such as the shipped config's comme
 `DOM_GLOBALS` by hand. `Date`, `Record`, `Pick` and the other names the package writes without an import come from the
 ES lib, which both programs load. The first argument arms this count with no baseline of its own, so any reading above
 `0` fails, after the TS2307 sub-gates report.
+
+### The leak count
+
+The publish strips every gap arm and open marker
+([AST engine § Visible gaps](../components/ast-engine.md#visible-gaps)), so one in a published file is a leak. The
+gate greps every file under `workbench/` or `tests/` that `tsc --listFilesOnly` lists for `$gap` followed by digits
+and for `#$open`. This also catches a spelling `tsc` accepts, such as one in a comment, which the main count cannot
+see. The first argument arms it like the DOM-global count. A fixture key or string literal spelled that way fails it
+too, so name none that way.
 
 ### The TS2307 sub-gates
 
@@ -247,7 +260,10 @@ rm tests/types/dom-global-control.ts
 `--selftest` automates the relative-specifier control, for a `.ts` and a `.d.ts` file, and the DOM-global control.
 It also plants an interface that extends two interfaces giving one key different types, and fails unless the main
 count reads exactly one TS2320 and the histogram names that interface, then an import line whose names all go unused,
-which must read exactly one TS6192 under its own label. CI runs it on every push that runs the workflow:
+which must read exactly one TS6192 under its own label. For the leak count, it plants a `$gap1` arm and an `#$open`
+member, which the main count and the leak count must each read as `2`, then both spellings in a comment, which only
+the leak count may fail, then the keys `$gap` and `$open`, which must pass. CI runs it on every push that runs the
+workflow:
 
 ```bash
 .github/scripts/unimportable-token-gate.sh --selftest
@@ -273,6 +289,30 @@ A token reached the output without its import, or two names collided, and the ge
 Never add the import by hand. Make the type resolution that produced the token carry its FQCN through to the import
 machinery, or degrade to `unknown`. The usual cause is a `return` that fires before a guard, and the durable fix is one
 check over all fields that accepts or rejects them together, rather than two reordered branches.
+
+## `gap-gate.sh`
+
+[`gap-gate.sh`](../../.github/scripts/gap-gate.sh) proves the gap mode is invisible in the published output. Under a
+`@return` that types a key, the reader keeps each union arm it cannot type as a gap arm and an object that may hold
+unnamed keys as an open marker, the merge fills what the docblock types, and the frame strips the rest
+([AST engine § Visible gaps](../components/ast-engine.md#visible-gaps)). With `TS_PUBLISH_GAP_GATE=1`,
+`tests/Pest.php` turns on `ReturnMembers::$typesEveryKey`, so every key of the subject's body and of each spread
+helper's, `share()`'s and `provide()`'s aside, reads in the mode, and every reader those reads reach must decide as it
+does on gap-free text. The trees must still match `HEAD`, since only a key the docblock types has a member that tells
+something, which a fill needs:
+
+```bash
+.github/scripts/gap-gate.sh
+```
+
+It resets the trees, runs the suite under the switch without the `gap-mode` group, the tests that pin which reads run
+in the mode, and fails when the suite is red, when a tree file differs from `HEAD` or is new, or when
+`tests/Unit/Ast/GapGateTest.php` skips instead of passing, which means the switch never reached the analyzer. It
+resets the trees again on the way out. A test whose expectation depends on which reads run in the mode, such as a
+memo key or a count of computed answers, belongs in the `gap-mode` group.
+
+When it fails, a reader decided on a gap arm or the marker. Make that reader set them aside and carry them, never
+widen the group.
 
 ## The `@tolki/ts` type guard
 
@@ -329,5 +369,12 @@ The gates miss these cases:
   when the object then collapses to `unknown` no member key is left to match.
 - **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
   sibling among `x`'s members, so a regression of `x` itself can still be masked.
-- **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. This limit
+- **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. A key a
+  `@return` types reorders often: the merge lists the body's arms first and the declared arms it adds after them, so
+  an object arm can sit at another index than at the base, and a key that gains a second object arm renames each
+  `prop.member` key to `prop[0].member`, which no base key matches, leaving only the parent key compared. This limit
   is accepted. Do not fix it with content-hashed arm keys.
+- **A reader that decides on a gap**: CI never runs `gap-gate.sh`. The token gate fails a `$gapN` arm or an open
+  marker that reaches a published file ([the leak count](#the-leak-count)), but a reader that decides on one before
+  the frame strips it changes a published type and leaves nothing to grep. After a change to the gap mode, run
+  `gap-gate.sh`.

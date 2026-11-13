@@ -196,18 +196,18 @@ describe('AstEngine::analyze()', function () {
             ->and($result->typeImports)->toBe(['@/types/geo' => ['GeoPoint']]);
     });
 
-    test('collapses a property name two branches both set into one member', function () {
+    test('holds a key a later key writes over the parent\'s spread once, raw and published', function () {
         $engine = resolve(AstEngine::class);
         $names = array_column(
             $engine->analyze(ApiPostResource::class, 'toArray', null, 'workbench/app/http/resources')->properties,
             'name',
         );
 
-        // The raw analysis appends, so the same three names arrive twice; rendered as-is they are
-        // duplicate interface members.
+        // A key written after the parent's spread replaces the parent's where it stood, so the raw analysis holds
+        // each of the three names once too.
         expect(array_column($engine->analyzeMethod(ApiPostResource::class)->properties, 'name'))
             ->toContain('status', 'visibility', 'priority')
-            ->and(count($engine->analyzeMethod(ApiPostResource::class)->properties))->toBe(count($names) + 3)
+            ->toBe($names)
             ->and($names)->toBe(array_values(array_unique($names)));
     });
 

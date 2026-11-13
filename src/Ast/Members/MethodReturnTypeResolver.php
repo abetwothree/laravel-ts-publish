@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -176,8 +177,11 @@ final class MethodReturnTypeResolver
      */
     private function reflected(string $class, string $methodName): ?array
     {
-        return resolve(ReflectedTypeAcceptor::class)
+        $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
+
+        // A shape's `?` declares a key that may be missing, never a MissingValue the filter removes.
+        return $reflected === null ? null : ObjectMembers::withOptionalKeysAbsent($reflected);
     }
 
     /**

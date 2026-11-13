@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
@@ -14,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Support\Facades\Config;
 
@@ -24,6 +26,7 @@ use Illuminate\Support\Facades\Config;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type InlineResourceFqcnsMap from MethodAnalysis
@@ -120,19 +123,24 @@ final class InlineObjectResult
         // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
         // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
         $spreadArmTypes = array_values(array_unique(
-            $this->buildSpreadArmTypes($spreadArms, array_column($analysis->properties, 'name')),
+            $this->buildSpreadArmTypes($spreadArms, array_values(array_unique(array_column($analysis->properties, 'name')))),
         ));
+        // In the gap mode, an object that may hold keys no name names carries the open marker, which a merge fills; a
+        // string-keyed Record beside it already types every key.
+        $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && resolve(AnalysisMemo::class)->showsGaps()
+            && ! array_any($spreadArmTypes, static fn (string $arm): bool => (TsTypeShape::recordArguments($arm)[0] ?? null) === 'string');
+        $object = fn (): string => VisibleGaps::opened($this->buildInlineObjectType($analysis), $open);
         $type = match (true) {
-            $spreadArms === [] => $this->buildInlineObjectType($analysis),
-            $analysis->properties === [] => implode(' & ', $spreadArmTypes),
-            default => implode(' & ', [...$spreadArmTypes, $this->buildInlineObjectType($analysis)]),
+            $spreadArms === [] => $object(),
+            $analysis->properties === [] => implode(' & ', [...$spreadArmTypes, ...($open ? ['{ '.VisibleGaps::MARKER.' }'] : [])]),
+            default => implode(' & ', [...$spreadArmTypes, $object()]),
         };
 
         $result = ['type' => $type, 'optional' => false];
-        $openReadings = $this->openReadings($analysis, $type, $spreadArms);
+        $presence = $spreadArms === [] ? $this->keyPresence($analysis) : [];
 
-        if ($openReadings !== []) {
-            $result['openReadings'] = $openReadings;
+        if ($presence !== []) {
+            $result['keyPresence'] = [VisibleGaps::stripped($type)[0] => $presence];
         }
 
         if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
@@ -299,7 +307,8 @@ final class InlineObjectResult
      * spells them, then each enum keyed by its own FQCN, which no member owns.
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
-     * order; with `$withWraps`, a member's `EnumResource` enums join its own, for type imports.
+     * order. A member's `EnumResource` enums join its own for type imports: its one wrap with `$withWraps`, and its
+     * several wraps always, since nothing spells them `AsEnum`.
      *
      * @return list<class-string>
      */
@@ -316,6 +325,7 @@ final class InlineObjectResult
                 $fqcns,
                 ...($direct !== null ? [$direct] : []),
                 ...($wrapped !== null ? [$wrapped] : []),
+                ...($analysis->multiEnumResourceFqcns[$memberName] ?? []),
                 ...($analysis->inlineEnumFqcns[$memberName] ?? []),
                 ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
             );
@@ -370,43 +380,25 @@ final class InlineObjectResult
     }
 
     /**
-     * Each reading this object holds open, as its path, a NUL and its type: itself, where its analysis holds a key no
-     * name names, each member's own, under the member's key as the object prints it, and each a spread object holds
-     * under a key no member of the literal replaces.
+     * Why each optional key may be left out, where a body says only one of the two: unset on some path, or a value
+     * Laravel may remove. A spread of the object reads it back (ObjectMembers::writtenMembers()).
      *
-     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms
-     * @return list<string>
+     * @return array<string, PresenceFacts>
      */
-    private function openReadings(MethodAnalysis $analysis, string $type, array $spreadArms): array
+    private function keyPresence(MethodAnalysis $analysis): array
     {
-        $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys)
-            && (TsTypeShape::members($type) !== null || TsTypeShape::intersectedObjects($type) !== null);
-        $paths = $open ? ["\0".$type] : [];
-        $spread = array_merge([], ...array_map(
-            static fn (array $arm): array => isset($arm['result']) ? $arm['result']['openReadings'] ?? [] : [],
-            $spreadArms,
-        ));
+        $presence = [];
 
-        if ($spread !== []) {
-            $replaced = array_map(
-                static fn (string $name): string => '.'.JsEmitter::validJsObjectKey($name, allowIndexSignature: true),
-                array_column($analysis->properties, 'name'),
-            );
-            array_push($paths, ...array_filter(
-                $spread,
-                static fn (string $path): bool => ! str_starts_with($path, "\0") && ! array_any(
-                    $replaced,
-                    static fn (string $key): bool => str_starts_with($path, $key) && in_array($path[strlen($key)], ['.', '[', '{', "\0"], true),
-                ),
-            ));
+        foreach ($analysis->writtenProperties() as $property) {
+            $absent = $property['absent'] ?? false;
+            $removed = $property['removed'] ?? false;
+
+            if ($property['optional'] && $absent !== $removed && ! JsEmitter::isIndexSignatureKey($property['name'])) {
+                $presence[$property['name']] = MethodAnalysis::presenceFacts($absent, $removed);
+            }
         }
 
-        foreach ($analysis->openReadings as $name => $memberPaths) {
-            $key = JsEmitter::validJsObjectKey((string) $name, allowIndexSignature: true);
-            array_push($paths, ...array_map(static fn (string $path): string => '.'.$key.$path, $memberPaths));
-        }
-
-        return array_values(array_unique($paths));
+        return $presence;
     }
 
     /**

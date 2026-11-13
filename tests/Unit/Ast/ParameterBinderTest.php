@@ -888,5 +888,6 @@ test('reads a value as a scalar parameter receives it in coercive mode', functio
     'an enum value a union names, kept beside a number' => ['int $v', ['type' => 'StatusType | string', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]], ['type' => 'StatusType | number', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]]],
     'an enum case name kept by string' => ['string $v', ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class], ['type' => 'StatusKind', 'optional' => false, 'directEnumFqcn' => Status::class]],
     'a class type left as it is' => ['Post $v', ['type' => 'Post', 'optional' => false], ['type' => 'Post', 'optional' => false]],
+    'a gap arm kept beside a converted arm' => ['int $v', ['type' => 'string | $gap1', 'optional' => false], ['type' => 'number | $gap1', 'optional' => false]],
     'an unknown value left as it is' => ['int $v', ['type' => 'unknown', 'optional' => false], ['type' => 'unknown', 'optional' => false]],
 ]);
