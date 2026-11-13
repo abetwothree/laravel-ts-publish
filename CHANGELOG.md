@@ -2,6 +2,53 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.10.0 - 2026-11-13
+
+### What's Changed
+
+- **Enums work as types.** Each enum module also exports its value union under the enum's own name (`export type Color = ColorType`), so one import serves as value and type. (#150)
+- **Inertia pages and shared data are typed as Inertia sends them.** Route files and `inertia-config.d.ts` compile, enums that share a name get their own aliases, dotted keys nest, and `load()` chains add their relations. (#146)
+- **Docblocks are read whole, in PHPStan's tag order.** The class behind each token in a shape is imported at any depth, and every type string goes through one scanner checked against TypeScript's own parser. (#151)
+- **Fewer `#[TsCasts]` overrides needed.** Callback maps, enum cases and values, receivers, `instanceof` narrowing, local and `@param` docblocks, cast and accessor nullability and `Conditionable::when()` are now typed natively. (#152)
+- **Docblocked keys keep what the body proves.** A `toArray()` `@return` fills in each value the body can't type, beside the types the body does prove, and keys follow PHP's write order, so a later spread replaces an earlier key. (#154, #156, #159)
+- **Upgrading through a dist install no longer renders the previous version's templates.** (#155)
+
+### Type changes you will see
+
+- Every enum module ends with `export type {Name} = {Name}Type`.
+- Many keys that published `unknown` now publish their model, resource, enum or shape.
+- A list of one object prints `{ … }[]` instead of `({ … })[]`.
+- A docblock `array<int|string, X>` publishes `X[] | Record<string, X>`, because PHP sends an object for string keys.
+- An `EnumResource` over a null enum in an Inertia prop or a kept map publishes `| never[]` instead of `| null`.
+- Nullability now follows what is actually sent:
+  - A cast or accessor whose getter declares a non-null return drops `| null`.
+  - A NOT NULL column cast through a serializing class or `Castable` publishes `serialize()`'s type without `| null`.
+  - A typed `serialize()` on a nullable column whose `get()` can return `null` adds `| null`.
+  
+
+### Upgrading
+
+- Run `php artisan ts:publish --fresh`, then type-check your frontend.
+- Remove any enum alias you wrote by hand (`type Color = …`); it now collides with the generated one (TS2440/TS2484). Import an enum under an alias where a file declares the same name.
+- A custom `enums.template` copied from the package needs the new last line to publish the alias.
+- A comparison to `null` on a key that lost `| null` is now a TypeScript "no overlap" error; remove the check. Narrow a `| never[]` with `Array.isArray()`.
+- `@phpstan-return` and `@psalm-return` win over `@return` unless they are vaguer. The same goes for `@var`, `@param` and `@property`. A tag's type must start on the tag's own line.
+- A private or protected `#[TsEnumMethod]` or `#[TsEnumStaticMethod]` is no longer published; make it public to keep it.
+- A NOT NULL column whose cast's `get()` turns a stored `''` into `null` still sends `null`; type that column with `#[TsCasts]`.
+- If you extend the package (analyzer, runner, transformer or `ModelAttributeResolver` subclasses, `LaravelTsPublish` overrides, or copied templates), see the Upgrading sections of #146, #150, #151, #152 and #159 for the changed signatures.
+
+### PRs
+
+* Type Inertia page props and shared data as Inertia sends them: aliased imports, one Inertia profile, props locals, dotted keys and Eloquent chains (#86) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/146
+* GH-149 feat(enums): publish each enum's value union under its own name by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/150
+* GH-98 fix(ast): read docblocks whole, keep each shape token's class, and scan type strings as TypeScript does by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/151
+* GH-100 fix(ast): type natively what still needed #[TsCasts]: callback maps, enum values, receivers, docblock forms, cast nullability and Conditionable::when() by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/152
+* GH-154 fix(ast): merge an array_map() key's body reading with its @return docblock, and render each run's templates from source (GH-155) by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/156
+* GH-154 fix(ast): fill untyped values from the @return docblock, follow PHP's spread order, drop serialize()'s null on NOT NULL columns by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/159
+* 11/12/26 release by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/165
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.9.1...v2.10.0
+
 ## v2.9.1 - 2026-10-30
 
 ### v2.9.1
@@ -257,6 +304,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -274,6 +322,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -281,6 +330,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -320,6 +370,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -328,6 +379,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -347,6 +399,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -377,6 +430,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -424,6 +478,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
