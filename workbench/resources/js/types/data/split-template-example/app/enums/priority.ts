@@ -49,3 +49,5 @@ export const Priority = defineEnum({
 export type PriorityType = 0 | 1 | 2 | 3;
 
 export type PriorityKind = 'Low' | 'Medium' | 'High' | 'Critical';
+
+export type Priority = PriorityType;

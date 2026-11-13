@@ -1,0 +1,28 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('shift_windows', function (Blueprint $table) {
+            $table->id();
+            $table->string('label');
+            $table->time('opens_at');
+            $table->time('closes_at')->nullable();
+            $table->time('break_starts_at');
+            $table->time('break_ends_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('shift_windows');
+    }
+};

@@ -22,8 +22,8 @@ export const Color = defineEnum({
         Red: '#EF4444',
         Green: '#22C55E',
         Blue: '#3B82F6',
-        Amber: '#F59E0B',
-        Gray: '#64748B',
+        Yellow: '#F59E0B',
+        Slate: '#64748B',
         Purple: '#A855F7',
     },
     /** Get the RGB tuple */
@@ -31,8 +31,8 @@ export const Color = defineEnum({
         Red: [239, 68, 68],
         Green: [34, 197, 94],
         Blue: [59, 130, 246],
-        Amber: [245, 158, 11],
-        Gray: [100, 116, 139],
+        Yellow: [245, 158, 11],
+        Slate: [100, 116, 139],
         Purple: [168, 85, 247],
     },
     _cases: ['Red', 'Green', 'Blue', 'Yellow', 'Slate', 'Purple'],
@@ -42,3 +42,5 @@ export const Color = defineEnum({
 export type ColorType = 'red' | 'green' | 'blue' | 'yellow' | 'slate' | 'purple';
 
 export type ColorKind = 'Red' | 'Green' | 'Blue' | 'Yellow' | 'Slate' | 'Purple';
+
+export type Color = ColorType;

@@ -10,8 +10,8 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 
 | Class | Min Laravel | Guarded at | Tests skipped at | Convert when floor ≥ |
 | --- | --- | --- | --- | --- |
-| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/Resources/ModelClassResolver.php`, `src/Ast/Concerns/GuessesModelResources.php`, `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
-| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Concerns/GuessesModelResources.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResource` | `12.29.0` | `src/Ast/Resources/ModelClassResolver.php`, `src/Ast/Concerns/Resources/GuessesModelResources.php`, `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseResourceCollection` | `12.29.0` | `src/Ast/Concerns/Resources/GuessesModelResources.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `12.29.0` |
 | `Illuminate\Http\Resources\Attributes\Collects` | `13.0.0` | `src/Ast/Resources/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php`, `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php`, `tests/Unit/Transformers/ResourceTransformerTest.php`, `tests/Unit/Writers/JsonWriterTest.php`, `tests/Unit/Writers/GlobalsWriterTest.php`, `tests/Unit/Ast/ResourceCollectionItemsTest.php`, `tests/Unit/Analyzers/CollectionWrapAndCollectsTest.php` (see below) | `13.0.0` |
 | `Illuminate\Http\Resources\Attributes\PreserveKeys` | `13.0.0` | `src/Ast/Resources/ResourceCollections.php` | `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Table` | `13.0.0` | `src/ModelAttributeResolver.php` (`tableKeyDeclaration()`) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below), `tests/Unit/ModelAttributeResolverTest.php` | `13.0.0` |
@@ -20,10 +20,13 @@ import, delete the `class_exists()` branch, drop the `->skip()` from its tests, 
 | `Illuminate\Database\Eloquent\Attributes\Visible` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Appends` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php`, `tests/Unit/Analyzers/ResourceAstAnalyzerTest.php` (see below) | `13.0.0` |
 | `Illuminate\Database\Eloquent\Attributes\Connection` | `13.0.0` | none (test-only, see below) | `tests/Unit/Transformers/ModelTransformerTest.php` | `13.0.0` |
+| `Illuminate\Database\Eloquent\Attributes\Scope` | `12.4.0` | none (test-only): `src/Ast/Receivers/QueryForwarding.php` calls `Model::isScopeMethodWithAttribute()`, which shipped with it, behind `method_exists()` | `tests/Unit/Ast/ReceiverClassResolverTest.php` | `12.4.0` |
+| `Illuminate\Database\Eloquent\Attributes\UseEloquentBuilder` | `12.19.0` | none (test-only): `src/Ast/Receivers/QueryForwarding.php` calls `Model::resolveCustomBuilderClass()`, which shipped with it, where the class has it | `tests/Unit/Ast/ReceiverClassResolverTest.php` | `12.19.0` |
 | `Illuminate\Database\Eloquent\Attributes\Initialize` | `12.22.0` | `src/ModelAttributeResolver.php` (`setsKeyInCode()`) | `tests/Unit/ModelAttributeResolverTest.php` | `12.22.0` |
 | `Illuminate\Validation\Rules\ArrayKeys` | `13.24.0` | `src/Analyzers/FormRequest/FormRequestRulesAnalyzer.php` | `tests/Unit/Analyzers/FormRequestRulesAnalyzerTest.php` | `13.24.0` |
 | `Illuminate\Database\Eloquent\Attributes\RouteKey` | `13.21.0` | `src/Transformers/RouteTransformer.php` (overridesRouteKey()) | `tests/Unit/Transformers/RouteTransformerTest.php` | `13.21.0` |
 | `Illuminate\Http\Resources\JsonApi\JsonApiResource` | `12.45.0` | `src/Ast/Resources/JsonApiResources.php` | `tests/Unit/Analyzers/JsonApiResourceTest.php` (a `beforeEach()` skip), `tests/Unit/Ast/Handlers/InertiaResourcePropHandlerTest.php` | `12.45.0` |
+| `Enumerable::random()`'s conditional `@return` | `13.18.0` | none (test-only): the docblock reader reads the installed `@return`, and the union declared before it reads no type | `tests/Unit/Transformers/ResourceTransformerTest.php` (two tests expect `unknown` below it, not a skip) | `13.18.0` |
 
 The `PreserveKeys` guard covers only the `#[PreserveKeys]` attribute, which `ResourceCollections::preservesKeys()` reads
 through `ReflectionClass::getAttributes()`. The older `public $preserveKeys = true;` property is read through
@@ -79,10 +82,17 @@ that release more reliably than changelog prose:
 - **`Collects`, `PreserveKeys`, `Table`, `Hidden`, `Visible`, `Appends` and `Connection`**: absent at `v12.0.0` and
   `v12.69.2`, present at `v13.0.0`. Recorded as `13.0.0`, the first tag proven to contain them, since no 12.x release
   was found to carry them.
+- **`Scope`**, with `Model::isScopeMethodWithAttribute()`: absent at `v12.3.0`, present from `v12.4.0`. An exact
+  minimum.
+- **`UseEloquentBuilder`**: absent at `v12.18.0`, present from `v12.19.0`. An exact minimum. Through `v12.56.0` and at
+  `v13.0.0` Laravel reads it off the model class alone; by `v13.37.0` it also walks the model's parents and traits.
+  `QueryForwarding::builderClass()` calls the installed release's own resolver, so it follows whichever applies.
 - **`Initialize`**: absent through `v12.21.0`, present from `v12.22.0`. An exact minimum.
 - **`JsonApiResource`**: absent at `v12.44.0`, present from `v12.45.0`, with `make:resource --json-api`. An exact
   minimum.
 - **`RouteKey`**: absent through `v13.20.0`, present from `v13.21.0`. An exact minimum.
+- **`Enumerable::random()`'s conditional `@return`**: `static<int, TValue>|TValue` at `v12.71.0` and through
+  `v13.17.0`, `($number is null ? TValue : static<int, TValue>)` from `v13.18.0`. An exact minimum.
 
 ## Scanner coverage and blind spots
 
@@ -104,10 +114,10 @@ These string FQCNs exist for reasons other than version support, so never conver
 
 - `src/RelationMap.php` builds a relation class name from a type string.
 - `src/Support/TolkiTypes.php` maps always-present framework classes by name.
-- `src/Ast/Handlers/ModelFinderHandler.php` names
+- `src/Ast/Handlers/Collections/ModelFinderHandler.php` names
   `Illuminate\Pagination\{LengthAwarePaginator,Paginator,CursorPaginator}` in its `PAGINATORS` map, the same
   always-present-class-by-name shape as `TolkiTypes.php`.
-- `src/Ast/Handlers/InertiaWrapperHandler.php` and `src/Ast/Parsing/InertiaRenderLocator.php` name the dev-only
+- `src/Ast/Handlers/Inertia/InertiaWrapperHandler.php` and `src/Ast/Parsing/InertiaRenderLocator.php` name the dev-only
   `Inertia\ResponseFactory` by string behind `class_exists()`. That is not a Laravel version guard, but the same rule
   applies for the same reason. Importing a `require-dev` package from `src/` would declare a hard dependency this
   package does not have.

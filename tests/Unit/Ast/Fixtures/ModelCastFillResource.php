@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Support\Opaque;
 
 /**
  * A docblock-filled signature beside a same-pattern key only the model's cast types.
@@ -39,6 +40,6 @@ final class ModelCastFillResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

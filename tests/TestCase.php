@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
@@ -69,11 +72,14 @@ class TestCase extends Orchestra
         PublishedResourceRegistry::reset();
         PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
+        DroppedUnionArms::reset();
         ClassTypeOverride::flush();
         ComposedClassTypes::flush();
         RoutedControllers::flush();
+        TypeAliases::flush();
         CallArguments::reset();
         ValueResult::forgetEnumNames();
+        QueryForwarding::forget();
         CoreCollector::flushClassMapCache();
 
         Factory::guessFactoryNamesUsing(

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ControllerExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaResourcePropHandler;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
@@ -25,6 +25,7 @@ use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -69,11 +70,19 @@ function inertiaResourcePropResult(Expr $expr, ?AnalysisScope $scope = null): ?a
     $reflection = new ReflectionClass(InertiaController::class);
     $scope ??= new AnalysisScope($reflection);
 
-    return new InertiaResourcePropHandler()->resolve(
+    $result = new InertiaResourcePropHandler()->resolve(
         $expr,
         $scope,
-        new ResourceAstAnalyzer($reflection, null, 'dashboard', ControllerExpressionHandlers::make(), $scope),
+        new ResourceAstAnalyzer($reflection, null, 'dashboard', scope: $scope, reading: Reading::Inertia),
     );
+
+    // Inertia never opens a response for a dotted key, so every one carries the mark the tests below take as read.
+    if ($result !== null) {
+        expect($result['closedToDottedKeys'] ?? null)->toBe($result['type']);
+        unset($result['closedToDottedKeys']);
+    }
+
+    return $result;
 }
 
 afterEach(function () {
@@ -215,6 +224,29 @@ it('types EnumResource::collection() as the enum list inside the anonymous colle
 
     expect($wrapped)->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
         ->and(inertiaResourcePropResult($cases)['type'] ?? null)->toBe('RoleType[]');
+});
+
+// Laravel's toResourceCollection(EnumResource::class) is EnumResource::collection() over the receiver's items.
+it('types toResourceCollection(EnumResource::class) over enum cases as EnumResource::collection() over them', function () {
+    $cases = fn (): FuncCall => new FuncCall(new Name('collect'), [new Arg(new StaticCall(new Name(Role::class), 'cases'))]);
+    $listed = new MethodCall($cases(), 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(EnumResource::class), 'class'))]);
+    $collected = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg($cases())]);
+
+    expect(inertiaResourcePropResult($listed))->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
+        ->and(inertiaResourcePropResult($listed))->toBe(inertiaResourcePropResult($collected));
+});
+
+// The nested value would be EnumResource[], a type no run publishes, where Laravel sends a list inside the wrap key.
+it('types toResourceCollection(EnumResource::class) over items no enum is named for as an unknown list in the wrap key', function () {
+    $listed = fn (Expr $items): MethodCall => new MethodCall($items, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(EnumResource::class), 'class'))]);
+    $unnamed = inertiaResourcePropResult($listed(new Variable('statuses')));
+    $models = inertiaResourcePropResult($listed(new StaticCall(new Name(Post::class), 'all')));
+
+    JsonResource::withoutWrapping();
+
+    expect($unnamed)->toBe(['type' => '{ data: unknown[] }', 'optional' => false])
+        ->and($models)->toBe($unnamed)
+        ->and(inertiaResourcePropResult($listed(new Variable('statuses')))['type'] ?? null)->toBe('unknown[]');
 });
 
 it('declines EnumResource::make(), a static call that builds no resource, and an enum list it cannot name', function () {
@@ -497,13 +529,12 @@ it('types a $wrap = null collection whose body sends the collected list as its p
         ]);
 });
 
-// Laravel calls `X::collection($items)`, which for a collection or the EnumResource builds no anonymous resource list.
-it('declines toResourceCollection() of a collection or the EnumResource, given or named by #[UseResource]', function () {
+// Laravel calls `X::collection($items)`, which for a collection builds no anonymous resource list.
+it('declines toResourceCollection() of a collection, given or named by #[UseResource]', function () {
     $posts = new StaticCall(new Name(Post::class), 'all');
-    $given = fn (string $class): MethodCall => new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name($class), 'class'))]);
+    $given = new MethodCall($posts, 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(PostCollection::class), 'class'))]);
 
-    expect(inertiaResourcePropResult($given(PostCollection::class)))->toBeNull()
-        ->and(inertiaResourcePropResult($given(EnumResource::class)))->toBeNull();
+    expect(inertiaResourcePropResult($given))->toBeNull();
 });
 
 it('declines a guessed toResourceCollection() whose #[UseResource] names a collection', function () {

@@ -5,9 +5,10 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\PropertyChainHandler;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyDepotResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
@@ -76,10 +77,10 @@ final class ChainHandlersMapStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -167,7 +168,7 @@ it('resolves a relation collection chain to the element-typed array', function (
 
     $result = (new RelationCollectionChainHandler)->resolve($expr, $scope, chainHandlersThrowingEngine());
 
-    expect($result)->toBe(['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class]);
+    expect($result)->toBe(['type' => 'User[]', 'optional' => false, 'modelFqcn' => User::class, 'listKeys' => true]);
 });
 
 // Guard-order pin: `$this->members->take(5)` matches BOTH the collection-chain guard and the

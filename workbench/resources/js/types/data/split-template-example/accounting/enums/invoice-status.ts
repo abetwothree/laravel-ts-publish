@@ -15,3 +15,5 @@ export const InvoiceStatus = defineEnum({
 export type InvoiceStatusType = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled' | 'void';
 
 export type InvoiceStatusKind = 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled' | 'Void';
+
+export type InvoiceStatus = InvoiceStatusType;

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
@@ -44,6 +45,7 @@ use ReflectionClass;
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
+ * @phpstan-import-type Slots from TokenSlots
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -113,6 +115,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var CarriedMap the classes the casts displaced and no queue holds, registered only while spelled */
     protected array $carried = [];
+
+    /** @var array<array-key, Slots> property name => the class behind each class token of a declaration's text */
+    protected array $declaredTokenFqcns = [];
 
     /** @var array<class-string, string> FQCN => resource interface name */
     protected array $resourceFqcnMap = [];
@@ -235,6 +240,17 @@ class ResourceTransformer extends CoreTransformer
     public function composedClassTypes(): array
     {
         return ComposedClassTypes::classesIn($this->customImports, $this->analysisCustomImports);
+    }
+
+    /**
+     * The interface or type alias the resource's file declares.
+     *
+     * @return list<string>
+     */
+    #[Override]
+    public function declaredNames(): array
+    {
+        return [$this->resourceName];
     }
 
     /**
@@ -426,6 +442,7 @@ class ResourceTransformer extends CoreTransformer
         );
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
+        $this->declaredTokenFqcns = $analysis->declaredTokenFqcns;
 
         // A body-less collection whose live wrap key is null or empty emits an alias, not an interface.
         if ($analysis->flatTypeAlias !== null) {
@@ -450,9 +467,8 @@ class ResourceTransformer extends CoreTransformer
             $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
             $type = $this->properties[$propName]['type'] ?? '';
-            $nullable = str_contains($type, 'null');
-            // $type itself may already carry '| null' here, so the suffix check must strip it first.
-            $isCollection = str_ends_with(rtrim(str_replace('| null', '', $type)), '[]');
+            $nullable = TsTypeString::hasNullArm($type);
+            $isCollection = ValueResult::isListShaped($type);
             // ValueResult::withEnumArmShapes() records each arm's own shape for a mixed EnumResource/direct-access
             // ternary or match; anything else mixed (e.g. a `??`) falls back to the merged-string guess, which never
             // marks the wrap arm collection — the behaviour this replaces preserved.
@@ -683,15 +699,18 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops a key's enum-resource records when its type holds none of their enums' type names, and moves each enum to
-     * its inline wraps. Left in place, they make rewriteEnumResourceTypes() throw or import each enum for nothing.
+     * Drops a key's enum-resource records when its type holds none of their enums' type names, or several wraps' when
+     * its leading arms are not theirs, and moves each enum to its inline wraps. Left in place, they would lead the
+     * key's alias queue, and make rewriteEnumResourceTypes() throw or import each enum for nothing.
+     *
      * This reads $enumFqcnMap before pruneOverriddenEnumImports() removes the entries no type holds.
      *
      * @return $this
      */
     protected function dropOverriddenEnumResources(): self
     {
-        // CastChannels::fit() already moved a cast key's records, so only a later spread's key leaves one here.
+        // CastChannels::fit() moved a cast key's records and a literal's fold writes each key from the values it
+        // sends, so what leaves records the type does not lead is a list a callback maps to two wraps, `(A | B)[]`.
         foreach ($this->properties as $property => ['type' => $type]) {
             $holdsTypeName = fn (string $fqcn): bool => TsTypeString::typeNameOccursIn(
                 $this->enumFqcnMap[$fqcn],
@@ -711,7 +730,8 @@ class ResourceTransformer extends CoreTransformer
                 $wraps[] = $single;
             }
 
-            if ($several !== [] && ! array_any($several, $holdsTypeName)) {
+            // A mapped list's element union spells the wraps inside `(…)[]`, so they do not lead its type.
+            if ($several !== [] && ! $this->leadsWithWraps($type, $several)) {
                 unset($this->multiEnumResourceProperties[$property]);
                 array_push($wraps, ...$several);
             }
@@ -1271,11 +1291,11 @@ class ResourceTransformer extends CoreTransformer
         $skip = ['Models', 'Enums', 'Http', 'Resources', 'App'];
 
         $registry = new ImportNameRegistry($skip);
-        $registry->reserve($this->resourceName);
 
         // A sibling registry resolves const names rather than string-slicing the type alias, which breaks on a
         // numeric tiebreak suffix.
         $constRegistry = new ImportNameRegistry($skip);
+        $this->reserveDeclaredNames($this->declaredNames(), $registry, $constRegistry);
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $registry->register($fqcn, $typeName);
@@ -1326,13 +1346,13 @@ class ResourceTransformer extends CoreTransformer
                 continue;
             }
 
-            $this->properties[$propName]['type'] = TsTypeString::aliasPropertyType(
-                $this->properties[$propName]['type'],
-                $propFqcns,
-                $nameMap,
-                $this->importAliases,
-                $this->siblingImportNames,
-            );
+            $type = $this->properties[$propName]['type'];
+            $slots = $this->declaredTokenFqcns[$propName] ?? [];
+
+            // A per-name queue cannot hold the null of an override's token spelled like a class, so each reads a slot.
+            $this->properties[$propName]['type'] = in_array(null, $slots, true)
+                ? $this->aliasSlottedTokens($type, $slots, $nameMap)
+                : TsTypeString::aliasPropertyType($type, $propFqcns, $nameMap, $this->importAliases, $this->siblingImportNames);
         }
     }
 
@@ -1354,8 +1374,11 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
+        // The top wraps lead, as MethodAnalysis::channelFqcns() queues them; leadsWithWraps() left only those whose
+        // arms lead the type. The inline lists go models first, then resources: InlineObjectResult::sharedNames()
+        // relies on that order.
         foreach ([
+            $this->multiEnumResourceProperties,
             $this->propertyModelFqcnsList,
             $this->propertyEnumFqcnsList,
             $this->propertyInlineEnumFqcns,
@@ -1422,5 +1445,49 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return array_values(array_unique([...$base, ...$multi, ...$inlineResources]));
+    }
+
+    /**
+     * Respell each read token of a declaration's own names in a type by the class its slot names, in order, leaving an
+     * override's token, whose slot is null, as spelled.
+     *
+     * @param  Slots  $slots
+     * @param  array<string, string>  $nameMap  FQCN => unaliased type name
+     */
+    private function aliasSlottedTokens(string $type, array $slots, array $nameMap): string
+    {
+        $respelled = '';
+        $from = 0;
+
+        foreach (TokenSlots::declaredTokens($type, $slots) as $token) {
+            if ($token['slot'] === null || ! $token['read']) {
+                continue;
+            }
+
+            $respelled .= substr($type, $from, $token['offset'] - $from).TsTypeString::aliasPropertyType(
+                $token['token'],
+                [$token['slot']],
+                $nameMap,
+                $this->importAliases,
+                $this->siblingImportNames,
+            );
+            $from = $token['offset'] + strlen($token['token']);
+        }
+
+        return $respelled.substr($type, $from);
+    }
+
+    /**
+     * Whether a type's leading non-null top arms are the wrapped enums' type names in order, once each as the union
+     * folds two that share a name: the arms rewriteEnumResourceTypes() spells as several wraps.
+     *
+     * @param  list<class-string>  $fqcns
+     */
+    private function leadsWithWraps(string $type, array $fqcns): bool
+    {
+        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+        $names = array_values(array_unique(array_map(fn (string $fqcn): string => $this->enumFqcnMap[$fqcn], $fqcns)));
+
+        return array_slice($arms, 0, count($names)) === $names;
     }
 }

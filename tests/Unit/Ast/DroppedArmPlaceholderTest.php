@@ -70,7 +70,7 @@ function warningsKeptBy(bool $kept): array
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     DroppedUnionArms::replaceable(
-        fn (): array => DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('held')], $scope),
+        fn (): array => DroppedUnionArms::leftOut(['type' => 'null', 'optional' => false], [[new Variable('held'), 'test']], $scope),
         fn (): bool => $kept,
     );
 
@@ -90,9 +90,9 @@ test('a value left only never[] by a dropped arm warns with the arm it left out'
     $never = '`never[]`, an array that is always empty';
 
     expect(placeholderWarnings(DroppedArmPlaceholderResource::class))
-        ->toContain(placeholderWarning(33, $never, '$this->opaqueRows()'))
-        ->toContain(placeholderWarning(34, $never, '$rows'))
-        ->toContain(placeholderWarning(54, $never, '$this->opaqueRows()'))
+        ->toContain(placeholderWarning(34, $never, '$this->opaqueRows()'))
+        ->toContain(placeholderWarning(35, $never, '$rows'))
+        ->toContain(placeholderWarning(55, $never, '$this->opaqueRows()'))
         ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))->toMatchArray([
             'ternary' => 'never[]',
             'coalesce' => 'never[]',
@@ -106,18 +106,18 @@ test('a value left only null by a dropped arm warns too', function () {
     $null = '`null`, as if it were always null';
 
     expect(placeholderWarnings(DroppedArmPlaceholderResource::class))->toBe([
-        placeholderWarning(33, '`never[]`, an array that is always empty', '$this->opaqueRows()'),
-        placeholderWarning(34, '`never[]`, an array that is always empty', '$rows'),
-        placeholderWarning(36, '`null | never[]`, as if it were always null or an empty array', '$this->opaqueRows()'),
-        placeholderWarning(27, $null, '$this->opaqueRows()'),
-        placeholderWarning(43, $null, '$this->opaqueRows()'),
-        placeholderWarning(54, '`never[]`, an array that is always empty', '$this->opaqueRows()'),
+        placeholderWarning(34, '`never[]`, an array that is always empty', '$this->opaqueRows()'),
+        placeholderWarning(35, '`never[]`, an array that is always empty', '$rows'),
+        placeholderWarning(37, '`null | never[]`, as if it were always null or an empty array', '$this->opaqueRows()'),
+        placeholderWarning(28, $null, '$this->opaqueRows()'),
+        placeholderWarning(44, $null, '$this->opaqueRows()'),
+        placeholderWarning(55, '`never[]`, an array that is always empty', '$this->opaqueRows()'),
     ])
         ->and(placeholderWarnings(UnionHonestyResource::class))->toBe(array_map(
             fn (int $line): string => UnionHonestyResource::class.": The value on line {$line} publishes {$null}, because "
                 .'`$this->opaqueValue()` could not be typed and was left out of its union. Give what it reads a return type '
                 .'or a `@return` docblock.',
-            [28, 29, 31],
+            [29, 30, 32],
         ))
         ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))->toMatchArray([
             'both' => 'never[] | null',
@@ -128,7 +128,7 @@ test('a value left only null by a dropped arm warns too', function () {
 
 test('an @var that replaces the placeholder withdraws the warning', function () {
     expect(placeholderWarnings(DeclaredPrecedenceResource::class))->toBe([])
-        ->and(implode("\n", placeholderWarnings(DroppedArmPlaceholderResource::class)))->not->toContain('line 30 ')
+        ->and(implode("\n", placeholderWarnings(DroppedArmPlaceholderResource::class)))->not->toContain('line 31 ')
         ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))
         ->toMatchArray(['declared_tag' => 'string[] | null']);
 });
@@ -147,7 +147,7 @@ test('an accessor whose declaration replaces the placeholder raises no warning',
 test('unknown[] beside never[] publishes unknown[]', function () {
     expect(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))
         ->toMatchArray(['listed' => 'unknown[]'])
-        ->and(implode("\n", placeholderWarnings(DroppedArmPlaceholderResource::class)))->not->toContain('line 39 ');
+        ->and(implode("\n", placeholderWarnings(DroppedArmPlaceholderResource::class)))->not->toContain('line 40 ');
 });
 
 // Each value a join leaves out still reaches the read, so a type it keeps beside them may not admit all Laravel sends.
@@ -156,13 +156,13 @@ test('a join that leaves out a value it cannot type warns that the published typ
         .'`$this->opaqueRows()`, which could not be typed, so its published type may not admit every value it sends. '
         .'Give what it reads a return type or a `@return` docblock.';
 
-    expect(joinDropWarnings(DroppedArmPlaceholderResource::class))->toBe([$warning(61), $warning(72)])
+    expect(joinDropWarnings(DroppedArmPlaceholderResource::class))->toBe([$warning(62), $warning(73)])
         ->and(publishedResourceKeyTypes(DroppedArmPlaceholderResource::class, Post::class))->toMatchArray([
             'parameter_kept?' => 'string',
             'walked_kept?' => '{ id: number; title: string }',
         ])
         ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(4)
-        ->and(implode("\n", joinDropWarnings(UnionHonestyResource::class)))->not->toContain('line 28 ');
+        ->and(implode("\n", joinDropWarnings(UnionHonestyResource::class)))->not->toContain('line 29 ');
 });
 
 // A merge call's sides and a spread helper's returns join as a local's branches do, and leave a value out alike.
@@ -176,10 +176,10 @@ test('a merge call and a spread helper that leave out a value they cannot type w
         .'it reads a return type or a `@return` docblock.';
 
     expect(joinDropWarnings(DroppedBranchJoinResource::class))
-        ->toBe([$warning(24), $warning(27), $warning(43), $warning(57), $warning(69)])
+        ->toBe([$warning(25), $warning(28), $warning(44), $warning(58), $warning(70)])
         ->and(placeholderWarnings(DroppedBranchJoinResource::class))->toBe([
-            $placeholder(31, '`null`, as if it were always null'),
-            $placeholder(35, '`never[]`, an array that is always empty'),
+            $placeholder(32, '`null`, as if it were always null'),
+            $placeholder(36, '`never[]`, an array that is always empty'),
         ])
         ->and(publishedResourceKeyTypes(DroppedBranchJoinResource::class, Post::class))->toBe([
             'merged' => 'string',
@@ -190,7 +190,7 @@ test('a merge call and a spread helper that leave out a value they cannot type w
             'nested' => 'string',
             'merged_rows' => 'never[]',
         ]);
-});
+})->group('gap-mode');
 
 test('sends the value a merge call or a spread helper leaves out of its published type', function () {
     $tag = new Tag;
@@ -229,11 +229,11 @@ test('a replaceable read prints the warnings it holds only where they are kept',
 test('a provisional read not kept leaves neither its warnings nor its dropped count, and a kept one leaves both', function () {
     AnalysisWarnings::reset();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
-    $read = fn (string $name): Closure => function () use ($name, $scope): array {
-        DroppedUnionArms::record(new Variable($name), $scope, 'test');
-
-        return DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable($name)], $scope);
-    };
+    $read = fn (string $name): Closure => fn (): array => DroppedUnionArms::leftOut(
+        ['type' => 'null', 'optional' => false],
+        [[new Variable($name), 'test']],
+        $scope,
+    );
 
     $dropped = DroppedUnionArms::dropped();
     DroppedUnionArms::provisional($read('discarded'), fn (): bool => false);
@@ -250,7 +250,7 @@ test('a replaceable read that throws leaves no hold behind', function () {
     expect(fn () => DroppedUnionArms::replaceable(fn () => throw new RuntimeException('read failed'), fn (): bool => true))
         ->toThrow(RuntimeException::class, 'read failed');
 
-    DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('after')], $scope);
+    DroppedUnionArms::leftOut(['type' => 'null', 'optional' => false], [[new Variable('after'), 'test']], $scope);
 
     expect(AnalysisWarnings::all())->toHaveCount(1);
 });
@@ -259,7 +259,7 @@ test('a nested read passes a kept warning to the read around it, which decides w
     AnalysisWarnings::reset();
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
     $inner = fn (bool $kept): Closure => fn () => DroppedUnionArms::replaceable(
-        fn (): array => DroppedUnionArms::warnOfPlaceholder(['type' => 'null', 'optional' => false], [new Variable('inner')], $scope),
+        fn (): array => DroppedUnionArms::leftOut(['type' => 'null', 'optional' => false], [[new Variable('inner'), 'test']], $scope),
         fn (): bool => $kept,
     );
 

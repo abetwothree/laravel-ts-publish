@@ -5,7 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MemberWrittenLocalsResource;
@@ -446,7 +446,8 @@ function byReferenceSeededLocals(string $body): array
 
     foreach (array_keys($scope->localVarBindings) as $name) {
         $bound[$name] = array_map(
-            fn (array $form): string => $form['effect']->name.implode('', array_map(fn (string $key): string => "[{$key}]", $form['path'])),
+            fn (array $form): string => $form['effect']->name.($form['matches'] === null ? '' : "<{$form['matches']}>")
+                .implode('', array_map(fn (string $key): string => "[{$key}]", $form['path'])),
             $scope->byReferenceForms[$name] ?? [],
         );
     }
@@ -536,8 +537,10 @@ it('binds a local across a by-reference built-in that keeps its value in some fo
     'array_walk_recursive() by reference, the leaves it writes' => ['$x = []; array_walk_recursive($x, fn (&$v) => $v++);', ['x' => ['WritesLeaves']]],
     'array_walk() by value, any form' => ['$x = []; array_walk($x, fn ($v) => $v);', ['x' => []]],
     'a by-reference foreach, the elements it writes' => ['$x = []; foreach ($x as &$v) { $v = 1; } unset($v);', ['x' => ['WritesElements']]],
-    'preg_match()\'s matches, a list of strings' => ['$m = []; preg_match("/x/", "s", $m);', ['m' => ['WritesMatches']]],
-    'preg_match()\'s matches with a flag' => ['$m = []; preg_match("/x/", "s", $m, PREG_OFFSET_CAPTURE);', []],
+    'preg_match()\'s matches, a list of strings' => ['$m = []; preg_match("/x/", "s", $m);', ['m' => ['WritesMatches<string[]>']]],
+    'preg_match()\'s matches with a flag' => ['$m = []; preg_match("/x/", "s", $m, PREG_OFFSET_CAPTURE);', ['m' => ['WritesMatches<[string, number][]>']]],
+    'preg_match()\'s matches with flags it cannot read' => ['$m = []; preg_match("/x/", "s", $m, $flags);', []],
+    'preg_match_all()\'s matches in set order' => ['$m = []; preg_match_all("/x/", "s", $m, PREG_SET_ORDER);', ['m' => ['WritesMatches<string[][]>']]],
     'settype()' => ['$x = 1; settype($x, "string");', []],
     'parse_str()' => ['$x = []; parse_str("a=1", $x);', []],
     'a user method' => ['$x = 1; $this->fillInstance($x);', []],
@@ -712,8 +715,9 @@ it('reads a member of what a self spelling returns, is passed to or joins only b
 // A static call through such a receiver, and a join of it with a block's write, keep the reading by declaration.
 it('reads a member of a self spelling\'s static call or block-joined value only by its declaration', function () {
     expect(analyzedKeyTypes(ChainedLabelChild::class, 'joined'))->toBe([
-        'staticOnVar' => 'unknown', 'gapHelper' => 'unknown', 'gapClosure' => 'unknown', 'gapLocal' => 'unknown', 'branchJoin' => 'unknown',
+        'staticOnVar' => 'unknown', 'gapHelper' => 'unknown', 'gapClosure' => 'unknown', 'gapLocal' => 'unknown',
+        'gapLocalTag' => 'unknown', 'branchJoin' => 'unknown',
     ])
         ->and(json_encode(new ChainedLabelChild()->joined()))
-        ->toBe('{"staticOnVar":"x","gapHelper":"x","gapClosure":["x"],"gapLocal":"x","branchJoin":"x"}');
+        ->toBe('{"staticOnVar":"x","gapHelper":"x","gapClosure":["x"],"gapLocal":"x","gapLocalTag":"x","branchJoin":"x"}');
 });

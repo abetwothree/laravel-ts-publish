@@ -11,7 +11,8 @@ use Illuminate\Database\Eloquent\Model;
 final class TemplateLiteralModelMetadataProvider implements ModelMetadataProvider
 {
     /**
-     * Provide an empty `b` beside a template-literal `a` holding a quoted backtick or an escaped quote.
+     * Provide an empty `b` beside a template-literal `a` holding a quoted backtick, an escaped quote, a member
+     * separator or a brace.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -22,6 +23,9 @@ final class TemplateLiteralModelMetadataProvider implements ModelMetadataProvide
         'escapedDoubleText' => '{ a: `say \"hi\"`; b: Record<string, number> }',
         'escapedSinglePair' => '{ a: `\\\'${string}\\\'`; b: Record<string, number> }',
         'apostropheThenEscaped' => '{ a: `a\'\\\'`; b: Record<string, number> }',
+        'semicolon' => '{ a: `a;b`; b: Record<string, number> }',
+        'comma' => '{ a: `a,b`; b: Record<string, number> }',
+        'brace' => '{ a: `a{b`; b: Record<string, number> }',
     ])]
     public function provide(Model $model): array
     {
@@ -32,6 +36,9 @@ final class TemplateLiteralModelMetadataProvider implements ModelMetadataProvide
             'escapedDoubleText' => ['a' => 'say "hi"', 'b' => []],
             'escapedSinglePair' => ['a' => "'x'", 'b' => []],
             'apostropheThenEscaped' => ['a' => "a''", 'b' => []],
+            'semicolon' => ['a' => 'a;b', 'b' => []],
+            'comma' => ['a' => 'a,b', 'b' => []],
+            'brace' => ['a' => 'a{b', 'b' => []],
         ];
     }
 }

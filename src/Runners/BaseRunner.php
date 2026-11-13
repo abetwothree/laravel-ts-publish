@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Runners;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -34,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\TypeScriptMap;
 use AbeTwoThree\LaravelTsPublish\Writers\BarrelWriter;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
@@ -179,6 +183,7 @@ abstract class BaseRunner
         PublishedResourceRegistry::reset();
         PublishedModelRegistry::reset();
         AnalysisWarnings::reset();
+        DroppedUnionArms::reset();
         CoreCollector::flushClassMapCache();
         resolve(AnalysisMemo::class)->reset();
         TsTypeString::forgetQualifiedTypes();
@@ -187,23 +192,46 @@ abstract class BaseRunner
         ClassTypeOverride::flush();
         ComposedClassTypes::flush();
         RoutedControllers::flush();
+        TypeAliases::flush();
         ValueResult::forgetEnumNames();
+        QueryForwarding::forget();
         RelationMap::reset();
         $this->forgetRenderedViews();
     }
 
     /**
-     * Drop Laravel's per-process view lookups and compile checks, so a template edited since an earlier run in this
-     * process renders as it is on disk, as the template fingerprint the cache header holds already reads it.
+     * Drop Laravel's per-process view lookups, so a template published since an earlier run in this process is found.
      */
     protected function forgetRenderedViews(): void
     {
         View::getFinder()->flush();
+    }
 
-        $blade = View::getEngineResolver()->resolve('blade');
+    /**
+     * Publish with each Blade view compiled from its source on its first render, then restore the app's Blade engine.
+     *
+     * Blade reuses a compiled copy newer than its view, and a Composer dist install keeps each file's release time,
+     * so an upgrade would otherwise render the previous version's compiled templates.
+     *
+     * @param  Closure(): void  $publish
+     */
+    protected function renderingViewsFromSource(Closure $publish): void
+    {
+        $resolver = View::getEngineResolver();
+        $blade = $resolver->resolve('blade');
 
-        if ($blade instanceof CompilerEngine) {
-            $blade->forgetCompiledOrNotExpired();
+        if (! $blade instanceof CompilerEngine) {
+            $publish();
+
+            return;
+        }
+
+        $resolver->register('blade', static fn (): CompilerEngine => new SourceCompilerEngine($blade->getCompiler()));
+
+        try {
+            $publish();
+        } finally {
+            $resolver->register('blade', static fn (): CompilerEngine => $blade);
         }
     }
 

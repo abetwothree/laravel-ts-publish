@@ -6,29 +6,26 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Support\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use Closure;
 use PhpParser\Node;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\BinaryOp\Plus;
-use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Expr\Yield_;
@@ -36,7 +33,6 @@ use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
-use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\InterpolatedString;
@@ -54,6 +50,7 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
+use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor;
 use PhpParser\NodeVisitorAbstract;
@@ -61,13 +58,16 @@ use ReflectionClass;
 
 /**
  * Node-shape questions about a parsed expression: what it is, what it names, what it returns. The engine layer owns
- * it; the resource semantics it was split from live in `Analyzers\Concerns\InspectsResourceCalls`, which requires its
- * host to also use this trait.
+ * it; the resource semantics it was split from live in `Ast\Concerns\Resources\InspectsResourceCalls`, which
+ * requires its host to also use this trait.
  *
  * @internal
  */
 trait InspectsAstNodes
 {
+    /** The most literals a `+` or an `array_merge()` is read as, one per write each local operand's read sees. */
+    private const int MAX_SPELLED_LITERALS = 16;
+
     /**
      * The int PHP stores a literal key as, a numeric string such as `'6'` included, or null for any other key.
      */
@@ -278,6 +278,80 @@ trait InspectsAstNodes
     }
 
     /**
+     * The writes a read of a local sees, where their syntax alone spells its value.
+     *
+     * None where a by-reference call keeps the value in only some form, or a write reads what an earlier write left in
+     * the local, which only a read of the value can follow; a read the source does not place takes every call's form.
+     *
+     * @return non-empty-list<Expr>|null
+     */
+    protected function spelledWrites(Expr $read, AnalysisScope $scope): ?array
+    {
+        if (! $read instanceof Variable) {
+            return null;
+        }
+
+        $writes = $scope->writesSeenBy($read);
+
+        return $writes !== null && $this->spellsItsValue($read, $writes, $scope) ? $writes : null;
+    }
+
+    /**
+     * The one write a read of a local sees whose syntax alone spells its value, as spelledWrites() reads it.
+     */
+    protected function soleSpelledWrite(Expr $read, AnalysisScope $scope): ?Expr
+    {
+        if (! $read instanceof Variable) {
+            return null;
+        }
+
+        $write = $scope->soleWriteSeenBy($read);
+
+        return $write !== null && $this->spellsItsValue($read, [$write], $scope) ? $write : null;
+    }
+
+    /**
+     * The literals an `array_merge()` call may evaluate to, one for each write a local argument's read sees.
+     *
+     * None when an argument hides keys that cannot be read statically.
+     *
+     * @param  AnalysisScope  $scope  reads each local argument's writes, and resolves `self`, `static` and `parent`
+     * @return list<Array_>
+     */
+    protected function mergedArrayLiterals(FuncCall $call, AnalysisScope $scope): array
+    {
+        if (! $call->name instanceof Name || $call->name->getLast() !== 'array_merge' || $call->isFirstClassCallable()) {
+            return [];
+        }
+
+        $calls = [$call];
+
+        foreach ($call->getArgs() as $index => $arg) {
+            $writes = $this->spelledWrites($arg->value, $scope) ?? [$arg->value];
+
+            if (count($calls) * count($writes) > self::MAX_SPELLED_LITERALS) {
+                return [];
+            }
+
+            $spelled = [];
+
+            foreach ($calls as $partial) {
+                foreach ($writes as $write) {
+                    $args = $partial->getArgs();
+                    $args[$index] = new Arg($write, $arg->byRef, $arg->unpack, $arg->getAttributes());
+                    $spelled[] = new FuncCall($partial->name, $args, $partial->getAttributes());
+                }
+            }
+
+            $calls = $spelled;
+        }
+
+        $literals = array_map(fn (FuncCall $spelled): ?Array_ => $this->mergedArrayLiteral($spelled, $scope), $calls);
+
+        return in_array(null, $literals, true) ? [] : $literals;
+    }
+
+    /**
      * Re-express an `array_merge(...)` call as the one array literal it evaluates to, or null when an
      * argument hides keys that cannot be read statically. One literal, not one analysis per argument:
      * only a single walk lets a later key clear the FQCN channels an earlier one registered.
@@ -286,14 +360,9 @@ trait InspectsAstNodes
      * number until a spread, a `parent::` call or a constant that cannot be read, whose int keys cannot be counted.
      *
      * @param  AnalysisScope  $scope  resolves `self`, `static` and `parent` in a constant key
-     * @param  array<string, Expr>  $localVarBindings  substituted for a variable argument when supplied
      */
-    protected function mergedArrayLiteral(
-        FuncCall $call,
-        AnalysisScope $scope,
-        ?string $parentMethodName = null,
-        array $localVarBindings = [],
-    ): ?Array_ {
+    protected function mergedArrayLiteral(FuncCall $call, AnalysisScope $scope, ?string $parentMethodName = null): ?Array_
+    {
         if (! $call->name instanceof Name || $call->name->getLast() !== 'array_merge' || $call->isFirstClassCallable()) {
             return null;
         }
@@ -304,10 +373,6 @@ trait InspectsAstNodes
 
         foreach ($call->getArgs() as $arg) {
             $value = $arg->value;
-
-            if ($value instanceof Variable && is_string($value->name)) {
-                $value = $localVarBindings[$value->name] ?? $value;
-            }
 
             if ($value instanceof Array_) {
                 foreach ($value->items as $item) {
@@ -359,21 +424,19 @@ trait InspectsAstNodes
     }
 
     /**
-     * Re-express PHP's array union `$left + $right` as one literal. A literal operand, or a local holding one, gives
-     * its items; a nested `+` its own; anything else one spread.
+     * Re-express PHP's array union `$left + $right` as one literal. A literal operand gives its items; a nested `+` its
+     * own; anything else one spread.
      *
      * With every key a literal, the items run as PHP builds them: the left's, then each right one under a key the left
      * lacks, a keyless item under the int key PHP gives it.
      *
      * A spread hides its keys, so the literal is then `[...$right, ...$left]`, whose later spread wins a key as the
      * left operand does, though an int key can land out of PHP's order.
-     *
-     * @param  array<string, Expr>  $localVarBindings  substituted for a variable operand
      */
-    protected function arrayUnionLiteral(Plus $union, array $localVarBindings = []): Array_
+    protected function arrayUnionLiteral(Plus $union): Array_
     {
-        $left = $this->unionOperandItems($union->left, $localVarBindings);
-        $right = $this->unionOperandItems($union->right, $localVarBindings);
+        $left = $this->unionOperandItems($union->left);
+        $right = $this->unionOperandItems($union->right);
         $storedLeft = $this->itemsByStoredKey($left);
         $storedRight = $this->itemsByStoredKey($right);
 
@@ -539,47 +602,6 @@ trait InspectsAstNodes
     }
 
     /**
-     * Whether a value may be a closure, an arrow function or, where counted, a first-class callable: as itself, an arm
-     * of `?:`, `??` or `match`, or the one write the scope binds a local to, which is how the engine reads that local.
-     *
-     * @param  array<string, true>  $followed  the locals already followed, so a cycle of copies ends
-     */
-    protected function mayHoldCallable(
-        Expr $expr,
-        AnalysisScope $scope,
-        bool $firstClassCallables = true,
-        array $followed = [],
-    ): bool {
-        if ($expr instanceof ClosureExpr || $expr instanceof ArrowFunction) {
-            return true;
-        }
-
-        if ($expr instanceof CallLike) {
-            return $firstClassCallables && $expr->isFirstClassCallable();
-        }
-
-        if ($expr instanceof Variable && is_string($expr->name)) {
-            $bound = $scope->localVarBindings[$expr->name] ?? null;
-
-            return $bound !== null
-                && ! isset($followed[$expr->name])
-                && $this->mayHoldCallable($bound, $scope, $firstClassCallables, [...$followed, $expr->name => true]);
-        }
-
-        $arms = match (true) {
-            $expr instanceof Ternary => [$expr->if ?? $expr->cond, $expr->else],
-            $expr instanceof Coalesce => [$expr->left, $expr->right],
-            $expr instanceof Match_ => array_map(fn (MatchArm $arm): Expr => $arm->body, $expr->arms),
-            default => [],
-        };
-
-        return array_any(
-            $arms,
-            fn (Expr $arm): bool => $this->mayHoldCallable($arm, $scope, $firstClassCallables, $followed),
-        );
-    }
-
-    /**
      * Whether a body yields, so calling it returns a `Generator`, never the value it returns.
      *
      * @param  array<Stmt>  $stmts
@@ -590,20 +612,41 @@ trait InspectsAstNodes
     }
 
     /**
-     * The items one operand of `+` gives the union literal.
+     * Whether the writes a read of a local sees spell its value.
      *
-     * @param  array<string, Expr>  $localVarBindings
-     * @return list<ArrayItem>
+     * No by-reference form holds at the read, and no write reads what an earlier write left in the local; a read inside
+     * a write may see a parameter's binding still holding there, or only that write itself, which has not run yet.
+     *
+     * @param  non-empty-list<Expr>  $writes
      */
-    private function unionOperandItems(Expr $operand, array $localVarBindings): array
+    private function spellsItsValue(Variable $read, array $writes, AnalysisScope $scope): bool
     {
-        if ($operand instanceof Variable && is_string($operand->name)) {
-            $operand = $localVarBindings[$operand->name] ?? $operand;
+        $name = $read->name;
+
+        if (! is_string($name)) {
+            return false;
         }
 
+        $reshaped = $read->getStartFilePos() < 0 ? isset($scope->byReferenceForms[$name]) : $scope->formsAt($read) !== [];
+
+        return ! $reshaped && array_all($writes, fn (Expr $write): bool => new NodeFinder()->findFirst(
+            $write,
+            fn (Node $node): bool => $node instanceof Variable && $node->name === $name
+                && ! ($scope->bindsName($name) && $scope->holdsBinding($node))
+                && $scope->writesSeenBy($node) !== [$write],
+        ) === null);
+    }
+
+    /**
+     * The items one operand of `+` gives the union literal.
+     *
+     * @return list<ArrayItem>
+     */
+    private function unionOperandItems(Expr $operand): array
+    {
         return match (true) {
             $operand instanceof Array_ => array_values($operand->items),
-            $operand instanceof Plus => array_values($this->arrayUnionLiteral($operand, $localVarBindings)->items),
+            $operand instanceof Plus => array_values($this->arrayUnionLiteral($operand)->items),
             default => [new ArrayItem($operand, byRef: false, unpack: true)],
         };
     }

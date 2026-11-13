@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Contracts;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use ReflectionClass;
@@ -39,12 +40,14 @@ interface ExpressionEngine
      * Analyze an array literal's items into properties, spreads, and FQCN maps — the same
      * return-position array machinery a resource's own toArray() return uses. $topLevel means
      * "this literal IS the whole return shape" (Inertia props, a delegated return), not AST depth.
+     *
+     * A nested literal's analysis also hands back the spreads its print keeps as arms (MethodAnalysis::spreadArms());
+     * where an engine plans none, the inline array prints its keys with no arm.
      */
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis;
 
     /**
-     * Whether the subject's caller calls each callable value it reads, as Inertia does with props and shared data, so a
-     * callable's value is what it returns wherever it sits.
+     * How the values read reach the client: as `json_encode()` sends them, or as Inertia does, filtered or not.
      */
-    public function invokesCallables(): bool;
+    public function reading(): Reading;
 }

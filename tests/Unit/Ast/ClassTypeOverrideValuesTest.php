@@ -126,15 +126,15 @@ it('keeps each typed closure\'s own override import where only its declared type
     expect($return)->toBeInstanceOf(Return_::class)
         ->and(new ResourceAstAnalyzer(new ReflectionClass(UiNodeResource::class), null)->resolve($return->expr))->toBe($expected);
 })->with([
-    'an own override' => ['\\'.Gauge::class, ['type' => 'UiGauge', 'customImports' => ['@js/types/ui' => ['UiGauge']], 'optional' => false]],
+    'an own override' => ['\\'.Gauge::class, ['type' => 'UiGauge', 'customImports' => ['@js/types/ui' => ['UiGauge']], 'optional' => false, 'heldObject' => true]],
     'a composed class, its module named by the marker' => [
-        '\\'.Chart::class, ['type' => 'ChartType', 'customImports' => [ComposedClassTypes::marker(Chart::class) => ['ChartType']], 'optional' => false],
+        '\\'.Chart::class, ['type' => 'ChartType', 'customImports' => [ComposedClassTypes::marker(Chart::class) => ['ChartType']], 'optional' => false, 'heldObject' => true],
     ],
-    'a nullable inherited override' => ['?\\'.Panel::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false]],
+    'a nullable inherited override' => ['?\\'.Panel::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false, 'heldObject' => true]],
     'an override already nullable, its null kept once' => [
-        '?\\'.MaybeNode::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false],
+        '?\\'.MaybeNode::class, ['type' => 'UiNode | null', 'customImports' => ['@js/types/ui' => ['UiNode']], 'optional' => false, 'heldObject' => true],
     ],
-    'a class with no override, which keeps its shape' => ['\\'.Plain::class, ['type' => '{ a: number }', 'optional' => false]],
+    'a class with no override, which keeps its shape' => ['\\'.Plain::class, ['type' => '{ a: number }', 'optional' => false, 'heldObject' => true]],
 ]);
 
 // The closures read a container id, so the oracle binds each one to a value of its declared class.
@@ -345,6 +345,7 @@ it("keeps a value object's overridden members in a docblock shape, a JsonSeriali
     expect(resolve(MethodReturnTypeResolver::class)->resolve(UiBoardShapesResource::class, 'untypedHelper'))->toBe([
         'type' => "{ board: {$board}; label: string }",
         'optional' => false,
+        'keepsKeys' => true,
         'customImports' => [
             '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
             ComposedClassTypes::marker(Chart::class) => ['ChartType'],
@@ -355,11 +356,12 @@ it("keeps a value object's overridden members in a docblock shape, a JsonSeriali
         'doc_shape' => "{ board: {$board}; label: string }",
         'json' => "{ board: {$board}; title: string }",
         'untyped_helper' => "{ board: {$board}; label: string }",
-        'doc_owner' => '{ owner: unknown; panel: UiNode }',
-        'untyped_owner' => '{ owner: unknown; panel: UiNode }',
+        'doc_owner' => '{ owner: User; panel: UiNode }',
+        'untyped_owner' => '{ owner: User; panel: UiNode }',
     ])
         ->and(new ResourceTransformer(UiBoardShapesResource::class)->typeImports)->toBe([
             '@js/types/ui' => ['UiAmount', 'UiGauge', 'UiNode'],
+            '../../../../../../workbench/app/models' => ['User'],
             '../../../../../../workbench/app/packages/ui' => ['ChartType'],
         ])
         ->and(pageData(UiBoardShapesPageController::class.'@show')['pageType'])
@@ -516,9 +518,9 @@ describe("an overridden enum's own names", function () {
                 'shade_resource' => 'AsEnum<typeof Shade>',
                 'shade_column_resource' => 'AsEnum<typeof Shade>',
                 'either' => 'AsEnum<typeof UiTone> | UiToneDto',
-                'value' => 'UiToneType',
+                'value' => "'bright'",
                 'name' => 'UiToneKind',
-                'shade_name' => 'ShadeKind',
+                'shade_name' => "'Dark'",
                 'default_value?' => 'UiToneType',
                 'coalesce_resource' => 'AsEnum<typeof UiTone>',
                 'constant_resource' => 'AsEnum<typeof UiTone>',
@@ -598,8 +600,8 @@ describe("a custom_ts_mappings enum's own names", function () {
             'from_resource' => 'AsEnum<typeof MappedLevel>',
             'column_resource' => 'AsEnum<typeof MappedLevel>',
             'maybe_resource' => 'AsEnum<typeof MappedLevel> | null',
-            'value' => 'MappedLevelType',
-            'rank_value' => 'RankType',
+            'value' => "'low'",
+            'rank_value' => "'top'",
             'rank_resource' => 'AsEnum<typeof Rank>',
             'rank_column_resource' => 'AsEnum<typeof Rank>',
         ]);

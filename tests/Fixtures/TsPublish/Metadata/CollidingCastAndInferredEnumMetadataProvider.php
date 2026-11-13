@@ -12,7 +12,7 @@ use Workbench\App\Enums\Role;
 final class CollidingCastAndInferredEnumMetadataProvider implements ModelMetadataProvider
 {
     /**
-     * Provide one cast type sharing its name with a body-inferred enum, which nothing can alias apart.
+     * Provide one cast type sharing its name with a body-inferred enum, which inference aliases apart.
      *
      * @return array<string, mixed>
      */

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -10,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
+use PhpParser\Node\Expr\Variable;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 
@@ -255,6 +257,33 @@ test('counts each entry into a guard a re-entry lifted, and each reused answer t
     expect([$fresh, ...$counts])->toBe([0, 1, 1, 0]);
 });
 
+test('counts each read that meets a guard already on the stack, and each reuse of an answer that met one, past a reset', function () {
+    $memo = new AnalysisMemo;
+    $cutRead = fn (): bool => $memo->enter('guard');
+    $memo->enter('guard');
+
+    $memo->remember('cut', $cutRead);
+    $computed = $memo->cuts();
+    $memo->remember('cut', $cutRead);
+    $reused = $memo->cuts();
+    $memo->remember('whole', fn (): string => 'read');
+    $memo->leave('guard');
+    $memo->reset();
+
+    expect([$computed, $reused - $computed, $memo->cuts()])->toBe([1, 1, 2]);
+});
+
+test('counts the cuts of the guards under a key prefix alone, a reused answer replaying each', function () {
+    $memo = new AnalysisMemo;
+    $memo->enter('body:a');
+    $memo->enter('sentinel');
+    $memo->remember('k', fn (): bool => $memo->enter('body:a') || $memo->enter('sentinel'));
+    $memo->remember('k', fn (): bool => false);
+    $memo->enter('sentinel');
+
+    expect([$memo->cuts(), $memo->cuts('body:'), $memo->cuts('sentinel'), $memo->cuts('none:')])->toBe([5, 2, 3, 0]);
+});
+
 test('a seeded check reuses no answer that met its guard outside it, and drops those it computed when it ends', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;
@@ -293,6 +322,112 @@ test('replays the dependencies and dropped union arms of a reused answer', funct
 
     expect($paths)->toBe(['/app/Summary.php'])
         ->and(DroppedUnionArms::dropped() - $dropped)->toBe(2);
+});
+
+test('replays the gap ids a reused answer logged when it was computed, its own and a reused answer\'s inside it', function () {
+    $memo = new AnalysisMemo;
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    [$own, $inner] = [new Variable('own'), new Variable('inner')];
+    $compute = fn (): array => [
+        DroppedUnionArms::gap($scope, 'closure-union', $own, 'string'),
+        $memo->remember('inner', fn (): int => DroppedUnionArms::gap($scope, 'match-arm', $inner, 'null')),
+    ];
+
+    $memo->remember('inner', fn (): int => DroppedUnionArms::gap($scope, 'match-arm', $inner, 'null'));
+    $ids = $memo->remember('outer', $compute);
+    $mark = DroppedUnionArms::gapMark();
+    $reused = $memo->remember('outer', $compute);
+
+    expect($reused)->toBe($ids)
+        ->and(DroppedUnionArms::gapsSince($mark))->toBe($ids);
+});
+
+test('replays the gaps a reused answer filled when it was computed, and no fill made outside it', function () {
+    $memo = new AnalysisMemo;
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    [$own, $outside] = [new Variable('own'), new Variable('outside')];
+    $fills = function () use ($scope, $own): int {
+        $id = DroppedUnionArms::gap($scope, 'match-arm', $own, 'null');
+        DroppedUnionArms::filled([$id]);
+
+        return $id;
+    };
+    $leaves = fn (): int => DroppedUnionArms::gap($scope, 'match-arm', $outside, 'null');
+
+    $filled = $memo->remember('fills', $fills);
+    $left = $memo->remember('leaves', $leaves);
+    DroppedUnionArms::filled([$left]);
+    $mark = DroppedUnionArms::gapMark();
+    $memo->remember('fills', $fills);
+    $memo->remember('leaves', $leaves);
+
+    expect(DroppedUnionArms::filledSince($mark))->toBe([$filled])
+        ->and(DroppedUnionArms::gapsSince($mark))->toBe([$filled, $left]);
+});
+
+test('keeps an answer read with gaps shown apart from one read with them hidden, whichever comes first', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    [$offFirst, $onFirst] = [new ArrayObject, new ArrayObject];
+    $showing = fn (string $key, ArrayObject $runs): int => $memo->showingGaps(fn (): int => $memo->remember($key, $counting($runs)));
+
+    $off = [$memo->remember('off-first', $counting($offFirst)), $showing('off-first', $offFirst)];
+    $on = [$showing('on-first', $onFirst), $memo->remember('on-first', $counting($onFirst))];
+
+    expect([...$off, ...$on])->toBe([1, 2, 1, 2])
+        ->and([$memo->remember('off-first', $counting($offFirst)), $showing('on-first', $onFirst)])->toBe([1, 1])
+        ->and($memo->keys())->toBe(['off-first', 'off-first@gaps', 'on-first@gaps', 'on-first']);
+});
+
+test('keys an answer read with gaps shown beside one that needs enum cases as enums', function () use ($counting) {
+    $memo = new AnalysisMemo;
+
+    $memo->readingCasesAsEnums(fn (): int => $memo->showingGaps(fn (): int => $memo->remember('k', $counting(new ArrayObject))));
+
+    expect($memo->keys())->toBe(['k@casesAsEnums@gaps']);
+});
+
+test('each gap mode read restores the mode around it, a throw included, and hiding inside showing reads hidden', function () {
+    $memo = new AnalysisMemo;
+    $fails = fn (): never => throw new RuntimeException('the read failed');
+    $modes = [$memo->showsGaps()];
+
+    $memo->showingGaps(function () use ($memo, $fails, &$modes): void {
+        $modes[] = $memo->showsGaps();
+        $modes[] = $memo->hidingGaps(fn (): bool => $memo->showsGaps());
+        $modes[] = $memo->hidingGaps(fn (): bool => $memo->showingGaps(fn (): bool => $memo->showsGaps()));
+
+        try {
+            $memo->hidingGaps($fails);
+        } catch (RuntimeException) {
+            $modes[] = $memo->showsGaps();
+        }
+    });
+
+    try {
+        $memo->showingGaps($fails);
+    } catch (RuntimeException) {
+        $modes[] = $memo->showsGaps();
+    }
+
+    expect($modes)->toBe([false, true, false, true, true, false]);
+});
+
+test('remembers a fact under its plain key, computed with gaps hidden, so one answer serves both modes', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+    $modes = [];
+    $fact = function () use ($memo, $counting, $runs, &$modes): int {
+        $modes[] = $memo->showsGaps();
+        $memo->remember('read-inside', fn (): string => 'reading');
+
+        return $counting($runs)();
+    };
+
+    $shown = $memo->showingGaps(fn (): array => [$memo->rememberFact('fact', $fact), $memo->showsGaps()]);
+
+    expect([...$shown, $memo->rememberFact('fact', $fact)])->toBe([1, true, 1])
+        ->and($modes)->toBe([false])
+        ->and($memo->keys())->toBe(['read-inside', 'fact']);
 });
 
 test('computes an answer again once the published resource set changes', function () use ($counting) {
@@ -372,4 +507,4 @@ test('keys a static call through a class\'s name that forwards nothing as a read
         ->and($own['type'] ?? null)->toBe('string')
         ->and($memo->computations())->toBe($computed)
         ->and(new SevenHelperLevelResource(new Post)->resolve(request())['static_named'])->toBe('base');
-});
+})->group('gap-mode');

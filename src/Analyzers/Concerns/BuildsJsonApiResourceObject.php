@@ -271,6 +271,7 @@ trait BuildsJsonApiResourceObject
         return [
             'type' => '{ '.implode('; ', $members).' }',
             'optional' => true,
+            'absent' => true,
             'customImports' => [TolkiTypes::MODULE => array_values($generics)],
         ];
     }

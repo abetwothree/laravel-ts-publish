@@ -10,8 +10,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Packages\Ui\Chart;
 
 /**
- * Reads, through an untyped helper, an enum whose type is spelled like a composed class's beside that class: the enum
- * rides a channel the body fallback cannot carry, so it is `unknown` though the class's import spells its name.
+ * Reads, through an untyped helper, an enum whose type is spelled like a composed class's beside that class: the key
+ * holding the helper would alias both tokens alike, so the enum is `unknown` and the class keeps its import.
  */
 class UiUntypedChartKindResource extends JsonResource
 {

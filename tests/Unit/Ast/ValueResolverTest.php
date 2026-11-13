@@ -188,9 +188,9 @@ it('types a pure enum case as its enum too, the names a model or a metadata file
     expect($result)->toBe(['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class]);
 });
 
-it('types an enum case in a scope that carries no import as the value it sends, or not at all for a pure enum', function () {
+it('types an enum case under casesAsLiterals as the value it sends, or not at all for a pure enum', function () {
     $scope = valueResolverTestScope();
-    $scope->carriesImports = false;
+    $scope->casesAsLiterals = true;
     $resolve = fn (string $enum, string $case): ?array => new ValueResolver()->resolveClassConstant(valueResolverClassConstFetch($enum, $case), $scope);
 
     expect($resolve(Status::class, 'Draft'))->toBe(['type' => '0', 'optional' => false])
@@ -198,6 +198,15 @@ it('types an enum case in a scope that carries no import as the value it sends, 
         ->and($resolve(UnsafeIntegerBackedStatus::class, 'Huge'))->toBe(['type' => 'number', 'optional' => false])
         ->and($resolve(Visibility::class, 'Public'))->toBeNull()
         ->and($resolve(UiTone::class, 'Bright'))->toMatchArray(['type' => 'UiToneDto', 'customImports' => ['@js/types/ui' => ['UiToneDto']]]);
+});
+
+it('types the cases a constant value holds under casesAsLiterals as the values they send, at any depth', function () {
+    $resolve = fn (mixed $value): ?array => new ValueResolver()->resolveConstantValue($value, casesAsLiterals: true);
+
+    expect($resolve([Status::Draft, Status::Published]))->toBe(['type' => '(0 | 1)[]', 'optional' => false])
+        ->and($resolve(['kind' => ChartKind::Bar, 'n' => 1]))->toBe(['type' => "{ kind: 'bar'; n: number }", 'optional' => false])
+        ->and($resolve([Visibility::Public]))->toBeNull()
+        ->and(new ValueResolver()->resolveConstantValue([Status::Draft]))->toMatchArray(['type' => 'StatusType[]']);
 });
 
 it('declines a constant whose lazily-evaluated initializer throws, instead of aborting', function () {
@@ -244,6 +253,7 @@ it('evaluates a constant expression as PHP does, reading class constants and enu
     'a ternary' => ['self::SCHEMA_VERSION > 1 ? [1] : "x"', [1]],
     'a global constant' => ['[PHP_INT_SIZE, PHP_EOL]', [PHP_INT_SIZE, PHP_EOL]],
     'an enum case ->name and ->value' => ['[\\'.Status::class.'::Published->name, \\'.Status::class.'::Published->value]', ['Published', 1]],
+    'an enum\'s cases(), spread' => ['[...\\'.Status::class.'::cases(), 2]', [Status::Draft, Status::Published, 2]],
 ]);
 
 it('throws for what a constant expression reads that the evaluator cannot', function (string $php) {
@@ -258,6 +268,9 @@ it('throws for what a constant expression reads that the evaluator cannot', func
     'a magic constant, whose value depends on where it appears' => ['[__TRAIT__ => 1]'],
     'a variable' => ['$other'],
     'a missing class constant' => ['self::MISSING'],
+    'a static call other than cases()' => ['\\'.Status::class.'::from(1)'],
+    'cases() passed an argument' => ['\\'.Status::class.'::cases(1)'],
+    'cases() of a class that is no enum' => ['self::cases()'],
 ]);
 
 // json_encode() writes a list only when the keys run 0 to n-1; a resource's re-index is its publisher's.

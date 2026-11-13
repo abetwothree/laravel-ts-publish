@@ -12,7 +12,7 @@ use Workbench\App\Models\User;
 test('a map over no collection, or over values a write replaced, publishes no list of the closure shape', function () {
     $types = publishedResourceKeyTypes(MapReceiverEdgesResource::class, Post::class);
 
-    expect($types['box'])->toBe('{ items: unknown[] }')
+    expect($types['box'])->toBe('{ items: Record<string, unknown> }')
         ->and($types['literal'])->toBe('unknown')
         ->and($types['plucked?'])->toBe('unknown')
         ->and($types['paged'])->toBe('{ id: number }[]');

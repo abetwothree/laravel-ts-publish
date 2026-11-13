@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures;
 
 use Illuminate\Http\Request;
 
-/** Spreads its parent's share(), whose own cast only the engine applies: the shared-data analyzer reads this one's. */
+/** Spreads its parent's share(), whose own cast the shared-data analyzer reads off the parent. */
 class ShareCastChildMiddleware extends ShareCastBaseMiddleware
 {
     /**

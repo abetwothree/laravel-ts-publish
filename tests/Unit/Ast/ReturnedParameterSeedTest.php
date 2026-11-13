@@ -249,10 +249,12 @@ it('keeps only the written keys where the seed cannot place a same-named pair', 
         ->and(json_encode(new SeededEnumMembers()->nestedPair()))->toBe('{"a":0,"inner":{"b":"lead"},"stamped":true}');
 });
 
-it('keeps the open signature where an import-less read would type a seeded class unknown', function () {
+it('seeds a helper read as a value with an argument naming two same-named enums, each aliased', function () {
     expect(analyzedKeyTypes(SeededEnumMembers::class, 'values'))->toBe([
-        'pair' => '{ stamped: boolean; [key: string]: unknown }',
-    ])->and(json_encode(new SeededEnumMembers()->values()))->toBe('{"pair":{"a":0,"b":"lead","stamped":true}}');
+        'pair' => '{ a: WorkbenchStatusType; b: CrmStatusType; stamped: boolean }',
+    ])->and(analyzedImportNames(SeededEnumMembers::class, 'values'))
+        ->toBe(['StatusType as CrmStatusType', 'StatusType as WorkbenchStatusType'])
+        ->and(json_encode(new SeededEnumMembers()->values()))->toBe('{"pair":{"a":0,"b":"lead","stamped":true}}');
 });
 
 it('keeps only the written keys where the argument holds an EnumResource wrap', function () {

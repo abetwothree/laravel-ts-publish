@@ -34,7 +34,7 @@ test('getKey on the base Model declines, while an abstract model inheriting Mode
         ->and($resolver->resolve(new ReceiverType([EloquentCollection::class], elementModel: AbstractUuidKeyModel::class), 'modelKeys', $scope))
         ->toBe(['type' => 'string[]', 'optional' => false])
         ->and($resolver->resolve(new ReceiverType([EloquentCollection::class], elementModel: Model::class), 'modelKeys', $scope))
-        ->toBe(['type' => '(string | number)[]', 'optional' => false]);
+        ->toBe(['type' => '(string | number)[]', 'optional' => false, 'listKeys' => true]);
 });
 
 test('modelKeys wraps an abstract element model\'s union of subclass key types before listing it', function () {

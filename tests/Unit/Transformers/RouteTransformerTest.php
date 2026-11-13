@@ -3,7 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeFoldedPageController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LiteralCastController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
+use Illuminate\Routing\Router;
 use Workbench\Accounting\Http\Controllers\TwoFactorController;
 use Workbench\Accounting\Http\Requests\VerifyTwoFactorRequest;
 use Workbench\App\Http\Controllers\AttributeRouteKeyController;
@@ -34,6 +40,9 @@ use Workbench\App\Http\Controllers\PrimaryKeyController;
 use Workbench\App\Http\Controllers\TypedParamController;
 use Workbench\App\Http\Requests\StorePostRequest;
 use Workbench\App\Http\Requests\UpdatePostRequest;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
+use Workbench\Crm\Models\Deal;
 
 beforeEach(function () {
     RouteTransformer::clearModelInstanceCache();
@@ -983,4 +992,177 @@ test('a page prop typed by an enum imports the #[TsEnum(name:)] type, not the ba
     // Exact, not toContain(): the page imports one type, so a wrong name shows up in the failure
     // message instead of being masked by a short-circuited ->and() chain.
     expect($imported)->toBe(['SizeType']);
+});
+
+// beforeEach() strips `Workbench\` from namespaces, so the registry prefixes an alias with `Enums` or `Models`.
+it('aliases two same-named enums a page reads, in its route file', function () {
+    app(Router::class)->get('/pair/{deal}', [SameNamedEnumPairController::class, 'pair']);
+    $transformer = new RouteTransformer(SameNamedEnumPairController::class);
+    $deal = (new Deal)->forceFill(['status' => 0, 'crm_status' => 'lead']);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { a: EnumsStatusType, b: CrmStatusType, c: EnumsStatusType, d: CrmStatusType }')
+        ->and(array_merge(...array_values($transformer->typeImports)))
+        ->toEqualCanonicalizing(['StatusType as CrmStatusType', 'StatusType as EnumsStatusType'])
+        ->and(inertiaProps(new SameNamedEnumPairController()->pair($deal)))
+        ->toEqual((object) ['a' => 0, 'b' => 'lead', 'c' => 0, 'd' => 'lead']);
+});
+
+it('aliases a model beside a page whose cast imports User from another module, and keeps the cast\'s User', function () {
+    app(Router::class)->get('/cast-beside-model/{post}', [SameNamedEnumPairController::class, 'castBesideModel']);
+    $transformer = new RouteTransformer(SameNamedEnumPairController::class);
+    $post = (new Post)->setRelation('author', (new User)->forceFill(['name' => 'Ada']));
+    $sent = inertiaProps(new SameNamedEnumPairController()->castBesideModel($post));
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { owner: User, author: ModelsUser }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ])
+        ->and([$sent->owner->name, $sent->author->name])->toBe(['Ada', 'Ada']);
+});
+
+it('joins a props helper\'s override-beside-model fill with a render branch\'s null, each token keeping its class', function () {
+    app(Router::class)->get('/doc-shape-branched/{id}', [DocShapeBranchedPageController::class, 'branched']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { owner: User | ModelsUser | null }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ])
+        ->and(inertiaProps(new DocShapeBranchedPageController()->branched(1))->owner)->toBeNull();
+});
+
+it('gives a render branch\'s literal spelling a joined name a slot of its own', function () {
+    app(Router::class)->get('/doc-shape-literal-first/{id}', [DocShapeBranchedPageController::class, 'literalFirst']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe("Inertia.SharedData & { owner: { kind: 'User' } | User[] | ModelsUser }")
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['User as ModelsUser'],
+        ]);
+});
+
+it('binds an arm\'s override and other class beside the model in another arm, joined with a render branch\'s null', function () {
+    app(Router::class)->get('/doc-shape-mixed-arm/{id}', [DocShapeBranchedPageController::class, 'mixedArm']);
+    $transformer = new RouteTransformer(DocShapeBranchedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { owner: { a: User; p: Post } | ModelsUser | null }')
+        ->and($transformer->typeImports)->toBe([
+            '@js/types/ui' => ['User'],
+            '../../../../../../app/models' => ['Post', 'User as ModelsUser'],
+        ])
+        ->and(inertiaProps(new DocShapeBranchedPageController()->mixedArm(1))->owner)->toBeNull();
+});
+
+it('reads a folded fill\'s model class-less beside an override in a sibling prop member, as before', function () {
+    app(Router::class)->get('/doc-shape-split', [DocShapeFoldedPageController::class, 'split']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { split: { n: User | null; m: unknown }, two: { n: User | null; m: unknown } }')
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->split()))->toEqual((object) [
+            'split' => (object) ['n' => null, 'm' => null],
+            'two' => (object) ['n' => null, 'm' => null],
+        ]);
+});
+
+// A folded value carries no slots, so the model-only fill reads class-less too.
+// Known gap: "A docblock fill spread inside a nested literal keeps no class".
+it('reads a folded model fill class-less beside an override in a cousin prop member, as before', function () {
+    app(Router::class)->get('/doc-shape-cousin', [DocShapeFoldedPageController::class, 'cousin']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { o: { p: { n: User | null }; q: { m: unknown } } }')
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['User']])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->cousin()))->toEqual((object) [
+            'o' => (object) ['p' => (object) ['n' => null], 'q' => (object) ['m' => null]],
+        ]);
+});
+
+it('imports no override a folded page fill spells only in a literal once read class-less', function () {
+    app(Router::class)->get('/doc-shape-literal', [DocShapeFoldedPageController::class, 'literal']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe("Inertia.SharedData & { lo: { k: unknown; kind: 'User' | null }, lc: { k: unknown; kind: 'User' | null; c: unknown } }")
+        ->and($transformer->typeImports)->toBe([])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->literal()))->toEqual((object) [
+            'lo' => (object) ['k' => null, 'kind' => null],
+            'lc' => (object) ['k' => null, 'kind' => null, 'c' => null],
+        ]);
+});
+
+// A folded value carries no slots, so the model-only fill reads class-less too.
+// Known gap: "A docblock fill spread inside a nested literal keeps no class".
+it('reads props helpers\' fills folded into a page prop class-less, as before', function () {
+    app(Router::class)->get('/doc-shape-folded', [DocShapeFoldedPageController::class, 'folded']);
+    $transformer = new RouteTransformer(DocShapeFoldedPageController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { prop: { k: unknown }, nested: { y: { k: unknown } }, model_only: { k: unknown } }')
+        ->and($transformer->typeImports)->toBe([])
+        ->and(inertiaProps(new DocShapeFoldedPageController()->folded()))->toEqual((object) [
+            'prop' => (object) ['k' => null],
+            'nested' => (object) ['y' => (object) ['k' => null]],
+            'model_only' => (object) ['k' => null],
+        ]);
+});
+
+it('imports the model an import-less cast spells over the key whose value embeds it', function () {
+    app(Router::class)->get('/embedded-cast/{post}', [EmbeddedCastController::class, 'show']);
+    $transformer = new RouteTransformer(EmbeddedCastController::class);
+    $post = (new Post)->setRelation('author', (new User)->forceFill(['name' => 'Ada']));
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { meta: { author: User | null } }')
+        ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
+        ->and(inertiaProps(new EmbeddedCastController()->show($post))->meta->author->name)->toBe('Ada');
+});
+
+it('leaves the string literals a page cast writes as written, beside a model another page aliases', function () {
+    app(Router::class)->get('/literal-cast/{post}/module', [LiteralCastController::class, 'module']);
+    app(Router::class)->get('/literal-cast/{post}/literal', [LiteralCastController::class, 'literal']);
+    $transformer = new RouteTransformer(LiteralCastController::class);
+    $post = (new Post)->setRelation('author', (new User)->forceFill(['name' => 'Ada']));
+    $sent = inertiaProps(new LiteralCastController()->literal($post));
+
+    expect(array_column($transformer->actions, 'pageType', 'originalMethodName'))->toBe([
+        'module' => 'Inertia.SharedData & { author: User }',
+        'literal' => 'Inertia.SharedData & { author: ModelsUser, kind: \'User\' | \'Team\', morph: "App\\\\Models\\\\User" }',
+    ])->and($transformer->typeImports)->toBe([
+        '@js/types/ui' => ['User'],
+        '../../../../../../app/models' => ['User as ModelsUser'],
+    ])->and([$sent->author->name, $sent->kind, $sent->morph])->toBe(['Ada', 'User', 'App\\Models\\User'])
+        ->and(inertiaProps(new LiteralCastController()->module($post))->author->name)->toBe('Ada');
+});
+
+// A mocked analysis has no response to send, so this pins the namer alone.
+it('aliases every token of a page whose analyzer queues none, a class repeated out of order too', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockConverter = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockConverter->shouldReceive('analyze')
+        ->andReturnUsing(fn (array $action): ?array => str_contains($action['uses'], 'InertiaController@dashboard') ? [
+            'component' => 'Dashboard',
+            'pageType' => 'Inertia.SharedData & { a: TableResource<User>, b: TableResource<Post>, c: TableResource<User> }',
+            'classFqcns' => [User::class, Post::class],
+            'externalImports' => ['@inertiaui/table-vue' => ['TableResource'], '@js/types/ui' => ['User']],
+        ] : null);
+
+    app()->instance(InertiaPageAnalyzer::class, $mockConverter);
+
+    $transformer = new RouteTransformer(InertiaController::class);
+
+    expect(collect($transformer->actions)->firstWhere('originalMethodName', 'dashboard')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { a: TableResource<ModelsUser>, b: TableResource<Post>, c: TableResource<ModelsUser> }')
+        ->and($transformer->typeImports)->toBe([
+            '@inertiaui/table-vue' => ['TableResource'],
+            '../../models' => ['Post', 'User as ModelsUser'],
+        ]);
 });

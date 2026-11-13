@@ -30,6 +30,8 @@ The attribute waterfall spans these classes:
 - [`TsTypeString`](../../src/Support/TsTypeString.php): `isVagueTsType()`, the one definition of "vague".
 - [`ModelInspector`](../../src/ModelInspector.php): extends Laravel's inspector for the attribute list, and reads the
   relation list itself. See [Relation discovery](#relation-discovery).
+- [`CastCasters`](../../src/Ast/Members/CastCasters.php): the casters a cast runs, a `Castable`'s read from its
+  `castUsing()` without calling it, and whether every one's `get()` declares a native non-null return.
 
 ## A vague signature defers to the docblock
 
@@ -46,8 +48,9 @@ key inside a concrete shape is not the same as no shape. The return-type order, 
 refinement all use this one predicate.
 
 `resolveAttribute()` takes a `carriesImports` flag, which reaches only the getter-body step and the `@property`
-refinement; see [A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import). The
-accessor step is memoized per model, attribute and import mode, so one mode never reuses the other's answer.
+refinement; see [A reader that carries no import](accessor-body-analyzer.md#a-reader-that-carries-no-import). Its
+`casesAsLiterals` flag, set for a whole read in the body fallback, reaches only the getter-body step. The accessor step
+is memoized per model, attribute, import mode and case reading, so no reading reuses another's answer.
 `resolveAttributeClass()` and `resolveAccessorModelFqcns()` take no flag, because the first never reads a getter body
 and the models a getter returns do not depend on how its filters are spelled.
 
@@ -56,9 +59,9 @@ and the models a getter returns do not depend on how its filters are spelled.
 A mutator with no getter is documented `Attribute<never, string>` by convention. The `never` says no getter exists.
 It is not the read type, since a read returns the raw, cast column, so `ResolvesAccessorType` treats a `never` Get
 like a missing docblock and returns `omittedTypeScriptInfo()`. It strips a `null` arm first with
-`ValueResult::stripNullArm()`, because `?never` and `never|null` both arrive as `never | null`. `resolveAttribute()`
-then falls through to a real column's type, and `ModelTransformer::transformMutators()` drops a name with no column.
-`OutgoingNote` pins the `never` and `?never` spellings and the dropped name.
+`TsTypeString::withoutNullArm()`, because `?never` and `never|null` both arrive as `never | null`.
+`resolveAttribute()` then falls through to a real column's type, and `ModelTransformer::transformMutators()` drops a
+name with no column. `OutgoingNote` pins the `never` and `?never` spellings and the dropped name.
 
 To assert that a name is left out, use `isOmittedMutator()`, which reads the accessor step's `omit` flag.
 `resolveAttribute()` returns `unknown` both for an omitted mutator and for an attribute it cannot type.
@@ -66,8 +69,9 @@ To assert that a name is left out, use `isOmittedMutator()`, which reads the acc
 ## A cast name is not a column type
 
 A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer `asTimestamp()` returns, which
-`toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()`, the
-`ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in order:
+`toArray()` never formats. So a cast goes through `LaravelTsPublish::castToTsType()`, from `resolveAttribute()` (by
+way of `columnCastToTsType()`), the `ModelTransformer` fallback and a `whenAggregated()` alias cast. Its rules, in
+order:
 
 1. A `custom_ts_mappings` key for the cast, or for the type `getCastType()` reads it as (`decimal` for `decimal:N`),
    goes to `toTsType()` under that name, so the user's entry wins.
@@ -75,7 +79,19 @@ A `timestamp` column holds a date, but a `timestamp` cast holds the Unix integer
 3. `timestamp`, trimmed and lowercased as `getCastType()` reads it, publishes `number`, even under `timestamps_as_date`.
 4. A `Castable` whose `castUsing()` casters, read without calling it, all serialize publishes their `serialize()`
    type, as step 4 below does for a caster. `toTsType()` never does, since a Castable is also a value a resource sends.
+   The casters it declares are read first, then the ones it returns
+   ([`CastCasters`](../../src/Ast/Members/CastCasters.php)), as a declared base may answer nothing for its subclass.
 5. Any other cast goes to `toTsType()` never re-cased, since `isPlainDateClass()` tells a class by its letter case.
+
+A read of the attribute off the model, as a resource's `$this->title`, `only()`, `except()` (its own, its model's or a
+relation's) or a getter body's is, gets the value `get()` returns, which `json_encode()` writes as it is. Those readers
+ask `resolveAttributeValue()`, which reads such a cast through `castValueToTsType()`: `castToTsType()` with no
+`serialize()` reading, and a `Castable` as the `get()` of the casters its `castUsing()` names. A `get()` declaring
+nothing or only `mixed` publishes what its returns prove, as `getBodyTypes()` reads them. Where they prove nothing, the
+read keeps the column's reading: an interface caster its `serialize()` type, and a `Castable` its column type. A filter
+whose picked column reads apart from the model interface publishes an inline shape, not `Pick<>`
+(`ResolvesFilteredRelationTypes`). A resource that sends the model's own `toArray()` reads it as `resolveAttribute()`
+does.
 
 `isDateFamilyCast()` leaves `timestamp` out, so no Carbon method is reflected on such a cast: it publishes `unknown`
 where the call throws.
@@ -87,8 +103,38 @@ numbers.
 
 Step 4 reads a custom cast's `get()` through `methodOrDocblockReturnTypes()`, so a vague native `array` defers to a
 `@return` such as `list<Dto>`. It keeps the native type when the docblock names a class token, which a cast type cannot
-import. A `SerializesCastableAttributes` caster publishes what its `serialize()` declares instead, since
-`Model::toArray()` writes that; one that declares nothing leaves `get()` to type it.
+import. A caster with a `serialize()` method publishes its value instead, since `Model::toArray()` writes that
+wherever the method exists, with or without `SerializesCastableAttributes`. `serializedCastTypes()` reads it in order:
+
+1. A type `serialize()` declares wins where it is not vague.
+2. Then, for one declaring nothing or only `mixed`, what its returns prove, read by `serializeBodyTypes()`. A reading
+   with an `unknown`, a vague or `object` arm, or an arm the engine left out proves nothing, as `return $value;` does,
+   and so does one naming a class a cast type cannot import. A dependency's caster is not read.
+3. Otherwise, with the interface, one declaring nothing leaves `get()` to type it, and any declared type stands:
+   `mixed` reads `unknown | null` and `array` `unknown[]`. Without it, nothing or `mixed` leaves `get()` to type it,
+   as does `array`, `object` or both over a `get()` whose every arm is an object or an array. Over any other `get()`,
+   a scalar, an enum or `unknown`, they stand, since `serialize()` sends something else, and a vague `array` reads as
+   a list or a record, as `json_encode()` writes it.
+
+The reading that stands gains `| null` where `get()` returns null, since `Model::toArray()` sends a null value without
+calling `serialize()`. `get()`'s native type, else its `@return`, else its body as the engine reads it, proves that by a
+`null` arm, such as `?T`, `@return int|null`, a bare `return;`, a fall-off or a `null` ternary arm, or proves its
+absence. A `mixed` type says nothing and falls through. A body's `null` arm proves only where the body returns a literal
+`null` itself, or can run to its end (`ReturnLiteralReader::returnsNull()`, which follows each branch of an if, a switch
+and a try, and knows a `never` call, a `match` whose every arm throws and a `while (true)` no `break` leaves never get
+there), never one a value it reads carries in, such as another model's accessor. Where nothing proves either, as for
+a body the engine cannot read, one it leaves an arm out of, one read through a caster cycle, or a carried-in null, a
+type read from `serialize()`'s body keeps the null, since `get()` cannot rule it out, and a declared `serialize()` type
+adds none. Only a `caster-body:` guard's cut counts as such a cycle (`AnalysisMemo::cuts()` by prefix). A helper's or a
+property's own guard carries no fallback into the reading, and an `accessor-body:` cut, which falls back to the model's
+declared type, is not counted either. `typeHoldsNull()` sees the arm, so a nullable column adds no second.
+
+A NOT NULL column takes no null from `get()`: Laravel never hands its `get()` a NULL, so `resolveAttribute()` reads
+the cast through `columnCastToTsType()`, whose flag makes `withGetNull()` add none; a null `serialize()` declares or
+returns stays. A `get()` mapping a stored value to null is left out
+([known gaps](../known-gaps.md#a-serializing-class-cast-whose-get-proves-nothing-publishes-serializes-type-wherever-it-is-read)).
+A resource's read keeps the null, since `resolveAttributeValue()` reads the cast with no column. `readingCast()` sets
+the flags and turns both off around a caster body's read, so neither a nested read nor its memo depends on them.
 
 ### Step 2: an override, resolved and composed
 
@@ -171,9 +217,8 @@ public non-static property with every one of them typed, it publishes its proper
 Know these five points before you change it:
 
 - **Publication**: 5c never checks whether the class has a published file. Its motivating classes have none, so a
-  bare class token would have no file to import from. A published class, such as a broadcast event, would inline too
-  if `toTsType()` met it. `BroadcastEventTransformer` calls `toTsType()` for enums only, so no published class reaches
-  5c, and no test would catch one that did.
+  bare class token would have no file to import from. A published class, such as a broadcast event, inlines too where
+  `toTsType()` meets it, as a payload's `new PostPublishedEvent(...)` does (`PostOwnJsonEvent`).
 - **Every property typed**: load-bearing. It keeps `Illuminate\Database\Eloquent\Casts\Attribute`, whose public
   properties are untyped, on step 5. `attributeDocblockReturnTypes()` recognizes a bare `@return Attribute` by
   `classFqcns === [Attribute::class]`, which an inlined shape would break.
@@ -203,25 +248,44 @@ read `Illuminate\Database\Schema\Grammars\*Grammar.php` before you add a `TypeSc
 
 ## A shape keeps a member only where its own imports cover it
 
-A shape carries custom imports but no FQCN channel, so a member keeps its type only where the custom imports it brought
-itself bind every name it spells (`TsTypeString::importsCover()`), and no model, enum or other class in it publishes
-under one of those names (`LaravelTsPublish::shapeTypeInfo()`). Both read an import's local name through
-`ImportMaps::localNames()`, so `X as Y` binds `Y`. An override keeps its type and its import, a composed class's marker
-included; a model or an enum, whose FQCN the shape cannot carry, does not, and its siblings keep theirs. The collision
-test stops an enum spelled like a composed class beside it from taking that class's import.
+A member keeps its type only where the custom imports it brought itself bind every name it spells
+(`TsTypeString::importsCover()`) but the tokens a class stands behind, and no model, enum or other class in it publishes
+under one of those names. Both read an import's local name through `ImportMaps::localNames()`, so `X as Y` binds `Y`.
+An override keeps its type and its import, a composed class's marker included. The collision test stops an enum
+spelled like a composed class beside it from taking that class's import.
 
-A union keeps its arms' merged imports unless an arm its own imports do not cover spells a name a sibling arm's imports
-bring (`borrowsImport()`), so a model spelled like an override beside it never borrows that override's import, while
-`Panel|Status` keeps `UiNode`'s.
+A docblock shape and a value object's public-property shape (`shapeMemberTypes()`) name the class behind each token of a
+class's name (`tokenFqcns`, one slot per token in print order, null for an override's), so a member naming a published
+model, an enum or a published API resource keeps it at any depth, nested or in a container (`keptShapeMember()`). A
+value object's own `toArray()` or `jsonSerialize()` docblock shape and a reader that keeps only the type string read
+with no class (`withoutShapeClasses()`), so a model or an enum there is `unknown` and its siblings keep their types.
+Where a class two tokens spell alike is not published, the member keeps neither (`exportedTokenFqcns()`).
+
+A union keeps its arms' merged imports unless an arm its own imports and classes do not cover spells a name a sibling
+arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override spelled `User`, keeps both, its slots
+`[null, User]`, while `Panel|Status` keeps `UiNode`'s; in a container, `mergeTypeScriptInfos()` keeps the null in
+`classTokenFqcns`.
+
+A resolved type's readers carry only a model's or an enum's class and no slot's null, so a docblock shape that names any
+other class, or holds a null, a literal's or a key's spelled like a class's name included, is read there with no class
+(`shapeChannels()`). Its enum channel lists each enum once, so a value object's shape whose two same-named enums
+alternate, as `AlternatingStatuses` does, is read with no class too (`TokenSlots::enumsTakeTurns()`). Shared data, a
+metadata companion and an API resource's `@return` fill read `tokenFqcns` from `docblockReturnShapeInfos()`
+([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
+
+`resolveDocblockTypePart()` alone reads an intersection of sealed keyed shapes with no key in common, such as
+`array{a: int}&array{owner: User}`, as the one object it sends, `{ a: number; owner: User }` (`intersectedShape()`). A
+nested one, and one in `share()`'s or a metadata provider's `@return`, read as before.
 
 These readers apply it, each with the scope and the fallback its page gives:
 
-- a value object's shape, steps 5a and 5c ([above](#arrayable-and-jsonserializable-take-their-shape-differently));
+- a value object's shape, steps 5a, 5c and 5d ([above](#arrayable-and-jsonserializable-take-their-shape-differently));
 - a docblock `array{…}` shape, nested in a container too ([Generic containers](#generic-containers));
 - the `@return` an API resource's method fills from
   ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill));
 - a model metadata payload, which throws instead ([Model metadata](model-metadata.md#type-precedence));
-- the body fallback, per method ([Receiver types](receiver-types.md#the-body-fallback-carries-no-fqcn-channel)).
+- the body fallback, which carries FQCN channels and so keeps only the collision test, per method
+  ([Receiver types](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does)).
 
 ## Docblock types
 
@@ -236,55 +300,63 @@ These readers apply it, each with the scope and the fallback its page gives:
 - **Intersections in the value slot**: the value splits at top-level `&`, and the members join as a TypeScript
   intersection, each keeping its imports. A member that resolves to `unknown` is dropped, since `A & B` is assignable
   to `A`. So
-  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: unknown })[]`.
+  `Collection<int, User&object{pivot: TaskAssignment}>` publishes `(User & { pivot: TaskAssignment })[]`.
 - **Key types**: a string-refinement key, such as `non-empty-string` or `class-string<Model>`, gives
-  `Record<string, X>`. An `array-key` or `mixed` key gives `X[] | Record<string, X>`, because the keys may not be
-  sequential.
+  `Record<string, X>`. An `array-key`, `int|string` or `mixed` key gives `X[] | Record<string, X>`, because the keys
+  may not be sequential.
 - **A leading `?`**: `?array<int, int>` has the `?` stripped, the rest resolved and `| null` appended, as `toTsType()`
   does for a plain type. Without it the container pattern would not match, and partial matching would return a
   plausible wrong scalar.
-- **Parentheses**: `wrapAsArray()` wraps a union or an intersection before it appends `[]`.
+- **Parentheses**: `wrapAsArray()` lists through `TsTypeShape::listType()`, which wraps a top-level union, intersection
+  or arrow before it appends `[]`, and no object literal.
 - **Unrecognized generics**: a part that still contains `<` resolves to `unknown`, not to the `int` that partial
   matching would find inside it.
 
 ### Type aliases
 
-`LaravelTsPublish::resolvePhpstanTypeAlias()` looks for a `@phpstan-type` or `@psalm-type` on the class, then follows
-`@phpstan-import-type Name from Other`, with or without `as Alias`, recursively. An import chain therefore resolves to
-the class that wrote the shape. A definition spanning several docblock lines is joined until its braces and angle
-brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias give `unknown`.
+[`TypeAliases::find()`](../../src/Ast/Docblocks/TypeAliases.php) looks for a `@phpstan-type` or `@psalm-type` on the
+class, then follows `@phpstan-import-type Name from Other`, with or without `as Alias`, recursively. An import chain
+therefore resolves to the class that wrote the shape. A definition spanning several docblock lines is joined until its
+braces and angle brackets balance. A `$seen` set guards the import chain, so two classes importing each other's alias
+give `unknown`. It caches each class's answers for the run; `LaravelTsPublish::resolvePhpstanTypeAlias()` delegates to
+it.
 
-The alias resolves against its defining class's imports and namespace, not the referencing class's.
-An alias also resolves inside a container, a shape, a group or another alias, and on a property's or a promoted
-property's `@var`, against the class whose docblock is read; one already being expanded, as in
-`@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then
-appends `| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes
-`filters?:`.
+The alias resolves against its defining class's imports and namespace, not the referencing class's. An alias also
+resolves inside a container, a shape, a group or another alias, on a property's or a promoted property's `@var`, and on
+a local's inline `@var` or a method's `@param`, against the class whose docblock is read; one already being expanded,
+as in `@phpstan-type A = list<A>`, reads `unknown`. A nullable `?Alias` resolves the bare name and then appends
+`| null`. The shape parser keeps a key's `?`, so an alias expanding to `array{filters?: ...}` publishes `filters?:`.
 
 ### Trait-declared methods read the trait's file
 
 For a method a class takes from a trait, `ReflectionMethod::getDeclaringClass()` reports the using class, though the
-file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches,
-so a class named in a trait's docblock resolves against the trait's imports, not the model's. The docblock readers all
-use it: `docblockReturnTypes()`, `resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and
-`ModelAttributeResolver::morphToGenericMembers()`. A value object's shape reads a property's `@var` the same way,
-through `propertyDeclaringFileClass()`. Reflection reports a trait's property, docblock and all, as the using class's,
-and a class's redeclaration of it the same way, so that method asks each file's source which one declares the property.
+file and docblock are the trait's. `LaravelTsPublish::methodDeclaringFileClass()` finds the trait whose file matches
+([`DeclaringFile`](../../src/Ast/Docblocks/DeclaringFile.php)), so a class named in a trait's docblock resolves against
+the trait's imports, not the model's. The docblock readers all use it: `docblockReturnTypes()`,
+`resolveDocblockTypeString()`, `docblockReturnShapeInfos()` and `ModelAttributeResolver::morphToGenericMembers()`.
+Every reader of a property's docblock, a value object's shape included, goes through
+`PropertyDocblockTypeReader::tag()`: it resolves the docblock in the file that declares the property, and gives a
+promoted property with no `@var` its constructor's `@param`. Reflection reports a trait's property, docblock and all,
+as the using class's, and a class's redeclaration of it the same way, so `DeclaringFile::ofProperty()` asks each file's
+source which one declares the property. PHP 8.4 reports a trait's redeclaration of a parent's property as the parent's,
+docblock included, so every caller passes the class it reads the property on, and the trait's source supplies both.
 
 A trait's `@template` names are bound before resolution. `bindTraitTemplates()` replaces each with the matching
-argument of the consumer's `@use Trait<X>` tag, spelled `@use`, `@phpstan-use` or `@psalm-use`. `traitUseArguments()`
+argument of the consumer's `@use Trait<X>` tag, spelled `@phpstan-use`, `@psalm-use`, `@template-use` or `@use`, the
+prefixed one first ([`DocblockTags`](../../src/Ast/Docblocks/DocblockTags.php)). `traitUseArguments()`
 reads that tag only from the doc comment of the `use` statement inside the class, never from a prose mention, and
 checks the consumer before its parents. It parses the file through `AstParser::parseFile()`, which records the file as
-a cache dependency. The trait name in the tag must resolve through a `use` import or the namespace.
-`resolveDocblockTypeName()`'s namespace fallback checks `class_exists()` and `enum_exists()`, not `trait_exists()`, so
-a same-namespace trait with no `use` import silently fails to bind.
+a cache dependency. A docblock name, the tag's trait included, resolves through the file's `use` imports, then its
+namespace, for any class-like kind ([`DocblockNames`](../../src/Ast/Docblocks/DocblockNames.php)).
 
 ## `@property` refinement
 
 `refineWithPropertyDocblock()` runs only when the waterfall's type is vague, so a concrete result is never
 second-guessed. It searches the class and its parents first, the child winning, then every trait in that chain,
-recursively, so a class-level tag beats one on a trait. A tag may omit the `$` before the name, as some vendor traits
-do, but only when it has no description. That keeps a description's last word from being read as a property name.
+recursively, so a class-level tag beats one on a trait. Within a docblock, `@phpstan-property` and `@psalm-property`
+are read before `@property` and `@property-read`, a vague one yielding to a precise one. A tag may omit the `$` before
+the name, as some vendor traits do, but only when it has no description. That keeps a description's last word from
+being read as a property name.
 
 `isStrictlyMoreStructured()` accepts a candidate that is not vague. It accepts a vague candidate only when the current
 type is entirely vague (`unknown`, `unknown[]`, `object` or `unknown[] | Record<string, unknown>`, optionally with
@@ -297,11 +369,23 @@ relation suffixes. It skips a relation name, because an ide-helper tag on a rela
 `morphFqcns`, and `resolveRelation()` owns relations. The fallback never adds a property to the model's own interface,
 which lists `ModelInspector`'s attributes.
 
-A nullable column adds `| null` unless the declared type already has a top-level `null`: the column reaches the value as
-`null`, or as what a class cast's `get()` returns, whatever `null` the value's members hold. An accessor, and a cast
-whose `get()` declares a native non-null type, keep the looser test, which counts any `null`. A native non-null `get()`
-never returns null, so the looser test only leaves out a null PHP never sends. `ModelAttributeResolver::sendsNullAsIs()`
-no longer decides the test, and is deprecated.
+A nullable column adds `| null` through `withColumnNull()` unless the type already holds it, as `typeHoldsNull()`
+decides. Laravel calls a class cast's `get()` and an accessor's getter for a NULL column too, so their declared return
+decides:
+
+- A cast whose every caster's `get()` declares a native non-null return adds none, unless the caster has a
+  `serialize()` method, which `Model::toArray()` writes and which must declare one too. A `CastsInboundAttributes`
+  cast, a caster that is inbound too, whose `get()` Laravel never calls, a `Castable` whose caster cannot be read
+  without calling `castUsing()`, and a `mixed` or untyped `get()` keep it.
+- An accessor whose getter declares a native return adds none when it excludes null, and needs a top-level `null` when
+  it allows one. An untyped getter keeps the looser test, which counts any `null` in its type, as does one declaring
+  `mixed` and one on a key Laravel's `isClassCastable()` reads as a class cast, which `toArray()` runs instead of the
+  getter. A primitive cast such as `datetime:Y-m-d` is none, so its getter decides.
+- Any other column needs a top-level `null`, whatever `null` the value's members hold.
+
+`resolveAttribute()` returns the type with the column's null decided, so `ModelTransformer` adds it only to a fallback
+type of its own; an override of `resolveAttribute()` decides it alone. `ModelAttributeResolver::sendsNullAsIs()` no
+longer decides the test, and is deprecated.
 
 ## Relation discovery
 
@@ -458,6 +542,6 @@ These pages hold the neighboring rules:
 - [Version-guarded Laravel classes](../laravel-version-guards.md), including the `#[UseResource]` guard in
   `ModelClassResolver`
 - [Support helpers](support-helpers.md), for why the docblock helpers stayed on `LaravelTsPublish`
-- The known gap where a shape whose values name a class loses those values:
-  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways)
+- The known gap where a shape whose values name a class can lose some of them:
+  [known-gaps.md](../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them)
 - [Type inference gates](../testing/type-inference-gates.md)

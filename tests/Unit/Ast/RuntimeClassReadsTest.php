@@ -145,7 +145,7 @@ function analyzedKeyTypesWithin(int $seconds, string $class): array
 {
     $alarms = function_exists('pcntl_alarm');
     $async = $alarms && pcntl_async_signals(true);
-    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : SIG_DFL;
+    $handler = $alarms ? pcntl_signal_get_handler(SIGALRM) : null;
 
     if ($alarms) {
         pcntl_signal(SIGALRM, static fn () => throw new RuntimeException("ran past {$seconds} s"));
@@ -465,7 +465,7 @@ it('reads properties written through each other\'s helpers as the cut read does,
         // The caps leave room above 118 and 121.
         ->and($fannedWork)->toBeLessThanOrEqual(160)
         ->and($wrappedWork)->toBeLessThanOrEqual(196);
-});
+})->group('gap-mode');
 
 // The known gap: the engine cannot type an untyped parameter, which may hold anything.
 it('leaves an untyped property `unknown` where a subclass writes it an untyped parameter', function () {
@@ -850,7 +850,7 @@ it('reads a column in a helper a model\'s ancestor reaches through `self::` or a
     $post->forceFill(['id' => 1, 'title' => 'x']);
 
     expect(publishedResourceKeyTypes(SelfHelperPostResource::class, SelfHelperPost::class))->toBe([
-        'via_self' => 'string', 'via_self_shape' => '{ t: string; picked: { title: string } }',
+        'via_self' => 'string', 'via_self_shape' => "{ t: string; picked: Pick<SelfHelperPost, 'title'> }",
         'via_self_only' => '{ title: string }', 'via_private' => 'string',
     ])->and((new SelfHelperPostResource($post))->resolve(request()))->toBe([
         'via_self' => 'x', 'via_self_shape' => ['t' => 'x', 'picked' => ['title' => 'x']], 'via_self_only' => ['title' => 'x'], 'via_private' => 'x',
@@ -1084,7 +1084,7 @@ it('ends a parent:: spread that reaches back into a method it is reading', funct
         ->and(json_encode(new CyclingSpreadBase()->toArray()))->toBe('{"g":1,"b":1}');
 });
 
-// A spread no arm reads may overwrite an earlier key, as `array_merge()` overwrites `a` here, so a `parent::` spread
+// A spread no arm reads may overwrite an earlier key, as the decoded array overwrites `a` here, so a `parent::` spread
 // holding one is not read at all, as in the release, rather than publish the earlier key's type.
 it('reads no key from a parent:: spread whose body holds a spread no arm reads', function () {
     expect(analyzedKeyTypes(OverwrittenSpreadTop::class))->toBe([])

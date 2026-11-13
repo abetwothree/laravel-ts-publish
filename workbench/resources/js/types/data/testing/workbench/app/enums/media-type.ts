@@ -46,3 +46,5 @@ export const MediaType = defineEnum({
 export type MediaTypeType = 'image' | 'video' | 'audio' | 'document' | 'archive';
 
 export type MediaTypeKind = 'Image' | 'Video' | 'Audio' | 'Document' | 'Archive';
+
+export type MediaType = MediaTypeType;

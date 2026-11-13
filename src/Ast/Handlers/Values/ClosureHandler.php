@@ -1,0 +1,271 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use Closure;
+use PhpParser\Node;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\NullableType;
+
+/**
+ * Closures and arrow functions used as a property value — resolves the body's return type(s), falling back to the
+ * declared return-type annotation, or the docblock's `@return` where it says more, when the body resolves to `unknown`.
+ *
+ * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @phpstan-type ClosureAnnotationResult = array{
+ *      type: string,
+ *      directEnumFqcn?: class-string,
+ *      modelFqcn?: class-string,
+ *      customImports?: TypesImportMap
+ * }
+ *
+ * @internal
+ */
+final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
+{
+    use CollectsLocalVarBindings;
+    use InspectsAstNodes;
+    use ResolvesModelRelationTypes;
+
+    /** @return list<class-string<Expr>> */
+    public function nodeClasses(): array
+    {
+        return [ArrowFunction::class, ClosureExpr::class];
+    }
+
+    /** @return ValueExpressionResult|null */
+    public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
+            return null;
+        }
+
+        // Body analysis first, the native return type or the docblock's `@return` as the fallback.
+        $closureReturns = $this->resolveClosureReturnExpressions($expr);
+
+        if ($closureReturns === []) {
+            return null;
+        }
+
+        return ValueResult::heldObject($scope->within(function () use ($expr, $scope): void {
+            $scope->readsCallableReturn = true;
+            // A param shadows a same-named outer binding in every table, unless a writer claimed and bound it.
+            $scope->releaseUnclaimedParameters($expr);
+            // Before the body is seeded, so a write that replaces a typed parameter ends its binding.
+            $this->bindDeclaredParameters($expr, $scope);
+            ModelFills::markDefaults($expr, $scope);
+
+            if ($expr instanceof ClosureExpr) {
+                $this->seedBody($expr->stmts, $scope, $expr);
+                $this->bindForeachLoopVariables($expr->stmts, $scope);
+            }
+        }, fn (): array => $this->resolveBody($expr, $closureReturns, $scope, $engine)));
+    }
+
+    /**
+     * A closure's returns resolved in its own bindings, or its return-type annotation or `@return` where they read
+     * `unknown`.
+     *
+     * @param  non-empty-list<Expr>  $closureReturns
+     * @return ValueExpressionResult
+     */
+    private function resolveBody(ArrowFunction|ClosureExpr $closure, array $closureReturns, AnalysisScope $scope, ExpressionEngine $engine): array
+    {
+        $resolve = $this->returnResolver($closure, $engine);
+        $bodyResult = count($closureReturns) === 1
+            ? $resolve($closureReturns[0])
+            : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
+
+        if ($bodyResult['type'] !== 'unknown') {
+            return $bodyResult;
+        }
+
+        $annotationResult = $this->resolveClosureAstReturnType($closure, $scope);
+
+        return $annotationResult === null ? $bodyResult : [...$annotationResult, 'optional' => false];
+    }
+
+    /**
+     * How a closure's returns resolve: a closure body's returned variable through the walk over its writes, where the
+     * engine reads one, and any other return as the engine resolves it.
+     *
+     * @return Closure(Expr): ValueExpressionResult
+     */
+    private function returnResolver(ArrowFunction|ClosureExpr $closure, ExpressionEngine $engine): Closure
+    {
+        return $closure instanceof ClosureExpr && $engine instanceof ResolvesReturnedValues
+            ? fn (Expr $returned): array => $engine->resolveReturned($returned, $closure->stmts)
+            : $engine->resolve(...);
+    }
+
+    /**
+     * Bind each parameter by its declaration, native or `@param`: one no writer bound as ParameterBinder binds a
+     * closure read apart from any call, and one a writer bound to no class by the class it declares.
+     */
+    private function bindDeclaredParameters(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): void
+    {
+        $docComment = (string) $closure->getDocComment();
+
+        foreach ($closure->params as $param) {
+            $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
+
+            if ($name === null) {
+                continue;
+            }
+
+            if (! $scope->bindsName($name)) {
+                resolve(ParameterBinder::class)->bindClosureParameter($param, $name, $docComment, $scope);
+            } elseif (! $scope->bindsClassName($name) && ! $this->bindsClassOrNull($scope->varValueBindings[$name] ?? null)) {
+                ParameterBinder::bindClosureClass($param, $name, $scope, $docComment);
+            }
+        }
+    }
+
+    /**
+     * Whether a value a writer bound names a class of its own, such as an enum case, or is only null, as an unpassed
+     * `= null` default is: either says more about the parameter than the class its type declares.
+     *
+     * @param  ValueExpressionResult|null  $value
+     */
+    private function bindsClassOrNull(?array $value): bool
+    {
+        return $value !== null && (VisibleGaps::aside($value['type'])[0] === 'null'
+            || isset($value['modelFqcn'])
+            || isset($value['enumFqcn'])
+            || isset($value['directEnumFqcn'])
+            || isset($value['resourceFqcn']));
+    }
+
+    /**
+     * Resolve an arrow function's or closure's return type annotation, else its docblock's `@return` where the
+     * annotation is absent, vague or unread and TsTypeString::documentedWins() says the docblock says more. Null when
+     * neither types the closure: see convertAstTypeNodeToTs() and documentedReturnType().
+     *
+     * @return ClosureAnnotationResult|ValueExpressionResult|null
+     */
+    private function resolveClosureAstReturnType(Expr $expr, AnalysisScope $scope): ?array
+    {
+        if (! $expr instanceof ArrowFunction && ! $expr instanceof ClosureExpr) {
+            return null;
+        }
+
+        $native = $expr->returnType === null ? null : $this->convertAstTypeNodeToTs($expr->returnType, $scope);
+
+        if ($native !== null && ! TsTypeString::isVagueTsType($native['type'])) {
+            return $native;
+        }
+
+        $documented = $this->documentedReturnType($expr, $scope);
+
+        return $documented !== null && TsTypeString::documentedWins($native['type'] ?? 'unknown', $documented['type'])
+            ? $documented
+            : $native;
+    }
+
+    /**
+     * A closure's docblock `@return`, each `self`, `static` or `parent` read as the class the scope binds it to; null
+     * when it reads vague, types nothing or names a class with no published file.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function documentedReturnType(ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): ?array
+    {
+        $reader = resolve(PropertyDocblockTypeReader::class);
+        $declared = $reader->extractReturnType((string) $closure->getDocComment(), $scope->relativeClassNames());
+
+        if ($declared === null || DocblockTags::isVague($declared)) {
+            return null;
+        }
+
+        $result = $reader->readDeclared($declared, $scope->declaringFileClass);
+
+        return ValueResult::isPublishableReading($result) ? $result : null;
+    }
+
+    /**
+     * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult: the type, with its FQCN or the custom
+     * imports a class's override brings.
+     *
+     * Returns null for union/intersection types, void/never/mixed and unresolvable classes; `self`, `static` and
+     * `parent` name the class the scope binds them to.
+     *
+     * @return ClosureAnnotationResult|null
+     */
+    private function convertAstTypeNodeToTs(Node $typeNode, AnalysisScope $scope): ?array
+    {
+        if ($typeNode instanceof NullableType) {
+            $inner = $this->convertAstTypeNodeToTs($typeNode->type, $scope);
+
+            if ($inner === null) {
+                return null;
+            }
+
+            return [...$inner, 'type' => TsTypeString::withNullArm($inner['type'])];
+        }
+
+        if ($typeNode instanceof Identifier) {
+            $phpType = $typeNode->toString();
+
+            if (in_array($phpType, ['void', 'never', 'mixed'], true)) {
+                return null;
+            }
+
+            $tsInfo = LaravelTsPublish::toTsType($phpType);
+
+            return $tsInfo['type'] !== 'unknown' ? ['type' => $tsInfo['type']] : null;
+        }
+
+        if ($typeNode instanceof Name) {
+            $phpType = $typeNode->isSpecialClassName() ? $scope->relativeClass($typeNode)?->getName() : $typeNode->toString();
+            $tsInfo = $phpType === null ? null : LaravelTsPublish::toTsType($phpType);
+
+            if ($tsInfo === null || $tsInfo['type'] === 'unknown') {
+                return null;
+            }
+
+            /** @var ClosureAnnotationResult $result */
+            $result = ['type' => $tsInfo['type']];
+
+            if ($tsInfo['customImports'] !== []) {
+                $result['customImports'] = $tsInfo['customImports'];
+            }
+
+            if ($tsInfo['enumFqcns'] !== []) {
+                $result['directEnumFqcn'] = $tsInfo['enumFqcns'][0];
+            } elseif ($tsInfo['classFqcns'] !== []) {
+                $result['modelFqcn'] = $tsInfo['classFqcns'][0];
+            }
+
+            return $result;
+        }
+
+        // UnionType / IntersectionType — fall through to body analysis
+        return null;
+    }
+}

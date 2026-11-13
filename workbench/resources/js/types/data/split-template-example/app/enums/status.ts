@@ -27,3 +27,5 @@ export const Status = defineEnum({
 export type StatusType = 0 | 1;
 
 export type StatusKind = 'Draft' | 'Published';
+
+export type Status = StatusType;

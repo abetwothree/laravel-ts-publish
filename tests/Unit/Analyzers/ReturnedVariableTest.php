@@ -27,7 +27,23 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastLoneV
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCastPartialHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedClassBranchesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedClassResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceBranchWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceMergeWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceNullableWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalescePlusWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceReplacedWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceSeedWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceSpreadWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceSwitchWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceUnsetWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenBranchSetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLoadedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenNullResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedCoalesceWhenRewrittenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedConditionalUnsetKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedBareSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedDeclinedSpreadResource;
@@ -79,6 +95,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReference
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRejectedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedReplacedVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedRequiredResetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReadConfigResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReadHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReadUnknownResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReplaceAppendResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfReplaceDynamicResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSpreadGuardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedSelfSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedShapedLoneVariableResource;
@@ -725,7 +746,7 @@ test('a local written once reads as its array where a variable starts from it or
 ]);
 
 // A closure sees an outer local only through `use`, and a write of its own replaces it. The engine still reads one a
-// merge closure neither imports nor writes, through AnalysisScope::literalWriteAt(), but Laravel throws `Undefined
+// merge closure neither imports nor writes, through AnalysisScope::writesSeenBy(), but Laravel throws `Undefined
 // variable` there.
 test('a merge closure adds with + a local it imports, and its own local in place of the method\'s of that name', function () {
     $tag = new Tag;
@@ -929,3 +950,107 @@ test('a key-built local read where its join holds a value it cannot type reads t
         ->and(new KeyBuiltLocalGapResource($tag)->resolve(Request::create('/')))
         ->toBe(['first' => $attributes, 'm' => [...$attributes, 'extra' => 1]]);
 });
+
+// A `when*()` value is set and not null, so a `??=` adds its default only past a null or a path leaving the key unset.
+// A value read against keys the walk cannot spell reads as the body's other reads do, so the write and a replacement
+// still land.
+test('a ??= or a write reading the variable itself publishes what Laravel sends', function (string $class, string $members, array $paths) {
+    $tag = new Tag;
+    $tag->forceFill(['id' => 9, 'name' => 'php']);
+    $sent = fn (array $query): array => new $class($tag)->resolve(Request::create('/', 'GET', $query));
+
+    expect(returnedVariableMembers($class))->toBe($members)
+        ->and(array_map($sent, array_column($paths, 0)))->toBe(array_column($paths, 1));
+})->with([
+    'a ??= beside when() and beside a branch' => [ReturnedCoalesceWhenResource::class, 'id: number; w?: number; a: number | string', [
+        [[], ['id' => 9, 'a' => 'none']],
+        [['c' => '1'], ['id' => 9, 'w' => 1, 'a' => 1]],
+    ]],
+    'a ??= beside whenLoaded()' => [ReturnedCoalesceWhenLoadedResource::class, 'id: number; posts?: Post[]', [
+        [[], ['id' => 9]],
+    ]],
+    'a ??= beside a when() holding a nullable value' => [ReturnedCoalesceNullableWhenResource::class, 'id: number; r?: string | number', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'r' => 0]],
+    ]],
+    'a ??= beside a when() holding only null' => [ReturnedCoalesceWhenNullResource::class, 'id: number; w?: string', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 'x']],
+    ]],
+    'a ??= beside a when() calling a closure that returns null' => [ReturnedCoalesceWhenClosureResource::class, 'id: number; w?: string', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 'x']],
+    ]],
+    'a ??= beside a when() only a branch writes' => [ReturnedCoalesceBranchWhenResource::class, 'id: number; w?: number | string', [
+        [[], ['id' => 9, 'w' => 'none']],
+        [['c' => '1'], ['id' => 9]],
+        [['c' => '1', 'd' => '1'], ['id' => 9, 'w' => 1]],
+    ]],
+    'a ??= beside a when() a branch may set again' => [ReturnedCoalesceWhenBranchSetResource::class, 'id: number; w?: number', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 1]],
+        [['d' => '1'], ['id' => 9, 'w' => 2]],
+    ]],
+    'a ??= beside a when() every path writes past a branch' => [ReturnedCoalesceWhenRewrittenResource::class, 'id: number; w?: number', [
+        [['c' => '1'], ['id' => 9]],
+        [['c' => '1', 'd' => '1'], ['id' => 9, 'w' => 2]],
+    ]],
+    'a ??= beside a when() a += adds' => [ReturnedCoalescePlusWhenResource::class, 'id: number; w?: number', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 1]],
+    ]],
+    'a ??= beside a when() another local holds' => [ReturnedCoalesceWhenLocalResource::class, 'id: number; w?: number', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 1]],
+    ]],
+    'a ??= beside a key mergeWhen() merges in once filtered' => [ReturnedCoalesceMergeWhenResource::class, 'id: number; w: number | string', [
+        [[], ['id' => 9, 'w' => 'none']],
+        [['c' => '1'], ['id' => 9, 'w' => 1]],
+    ]],
+    'a ??= beside a when() only a branch writes, past a spread of the variable' => [ReturnedCoalesceSpreadWhenResource::class, 'id: number; w?: number | string; name: string', [
+        [[], ['id' => 9, 'name' => 'php', 'w' => 'none']],
+        [['c' => '1'], ['id' => 9, 'name' => 'php']],
+        [['c' => '1', 'd' => '1'], ['id' => 9, 'w' => 1, 'name' => 'php']],
+    ]],
+    'a ??= beside a when() and a ??= switch cases may run' => [ReturnedCoalesceSwitchWhenResource::class, 'id: number; w?: number | string | boolean', [
+        [[], ['id' => 9, 'w' => false]],
+        [['k' => 'w'], ['id' => 9]],
+        [['k' => 'w', 'c' => '1'], ['id' => 9, 'w' => 1]],
+        [['k' => 'f'], ['id' => 9, 'w' => 'first']],
+    ]],
+    'a ??= beside a when() a switch case may unset' => [ReturnedCoalesceUnsetWhenResource::class, 'id: number; w?: number | string', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 1]],
+        [['k' => 'u', 'c' => '1'], ['id' => 9, 'w' => 'none']],
+    ]],
+    'a ??= beside a when() a branch may replace unread' => [ReturnedCoalesceReplacedWhenResource::class, 'id?: number; w?: number | string', [
+        [[], ['id' => 9]],
+        [['c' => '1'], ['id' => 9, 'w' => 1]],
+        [['d' => '1'], ['id' => 5, 'w' => 'none']],
+    ]],
+    'a ??= in a helper beside a when() its argument holds' => [ReturnedCoalesceSeedWhenResource::class, 'h: { id: number; w?: number }', [
+        [[], ['h' => ['id' => 9]]],
+        [['c' => '1'], ['h' => ['id' => 9, 'w' => 1]]],
+    ]],
+    'a replacement reading the variable past a dynamic key' => [ReturnedSelfReplaceDynamicResource::class, 'x: number; y: string', [
+        [[], ['x' => 9, 'y' => 'php']],
+    ]],
+    'a replacement reading the variable past an appended key' => [ReturnedSelfReplaceAppendResource::class, 'id: unknown; name: string', [
+        [[], ['id' => 9, 'name' => 'php']],
+    ]],
+    'a key read from a key no reading types' => [ReturnedSelfReadUnknownResource::class, 'id: number; q: unknown; v: string', [
+        [[], ['id' => 9, 'q' => null, 'v' => 'none']],
+        [['q' => 'w'], ['id' => 9, 'q' => 'w', 'v' => 'w']],
+    ]],
+    'a key read from a missing config value' => [ReturnedSelfReadConfigResource::class, 'id: number; cfg: null; label: string', [
+        [[], ['id' => 9, 'cfg' => null, 'label' => 'none']],
+    ]],
+    'both, built by helpers' => [
+        ReturnedSelfReadHelperResource::class,
+        'meta: { id: number; q: unknown; v: string }; rep: { x: number; y: string }',
+        [
+            [[], ['meta' => ['id' => 9, 'q' => null, 'v' => 'none'], 'rep' => ['x' => 9, 'y' => 'php']]],
+            [['q' => 'w'], ['meta' => ['id' => 9, 'q' => 'w', 'v' => 'w'], 'rep' => ['x' => 9, 'y' => 'php']]],
+        ],
+    ],
+]);

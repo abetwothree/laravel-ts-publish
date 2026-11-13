@@ -4,11 +4,20 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapMergeResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapParentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedPriorityPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppendedPriorityWrapPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
@@ -73,7 +82,7 @@ describe('AccessorBodyAnalyzer through ModelAttributeResolver', function () {
     });
 });
 
-describe('AccessorBodyAnalyzer for a getter a method body reads without imports', function () {
+describe('AccessorBodyAnalyzer for a getter a method body reads', function () {
     $published = [
         'own_picks' => ["{ v: Pick<FilteringAccessorModel, 'id' | 'title'>; id: number }", [FilteringAccessorModel::class]],
         'own_runtime' => ['{ v: Record<string, unknown>; id: number }', []],
@@ -103,7 +112,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
         'readDocNestedRecords',
     ];
 
-    // The model file publishes the analysis that keeps imports; a method body's import-less read must not replace it.
+    // The model file publishes the getter's own analysis; a method body's read of it must not replace it.
     test('the accessor keeps its published type and imports after a method body reads it', function () use ($published, $readers) {
         foreach ($readers as $reader) {
             resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, $reader);
@@ -120,31 +129,31 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
         }
     });
 
-    test('a method body reads the accessor without imports after the model publishes it', function () use ($published) {
+    test('a method body reads the accessor as the model publishes it, after the model publishes it', function () use ($published) {
         foreach (array_keys($published) as $attribute) {
             resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, $attribute);
         }
 
         expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readAuthorPicks')['type'] ?? null)
-            ->toBe('{ v: { v: { id: number; role: unknown } | null; id: number }; id: number }')
+            ->toBe("{ v: { v: Pick<User, 'id' | 'role'> | null; id: number }; id: number }")
             ->and(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readCommentList')['type'] ?? null)
-            ->toBe('{ v: unknown[]; id: number }');
+            ->toBe('{ v: Comment[]; id: number }');
     });
 
-    test('a cycle between two accessors terminates when a method body reads it without imports', function () {
+    test('a cycle between two accessors terminates when a method body reads it', function () {
         expect(resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'readLoop')['type'] ?? null)
-            ->toBe('{ v: { v: { v: unknown; p: { id: number } }; p: { id: number } }; id: number }');
+            ->toBe("{ v: { v: { v: unknown; p: Pick<User, 'id'> }; p: Pick<User, 'id'> }; id: number }");
     });
 
-    // The getter calls report(), whose body reads the getter back without imports: a guard shared by both modes would
-    // cut that read short while the getter's own analysis runs, so the answer would depend on who asked first.
-    test('a getter being analyzed with imports does not cut short its own read without them', function (string $first) {
+    // The getter calls report(), whose body reads the getter back in a reading of its own, as the import-less read is:
+    // each keeps its own guard, so no read cuts another short and no answer depends on who asked first.
+    test('a getter, the method body reading it back and its import-less read each publish one answer in any order', function (string $first) {
         $reads = [
             'getter' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report')['type'],
             'method' => fn () => resolve(MethodReturnTypeResolver::class)->resolve(FilteringAccessorModel::class, 'report')['type'] ?? null,
             'import-less' => fn () => resolve(ModelAttributeResolver::class)->resolveAttribute(FilteringAccessorModel::class, 'self_report', false)['type'],
         ];
-        $report = '{ self: { v: { id: number }; report: Record<string, unknown> }; id: number }';
+        $report = "{ self: { v: Pick<User, 'id'>; report: Record<string, unknown> }; id: number }";
 
         $types = [$first => $reads[$first]()];
 
@@ -154,7 +163,7 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
 
         expect($types['getter'])->toBe("{ v: Pick<User, 'id'>; report: $report }")
             ->and($types['method'])->toBe($report)
-            ->and($types['import-less'])->toBe('{ v: { id: number }; report: { self: unknown; id: number } }');
+            ->and($types['import-less'])->toBe("{ v: { id: number }; report: $report }");
     })->with(['getter first' => 'getter', 'method first' => 'method', 'an import-less read first' => 'import-less']);
 
     // listing() reads the accessor back without imports, and that read's tie-break needs the accessor's analysis with
@@ -174,10 +183,41 @@ describe('AccessorBodyAnalyzer for a getter a method body reads without imports'
 
         expect($types)->toMatchArray([
             'model' => 'Comment[]',
-            'method' => '{ v: unknown[]; id: number }',
+            'method' => '{ v: Comment[]; id: number }',
             'import-less' => 'unknown[]',
         ]);
     })->with(['model first' => 'model', 'method first' => 'method', 'an import-less read first' => 'import-less']);
+});
+
+// The `@return` before a getter closure answers where its body types nothing, as for a resource's value closure.
+// A getter reads a vague helper's case as the literal it sends, while a wrap or a map callback reading the attribute
+// needs, and gets, the case's enum through the getter and the helper.
+test('a getter returning a vague helper\'s case types its literal, and its enum where a wrap or a map reads it', function () {
+    expect(resourceProps(HelperCaseGetterResource::class))->toBe([
+        'held' => '0',
+        'held_resource' => 'AsEnum<typeof Status>',
+        'held_old_resource' => 'AsEnum<typeof Status>',
+        'held_values' => 'StatusType[]',
+    ]);
+});
+
+describe('AccessorBodyAnalyzer for a getter its closure\'s docblock types', function () {
+    test('the model publishes each getter\'s documented type, passed by name or by position', function () {
+        expect(array_map(fn (array $mutator): string => $mutator['type'], (new ModelTransformer(DocumentedGetterPost::class))->data()->mutators))
+            ->toEqual([
+                'doc_label' => 'string',
+                'doc_count' => 'number',
+                'doc_post' => 'Post | null',
+                'doc_status' => 'StatusType',
+            ]);
+    });
+
+    test('a method body reads a getter documented as a class as the model publishes it', function () {
+        $read = fn (string $method): ?string => resolve(MethodReturnTypeResolver::class)->resolve(DocumentedGetterPost::class, $method)['type'] ?? null;
+
+        expect($read('readDocumented'))->toBe('{ label: string; post: Post | null; status: StatusType; id: number }')
+            ->and($read('readPicked'))->toBe('{ v: { id: number; doc_count: number; doc_post: Post | null; doc_status: StatusType }; id: number }');
+    });
 });
 
 describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', function () {
@@ -196,15 +236,17 @@ describe('AccessorBodyAnalyzer for a getter reading another model\'s accessor', 
         'a relation chain' => [BulletinFeed::class, 'lead_comments', 'Comment[]', [Comment::class]],
         'an untyped closure parameter over a docblock accessor' => [BulletinFeed::class, 'owners', 'User[]', [User::class]],
         'pluck()' => [BulletinArchive::class, 'comment_lists', 'Comment[][]', [Comment::class]],
-        'a shape a closure parameter builds' => [BulletinArchive::class, 'author_rows', "({ author: Pick<User, 'id' | 'name'> })[]", [User::class]],
+        'a shape a closure parameter builds' => [BulletinArchive::class, 'author_rows', "{ author: Pick<User, 'id' | 'name'> }[]", [User::class]],
     ]);
 
-    test('a method body making the same reads still publishes them without a class', function () {
+    test('a method body making the same reads carries the classes they name', function () {
         $resolved = resolve(MethodReturnTypeResolver::class)->resolve(BulletinBoard::class, 'summary');
 
         expect($resolved)->toBe([
-            'type' => '{ comment_lists: unknown[][]; lead_author: { id: number; name: string } | null; id: number }',
+            'type' => "{ comment_lists: Comment[][]; lead_author: Pick<User, 'id' | 'name'> | null; id: number }",
             'optional' => false,
+            'keepsKeys' => true,
+            'embeddedModelFqcns' => [Comment::class, User::class],
         ]);
     });
 });
@@ -274,3 +316,35 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         'the enum alone' => ['plain_state', 'StatusType'],
     ]);
 });
+
+// filter() sends a wrap an accessor builds as null where a resource's value reaches it, though the model's own JSON,
+// and a map kept as a Collection, serialize it as the `[]` resolve() returns.
+test('an accessor\'s EnumResource wrap publishes what its reader sends for a null enum', function () {
+    $post = (new WrappedPriorityPost)->forceFill(['id' => 2, 'priority' => null]);
+
+    expect(publishedResourceKeyTypes(WrappedPriorityPostResource::class, WrappedPriorityPost::class))->toBe([
+        'accessor' => 'PriorityType | null',
+        'accessor_kept' => '(PriorityType | never[])[]',
+        'accessor_all' => '(PriorityType | null)[]',
+    ])
+        ->and((string) new WrappedPriorityPostResource($post)->response(request())->getContent())
+        ->toBe('{"data":{"accessor":null,"accessor_kept":[[]],"accessor_all":[null]}}')
+        ->and(new ModelTransformer(WrappedPriorityPost::class)->data()->mutators['priority_wrap']['type'])
+        ->toBe('PriorityType | never[]')
+        ->and(json_encode($post->append('priority_wrap')->only('priority_wrap')))->toBe('{"priority_wrap":[]}');
+});
+
+// A resource sending its model's own array, whole, spread or merged, hands each appended wrap to filter(), which sends
+// it as null, though the model's own JSON sends `[]`.
+test('an appended accessor\'s EnumResource wrap publishes the null filter() sends through the model\'s own array', function (string $resource) {
+    $post = (new AppendedPriorityWrapPost)->forceFill(['id' => 2, 'priority' => null]);
+
+    expect(publishedResourceKeyTypes($resource, AppendedPriorityWrapPost::class)['priority_wrap'])->toBe('PriorityType | null')
+        ->and((string) new $resource($post)->response(request())->getContent())->toContain('"priority_wrap":null')
+        ->and(json_encode($post))->toBe('{"id":2,"priority":null,"priority_wrap":[]}');
+})->with([
+    'parent::toArray() returned whole' => [AppendedWrapParentResource::class],
+    'parent::toArray() spread' => [AppendedWrapSpreadResource::class],
+    'the model merged' => [AppendedWrapMergeResource::class],
+    'no toArray() of its own' => [AppendedWrapDelegatedResource::class],
+]);

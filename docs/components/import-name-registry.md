@@ -20,6 +20,10 @@ The registry and its consumers live in these files:
   [`ResourceTransformer`](../../src/Transformers/ResourceTransformer.php),
   [`BroadcastEventTransformer`](../../src/Transformers/BroadcastEventTransformer.php), and
   [`AnalysisComposer`](../../src/Ast/Composition/AnalysisComposer.php), which serves `AstEngine::analyze()`.
+- [`FileImportNames`](../../src/Ast/Composition/FileImportNames.php): `AnalysisComposer`'s registries run over every
+  type a file prints that no one analysis holds: a route file's page types, the shared data or a metadata companion.
+- [`TokenSlots`](../../src/Ast/Composition/TokenSlots.php): the one reading of a declaration's token slots, which
+  `FileImportNames` and every other writer and reader of them goes through.
 
 ## How a name is chosen
 
@@ -78,7 +82,7 @@ queues each member of an inline array through `ClassTokenQueue::perToken()`, as 
 decorated arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a
 resource do not both queue, so `User[] | Record<string, User>` queues its class twice.
 
-Callers fill their queues in one of two ways:
+Callers fill their queues in one of three ways:
 
 - **Exact**: `ModelTransformer` fills one entry per occurrence.
 - **Superset in order**: `ResourceTransformer::mergePropertyFqcnMaps()`,
@@ -86,6 +90,25 @@ Callers fill their queues in one of two ways:
   A property in two channels carries both channels' entries, so its queue can run past the real occurrences. That is
   safe only while the prefix lines up, which is why `ResourceTransformer::resolveMultiClassAccessorFqcns()` skips a
   property the inline maps already cover.
+- **One entry per token of a whole printed type**: `FileImportNames::objectQueues()` queues null for a token no class of
+  its own key stands behind, such as a cast's `User`, a composed `ChartType` or a key. A per-name queue would hand that
+  token the next class of its name, so `FileImportNames` respells by position, not through `aliasPropertyType()`. Under
+  [the unclaimed-token rule](ts-casts.md#imports), a key's token whose name no custom import brings takes the one class
+  of that name on any channel or in `MethodAnalysis::$carried` instead: an import-less cast that spells a class another
+  key holds or another cast displaced has none of its own. Neither channel reads a token inside a string literal, a
+  template literal's text or a generated index signature key, whose text is a value or a key, and the class channel
+  never reads the name after `typeof`, which is a const's. A key a `share()` docblock retypes, or a method's `@return`
+  fills, reads each token of its own classes' names from `MethodAnalysis::$declaredTokenFqcns` in order, null
+  included, so `Person|User` keeps the override's `User` where another key brings that import.
+  `TokenSlots::declaredTokensOf()` is the one reading of
+  those slots, and every writer and reader goes through it: `declaredTokens()` reads a whole declaration (the docblock
+  engine's keep check, key fill and container slots, `ResourceTransformer`, `FileImportNames`), `joinedSlots()` arms
+  joined into one type (a docblock union, shape or container's union, the branch join), a cut arm against its whole
+  text's own names, and `classLess()` a fill `InlineObjectResult::of()` folds into a value, which carries no slots.
+  Each names a token by `TokenSlots::typeName()`, so a `#[TsResource(name:)]` resource's class name takes no slot.
+  None respells a token inside a literal or after `typeof`.
+  [Support helpers](support-helpers.md#token-slots-and-the-branch-join-live-in-srcastcomposition) tells these slots
+  apart from the other per-token lists.
 
 `aliasPropertyType()` clamps the cursor to the queue's last entry. One FQCN therefore covers every occurrence, as in
 `User[] | Record<string, User>` from one `App\Models\User`, and a longer queue's surplus is never read. A queue shorter
@@ -101,9 +124,10 @@ matching the start of `UserProfile`.
 
 ## Consumers
 
-Each transformer's `resolveImportConflicts()` reserves its file's own interface name, registers the FQCNs from its own
+Each transformer's `resolveImportConflicts()` reserves the names its file declares, registers the FQCNs from its own
 maps, and passes the result to `applyResolvedImportNames()`. `AnalysisComposer` runs the same two registries as
 `ResourceTransformer`, with the same skip list, and reserves no interface name because its caller names the interface.
+`FileImportNames` runs them once for a whole route file, across its pages, and once for the shared data.
 Only `ModelTransformer` suggests preferred aliases, derived from relation names. The others have no relation to derive
 one from.
 
@@ -115,29 +139,28 @@ Every consumer unions its FQCN maps with `+`, which is safe only because no FQCN
 put only `JsonResource` subclasses in a resource map and only Eloquent models in a model map, and an enum is neither.
 PHP does not enforce the resource and model split, and a class extending both would break it.
 
-**Types resolve first, and a const steps aside.** `ModelTransformer`, `ResourceTransformer` and `AnalysisComposer`
-resolve enum const names through a second, sibling `ImportNameRegistry` with the same skip list, because slicing a const
-name out of a type alias would break at the numeric tiebreak. The two run in lockstep, so `StatusType` aliased to
-`CrmStatusType` pairs with `Status` aliased to `CrmStatus`. TypeScript gives value and type imports one identifier
-namespace, so `ResolvesImportConflicts::applyImportNameRegistries()` resolves the types first and reserves every name
-they took in the const registry. An enum `Role` (type `RoleType`) imported beside an enum `RoleType` (const `RoleType`)
-keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's const. The `Badge`
-fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom imports bring
-(`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
+**Types resolve first, and a const steps aside.** `ModelTransformer`, `ResourceTransformer`, `AnalysisComposer` and
+`FileImportNames` resolve enum const names through a second, sibling `ImportNameRegistry` with the same skip list,
+because slicing a const name out of a type alias would break at the numeric tiebreak. The two run in lockstep, so
+`StatusType` aliased to `CrmStatusType` pairs with `Status` aliased to `CrmStatus`. TypeScript gives value and type
+imports one identifier namespace, so `ResolvesImportConflicts::applyImportNameRegistries()` resolves the types first and
+reserves every name they took in the const registry. An enum `Role` (type `RoleType`) imported beside an enum `RoleType`
+(const `RoleType`) keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's
+const. The `Badge` fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom
+imports bring (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
 
 A composed class's `{Basename}Type` is one of those names: it rides `customImports` under its
 [marker](model-attribute-resolver.md#step-2-an-override-resolved-and-composed), so an enum or model that spells the
-same name is aliased and the composed type never is. Inertia pages and shared data run no registry, so a page that
-reads both imports the name twice
-([known gaps](../known-gaps.md#a-page-that-reads-a-composed-type-and-a-class-named-like-it-imports-the-name-twice)).
-Nor is one composed name aliased against another: `Runner::warnOfSharedComposedNames()` warns of a file reading two
-composed classes with one basename
+same name is aliased and the composed type never is. Nor is one composed name aliased against another:
+`Runner::warnOfSharedComposedNames()` warns of a file reading two composed classes with one basename
 ([known gaps](../known-gaps.md#two-composed-classes-with-one-basename-read-in-one-file-publish-one-name)).
 
-The file's own interface name is reserved for types only, since a value import merges with a local interface of the same
-name. The `Grade` model fixture pins that its const stays unaliased. Two enums in one namespace are a different
-collision, which no alias can settle.
-[Known gaps](../known-gaps.md#an-enum-named-like-another-enums-type-name-collides-with-it) records it.
+Both registries reserve the names the file declares, which `declaredNames()` lists, since an enum's module also exports
+a type under its const's name. The `Grade` model fixture pins its const's alias. For the same reason the const registry
+also reserves `ImportNameRegistry::GLOBAL_TYPES_SPELLED_BARE`, the global types the package spells without an import,
+such as `Record`. Two classes in one namespace that publish one name are a different collision, which no alias can
+settle.
+[Known gaps](../known-gaps.md#two-classes-that-publish-one-name-in-one-namespace-collide) records it.
 
 ### `ModelTransformer`
 
@@ -147,7 +170,10 @@ transformed is never registered.
 
 ### `ResourceTransformer`
 
-`ResourceTransformer` adds two rules of its own:
+`ResourceTransformer` adds three rules of its own:
+
+- **A declared key's tokens**: a key whose `MethodAnalysis::$declaredTokenFqcns` hold an override's null respells each
+  token by its own slot (`aliasSlottedTokens()`), since its per-name queue cannot hold that null.
 
 - **Inline-only consts**: an enum reached only through `EnumResource::make()` inside an inline array never enters
   `$enumFqcnMap`, because it needs no bare type import. A second loop registers those leftover consts, so two with one
@@ -157,6 +183,25 @@ transformed is never registered.
   maps. [ResourceAstAnalyzer § The inline wrap's own const token is aliased by the transformer, not
   here](resource-ast-analyzer.md#the-inline-wraps-own-const-token-is-aliased-by-the-transformer-not-here) explains why
   it cannot reuse `rewriteTypeReferences()`.
+
+### `FileImportNames`
+
+The page and shared-data analyzers print each type from an analysis the file does not keep. Each printer,
+`buildMembersWithOverrides()`, returns the members it prints (a key's text, its type's text and the analysis key it came
+from), and `FileImportNames::objectMember()` joins the type from exactly those members beside their token queues, so no
+queue is rebuilt beside the printer. A dotted key Inertia unpacks prints inside its head's member, which carries the
+pieces of its text, each with the analysis key whose type it prints
+([`DottedTopLevelKeys`](../../src/Support/DottedTopLevelKeys.php)), so each token still takes its own key's class. A
+page hands its type over with `InertiaPageData`'s `pageQueues` and `pageConstQueues`, one per page type. For an analyzer
+that returns none, `RouteTransformer` builds them from `classFqcns` and `enumConstFqcns` with
+`FileImportNames::typeQueues()`, so each token still takes its class. A `@tolki/types` class is imported from that
+module unaliased, and its name is reserved as a custom import's is. A page reserves the names its own branch's imports
+bring, so the order of an action's component branches decides nothing.
+
+A metadata companion is the same call with one member per key whose text no cast import owns, after
+`CastChannels::fit()` over its casts and docblock keys, so same-named enums alias as in any file. The names its
+`#[TsCasts]` and docblock imports bring are reserved, and a cast's own aliases stay with `TsCastsImportResolver`. Only a
+composed class and a cast that import one name still collide, and the transformer throws.
 
 ### `BroadcastEventTransformer`
 

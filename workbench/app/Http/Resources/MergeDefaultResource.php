@@ -7,6 +7,7 @@ namespace Workbench\App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Order;
+use Workbench\App\Support\Opaque;
 
 /**
  * Exercises mergeWhen() and mergeUnless() with a default, which Laravel merges when the condition fails. A key only
@@ -71,6 +72,6 @@ class MergeDefaultResource extends JsonResource
      */
     public function opaqueTotal()
     {
-        return $this->resource->getAttribute('total');
+        return Opaque::value($this->resource->total);
     }
 }

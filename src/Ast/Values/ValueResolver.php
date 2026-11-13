@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Contracts\Support\Arrayable;
@@ -33,6 +35,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
@@ -81,8 +84,8 @@ final class ValueResolver
      * feeds its PHP value through resolveConstantValue(), so a case types as its enum, as a constant holding one does.
      * Returns null for anything not a resolvable constant.
      *
-     * A plain enum's case in a scope that carries no import types as the value it sends instead, while a retyped
-     * (overridden) enum's keeps its override, as `LaravelTsPublish::retypedEnumType()` answers.
+     * A plain enum's case under AnalysisScope::$casesAsLiterals types as the value it sends instead, as
+     * resolveConstantValue() says.
      *
      * @return ValueExpressionResult|null
      */
@@ -102,7 +105,7 @@ final class ValueResolver
 
         $className = $this->constantClassName($expr->class, $scope);
 
-        if ($className === null || ! $this->classLikeExists($className)) {
+        if ($className === null || ! DeclaredClasses::isValueClass($className)) {
             return null;
         }
 
@@ -126,15 +129,7 @@ final class ValueResolver
             return null;
         }
 
-        // A scope that carries no import cannot import an enum's own names, so a case types as the value it sends; a
-        // retyped enum's case keeps its override, whose custom import such a scope carries.
-        if ($constantReflection->isEnumCase() && $value instanceof UnitEnum && ! $scope->carriesImports
-            && LaravelTsPublish::retypedEnumType($className) === null
-        ) {
-            return EnumValueTypes::caseValue($value);
-        }
-
-        return $this->resolveConstantValue($value);
+        return $this->resolveConstantValue($value, $scope->casesAsLiterals);
     }
 
     /**
@@ -159,12 +154,19 @@ final class ValueResolver
      * when it cannot be typed. A scalar leaf maps by its PHP type; a value that is another enum's case resolves to
      * that enum.
      *
+     * With $casesAsLiterals, a case of an enum no override retypes types as what json_encode() writes it as instead, at
+     * any depth, and a case it cannot write, a pure or a `JsonSerializable` enum's, as nothing.
+     *
      * @return ValueExpressionResult|null
      */
-    public function resolveConstantValue(mixed $value): ?array
+    public function resolveConstantValue(mixed $value, bool $casesAsLiterals = false): ?array
     {
         if (is_array($value)) {
-            return $this->analyzeConstantArrayValue($value);
+            return $this->analyzeConstantArrayValue($value, $casesAsLiterals);
+        }
+
+        if ($casesAsLiterals && $value instanceof UnitEnum && LaravelTsPublish::retypedEnumType($value::class) === null) {
+            return EnumValueTypes::caseValue($value);
         }
 
         // A constant's initializer may itself be another class's enum case (`Status::Live`), which getValue() hands
@@ -217,18 +219,24 @@ final class ValueResolver
 
         try {
             $value = $this->evaluateConstantExpression($list, $scope);
-            $constant = is_array($value) && array_is_list($value) ? $this->resolveConstantValue($value) : null;
+            $constant = is_array($value) && array_is_list($value)
+                ? $this->resolveConstantValue($value, $scope->casesAsLiterals)
+                : null;
 
             if ($constant !== null) {
-                return $constant;
+                return [...$constant, 'listKeys' => true];
             }
         } catch (ConstExprEvaluationException) {
         }
 
         $elements = [];
+        $listed = true;
 
         foreach ($items as $item) {
-            $element = $engine->resolve($item->value);
+            $element = $engine->reading()->arrayValue($engine->resolve($item->value));
+
+            // A spread copies the string keys of an array keyed by anything, such as PHPDoc's `T[]`, into this one.
+            $listed = $listed && (! $item->unpack || ($element['listKeys'] ?? false) || ! ArrayArms::holdsList($element['type']));
 
             if ($item->unpack) {
                 $elementType = $this->spreadListElementType($element['type']);
@@ -247,36 +255,90 @@ final class ValueResolver
 
         // Every element is present in every response, so one no rule types cannot be left out as a union arm is.
         if (array_any($elements, fn (array $element): bool => $element['type'] === 'unknown')) {
-            return ['type' => 'unknown[]', 'optional' => false];
+            return ['type' => 'unknown[]', 'optional' => false, ...($listed ? ['listKeys' => true] : [])];
         }
 
         // A missing when*() element drops its `optional`: an API resource removes it and re-indexes the rest.
         $union = ValueResult::unionResults($elements);
 
-        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false];
+        unset($union['listKeys']);
+
+        return [...$union, 'type' => ValueResult::arrayWrapType($union['type']), 'optional' => false, ...($listed ? ['listKeys' => true] : [])];
     }
 
     /**
-     * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known.
+     * The keys an array literal holds, as PHP stores them, where no item unpacks and each key a constant expression
+     * names: a keyless item numbered past the largest int key, a decimal-integer string as an int. Null otherwise.
      *
-     * X's override answers first, whoever serializes X, unless X is a model, whose JSON depends on its runtime
-     * attributes, casts and hidden fields, or an API resource, which publishes as itself.
-     *
-     * Otherwise a model declines, and so does a class Inertia sends by its toArray(), toResponse() or
-     * toInertiaProperty(), none of which json_encode() calls. The value is an object, which an API resource's filter
-     * never enters, so it keeps its keys.
+     * @return list<int|string>|null
+     */
+    public function literalKeys(Array_ $array, AnalysisScope $scope): ?array
+    {
+        $keys = [];
+
+        try {
+            foreach ($array->items as $item) {
+                if ($item->unpack || ($item->key === null && array_key_exists(PHP_INT_MAX, $keys))) {
+                    return null;
+                }
+
+                if ($item->key === null) {
+                    $keys[] = true;
+
+                    continue;
+                }
+
+                $key = $this->evaluateConstantExpression($item->key, $scope);
+
+                if (! is_int($key) && ! is_string($key)) {
+                    return null;
+                }
+
+                $keys[$key] = true;
+            }
+        } catch (ConstExprEvaluationException) {
+            return null;
+        }
+
+        return array_keys($keys);
+    }
+
+    /**
+     * Type `new X(...)` of a class that is not a resource as json_encode() writes X, or null where that is not known,
+     * as resolveSerializedObject() reads X.
      *
      * @return ValueExpressionResult|null
      */
     public function resolveSerializedNew(New_ $new): ?array
     {
-        $class = $new->class instanceof Name ? $new->class->toString() : null;
+        return $new->class instanceof Name ? $this->resolveSerializedObject($new->class->toString()) : null;
+    }
 
-        $result = $class !== null && ClassTypeOverride::appliesToNew($class)
+    /**
+     * Type an object of a class that is not a resource as json_encode() writes it, or null where that is not known.
+     *
+     * The class's override answers first, whoever serializes it, unless it is a model, whose JSON depends on its
+     * runtime attributes, casts and hidden fields, or an API resource, which publishes as itself.
+     *
+     * Otherwise a model declines, and so does a class Inertia sends by its toArray(), toResponse() or
+     * toInertiaProperty(), none of which json_encode() calls. The value is an object, which an API resource's filter
+     * never enters, so it keeps its keys, and which Inertia replaces under a dotted key unless it is `Arrayable`.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function resolveSerializedObject(string $class): ?array
+    {
+        $result = ClassTypeOverride::appliesToNew($class)
             ? resolve(ReflectedTypeAcceptor::class)->accept(LaravelTsPublish::toTsType($class))
-            : ($this->resolveStringSerializedNew($new) ?? $this->resolveClassSerializedNew($new));
+            : ($this->resolveStringSerializedObject($class) ?? $this->resolveClassSerializedObject($class));
 
-        return $result === null ? null : [...$result, 'keepsKeys' => true];
+        if ($result === null) {
+            return null;
+        }
+
+        $result = [...$result, 'keepsKeys' => true];
+
+        return is_a($class, Arrayable::class, true) ? $result : ValueResult::closeToDottedKeys($result);
     }
 
     /**
@@ -297,18 +359,14 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` by the string json_encode() writes X as, whatever TS name the package publishes X under:
-     * `string`, or `string | null` for a nullable one; null for any other class. A date takes `toTsType()`'s type.
+     * Type an object of a class by the string json_encode() writes it as, whatever TS name the package publishes the
+     * class under: `string`, or `string | null` for a nullable one; null for any other class. A date takes
+     * `toTsType()`'s type.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveStringSerializedNew(New_ $new): ?array
+    private function resolveStringSerializedObject(string $class): ?array
     {
-        if (! $new->class instanceof Name) {
-            return null;
-        }
-
-        $class = $new->class->toString();
         $type = StringSerialization::jsonStringType($class);
 
         if ($type === null) {
@@ -323,18 +381,12 @@ final class ValueResolver
     }
 
     /**
-     * Type `new X(...)` as toTsType() reads X, or null for a class resolveSerializedNew() declines.
+     * Type an object of a class as toTsType() reads the class, or null for a class resolveSerializedObject() declines.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveClassSerializedNew(New_ $new): ?array
+    private function resolveClassSerializedObject(string $class): ?array
     {
-        if (! $new->class instanceof Name) {
-            return null;
-        }
-
-        $class = $new->class->toString();
-
         if (! class_exists($class)
             || is_a($class, Model::class, true)
             || is_a($class, Arrayable::class, true)
@@ -355,7 +407,7 @@ final class ValueResolver
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantArrayValue(array $value): ?array
+    private function analyzeConstantArrayValue(array $value, bool $casesAsLiterals): ?array
     {
         if ($value === []) {
             return ['type' => 'never[]', 'optional' => false];
@@ -366,8 +418,8 @@ final class ValueResolver
         }
 
         return array_is_list($value)
-            ? $this->analyzeConstantListValue($value)
-            : $this->analyzeConstantRecordValue($value);
+            ? $this->analyzeConstantListValue($value, $casesAsLiterals)
+            : $this->analyzeConstantRecordValue($value, $casesAsLiterals);
     }
 
     /**
@@ -377,7 +429,7 @@ final class ValueResolver
      * @param  list<mixed>  $value
      * @return ValueExpressionResult|null
      */
-    private function analyzeConstantListValue(array $value): ?array
+    private function analyzeConstantListValue(array $value, bool $casesAsLiterals): ?array
     {
         /** @var array<string, string> $types identity => type */
         $types = [];
@@ -386,7 +438,7 @@ final class ValueResolver
         $customImports = [];
 
         foreach ($value as $item) {
-            $itemResult = $this->resolveConstantValue($item);
+            $itemResult = $this->resolveConstantValue($item, $casesAsLiterals);
 
             if ($itemResult === null || $itemResult['type'] === 'unknown') {
                 return null;
@@ -426,7 +478,7 @@ final class ValueResolver
      * @param  array<array-key, mixed>  $value
      * @return ValueExpressionResult
      */
-    private function analyzeConstantRecordValue(array $value): array
+    private function analyzeConstantRecordValue(array $value, bool $casesAsLiterals): array
     {
         $parts = [];
         $embeddedEnumFqcns = [];
@@ -434,7 +486,7 @@ final class ValueResolver
         $customImports = [];
 
         foreach ($value as $key => $item) {
-            $itemResult = $this->resolveConstantValue($item) ?? ValueResult::unknown();
+            $itemResult = $this->resolveConstantValue($item, $casesAsLiterals) ?? ValueResult::unknown();
             $formattedKey = JsEmitter::validJsObjectKey((string) $key);
             $parts[] = "{$formattedKey}: {$itemResult['type']}";
             $embeddedEnumFqcns = [...$embeddedEnumFqcns, ...$this->collectConstantEnumFqcns($itemResult)];
@@ -564,18 +616,8 @@ final class ValueResolver
     }
 
     /**
-     * Whether a class, interface or enum of this name can be loaded.
-     *
-     * @phpstan-assert-if-true class-string $className
-     */
-    private function classLikeExists(string $className): bool
-    {
-        return class_exists($className) || interface_exists($className) || enum_exists($className);
-    }
-
-    /**
      * ConstExprEvaluator's fallback: a class constant or enum case through reflection, a global constant as defined
-     * where the types are published, or an enum case's `->name` or `->value`.
+     * where the types are published, an enum case's `->name` or `->value`, or the cases an enum's `cases()` lists.
      *
      * @throws ConstExprEvaluationException for any other node
      */
@@ -585,6 +627,7 @@ final class ValueResolver
             $expr instanceof ClassConstFetch => $this->evaluateClassConstFetch($expr, $scope),
             $expr instanceof ConstFetch => $this->evaluateGlobalConstant($expr),
             $expr instanceof PropertyFetch => $this->evaluateEnumProperty($expr, $evaluator),
+            $expr instanceof StaticCall => $this->evaluateEnumCases($expr, $scope),
             default => throw new ConstExprEvaluationException("Expression of type {$expr->getType()} cannot be evaluated"),
         };
     }
@@ -608,7 +651,7 @@ final class ValueResolver
             return $className;
         }
 
-        $constant = $className !== null && $this->classLikeExists($className)
+        $constant = $className !== null && DeclaredClasses::isValueClass($className)
             ? new ReflectionClass($className)->getReflectionConstant($constName)
             : false;
 
@@ -635,6 +678,29 @@ final class ValueResolver
         }
 
         throw new ConstExprEvaluationException("Constant {$expr->name->toString()} is not defined");
+    }
+
+    /**
+     * The cases `E::cases()`, `self::cases()` or `static::cases()` lists, in declaration order.
+     *
+     * @return list<UnitEnum>
+     *
+     * @throws ConstExprEvaluationException for any other static call
+     */
+    private function evaluateEnumCases(StaticCall $call, AnalysisScope $scope): array
+    {
+        $className = $call->class instanceof Name ? $this->constantClassName($call->class, $scope) : null;
+
+        if ($className === null
+            || ! enum_exists($className)
+            || ! $call->name instanceof Identifier
+            || $call->name->toLowerString() !== 'cases'
+            || $call->args !== []
+        ) {
+            throw new ConstExprEvaluationException('Only an enum\'s cases() can be evaluated');
+        }
+
+        return $className::cases();
     }
 
     /**

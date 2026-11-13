@@ -149,6 +149,16 @@ describe('AstEngine::analyze()', function () {
         expect(new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources')->valueImports)->toBe([]);
     });
 
+    test('reads a wrapped enum as nullable only through a top-level null arm', function (string $type, bool $nullable) {
+        $analysis = new MethodAnalysis(enumResources: ['role' => Role::class]);
+
+        expect(AnalysisComposer::enumResourceArms($analysis, ['role' => $type])['role']['nullable'])->toBe($nullable);
+    })->with([
+        'a null arm' => ['RoleType | null', true],
+        'a list whose members may be null' => ['(RoleType | null)[]', false],
+        'a type name holding null' => ['AnnulledType', false],
+    ]);
+
     test('reads each property type on its own, so a template literal one never closes hides no later name', function () {
         $analysis = new MethodAnalysis(
             properties: [
@@ -186,18 +196,18 @@ describe('AstEngine::analyze()', function () {
             ->and($result->typeImports)->toBe(['@/types/geo' => ['GeoPoint']]);
     });
 
-    test('collapses a property name two branches both set into one member', function () {
+    test('holds a key a later key writes over the parent\'s spread once, raw and published', function () {
         $engine = resolve(AstEngine::class);
         $names = array_column(
             $engine->analyze(ApiPostResource::class, 'toArray', null, 'workbench/app/http/resources')->properties,
             'name',
         );
 
-        // The raw analysis appends, so the same three names arrive twice; rendered as-is they are
-        // duplicate interface members.
+        // A key written after the parent's spread replaces the parent's where it stood, so the raw analysis holds
+        // each of the three names once too.
         expect(array_column($engine->analyzeMethod(ApiPostResource::class)->properties, 'name'))
             ->toContain('status', 'visibility', 'priority')
-            ->and(count($engine->analyzeMethod(ApiPostResource::class)->properties))->toBe(count($names) + 3)
+            ->toBe($names)
             ->and($names)->toBe(array_values(array_unique($names)));
     });
 

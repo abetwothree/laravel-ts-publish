@@ -130,7 +130,7 @@ Key capabilities include:
 - **Your own methods**: publish them with `#[TsEnumMethod]` and `#[TsEnumStaticMethod]`, or auto-include public ones.
 - **Values as sent**: a method's value publishes as `json_encode()` writes it, objects and dates included.
 - **Renames and descriptions**: `#[TsEnum]` and `#[TsCase]` rename an enum or a case, or add a JSDoc description.
-- **Type aliases**: `{Name}Type` types a raw case value, and a backed enum's `{Name}Kind` types a case name.
+- **Type aliases**: `{Name}Type` types a raw case value, a backed enum's `{Name}Kind` types a case name, and the enum's own name works as a type for its values.
 - **PHPDoc carried over**: class, case, and method doc blocks become JSDoc comments.
 
 For every attribute option, the auto-include settings, and the runtime helpers, see the [Enums documentation](https://tolki.abe.dev/ts/enums.html).
@@ -643,7 +643,7 @@ Key capabilities include:
 
 - **Ready to render**: the properties and both import maps agree, so a module that renders all three compiles.
 - **Any class, any method**: `toArray()` by default, or another method, such as `analyze($event, 'broadcastWith')`.
-- **Resource semantics**: on an API resource, conditional methods, nested resources, and relation filters type as they do in a publish. On any other class, Laravel's `Conditionable::when()` comes back `unknown`.
+- **Resource semantics**: conditional methods, nested resources, relation filters and `Conditionable::when()` type as they do in a publish.
 - **Public API**: `analyze()` and `AnalysisResult` are supported, and every other engine class is internal.
 
 For the arguments, the result's fields, and what it can't analyze, see the [Analyzer API documentation](https://tolki.abe.dev/ts/analyzer-api.html).

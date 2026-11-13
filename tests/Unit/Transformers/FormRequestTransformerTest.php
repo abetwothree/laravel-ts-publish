@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Dtos\TsFormRequestDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Requests\QuotedRuleRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Workbench\App\Http\Requests\DynamicRequest;
 use Workbench\App\Http\Requests\NumberRulesRequest;
@@ -57,6 +58,18 @@ describe('FormRequestTransformer', function () {
         expect($dto->isDynamic)->toBeFalse();
         expect($dto->fields)->not->toBeEmpty();
     });
+});
+
+// An apostrophe prints escaped, so the union splits at its own pipes and never inside the literal.
+it('lists a literal union holding an escaped quote as one element type', function () {
+    $types = array_column(new FormRequestTransformer(QuotedRuleRequest::class)->fields, 'tsType', 'fieldPath');
+
+    expect($types)->toMatchArray([
+        'tags' => "('it\\'s' | 'b')[]",
+        'maybe' => "('it\\'s' | null)[]",
+        'pipes' => "'it\\'s|x'[]",
+        'plain' => "('a' | 'b')[]",
+    ]);
 });
 
 describe('TsCasts overrides', function () {

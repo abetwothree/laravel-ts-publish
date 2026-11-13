@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Support\Facades\Config;
 
@@ -22,6 +26,7 @@ use Illuminate\Support\Facades\Config;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
  * @phpstan-import-type InlineResourceFqcnsMap from MethodAnalysis
@@ -43,6 +48,25 @@ final class InlineObjectResult
     use BuildsInlineObjectTypes;
 
     /**
+     * Read class-less each member a declared fill typed, as before slots rode a type: the value an object folds into
+     * carries no slots, and its per-name queues would hand an override's or a literal's token, at any depth, a class.
+     */
+    public static function readFillsClassLess(MethodAnalysis $analysis): void
+    {
+        if ($analysis->declaredTokenFqcns === []) {
+            return;
+        }
+
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        foreach ($analysis->declaredTokenFqcns as $name => $slots) {
+            if (isset($types[$name])) {
+                $analysis->retypeClassLess((string) $name, TokenSlots::classLess($types[$name], $slots));
+            }
+        }
+    }
+
+    /**
      * An analysis as the inline object type it publishes, carrying the import channels of every class it names.
      *
      * A JSON:API resource object publishes its `attributes` analysis through this, whatever source built it.
@@ -52,6 +76,8 @@ final class InlineObjectResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
     {
+        self::readFillsClassLess($analysis);
+
         // No outer cast can retype a member, so a member's own method-level cast is the one in force.
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
 
@@ -97,15 +123,25 @@ final class InlineObjectResult
         // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
         // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
         $spreadArmTypes = array_values(array_unique(
-            $this->buildSpreadArmTypes($spreadArms, array_column($analysis->properties, 'name')),
+            $this->buildSpreadArmTypes($spreadArms, array_values(array_unique(array_column($analysis->properties, 'name')))),
         ));
+        // In the gap mode, an object that may hold keys no name names carries the open marker, which a merge fills; a
+        // string-keyed Record beside it already types every key.
+        $open = ($analysis->holdsUnnamedKeys || $analysis->holdsUnreadKeys) && resolve(AnalysisMemo::class)->showsGaps()
+            && ! array_any($spreadArmTypes, static fn (string $arm): bool => (TsTypeShape::recordArguments($arm)[0] ?? null) === 'string');
+        $object = fn (): string => VisibleGaps::opened($this->buildInlineObjectType($analysis), $open);
         $type = match (true) {
-            $spreadArms === [] => $this->buildInlineObjectType($analysis),
-            $analysis->properties === [] => implode(' & ', $spreadArmTypes),
-            default => implode(' & ', [...$spreadArmTypes, $this->buildInlineObjectType($analysis)]),
+            $spreadArms === [] => $object(),
+            $analysis->properties === [] => implode(' & ', [...$spreadArmTypes, ...($open ? ['{ '.VisibleGaps::MARKER.' }'] : [])]),
+            default => implode(' & ', [...$spreadArmTypes, $object()]),
         };
 
         $result = ['type' => $type, 'optional' => false];
+        $presence = $spreadArms === [] ? $this->keyPresence($analysis) : [];
+
+        if ($presence !== []) {
+            $result['keyPresence'] = [VisibleGaps::stripped($type)[0] => $presence];
+        }
 
         if ($spreadArms === [] && $this->keepsMemberKeys($analysis)) {
             $result['keepsKeys'] = true;
@@ -271,7 +307,8 @@ final class InlineObjectResult
      * spells them, then each enum keyed by its own FQCN, which no member owns.
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
-     * order; with `$withWraps`, a member's `EnumResource` enums join its own, for type imports.
+     * order. A member's `EnumResource` enums join its own for type imports: its one wrap with `$withWraps`, and its
+     * several wraps always, since nothing spells them `AsEnum`.
      *
      * @return list<class-string>
      */
@@ -288,6 +325,7 @@ final class InlineObjectResult
                 $fqcns,
                 ...($direct !== null ? [$direct] : []),
                 ...($wrapped !== null ? [$wrapped] : []),
+                ...($analysis->multiEnumResourceFqcns[$memberName] ?? []),
                 ...($analysis->inlineEnumFqcns[$memberName] ?? []),
                 ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
             );
@@ -339,6 +377,28 @@ final class InlineObjectResult
     private function memberQueue(string $memberName, array $queues, array $singles): array
     {
         return $queues[$memberName] ?? (isset($singles[$memberName]) ? [$singles[$memberName]] : []);
+    }
+
+    /**
+     * Why each optional key may be left out, where a body says only one of the two: unset on some path, or a value
+     * Laravel may remove. A spread of the object reads it back (ObjectMembers::writtenMembers()).
+     *
+     * @return array<string, PresenceFacts>
+     */
+    private function keyPresence(MethodAnalysis $analysis): array
+    {
+        $presence = [];
+
+        foreach ($analysis->writtenProperties() as $property) {
+            $absent = $property['absent'] ?? false;
+            $removed = $property['removed'] ?? false;
+
+            if ($property['optional'] && $absent !== $removed && ! JsEmitter::isIndexSignatureKey($property['name'])) {
+                $presence[$property['name']] = MethodAnalysis::presenceFacts($absent, $removed);
+            }
+        }
+
+        return $presence;
     }
 
     /**

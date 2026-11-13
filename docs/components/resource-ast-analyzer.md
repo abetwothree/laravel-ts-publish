@@ -15,30 +15,34 @@ These are the classes a change to resource analysis usually touches:
 | Class | Owns |
 | --- | --- |
 | [`ResourceAstAnalyzer`](../../src/Analyzers/ResourceAstAnalyzer.php) | The walk over a method body: return branches, spreads, `merge()`, arrays built in a variable, delegation |
-| [`ReadsReturnedVariables`](../../src/Ast/Concerns/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
+| [`ReadsReturnedVariables`](../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php) | An array built in a variable: the walk over its writes, and whether a returned one is read completely |
 | [`FiltersModelAttributes`](../../src/Analyzers/Concerns/FiltersModelAttributes.php) | A top-level `$this->only()` or `$this->except()` on the resource's own model |
 | [`ResolvesModelTypes`](../../src/Analyzers/Concerns/ResolvesModelTypes.php) | Whole-model delegation: the property set of a resource with no `toArray()` |
-| [`InspectsResourceCalls`](../../src/Analyzers/Concerns/InspectsResourceCalls.php) | Which classes are resources and the published-set gate |
+| [`InspectsResourceCalls`](../../src/Ast/Concerns/Resources/InspectsResourceCalls.php) | Which classes are resources, the published-set gate, and whether a resource built around an API resource's own `when*()` may be left out |
 | [`BuildsJsonApiResourceObject`](../../src/Analyzers/Concerns/BuildsJsonApiResourceObject.php) | A JSON:API resource's resource object, composed from the analyzer's reads of the runtime class |
 | [`JsonApiResources`](../../src/Ast/Resources/JsonApiResources.php) | Whether a class is a JSON:API resource, its `type` literal and the relationships an include can send |
 | [`ResourceCollections`](../../src/Ast/Resources/ResourceCollections.php) | A collection's facts: the API resource it collects, its kept keys, `R[]` or `Record<string, R>` |
 | [`ResourceCollectionBody`](../../src/Ast/Resources/ResourceCollectionBody.php) | Whether a collection's `toArray()`, wherever declared, sends its collected list, and whether a nested one sends its own body |
 | [`ResourceExpressionHandlers`](../../src/Ast/Dispatch/ResourceExpressionHandlers.php) | The ordered handler profile every value goes through |
-| [`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
-| [`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
-| [`ToResourceHandler`](../../src/Ast/Handlers/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
-| [`StaticCallHandler`](../../src/Ast/Handlers/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
+| [`RelationFilterHandler`](../../src/Ast/Handlers/Collections/RelationFilterHandler.php) | `only()` and `except()` on a relation, a model accessor or a `map` proxy |
+| [`ConditionalMethodHandler`](../../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) | The `when*()` family, `unless()` and `transform()` |
+| [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) | `Conditionable::when()` and `unless()` on any object but an API resource, a model or a query, in every profile |
+| [`ToResourceHandler`](../../src/Ast/Handlers/Resources/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
+| [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
 | [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
-| [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
-| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShapeRefiner.php) | Keys the body left `unknown`, filled from the method's own `@return` |
+| [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
+| [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShape/ReturnShapeRefiner.php) | Each key merged with the method's own `@return` member: a vague key takes it whole |
+| [`DeclaredTypeMerge`](../../src/Ast/Composition/ReturnShape/DeclaredTypeMerge.php) | One typed key's reading merged with its `@return` member, position by position |
+| [`BranchJoin`](../../src/Ast/Composition/BranchJoin.php) | One key's branch types joined into one type beside its token slots, and the casts every branch agrees on |
 | [`IndexSignatureReconciler`](../../src/Ast/Composition/IndexSignatureReconciler.php) | Template-literal index signatures against the keys beside them |
 | [`ReflectedTypeAcceptor`](../../src/Ast/Values/ReflectedTypeAcceptor.php) | A reflected type into the FQCN channels, or a decline |
 | [`MethodAnalysis`](../../src/Ast/Analysis/MethodAnalysis.php) | The property list and the FQCN channels; `ResourceAnalysis` extends it |
 
-The controller profile drops `ConditionalMethodHandler`, `ToResourceHandler` and `RelationFilterHandler`, the
-model-getter profile drops the first two, and any other non-resource subject drops `ConditionalMethodHandler` alone. In
-every profile, the order handlers run in decides which one answers; see
-[AST engine § Handler ordering](ast-engine.md#handler-ordering).
+The model-getter profile drops `ConditionalMethodHandler` and `ToResourceHandler`, any other non-resource subject drops
+`ConditionalMethodHandler` alone, and the Inertia profile, which every body Inertia sends runs, adds the page-prop
+handlers to the subject's own. `ModelFinderHandler` runs in every profile, so a query chain rooted at a model types
+alike on a resource, an event, a page and a model getter. In every profile, the order handlers run in decides which one
+answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
 
 ## How `analyze()` reads a method
 
@@ -86,12 +90,22 @@ every profile, the order handlers run in decides which one answers; see
   included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
   destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
   object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
-  A local written once reads as its value (`writtenLocal()`), and the walk names a key such a local holds
+  A local whose read sees one write reads as its value (`writtenLocal()`), and the walk names a key such a local holds
   (`literalLocal()`); an `unset()` removes each key it names, and only one it cannot name leaves the variable not read
-  completely. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
+  completely. A `??=` of a key the walk holds joins the value it keeps with the default, the key optional only where a
+  value it held may be left out itself, as a `when*()` or `Inertia::optional()` value is. A placeholder, a closure and
+  an Inertia prop object (a result's `heldObject`, which `MethodAnalysis::$heldObjectKeys` keeps for a literal's key)
+  are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop resolves to; a ternary,
+  `??` or `match` with only some such arms (`mayHoldObject`) keeps the null its objects resolve to, and joins the
+  default only past its plain arms' null; the default joins only past a plain `null`, or where a path may leave the key
+  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal
+  write's keys count as set. A written value that reads the variable itself reads the keys the walk holds there
+  (`readAgainstWalk()`), or, where the walk cannot spell them, reads as the body's other reads do, which a page
+  declines. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
   method's of its name. A closure's returns and a method's read as a value share the walk through
   `ResolvesReturnedValues::resolveReturned()`, which walks a seeded parameter the body writes rather than reading its
-  binding; a value read of a local built by keys shares it through `walkedLocal()`.
+  binding; a value read of a local built by keys shares it through `walkedLocal()`, and an Inertia props local its
+  literal writes do not spell, read from its writes before the render call, through `variableAnalysis()`.
 - **A spread method sweeps every `return` too**: `analyzeThisMethodSpread()` merges array literals, arrays built in a
   variable and `[]` as branches, and falls back to `analyzeFirstReturn()` when any `return` is something else. It finds
   the method in its class, a trait or a parent through `MethodLocator::locate()`; `...self::m()`, `...static::m()` and
@@ -109,33 +123,125 @@ every profile, the order handlers run in decides which one answers; see
   [AST engine § A called method's parameters](ast-engine.md#a-called-methods-parameters) says, and
   `AnalysisScope::within()` restores all of them. `AnalysisScope::$visitedSpreadMethods` turns a self-spread or a cycle
   into an empty analysis instead of recursing until memory runs out.
-- **The body wins, then `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills only keys the body left
-  `unknown`, so a stale docblock never overrides a resolved type. `applyTsCastsFromMethod()` then applies the method's
-  own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both can change a key
-  after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
+- **The body, merged with `@return`, then `#[TsCasts]`**: `ReturnShapeRefiner::refine()` fills a key the body left
+  vague and merges one it typed, so a docblock refines what the body sends and types in place what it could not read,
+  each [visible gap](#the-gap-mode) the body kept. `applyTsCastsFromMethod()` then
+  applies the method's own casts to every entry of a key, except on the `share()` the shared-data analyzer reads. Both
+  can change a key after the merge, so `IndexSignatureReconciler::reconcile()` runs again after them.
 
 ### A spread helper drops an untypable branch
 
 `analyzeThisMethodSpread()` merges with `dropsUntypedBranches: true`, as do a merge call's sides (`merge()`,
-`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `branchUnion()` leaves out a branch that
+`mergeWhen()`, `mergeUnless()` and a merge closure's returns), so `BranchJoin::branchUnion()` leaves out a branch that
 resolved to `unknown` and unions the rest, as a ternary drops its untypable arm. A key still publishes `unknown` when
 every branch is `unknown`, or, for a spread helper alone, when only `null` is left, since that `null` says nothing
 about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a ternary does.
 `toArray()`'s own branches and `InertiaPageAnalyzer`'s merge keep the strict rule: one `unknown` branch makes the key
 `unknown`, because `unknown` absorbs whatever it joins.
 
+In the [gap mode](#the-gap-mode), the branch a spread helper's join drops beside a typed one stays as a gap arm on the
+key (`merge-branch-join`): held with the warning of the untyped write the branch names (`recordedMergeJoin()`), or
+silent where no branch names one (`gapDroppedReturns()`). A fill another branch spells unalike reads as a gap there
+rather than `unknown` (`BranchJoin::withUnalikeFillsUntyped()`). The helper's own `@return`, or the host's where the
+helper's frame is read in the host's mode, then types each dropped branch in place. A key every branch left `unknown`,
+or only a `null` beside them, still reads `unknown`, which a member fills whole. A merge call names no returns, so only
+a named untyped write leaves a gap there.
+
 ### What the method's `@return` may fill
 
-`ReturnShapeRefiner` reads a `@return array{…}` shape per key, or a `@return array<string, V>` value type for every
-unfilled key. A `key?:` entry also marks the key optional. It fills a value only where
-[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds at each
-leaf, and adds those imports to the analysis, so an override fills with its import while a model or an enum is skipped.
+`ReturnShapeRefiner` reads a `@return array{…}` shape per key, or the `V` of a `@return array<string, V>` that is one
+`Record<string, V>`, for every vague key. A `key?:` entry also marks the key optional. A key is vague where every arm
+but `null` is `unknown`, `unknown[]`, `never[]` or `Record<string, unknown>` (`TsTypeString::isVagueOnly()`), its gap
+arms set aside, as an `'array'`-cast column reads: the member replaces those arms and the gaps, which count as filled,
+and the `null` stays. A member that is vague itself fills only an exact `unknown`.
+
+A key the body typed merges with its member at every position (`DeclaredTypeMerge::merge()`), with no decline:
+- at a gap arm (`$gapN`), the arm a union left out, the rest of the union merges by the rules below and the gap then
+  takes each member arm the result does not cover, after it, every container arm of the member included; a gap alone
+  or beside only `null` takes the member whole, the `null` kept, and under a member that tells nothing it stays for the
+  strip;
+- where the client gets it re-listed, a shape keyed `0` to n-1, every value `unknown` and only its last key optional,
+  takes a declared n-tuple's elements in its own key order, the body's `null` kept
+  (`DeclaredTypeMerge::relistedTuple()`). It is re-listed where `filter()` runs over the body
+  (`Reading::filtersBodyOf()`) for a resource that keeps no keys, but under a key whose value keeps its own
+  (`keepsKeys`: a kept Collection, an object cast); elsewhere it keeps its keys;
+- where either side tells no more than `unknown`, or than its container, as `unknown[]` or a `Record` of `unknown`
+  does, the side telling more is taken whole, the body's `null` kept (`DeclaredTypeMerge::tells()`); a body reading
+  only `null` takes a vague member;
+- a shape keeps the members the body sends, in its order and with its `?` flags, each merged with the member of the
+  key it names (`0`, `"0"` and `'0'` are one key, printed as declared), the best matched shape of a declared list's
+  element, or a declared `Record`'s value or list's other element, as fits it best
+  (`DeclaredTypeMerge::acrossFromShape()`). An intersection of objects, as a spread beside keys prints, merges as the
+  one object it sends (`TsTypeShape::intersectedObjects()`). A member only the declaration has merges with the union of
+  the values of every body index signature whose pattern covers it, each widening to admit it; else it follows where
+  it is optional or the shape holds the open marker, and goes where the body never sends it;
+- a list merges its element and a `Record` its value with a declared list's element or `Record`'s value; among several
+  declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
+  both spell first, then the keys both name (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
+- the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
+  within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
+  member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
+  union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms no other
+  body arm covers (`DeclaredTypeMerge::armWithin()`).
+
+A shape is open only where the engine cannot name every key it holds: the array literal walk flags a key no literal
+or constant names and a spread whose value is no closed shape (`MethodAnalysis::$holdsUnnamedKeys`), and a variable's
+walk an unnameable write (`$holdsUnreadKeys`). The merge reads a shape open by the open marker the gap mode prints on
+it (`InlineObjectResult::of()`), which every reader carries with the object.
+
+Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
+or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an
+`EnumResource` never equals the bare enum. With the tolki package on, a key's one top-level wrap reads as the
+`AsEnum<typeof …>` the publisher writes, and a key the merge changes keeps it written so, on its inline wrap channel,
+since the publisher's rewrite would wrap a bare token of that enum the member fills too
+(`ReturnShapeRefiner::writtenWrap()`). The merged classes are queued on the key's channels in print order, as a
+body spelling them is (`ReturnShapeRefiner::requeued()`), so the key keeps its enum wraps and declares no slots; only an
+override spelled like a class beside it declares them, through `CastChannels::fit()`. The analyzed `share()` or
+`provide()` itself merges no typed key, since its analyzer lays that docblock over every key it types
+(`ResourceAstAnalyzer::docblockOutranksBody()`), and reads none in the gap mode. A helper either spreads merges its
+own typed keys, read in the mode, since neither analyzer reads the helper's `@return`.
+
+It fills a value only where
+[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it) holds, each
+token a class stands behind left to that class (`LaravelTsPublish::shapeMemberForKey()`), so a model, an enum or an API
+resource fills with its import at any depth. Each filled key goes through `CastChannels::fit()` as a cast in force with
+the member's `tokenFqcns`, which queues its classes and records the slots in `MethodAnalysis::$declaredTokenFqcns`.
+`merge()` carries them, and a nested literal or local that folds them into a value reads every such key with no class
+(`InlineObjectResult::readFillsClassLess()`), as a key no rule types read before its fill. `mergeReturnBranches()`
+joins a declared text's arms whole, past the branches it drops, so a branch spelling none of the text's own names
+joins beside it:
+`User | User | string`, its slots `[null, User]`. Every joined arm takes one slot per token of the joined names, a
+literal's `'User'` a null one (`TokenSlots::joinedSlots()`). An arm cut from a declared text reads its share of the
+slots against the whole text's own names (`declaredArms()`), since the share may hold no class of a name it spells, as
+`{ a: User; p: Post }`'s `[null, Post]` beside `| User`. Where another branch spells those names outside a literal, with
+other slots or none, no join can bind them (`BranchJoin::declaredBranches()`): a strict join publishes the key `unknown`
+with no class, and a dropping one first reads that fill as the untyped value it stood in for
+(`MethodAnalysis::untype()`), so it drops the fill and publishes the other branches, as before the fill.
+`ResourceTransformer` reads a key's tokens from its slots where one holds an override's null, so `either: Person|User`
+publishes `User | WorkbenchUser`, each with its import, as an Inertia page does through `FileImportNames`; a per-name
+queue cannot hold that null.
 
 A spread helper's `@return` may also name a type no PHP class answers to, which the app declares as a global:
 `IncludesExtras`'s `custom_val: CustomObject` publishes `CustomObject`. A name that resolves through the file's `use`
 statements to a class, interface, enum or trait is never kept, since it needs an import. The analyzed method's own
 `@return` keeps no such name (`keepsUnresolvedNames: false`), because there an unresolved name is as likely an
 unimported class, which `tsc` rejects with TS2304.
+
+### The gap mode
+
+The analyzer reads its subject's body, and each spread helper's, with the keys whose member in that method's own
+`@return` tells something (`ReturnMembers::typedKeys()`) as the scope's typed keys, so each read reaching one runs in
+the [gap mode](ast-engine.md#visible-gaps). There an arm a union leaves out stays a `$gapN` arm for the merge above to
+fill, and an open shape carries the open marker, so the merge keeps a member only the docblock declares. `share()` and
+`provide()` set no typed key (`docblockOutranksBody()`), and a value read sets none for its own keys
+(`dispatchValue()`). A spread helper's bound arguments read in the helper's mode, since what they bind may reach a key
+the helper types.
+
+A frame entered with the mode off is an extent of its own (`inGapExtent()`, the helper's argument reads included) and
+strips what its merge leaves: each key its `@return` does not type at each return (`untypedKeysStripped()`), since no
+merge fills it and the joins past the return read it as the frame publishes it, and every other key after the refine
+(`methodShaped()`). Each stripped gap raises the warning its drop holds. A frame entered with the mode on, as a helper
+spread beside the host's typed keys is, strips nothing, so its gaps and markers reach the host's merge.
 
 ### A stacked body-less collection collects what its own class names
 
@@ -152,9 +258,22 @@ facts (`ResourceAstAnalyzer::$runtimeClass`), so its `$this->collection` reads `
 ### An inherited shape needs an inherited model
 
 A subclass's inherited analysis types its columns only when a model backs it.
-[`ModelClassResolver::resolve()`](../../src/Ast/Resources/ModelClassResolver.php) reads the nearest ancestor's `@mixin` or
-`@extends` when the class has none of its own; its docblock lists the full precedence. That step runs for any resource
-without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
+[`ModelClassResolver::resolve()`](../../src/Ast/Resources/ModelClassResolver.php) takes the model
+[`ProxyDeclaration::model()`](../../src/Ast/Resources/ProxyDeclaration.php) reads, an ancestor's `@extends`, `@mixin` or
+`@property … $resource` when the class has none of its own; its docblock lists the full precedence. That step runs for
+any resource without its own tag, not only a body-less one. `BodylessOrderResource` pins the body-less case.
+
+A declaration naming a [held class](../../GLOSSARY.md) rather than a model, as `@extends JsonResource<PostStats>` does,
+stops the naming-convention and `#[UseResource]` guesses unless the guessed model already is a class it names, as with
+`@mixin Arrayable`; otherwise the resource has no model and its proxy reads the held class. A tag naming only a class
+nothing loads, `Model` or `\Eloquent`, which IDE helpers write, declares nothing and the guess stands. Beside
+`#[TsResource(model:)]` a tag keeps only the classes that model is. `HeldStats*Resource`, the IDE-helper and interface
+`*PostResource` and `ExplicitPostOverHeldStatsResource` test fixtures pin these.
+
+An intersection such as `@extends JsonResource<Post&HasLabel>` names its primary member, the first that is no
+interface, as its model, and a guessed model that extends that member narrows it. One of interfaces only keeps a guess
+that is any member. `ExplicitPostOverIntersectionResource` and the `*Intersection*`, `LabelingPost`, `CountedPost`,
+`CastablePost` and `LabeledEntry` resource fixtures pin these.
 
 ## JSON:API resources
 
@@ -183,8 +302,9 @@ A `JsonApiResource` subclass publishes the resource object Laravel sends as `dat
 
 `only()` and `except()` type against any receiver holding a model, and two owners answer them:
 
-- **[`RelationFilterHandler`](../../src/Ast/Handlers/RelationFilterHandler.php)**: a relation or model accessor read as
-  `$this->relation` or `$this->resource->relation`, and the `map` proxy, as in `$this->comments->map->only([...])`.
+- **[`RelationFilterHandler`](../../src/Ast/Handlers/Collections/RelationFilterHandler.php)**: a relation or model
+  accessor read as `$this->relation` or `$this->resource->relation`, and the `map` proxy, as in
+  `$this->comments->map->only([...])`.
 - **[`ReceiverMethodReturnResolver::attributeFilterRule()`](../../src/Ast/Receivers/ReceiverMethodReturnResolver.php)**: every
   other receiver holding one model class, such as a bare `$this->only([...])` the resource forwards to its model, a
   `whenLoaded()` closure parameter or a local variable.
@@ -212,8 +332,8 @@ those handlers. It also records the controller scope, which has no model, where 
 
 A model's own method or accessor body is analyzed with the model as its subject. There `$this->resource` is the
 model's own member, because only an API resource has the proxy (`AnalysisScope::hasResourceProxy()`). How filters
-answer in that body, and in a body that carries no imports, is in
-[receiver types § The body fallback carries no FQCN channel](receiver-types.md#the-body-fallback-carries-no-fqcn-channel).
+answer in that body, and in a reader that carries no imports, is in
+[receiver types § The body fallback carries channels as an inline literal does](receiver-types.md#the-body-fallback-carries-channels-as-an-inline-literal-does).
 
 The relation arm publishes by member kind, adds `| null` through `?->`, and declines (`null`, so a later handler
 answers) on anything else:
@@ -355,7 +475,7 @@ describes, so two rules keep each arm's FQCN beside its own token:
 
 ## The `when*()` family
 
-[`ConditionalMethodHandler`](../../src/Ast/Handlers/ConditionalMethodHandler.php) maps each call against
+[`ConditionalMethodHandler`](../../src/Ast/Handlers/Resources/ConditionalMethodHandler.php) maps each call against
 `JsonResource`'s own signature with `CallArguments`, so a positional or named argument lands where Laravel binds it.
 Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transform()` helper:
 
@@ -384,7 +504,7 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   adds nothing to a real array type. So `whenLoaded('children', $this->children, [])` is `Category[]`. The drop is
   sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.
 - **`whenNotNull()` and `whenNull()` test their value for `null`**: both call `when()` on `is_null($value)`.
-  `whenNotNull()` strips the top-level `| null` from its value with `ValueResult::stripNullArm()`, which leaves a
+  `whenNotNull()` strips the top-level `| null` from its value with `TsTypeString::withoutNullArm()`, which leaves a
   nested one. A closure or first-class callable is never `null`, so `whenNotNull()` always calls it, with nothing: the
   key is required and keeps what it returns, `null` included. `whenNull()`'s value arm is `null`.
 - **`unless()` and `mergeUnless()` reuse `when()` and `mergeWhen()`**: negating the condition changes which arm runs,
@@ -422,7 +542,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   count is `NULL` over no rows, which Laravel returns before it calls a value closure; one whose function the call
   computes takes no arm.
 - **`transform()` types from the callback**: the helper returns `$callback($value)` for a filled value, with the
-  callback's first parameter bound to the value. Its default receives the value too, `null` arm included:
+  callback's first parameter bound to the value. A callable string or pair, or one whose value reads as such literals as
+  `when()` reads it below, types as the union of the calls it names; any other callable that is no closure types as the
+  value it is. Its default receives the value too, `null` arm included:
   `transform($this->rating, fn ($r) => 'x', fn ($r) => $r)` publishes `string | null`.
 - **A first-class callable types as the call it stands for in a `value()` position**: Laravel calls the `Closure`, so
   `when($c, $this->label(...))` types as `$this->label()`. Anywhere else the key holds the `Closure`, which
@@ -434,8 +556,24 @@ conditional call, such as `Resource::make($this->whenLoaded(...))`, which publis
 such as `Resource::make($this->parent)`, and publishes `null` alone for a payload that is only ever `null`, such as
 `new Resource(null)` or a parameter holding a `null` default, inside a resource only; a collection never takes either,
 and neither does a payload a guard proves non-null ([AST engine § Narrowing](ast-engine.md#narrowing)). Nor does a wrap
-in a `map()` body, unless a trailing `->all()` turns the mapped `Collection` into an array: `JsonResource::filter()`
-recurses into arrays only (`AnalysisScope::$filtersNestedResources`).
+in a `map()` body, unless a trailing `->all()`, `->toArray()` or `->jsonSerialize()` turns the mapped `Collection`
+into an array: `JsonResource::filter()` recurses into arrays only (`AnalysisScope::$filtersNestedResources`).
+
+Any other subject's `$this->when()`, and a `when()` or `unless()` on an object a body holds, is Laravel's
+`Conditionable`, which returns `$callback($this, $value) ?? $this`, else `$default($this, $value) ?? $this`, else
+`$this`. [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) types it, required, as
+the callback's and the default's values with the object's own JSON (`ValueResolver::resolveSerializedObject()`) in place
+of a `null` either returns and of a default not passed. It calls any callable, so a callable string or pair reads as the
+call it names, as `transform()` does. One whose value reads as such literals (through a ternary, `??`, `match`, a
+local's writes, a literal key, a `$this` property, a constant or a method's literal return) reads as the union of those
+calls (`CallableForms::calledCallables()`); any other reads `unknown`. Each callable is passed the object, with the
+receiver it holds, and the condition as the caller reads them (`ParameterBinder::bindReadArguments()`), so neither a
+parameter named like a variable either reads nor a write in its body changes them. It declines with fewer than two
+arguments, which return a `HigherOrderWhenProxy`; on a model, a query or a relation
+(`ReceiverClassResolver::conditionalQuery()`); on a class declaring its own `when()`; and where a call's value or the
+object's JSON reads an `unknown` arm, drops an arm, or holds a closure Laravel hands back uncalled. A declined read
+keeps neither the arms it dropped nor their warnings (`DroppedUnionArms::provisional()`); a warning added directly, such
+as a first-class callable's, can remain.
 
 A model-level `#[TsCasts]` wins over every rule here in the published file, because
 `ResourceTransformer::applyOverrides()` runs after analysis. `Address` casts `latitude`, so check conditional typing
@@ -444,43 +582,73 @@ on a key no cast covers.
 ## `$this->resource` inside a relation closure is the resource's own model
 
 Inside a `whenLoaded()` closure `$this` is still the resource.
-[`PropertyChainHandler`](../../src/Ast/Handlers/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root every
-chain at `$modelClass`, and `RelationCollectionChainHandler` and `StaticCallHandler` type a `$this->prop` call from it
-too, never from the model the closure's parameter holds. A model that declares a real `resource` relation
-reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call
-on `$this->resource` inside such a closure.
+[`PropertyChainHandler`](../../src/Ast/Handlers/Members/PropertyChainHandler.php) and `ReceiverMethodCallHandler` root
+every chain at `$modelClass`, and `RelationCollectionChainHandler` and `StaticCallHandler` type a `$this->prop` call
+from it too, never from the model the closure's parameter holds. A model that declares a real `resource` relation
+reaches it only as `$this->resource->resource`. `ClosureResourceRootResource` pins a property chain and a method call on
+`$this->resource` inside such a closure.
 
 ## Collection pipelines
 
 Two handlers type a chain of collection operations.
-[`RelationCollectionChainHandler`](../../src/Ast/Handlers/RelationCollectionChainHandler.php) takes a chain rooted at
-`$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
-[`CollectionPipelineHandler`](../../src/Ast/Handlers/CollectionPipelineHandler.php) takes one rooted at `collect($arg)`,
-and reads the element type off `$arg` when it resolves to `X[]`. A top-level `|` declines,
-since the elements could come from either arm. Each handler tracks in its own `match` whether the keys are still
-`0..n-1`. Once they are not, it adds the object arm `json_encode()` emits, from
-`SpellsKeyedCollections::keyedObjectArm()`. A bare `collect($arg)` is typed by
-[`KnownFunctionCallHandler`](../../src/Ast/Handlers/KnownFunctionCallHandler.php): no argument is `never[]`, and a constant
-is its element types. A list literal, bare or collected, is typed by
+[`RelationCollectionChainHandler`](../../src/Ast/Handlers/Collections/RelationCollectionChainHandler.php) takes a chain
+rooted at `$this->{manyRelation}` or `$this->resource->{manyRelation}`; a `?->` on the proxy adds `| null` once.
+[`CollectionPipelineHandler`](../../src/Ast/Handlers/Collections/CollectionPipelineHandler.php) takes one rooted at
+`collect($arg)`, and reads the element type off `$arg` when it resolves to `X[]`; any other array `$arg` holds takes
+only a `map()`, `all()`, and a leading `values()` or `keys()` that lists it. A top-level `|` declines, since the
+elements could come from either arm, but for a `null` arm: `collect(null)` holds no items, as does `collect()` of the
+`MissingValue` a `when*()` call leaves, so a list stays itself and a `Record` or a shape adds `never[]`. Both walk their
+steps through `CollectionSteps::walk()`, which tracks whether the keys are still `0..n-1`. Once they are not, the
+handler adds the object arm `json_encode()` emits, from `ArrayArms::keyedList()`. A bare `collect($arg)` is typed by
+[`KnownFunctionCallHandler`](../../src/Ast/Handlers/Calls/KnownFunctionCallHandler.php): no argument is `never[]`, and a
+constant is its element types. A list literal, bare or collected, is typed by
 [`ValueResolver::resolveListLiteral()`](../../src/Ast/Values/ValueResolver.php).
 
-The two `match` statements must agree on every op both take. They stay separate because a `collect()` root takes only
-a subset of the ops, with no `take`, `pluck`, `concat` or `first`/`last` terminal. These rules hold around them:
+Both read the steps that keep the items from `CollectionSteps`, so they agree on each; a relation chain adds `pluck()`,
+`concat()` and a `first()`/`last()` terminal through the walk's hook. These rules hold around them:
+
+- **`keys()` and `array_keys()` list the keys PHP holds**: a constant array's or a literal's own keys, read from the
+  literal where each is a constant (`ValueResolver::literalKeys()`), else `ArrayArms::keysList()`'s `Record` key types
+  and a list's numbers where the value is marked `listKeys`: a list literal, a `list<T>`, `array<int, T>` or
+  `array<array-key, T>` docblock, or a collection's items. PHPDoc's `T[]` and `array<T>`, a native `array` and a cast
+  take any key, so their list declines. An object literal's type and a `Record<string, unknown>` decline, since the
+  engine prints a literal without the keys it cannot name, and so does any value marked `unnamedKeys`, a literal with
+  such a key however it is reached. The walk takes one `keys()` before any `map()` and only while no step moved the
+  keys, so `keyBy()->keys()` declines. `array_keys()` of an object declines, since PHP throws a `TypeError` on it; a
+  `Collection` also warns, as `array_map()` does below.
+- **A step that hides attributes declines**: `makeHidden()`, `setVisible()` and the others that drop what a model
+  serializes leave models their interface no longer describes, so the walk declines them.
 
 - **`values` restores `0..n-1`, and `all` keeps the keys**: `all()` hands back the underlying array, and a
   `Collection<X>` and its array both render `X[]`, so it is identity on the published type.
 - **`concat($source)` is identity only on exact type equality**: anything but the receiver's own collection type
   declines the chain, since `Comment[]` joined with `Tag[]` is a different collection, not a longer one.
-- **A `collect()` pipeline binds its `map()` parameter to its element**: the model the receiver resolver names for
-  `$arg`, or that its value carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
-  `AnalysisScope::$varValueBindings`. Both bind through one binder, as
+- **A `collect()` pipeline maps as `array_map()` does**: `BindsMapCallbacks::mappedArrayResult()` keeps each arm's
+  keys, a list as a list, a `Record` or an object literal with its keys, and a value nothing types as
+  `R[] | Record<string, R>`, unless the receiver resolver names it a list of one model, as a local whose join left a
+  write out holds. Its parameter binds to the model the receiver resolver names for `$arg`, or that its value
+  carries, in `$varModelBindings`, as a relation chain does; any other element as a value in
+  `AnalysisScope::$varValueBindings`, and an element nothing types not at all, so the parameter's declaration binds.
+  A parameter declaring no class also binds, in `$varDeclaredBindings`, the classes a property's `@var list<X>`,
+  `X[]` or `array<K, X>` declares its elements as (`ReceiverClassResolver::elementClasses()`), so `$r->name` reads
+  `X::$name`. All bind through one binder, as
   [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
+- **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
+  `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a
+  shorter array pads with `null`. A `null` callback returns the one array, or zips several into tuples. An object,
+  a `Collection` included, declines, since PHP throws a `TypeError` on it, and a `Collection` records a warning naming
+  the line and its `all()`. `array_values()` and `array_filter()` of a `Collection` warn the same way, yet keep its
+  items' type. `array_values()` marks its list keyed 0..n-1, so `array_keys()` of it lists numbers.
 - **`data_get($target, 'a.b')` is the chain `$target?->a?->b`**: `KnownFunctionCallHandler` unions an explicit default
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.
-- **`array_filter($a)` is `$a`'s own array, keys kept**: a list adds the `Record<number, T>` its gaps make, which an
-  API resource re-indexes away, and with no callback no value is `null`. A `null` arm is left out, since PHP throws a
-  `TypeError` on it, and a shape or a tuple declines.
+- **`array_filter($a)` is `$a`'s own array, keys kept**: a list adds the `Record<number, T>` its gaps make, which an API
+  resource re-indexes away, each member of a shape turns optional, and with no callback no value is `null`, so a
+  null-only member drops. A `null` arm is left out, since PHP throws a `TypeError` on it. A tuple declines, and so does
+  a shape whose kept keys may re-index into a list: an int key beside a named one, key `0`, or a key marked
+  `unnamedKeys`. A shape that keeps no member sends `[]`, a gap
+  [known gaps](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
+  records.
 
 `VariableHandler` types a `map()` over any other receiver, such as a local, a model parameter's relation, a query or
 `getRelation()`, and peels a trailing `values()` or `all()` off a chain it can type or a variable whose element the
@@ -490,8 +658,9 @@ agrees with `CollectionPipelineHandler`.
 
 ## Inline-array spreads become intersection arms
 
-In a nested array literal, [`InlineArrayHandler`](../../src/Ast/Handlers/InlineArrayHandler.php) turns a spread into an
-arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes four kinds:
+In a nested array literal, [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) turns a spread
+into an arm of an intersection instead of flattening its keys. `InlineArrayHandler::classifySpreadArm()` recognizes four
+kinds:
 
 - **Resource arm**: a spread of one named resource, such as `UserResource::make($m)->resolve($request)`, never an
   array or collection of one.
@@ -499,12 +668,20 @@ arm of an intersection instead of flattening its keys. `InlineArrayHandler::clas
 - **Collection arm**: `$var->toArray()` on a to-many `whenLoaded()` parameter, or a relation chain that ends to-many.
   It publishes `Record<number, User>`, because spreading a collection renumbers its elements from 0.
 - **Object arm**: any other value typed as one object, such as a `Record<string, string>` cast or a relation's
-  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries.
+  `Pick<User, 'id'>`. It joins as that type, with the imports the value carries. So does a resolved resource whose keys
+  Inertia sends restated, an intersection, which the top level flattens as a resource arm by its `resolvedFqcn`. The
+  item loop reads some in place instead (`InlineArrayHandler::spreadKeys()`): a value typed as one object or a union of
+  objects, maybe beside `[]`, writes its named keys where it stands, an open one's too, and a string map may write
+  each key before it. Only where a later arm follows does such a spread stay an arm, and a held key that a later
+  resource, model or collection arm writes is that arm's, as [one fold per literal](#one-fold-per-literal) decides.
+
+`InlineArrayHandler::planArms()` classifies each spread once, before the item loop, and decides which stay arms; the
+loop records them in the literal's fold, which hands the print its arm list (`MethodAnalysis::spreadArms()`).
 
 `$this->toArray()` and the other spreads `analyzeReturnArray()` already flattens are not arms. At the method's own top
 level, the same classifier flattens the spread into the resource's keys instead. A resource arm gives its properties,
 a model arm its published columns and appended accessors, and a collection a `[key: number]: Model` member. An object
-arm names no class to flatten, so it is left out there.
+arm names no class to flatten, so it is left out there, unless the item loop writes its keys in place.
 
 Each arm is `Omit<>`'d against every explicit key and every later arm's `keyof`. PHP's `[...$a, 'k' => $v]` lets the
 later write win, while TypeScript's `&` intersects both and makes a disagreeing key `never`. Three rules follow:
@@ -522,17 +699,39 @@ later write win, while TypeScript's `&` intersects both and makes a disagreeing 
   pin both directions.
 
 PHP's array union `$a + $b` keeps every key `$a` sets. In value position
-[`BinaryOpHandler`](../../src/Ast/Handlers/BinaryOpHandler.php) types it as the one literal
-`InspectsAstNodes::arrayUnionLiteral()` builds. With every key a literal, that literal holds the items PHP keeps, in
-PHP's order, so int keys come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal
-cannot read from its syntax is spread as the value it resolves to, so an object joins as an object arm, and an untyped
-one as `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. With no array on either side,
-`+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them as `+=` does.
+[`BinaryOpHandler`](../../src/Ast/Handlers/Operators/BinaryOpHandler.php) types it as the one literal
+`InspectsAstNodes::arrayUnionLiteral()` builds, or, where a local operand's read sees several literal writes, one
+literal per write, joined. With every key a literal, that literal holds the items PHP keeps, in PHP's order, so int keys
+come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand the literal cannot read from its syntax
+is spread as the value it resolves to, so an object joins as an object arm, and an untyped one as
+`Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. For the same reason a nullable list
+operand is spread without its `null`, and two nullable lists add `number`, as PHP adds `null + null` as `0`. With no
+array on either side, `+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them
+as `+=` does.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations
 `relationsToArray()` adds, which depend on what is loaded, and it keeps `$hidden` columns unless `exclude_hidden` is
 set. Only this collector reads `$var->toArray()` as a model, so a model's `toArray()` in value position gets no shape.
+
+## One fold per literal
+
+`analyzeReturnArrayItems()` records every key each item writes into a
+[`LiteralWrites`](../../src/Ast/Analysis/Fold/LiteralWrites.php), with whether the item may leave it unset (`absent`) or
+writes a value Laravel may remove (`removed`), and whether a merge call wrote it. At the end of the literal, before the
+reconcile, [`LiteralFold`](../../src/Ast/Analysis/Fold/LiteralFold.php) decides each key once as PHP builds the literal
+and, where `Reading::filtersBodyOf()` holds, as `filter()` lifts each merge over the keys after it; `applyTo()` writes
+the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept, beside the arms its
+print keeps. The last map's arm takes in every earlier map's value, a map that may be `[]` prints only so joined, and a
+map's arm after another item stays only where every key fits its value. A merged literal is read through the same loop.
+A key's slot sits where its first write landed on each path, so a first write that may not land lets a merge before the
+next one win there; the fold test replays what the real `resolve()` sent for 7380 sequences
+(`tests/Unit/Ast/Fixtures/fold-oracle.php`).
+
+`LiteralFold` reads positions and presence, never types, so a gap or an open marker rides its source's text into the
+key. In the [gap mode](#the-gap-mode), a key the join types without a later source's untyped value keeps a gap for it
+(`fold-join`), and a union of objects written in place gives a key one of its objects leaves untyped a gap
+(`union-spread-key`, `InlineArrayHandler`), so the `@return` types what those writes may send.
 
 ## Resource classes a value names
 
@@ -612,15 +811,21 @@ adds `never[]` beside a guessed collection's own type, and in a prop or shared v
 unless the guessed one's response is the plain list under the same wrap key.
 
 `InertiaResourcePropHandler` types each API resource spelling, in a prop or a shared value at any depth and inside a
-lazy prop wrapper, as its `toResponse()` data. A single resource and a body without the live wrap key sit inside that
+lazy prop wrapper, as its `toResponse()` data, which [`ResourceResponseType`](../../src/Ast/Resources/ResourceResponseType.php)
+builds. A single resource and a body without the live wrap key sit inside that
 key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
 already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
-publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data; the route file imports the const with
-`import type`. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and
-an anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
-`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes
-none, publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare
-list once `withoutWrapping()` empties the shared key.
+publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data, with `| never[]` for the `[]` a null enum
+sends where no `filter()` runs; the route file imports the const with `import type`.
+`toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items, the argument of
+a `collect()` receiver included. Over items naming no enum it publishes `{ data: unknown[] }`, since
+its nested value, `EnumResource[]`, names a type no run publishes. A payload's paginator kind is read from the classes
+`ReceiverClassResolver` names it as, else from its type, else from the paginator a setter such as `withQueryString()`
+is called on. Over a paginator, a collection's own body sits beside the pagination blocks of the payload's kind, and an
+anonymous or flat one is that kind's paginator response, such as `JsonResourceSimplePaginator<R>`, keyed by
+`preservesKeys()`; `TolkiTypes::RESOURCE_PAGINATION` names both per kind. A payload of several kinds, or sometimes none,
+publishes each. A JSON:API resource is its document ([above](#jsonapi-resources)), and its collection the bare list once
+`withoutWrapping()` empties the shared key.
 
 ### A method called on a new resource types its payload
 
@@ -650,7 +855,8 @@ keeps the analyzed class's (`AnalysisScope::seedBuiltElement()`). The keys stay 
 `filter()` re-indexes what the method returns. A foreign receiver such as `new CategoryResource($x)->summary()` keeps
 the `unknown` floor instead of the analyzer's own same-named method; `FluentSelfResource::foreign_summary` pins that.
 `resolve()` is exempt, since it is Laravel's serializer: `new SomeResource($x)->resolve()` publishes `SomeResource`, as
-`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`.
+`SomeResource::make($x)->resolve()` does, never with the wrapped value's `| null`. Where Inertia reads it, each key it
+sends otherwise is restated over that type ([AST engine § Inertia profile](ast-engine.md#inertia-profile)).
 
 ## Numeric keys
 
@@ -724,10 +930,11 @@ beside a signature are all known:
 - **In each publisher, over every cast in force**, method casts included: `ResourceTransformer::runAstAnalysis()`,
   `BroadcastEventTransformer::transformProperties()`, `InertiaPageAnalyzer::buildPageData()`,
   `InertiaSharedDataAnalyzer::buildResult()`, and `AnalysisComposer::compose()` for `AstEngine::analyze()`. The two
+  Inertia analyzers pass only the action's or the middleware's casts, not a spread helper's own. The two
   transformers also pass whether the interface has an extends clause, from `#[TsExtends]` or a `ts_extends.*` config
   entry. A publisher that adds or retypes keys after analysis must pass them. The reconcile ignores a cast key's import
-  channels, since the cast type is what publishes. After the reconcile, the two transformers and `AnalysisComposer`
-  fit them to the cast's text through `CastChannels::fit()`, and both Inertia analyzers drop them; see
+  channels, since the cast type is what publishes. After the reconcile, every one of them fits them to the cast's
+  text through `CastChannels::fit()`; see
   [`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key).
 
 It reads the keys as they will be published. A named key counts once, by its last entry, since a later write replaces
@@ -752,9 +959,8 @@ none, since a later write or cast may still make the key joinable.
 A key cannot join a union when any of these holds:
 
 - its type has a top-level `unknown` arm, which would swallow the typed arms
-- it holds a token `shapeValueHasUnimportableToken()` rejects, such as a class name, a global name or a template
-  literal type, where a string or number literal is fine
-- it holds a string literal with a backslash, which the union splitter can cut apart
+- it holds a token `shapeValueHasUnimportableToken()` rejects, such as a class name or a global name, where a string
+  or number literal and a template literal's text are fine
 - it is not a cast key and carries an FQCN channel, whose token is rewritten under its own key's name
 
 Two patterns are proven disjoint only when their leading literal texts, or their trailing ones, cannot both hold for
@@ -843,10 +1049,11 @@ up unused; see
 
 ### `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel, plus two flat scalars
 
-`mergeReturnBranches()` stays on the analyzer, off `MethodAnalysis`, because it needs a per-branch property map to
-union a key that several branches set, which a field-by-field merge cannot express. It takes every channel from
-`MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to `merge()` reaches
-branch merging too. It is public for `InertiaPageAnalyzer`, which merges one component's renders through it.
+`mergeReturnBranches()` is public for `InertiaPageAnalyzer`, which merges one component's renders through it, and
+delegates to `BranchJoin::joinInto()`, which a literal's fold also joins a key's sources with. The join needs a
+per-branch property map to union a key that several branches set, which a field-by-field merge cannot express. It takes
+every channel from `MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to
+`merge()` reaches branch merging too.
 
 The inline queues are never deduped, in `merge()` as in `addProperty()`, for the reason
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
@@ -867,8 +1074,9 @@ spells two models, two resources or two enums read directly. `withMembersByClass
 arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel.
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
 `unionResults()`. `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and
-default alike. `HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource`
-the `when()` and `whenNull()` ones.
+default alike; a literal's fold keeps two same-named models or resources apart (`joinInto()`'s `keepsClassesApart`).
+`HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
+and `whenNull()` ones.
 
 Three more rules keep each FQCN beside its own token:
 
@@ -903,15 +1111,15 @@ the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEn
 `toTsType()` answers an enum carrying `#[TsType]` with its override, and one keyed in `custom_ts_mappings` with the
 mapping, naming no enum. So a case, a constant holding one, a declared type, a cast or an accessor publishes that type,
 an override with its `customImports`. A case keeps its enum channel (`ValueResolver::resolveConstantValue()`), so a
-receiver, a wrap and every carrier that moves a channel still know the enum, and each sink drops the `…Type` the
-text never spells. A union arm spelling no `…Type` rides the embedded queue (`ValueResult::readsEnumType()`), so a
-ternary of a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
+receiver, a wrap and every carrier that moves a channel still know the enum, and each sink drops the `…Type` the text
+never spells. A union arm spelling no `…Type` rides the embedded queue (`ValueResult::readsEnumType()`), so a ternary of
+a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
 `ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
 names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
-for a value of a declared type (`ResolvesEnumPropertyArgTypes::retypedPayloadEnum()`). `->value` and `->name` keep the
-enum's names through `EnumValueTypes`. `LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the
-type it publishes as. An `AsEnumCollection` cast's `EnumResource::collection()` and a model's `{Model}Resource` column
-still miss the wrap
+for a value of a declared type (`ResolvesEnumPropertyArgTypes::heldEnum()`). `->value` and `->name` keep the enum's
+names through `EnumValueTypes`, except a case's own, which publish its literal. `LaravelTsPublish::retypedEnumType()` is
+the one test for such an enum, and the type it publishes as. An `AsEnumCollection` cast's `EnumResource::collection()`
+and a model's `{Model}Resource` column still miss the wrap
 ([known gaps](../known-gaps.md#two-reads-of-a-column-cast-to-an-overridden-enum-miss-its-asenumtypeof-x)).
 
 ### The inline wrap's own const token is aliased by the transformer, not here
@@ -934,15 +1142,28 @@ since its name map holds type names and never `enumConstMap`. See
 A mixed ternary wraps the enum in one arm and reads it directly in the other, as in
 `$flag ? EnumResource::make($this->status) : $this->status`. `ValueResult::mergeUnion()` marks it by setting both
 `enumFqcn` and `directEnumFqcn`, but the merged type string can collapse both arms into one token. So
-`ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/TernaryHandler.php) and
-[`MatchHandler`](../../src/Ast/Handlers/MatchHandler.php) call, reads each arm's own result and records the shape,
-`wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is itself
-mixed, or when the wrap arms, or the direct arms, disagree on their shape.
+`ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/Operators/TernaryHandler.php) and
+[`MatchHandler`](../../src/Ast/Handlers/Operators/MatchHandler.php) call, reads each arm's own result and records the
+shape, `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is
+itself mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand
+builds a resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is
+always true, so `TernaryHandler` types it as that operand alone where the operand types and the engine reads under
+`Reading::Inertia`: a page's props, the shared data or a body they read, which no `JsonResource::filter()` reaches.
+Anywhere else, an API resource, a helper it reads, or a resource body Inertia reads through `resolve()`, both arms stay,
+since filter() sends a resource around null as null; they stay too beside an operand the engine cannot type.
 
 Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.
 `rewriteEnumResourceTypes()` does it for a top-level key, and `InlineObjectResult::expandMixedEnumType()` for a nested
 one. The nested key cannot defer to the transformer, because only flat property lists leave the handler's
 method-local analysis. `TeamStatusAuditResource::$audit` pins the nested case with two array-shaped arms.
+
+On an Inertia page and in shared data, `RewritesEnumResourceProps` substitutes instead, because a wrapped collection
+there publishes its response, `{ data: AsEnum<typeof Status>[] }`. It respells every top-level member but the bare
+read's, and puts the wrap's own spelling from `AnalysisComposer::enumResourceArms()` in front whenever the bare read's
+member is there and no member holds it, since a `make()` wrap always merges into that member. No arm record tells a
+collection wrap alone from one beside a `make()`, so the lone collection keeps that member too. A ternary over two
+enums' wraps has each member's own enum substituted, in branch order, where the resource rewrite replaces the whole
+member.
 
 Where no arm shape was recorded, as for `??` or a nested mixed ternary, `expandMixedEnumType()` reads the merged
 members. A lone `StatusType` becomes `AsEnum<typeof Status> | StatusType`, and a `StatusType[]` member, which
@@ -959,10 +1180,12 @@ stands for two different things, so it stays two references.
 `ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
 parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
 to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
-list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. The payload's own `| null` stays
-in every subject, since an enum branch returns before `resourceWrapType()`, but `enumWrapValue()` keeps that method's
-`filter()` reach: a `make()` or `new` wrap in a `map()` body kept as a `Collection` drops it, inside a relation closure
-or not.
+list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. A static call such as
+`Status::tryFrom()` whose declared return admits null keeps that null. The payload's own `| null` stays where
+`filter()` reaches the wrap, since an enum branch returns before `resourceWrapType()`; anywhere else, `enumWrapValue()`
+spells the `[]` the wrap sends as `never[]`. A `map()` reaches `filter()` through `->all()`, `->toArray()` or
+`->jsonSerialize()` (`CollectionSteps::mappedSerializer()`, `BindsMapCallbacks::serializedMapResult()`), inside a
+relation closure or not; `->jsonSerialize()` resolves a wrap its callback returns bare as a kept map does.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a

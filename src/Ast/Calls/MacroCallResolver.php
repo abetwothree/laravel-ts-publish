@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -92,6 +93,18 @@ final class MacroCallResolver
     }
 
     /**
+     * The node a closure macro was built from, with its declaring method; null for any other macro or one not found.
+     *
+     * @return LocatedClosure|null
+     */
+    public function locatedClosure(mixed $macro): ?array
+    {
+        $function = $this->reflect($macro);
+
+        return $function instanceof ReflectionFunction ? $this->locate($function) : null;
+    }
+
+    /**
      * What the macro a call runs returns: its native return, else its `@return`, else, for a closure, its body read
      * with `$this` bound to the runtime class, as `Macroable::__call()` binds it. Memoized per class the call reaches,
      * runtime class known or assumed, name and model.
@@ -151,8 +164,8 @@ final class MacroCallResolver
     }
 
     /**
-     * A closure's or function's return: its native type, `self` and `parent` read against the class Macroable binds
-     * it to, else its `@return`, else a closure's body.
+     * A closure's or function's return: the type DeclaredClasses::reflectedReturnType() reads, `self` and `parent` read
+     * against the class Macroable binds it to, else its `@return`, else a closure's body.
      *
      * @param  RuntimeClass  $subject  the class the macro runs on, known or only assumed, as a receiver's body's is
      * @param  class-string<Model>|null  $modelClass
@@ -161,7 +174,9 @@ final class MacroCallResolver
     private function functionType(ReflectionFunction $function, RuntimeClass $subject, ?string $modelClass): ?array
     {
         $acceptor = resolve(ReflectedTypeAcceptor::class);
-        $declared = $acceptor->accept(LaravelTsPublish::resolveReflectionType($function->getReturnType(), $subject->class));
+        $declared = $acceptor->accept(
+            LaravelTsPublish::resolveReflectionType(DeclaredClasses::reflectedReturnType($function), $subject->class),
+        );
 
         if ($declared !== null && ! TsTypeString::isVagueTsType($declared['type'])) {
             return $declared;

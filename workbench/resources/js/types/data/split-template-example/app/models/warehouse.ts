@@ -17,7 +17,7 @@ export interface Warehouse extends HasTimestamps, Pick<Auditable, "created_by" |
     name: string;
     /** Write-only accessor on DB column 'phone' — normalizes on set, no get */
     phone: string | null;
-    coordinate_data: { lat: number; lng: number } | null;
+    coordinate_data: { lat: number; lng: number };
     status: EnumsStatusType | null;
     color: ColorType | null;
     priority: PriorityType | null;

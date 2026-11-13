@@ -12,3 +12,5 @@ export const DueAtNotice = defineEnum({
 export type DueAtNoticeType = 'Payment due date is coming up' | 'Payment is due today' | 'Payment is past due';
 
 export type DueAtNoticeKind = 'ComingUp' | 'DueToday' | 'PastDue';
+
+export type DueAtNotice = DueAtNoticeType;

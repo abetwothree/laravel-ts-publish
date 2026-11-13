@@ -27,7 +27,7 @@ final class ResourceResponseBody
      */
     public function holdsWrapKey(string $resource, string $key): ?bool
     {
-        return resolve(AnalysisMemo::class)->remember('holds-wrap-key:'.$resource.'@'.$key, function () use ($resource, $key): ?bool {
+        return resolve(AnalysisMemo::class)->rememberFact('holds-wrap-key:'.$resource.'@'.$key, function () use ($resource, $key): ?bool {
             // The caller's type follows this body; the memo replays the files recorded here on every later read.
             DependencyRecorder::recordClass($resource);
 

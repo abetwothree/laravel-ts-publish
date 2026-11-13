@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
@@ -12,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
  *
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type LiteralSpan from TypeScanner
  *
  * @internal
  */
@@ -41,6 +45,9 @@ class TsTypeString
 
     /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
     protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
+
+    /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
+    protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
 
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
@@ -80,20 +87,29 @@ class TsTypeString
     public function shapeValueHasUnimportableToken(string $type, array $importableNames = []): bool
     {
         // A key goes with its optional `?`, no token separator, or `name?` would read as a value. A quoted key (`"1"`,
-        // from an int or constant array key) and a generated index signature are keys too, and nothing imports them.
-        $withoutKeys = (string) preg_replace('/(?:'.IndexSignatureKey::PATTERN.'|\b\w+|"[^"]*")\s*\??\s*:/', '', $type);
+        // from an int or constant array key), a generated index signature and the open marker are keys too.
+        $withoutKeys = (string) preg_replace(
+            '/(?:'.IndexSignatureKey::PATTERN.'|'.preg_quote(VisibleGaps::MARKER_KEY, '/').'|\b\w+)\s*\??\s*:/',
+            '',
+            $this->withoutQuotedKeys($type),
+        );
 
-        // A string or number literal needs no import, whatever it spells.
+        // A literal's text and a number need no import, whatever they spell; a template literal's placeholder may.
         $withoutLiterals = (string) preg_replace(
-            ['/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', '/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/'],
+            '/(?<![\w$.])-?\d+(?:\.\d+)?(?![\w$.])/',
             ' ',
-            $withoutKeys,
+            TypeScanner::maskLiterals($withoutKeys),
         );
 
         $tokens = preg_split('/[<>{}()|,;\[\]\s]+/', $withoutLiterals, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         foreach ($tokens as $token) {
             if (in_array($token, self::TS_PRIMITIVES, true) || in_array($token, $importableNames, true)) {
+                continue;
+            }
+
+            // A gap is stripped before a type is published, so it is never imported.
+            if (VisibleGaps::isGap($token)) {
                 continue;
             }
 
@@ -120,7 +136,8 @@ class TsTypeString
 
     /**
      * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
-     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left.
+     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left
+     * that is no gap arm.
      *
      * @return list<string>
      */
@@ -138,7 +155,9 @@ class TsTypeString
                 trim($part),
             );
 
-            if (in_array($name, self::TS_PRIMITIVES, true) || preg_match($identifier, $name) !== 1) {
+            $named = ! in_array($name, self::TS_PRIMITIVES, true) && ! VisibleGaps::isGap($name);
+
+            if (! $named || preg_match($identifier, $name) !== 1) {
                 continue;
             }
 
@@ -196,6 +215,37 @@ class TsTypeString
         $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
 
         return '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+    }
+
+    /**
+     * The byte spans, end exclusive and in order, of a type's string literals, its template literals' text and its
+     * generated index signature keys: text that is a value or a key, never a name.
+     *
+     * @return list<LiteralSpan>
+     */
+    public function literalSpans(string $type): array
+    {
+        $spans = TypeScanner::literalSpans($type);
+        $keyPattern = '/'.IndexSignatureKey::PATTERN.'/';
+
+        if (! str_contains($type, ': ') || preg_match_all($keyPattern, $type, $keys, PREG_OFFSET_CAPTURE) === 0) {
+            return $spans;
+        }
+
+        foreach ($keys[0] as [$key, $at]) {
+            $inside = static fn (array $span): bool => $at >= $span[0] && $at < $span[1];
+
+            // A key spelled inside a literal is that literal's text; the key's own template text is the key's.
+            if (! array_any($spans, $inside)) {
+                $end = $at + strlen($key);
+                $outside = static fn (array $span): bool => $span[1] <= $at || $span[0] >= $end;
+                $spans = [...array_filter($spans, $outside), [$at, $end]];
+            }
+        }
+
+        usort($spans, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+
+        return $spans;
     }
 
     /**
@@ -279,13 +329,23 @@ class TsTypeString
             }
         }
 
-        $members = array_unique($members);
+        $members = array_values(array_unique($members));
 
         if ($nullable) {
             $members[] = 'null';
         }
 
-        return implode(' | ', $members);
+        return count($members) === 1 ? $members[0] : implode(' | ', array_map(TsTypeShape::unionArm(...), $members));
+    }
+
+    /**
+     * Joins members into one union: `never` when there is none, as an empty `type X = ;` does not compile.
+     *
+     * @param  list<int|string>  $members  Type strings, or the int literal types of an int-backed enum's values.
+     */
+    public function union(array $members): string
+    {
+        return $members === [] ? 'never' : implode(' | ', $members);
     }
 
     /**
@@ -294,7 +354,52 @@ class TsTypeString
      */
     public function orUndefined(string $type): string
     {
-        return in_array('undefined', $this->splitTopLevelUnion($type), true) ? $type : $type.' | undefined';
+        return $this->withArm($type, 'undefined');
+    }
+
+    /**
+     * Whether a type has a top-level `null` arm; one in a shape, a generic, an element type or literal text does not.
+     */
+    public function hasNullArm(string $type): bool
+    {
+        return in_array('null', $this->splitTopLevelUnion($type), true);
+    }
+
+    /**
+     * The type with a `null` arm appended unless it has a top-level one; `unknown` already admits null, so it stays.
+     */
+    public function withNullArm(string $type): string
+    {
+        return $type === 'unknown' ? $type : $this->orNull($type);
+    }
+
+    /**
+     * A type with a `null` arm when another type has a top-level one, as withNullArm() appends it.
+     */
+    public function withNullArmOf(string $from, string $to): string
+    {
+        return $this->hasNullArm($from) ? $this->withNullArm($to) : $to;
+    }
+
+    /**
+     * The type with a `null` arm appended unless it has a top-level one, `unknown` too, as a nullable PHP type prints.
+     */
+    public function orNull(string $type): string
+    {
+        // Never hoistNull(): it de-duplicates arms, so `User | User`, two classes, would lose one.
+        return $this->withArm($type, 'null');
+    }
+
+    /**
+     * The type without its top-level `null` arms, `unknown` when no arm or only gap arms are left; a nested `null`
+     * stays.
+     */
+    public function withoutNullArm(string $type): string
+    {
+        $arms = array_values(array_diff($this->splitTopLevelUnion($type), ['null']));
+        $onlyGaps = VisibleGaps::holds($type) && array_all($arms, VisibleGaps::isGap(...));
+
+        return $arms === [] || $onlyGaps ? 'unknown' : implode(' | ', $arms);
     }
 
     /**
@@ -379,6 +484,17 @@ class TsTypeString
     }
 
     /**
+     * Whether a type says nothing of its value but that it may be null: it has an arm besides `null`, and each such
+     * arm is one of VAGUE_ARMS.
+     */
+    public function isVagueOnly(string $type): bool
+    {
+        $arms = array_diff($this->splitTopLevelUnion($type), ['null']);
+
+        return $arms !== [] && array_all($arms, static fn (string $arm): bool => in_array($arm, self::VAGUE_ARMS, true));
+    }
+
+    /**
      * A "vague" TS type carries no element information, so a docblock generic can usually do better.
      *
      * An object-literal shape is never vague even when a key resolves to 'unknown' — a bare 'unknown'
@@ -406,6 +522,16 @@ class TsTypeString
         }
 
         return array_all(explode('.', $name), fn (string $segment): bool => $this->extractImportableTypes($segment) === [$segment]);
+    }
+
+    /**
+     * Whether a docblock's type replaces a declared one: the declaration is unknown or vague, and the docblock is
+     * neither, or spells the declaration's list as the record a string-keyed array encodes as.
+     */
+    public function documentedWins(string $declared, string $documented): bool
+    {
+        return $this->isVagueTsType($declared)
+            && (! $this->isVagueTsType($documented) || $this->spellsListAsRecord($declared, $documented));
     }
 
     /**
@@ -484,7 +610,7 @@ class TsTypeString
     }
 
     /**
-     * Qualify one type string under the given maps, leaving each quoted string literal as written.
+     * Qualify one type string under the given maps, leaving each literal's text as written.
      *
      * Each name is read once: through the file's own map when it has an entry, else as the current namespace's own
      * name, else as the first namespace that owns it. A name after a `.` is already qualified.
@@ -495,14 +621,16 @@ class TsTypeString
     protected function qualifyGlobalTypeOnce(string $typeStr, array $namespacedTypes, string $skipNamespace, array $aliasResolution): string
     {
         // A literal's text is a value, so 'Post' must stay 'Post', and a nested index signature's is a key, kept whole.
-        // A template literal is matched only so a quote inside it opens no string; its own text is qualified as usual.
-        $literal = '/('.IndexSignatureKey::PATTERN.'|\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)/s';
-        $segments = preg_split($literal, $typeStr, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$typeStr];
-        $qualifiable = array_filter(
-            $segments,
-            static fn (string $segment, int $index): bool => $index % 2 === 0 || str_starts_with($segment, '`'),
-            ARRAY_FILTER_USE_BOTH,
-        );
+        $segments = [];
+        $from = 0;
+
+        foreach ($this->literalSpans($typeStr) as [$start, $end]) {
+            array_push($segments, substr($typeStr, $from, $start - $from), substr($typeStr, $start, $end - $start));
+            $from = $end;
+        }
+
+        $segments[] = substr($typeStr, $from);
+        $qualifiable = array_filter($segments, static fn (int $index): bool => $index % 2 === 0, ARRAY_FILTER_USE_KEY);
 
         if ($this->indexedNamespaces !== $namespacedTypes) {
             $this->indexNamespaces($namespacedTypes);
@@ -584,5 +712,30 @@ class TsTypeString
             // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
+    }
+
+    /**
+     * The type without each quoted key, its `?` and its `:`: a string literal, as the scanner reads one, followed by
+     * a colon.
+     */
+    private function withoutQuotedKeys(string $type): string
+    {
+        foreach (array_reverse(TypeScanner::literalSpans($type)) as [$start, $end]) {
+            if (str_contains('"\'', $type[$start]) && preg_match('/\G\s*\??\s*:/', $type, $colon, 0, $end) === 1) {
+                $type = substr_replace($type, '', $start, $end - $start + strlen($colon[0]));
+            }
+        }
+
+        return $type;
+    }
+
+    /**
+     * The type with an arm appended unless it has that arm at the top level, each arm grouped as it joins.
+     */
+    private function withArm(string $type, string $arm): string
+    {
+        $arms = $this->splitTopLevelUnion($type);
+
+        return in_array($arm, $arms, true) ? $type : implode(' | ', array_map(TsTypeShape::unionArm(...), $arms)).' | '.$arm;
     }
 }

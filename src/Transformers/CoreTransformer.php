@@ -60,6 +60,18 @@ abstract class CoreTransformer
         return [];
     }
 
+    /**
+     * The names this class's file can declare, which its imports step aside for and the runner's colliding-names
+     * warning compares. Listing extra names is safe for the imports and only over-warns; leaving one out can fail the
+     * file with TS2440.
+     *
+     * @return list<string>
+     */
+    public function declaredNames(): array
+    {
+        return [];
+    }
+
     protected function resolveRelativePath(string $absolutePath): string
     {
         return TsNaming::resolveRelativePath($absolutePath);

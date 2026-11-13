@@ -5,14 +5,19 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\BinaryOpHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\BinaryOpHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ConstFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ScalarHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableOperandsResource;
+use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -36,6 +41,8 @@ use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\VariadicPlaceholder;
+use Workbench\App\Enums\Grade;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TeamResource;
@@ -69,10 +76,10 @@ function throwingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -105,10 +112,10 @@ final class SpyExpressionEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -122,7 +129,7 @@ final class SpyExpressionEngine implements ExpressionEngine
 it('resolves a first-class-callable call of each kind to the empty object json_encode() writes for a Closure', function (Expr $expr) {
     $result = new FirstClassCallableHandler()->resolve($expr, handlerTestScope(), throwingEngine());
 
-    expect($result)->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($result)->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 })->with([
     '$this->when(...)' => fn (): Expr => new MethodCall(new Variable('this'), 'when', [new VariadicPlaceholder]),
     'strlen(...)' => fn (): Expr => new FuncCall(new Name('strlen'), [new VariadicPlaceholder]),
@@ -143,10 +150,10 @@ it('resolves a first-class callable as the call it stands for where the caller i
             return null;
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -156,19 +163,19 @@ it('resolves a first-class callable as the call it stands for where the caller i
     };
 
     expect(new FirstClassCallableHandler(invoked: true)->resolve($expr, handlerTestScope(), $engine))
-        ->toBe(['type' => 'string', 'optional' => false]);
+        ->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
 });
 
 it('turns only a first-class callable into the zero-argument call it stands for', function () {
     $callable = new FuncCall(new Name('now'), [new VariadicPlaceholder], ['startLine' => 3]);
-    $call = FirstClassCallableHandler::invokedCall($callable);
+    $call = CallableForms::invokedCall($callable);
     $closure = new ArrowFunction(['expr' => new Int_(1)]);
 
     expect($call)->toBeInstanceOf(FuncCall::class)->not->toBe($callable)
         ->and($call instanceof FuncCall && $call->isFirstClassCallable())->toBeFalse()
         ->and($call->getStartLine())->toBe(3)
         ->and($callable->isFirstClassCallable())->toBeTrue()
-        ->and(FirstClassCallableHandler::invokedCall($closure))->toBe($closure);
+        ->and(CallableForms::invokedCall($closure))->toBe($closure);
 });
 
 // R25: a Closure nothing calls is almost always a call its author meant to write.
@@ -245,9 +252,30 @@ it('resolves an array cast of an operand not typed as an array to unknown[]', fu
 })->with([
     'an untyped value' => ['unknown'],
     'a scalar, which PHP wraps in a list' => ['string'],
-    'a list or null' => ['string[] | null'],
+    'a scalar or null' => ['string | null'],
     'a named type' => ['PostResource'],
 ]);
+
+// PHP casts null to an empty array, which a list arm already admits.
+it('resolves an array cast of an array or null with its null arm as an empty list', function (string $type, string $array) {
+    $engine = new SpyExpressionEngine(['type' => $type, 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastArray_(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => $array, 'optional' => false]);
+})->with([
+    'a list or null' => ['string[] | null', 'string[]'],
+    'null alone' => ['null', 'never[]'],
+    'a list or the object its gaps make, or null' => ['string[] | Record<number, string> | null', 'string[] | Record<number, string>'],
+    'an object literal or null' => ['{ a: number } | null', '{ a: number } | never[]'],
+    'a record or null' => ['Record<string, number> | null', 'Record<string, number> | never[]'],
+    'a tuple or null' => ['[number, string] | null', '[number, string] | never[]'],
+]);
+
+it('resolves (array) null to an empty list', function () {
+    $expr = new AstParser()->parseSource('<?php (array) null;')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'])->toBe('never[]');
+});
 
 // An object's array form holds its private and protected members under mangled keys.
 it('resolves an array cast of an operand the receiver resolver names a class for to unknown[] without calling the engine', function () {
@@ -317,6 +345,50 @@ it('resolves an object cast of an operand the receiver resolver names a class fo
 
     expect(new CastHandler()->resolve(new CastObject(new FuncCall(new Name('collect'))), handlerTestScope(), $engine))
         ->toBe(['type' => 'string[] | Record<string, never>', 'optional' => false, 'keepsKeys' => true]);
+});
+
+// A backed enum's value is a scalar, which `(object)` holds under `scalar`; the type it spells is imported.
+it('builds { scalar: XType } of an enum value', function (string $php, string $type, array $enums) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe($type)
+        ->and($result['embeddedEnumFqcns'] ?? [])->toBe($enums)
+        ->and($result)->not->toHaveKey('directEnumFqcn');
+})->with([
+    'an enum value' => ['(object) $this->status->value', '{ scalar: StatusType }', [Status::class]],
+    'a nullsafe enum value' => ['(object) $this->priority?->value', '{ scalar: PriorityType } | Record<string, never>', [Priority::class]],
+    'a case\'s value' => ['(object) \\'.Grade::class.'::Pass->value', "{ scalar: 'pass' }", []],
+]);
+
+it('publishes casts and + of nullable operands as the JSON the resource sends, importing the enum types they spell', function () {
+    $post = (new Post)->forceFill(['status' => 1, 'priority' => null]);
+    $analysis = resolve(AstEngine::class)->analyze(NullableOperandsResource::class, 'toArray', Post::class);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'listed' => 'string[]',
+        'emptied' => 'never[]',
+        'added' => 'string[]',
+        'status' => '{ scalar: StatusType }',
+        'priority' => '{ scalar: PriorityType } | Record<string, never>',
+    ])->and(array_merge(...array_values($analysis->typeImports)))->toContain('StatusType', 'PriorityType')
+        ->and(json_encode(new NullableOperandsResource($post)->resolve(Request::create('/'))))
+        ->toBe('{"listed":["a"],"emptied":[],"added":["a","z"],"status":{"scalar":1},"priority":{}}');
+});
+
+it('keeps the enum an object cast returns unchanged', function () {
+    $expr = new AstParser()->parseSource('<?php (object) $this->status;')[0]->expr;
+    $result = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+
+    expect($result['type'])->toBe('StatusType')
+        ->and($result['directEnumFqcn'] ?? null)->toBe(Status::class);
+});
+
+it('collapses the empty object an object cast builds of null beside an empty object', function () {
+    $engine = new SpyExpressionEngine(['type' => 'Record<string, never> | null', 'optional' => false]);
+
+    expect(new CastHandler()->resolve(new CastObject(new Variable('x')), handlerTestScope(), $engine))
+        ->toBe(['type' => 'Record<string, never>', 'optional' => false, 'keepsKeys' => true]);
 });
 
 it('declines an object cast of an operand the receiver resolver names a class for where an arm is untyped', function (string $type) {

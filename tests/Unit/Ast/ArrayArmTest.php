@@ -18,6 +18,12 @@ function arrayArmWrite(string|ElementKey $key, ?string $value, array $path = [])
     return ['path' => $path, 'key' => $key, 'value' => $value];
 }
 
+// An arrow owns each pipe after it, so a list or a union holding arrows parenthesizes each one beside another arm.
+it('keeps each arrow function element and arm apart from the ones beside it', function () {
+    expect(ArrayArm::written('(() => A)[]', [arrayArmWrite(ElementKey::Next, '() => B')], false, true))
+        ->toBe('((() => A) | (() => B))[]');
+});
+
 // A write may run in any order, any number of times or not at all, so each arm keeps what it held beside what it gains.
 // A plain class sends a list where the keys are 0, 1, …; a re-indexing resource wherever only numeric keys remain.
 it('applies each element write to every arm of an array type', function (string $type, array $writes, string $written, bool $reindexes = false, bool $ordered = true) {
@@ -239,3 +245,10 @@ it('declines a write on an arm that is no array, or through a member an arm may 
     'a member of a list' => ['string[][]', [arrayArmWrite('c', 'number', ['0'])]],
     'a member holding no array' => ['{ a: string }', [arrayArmWrite('c', 'number', ['a'])]],
 ]);
+
+it('settles an array\'s arms past its gap arms and gives them back, and lists no open marker', function () {
+    expect(ArrayArm::written('string[] | $gap1', [arrayArmWrite(ElementKey::Next, 'number')], false, true))
+        ->toBe(ArrayArm::written('string[]', [arrayArmWrite(ElementKey::Next, 'number')], false, true).' | $gap1')
+        ->and(ArrayArm::written('{ a: string; #$open: unknown }', [arrayArmWrite('b', 'number')], false, true))
+        ->toBe('{ a: string; #$open: unknown; b?: number }');
+});

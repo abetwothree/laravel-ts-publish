@@ -7,10 +7,13 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use Closure;
@@ -18,9 +21,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use Illuminate\Pagination\CursorPaginator;
-use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node;
@@ -32,8 +32,11 @@ use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\MagicConst;
@@ -51,13 +54,14 @@ use ReflectionMethod;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type CollectedElement from ResourceCollections
  * @phpstan-import-type RelativeClasses from PropertyDocblockTypeReader
+ * @phpstan-import-type KeyKind from ReceiverType
+ * @phpstan-import-type LeftOutWrite from ReceiverType
  *
  * @phpstan-type CollectionFacts array{bool, CollectedElement|null}
  * @phpstan-type ClosureParamExprBindingsMap array<string, Expr>
  * @phpstan-type VarClassBindingsMap array<string, non-empty-list<class-string>>
- * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null}
+ * @phpstan-type VarGuardBinding array{classes: non-empty-list<class-string>, after: int, before: int|null, arm?: true}
  * @phpstan-type VarGuardBindingsMap array<string, non-empty-list<VarGuardBinding>>
- * @phpstan-type NarrowedRead array{list<string>, ReceiverType}
  * @phpstan-type NonNullRead array{read: Expr, after: int|null, before: int|null}
  * @phpstan-type NonNullReadsMap array<string, non-empty-list<NonNullRead>>
  * @phpstan-type VarDocBinding array{
@@ -66,16 +70,20 @@ use ReflectionMethod;
  *      after: int,
  *      before: int|null,
  *      expr: Expr,
- *      nested?: true,
- *      relative?: true
+ *      relative?: true,
+ *      boundLast?: true
  * }
  * @phpstan-type VarDocBindingsMap array<string, non-empty-list<VarDocBinding>>
  * @phpstan-type VarModelBindingsMap array<string, class-string<Model>>
- * @phpstan-type VarCollectionBindingsMap array<string, array{type: string, modelFqcn: class-string<Model>}>
+ * @phpstan-type CollectionBinding array{
+ *     type: string, modelFqcn: class-string<Model>, classes?: non-empty-list<class-string>, key?: KeyKind,
+ * }
+ * @phpstan-type VarCollectionBindingsMap array<string, CollectionBinding>
  * @phpstan-type VarValueBindingsMap array<string, ValueExpressionResult>
  * @phpstan-type LocalVarBindingsMap array<string, Expr>
  * @phpstan-type ByReferenceForm array{
  *      effect: ByReferenceEffect,
+ *      matches: string|null,
  *      values: list<Expr>,
  *      path: list<string>,
  *      callback: ArrowFunction|ClosureExpr|null,
@@ -85,9 +93,12 @@ use ReflectionMethod;
  * }
  * @phpstan-type BindingGap array{0: int, 1: int, 2: list<Expr>|null, 3: bool, 4: bool, 5?: list<Expr>}
  * @phpstan-type BindingGapsMap array<string, non-empty-list<BindingGap>>
+ * @phpstan-type ParameterGuard 'unread'|'guarded'|'element'
+ * @phpstan-type LeftOutParametersMap array<string, non-empty-list<LeftOutWrite>>
  * @phpstan-type ByReferenceFormsMap array<string, non-empty-list<ByReferenceForm>>
  * @phpstan-type RequestVarNamesMap array<string, class-string<Request>>
  * @phpstan-type KeyBuiltLocalsMap array<string, list<Node\Stmt>>
+ * @phpstan-type TypedKeys list<string>|true
  * @phpstan-type NameBindingsSnapshot array{
  *      closureParamExprBindings: ClosureParamExprBindingsMap,
  *      varClassBindings: VarClassBindingsMap,
@@ -106,7 +117,9 @@ use ReflectionMethod;
  *      bindingGaps: BindingGapsMap,
  *      keyBuiltLocals: KeyBuiltLocalsMap,
  *      passedValues: ClosureParamExprBindingsMap,
- *      relativeParameters: array<string, true>
+ *      relativeParameters: array<string, true>,
+ *      guardedParameters: array<string, ParameterGuard>,
+ *      leftOutParameters: LeftOutParametersMap
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -120,10 +133,11 @@ use ReflectionMethod;
  *      resolvingLocalVars: array<string, true>,
  *      readingLocals: array<string, true>,
  *      visitedSpreadMethods: array<string, true>,
- *      narrowedReads: list<NarrowedRead>,
  *      appliedProxyProof: VarGuardBinding|null,
  *      filtersNestedResources: bool,
- *      mapResultArrayed: bool
+ *      mapResultArrayed: bool,
+ *      readsCallableReturn: bool,
+ *      typedKeys: TypedKeys
  * }
  *
  * @internal
@@ -153,6 +167,8 @@ final class AnalysisScope
         'keyBuiltLocals' => [],
         'passedValues' => [],
         'relativeParameters' => [],
+        'guardedParameters' => [],
+        'leftOutParameters' => [],
     ];
 
     /**
@@ -172,6 +188,15 @@ final class AnalysisScope
     public ?string $forwardsUndeclaredMembersTo = null;
 
     /**
+     * The classes other than a model an API resource subject declares `$this->resource` to hold, by a `@var` or a tag
+     * such as `@extends JsonResource<PostStats>` (ProxyDeclaration::of()), or null. Derived by seedDeclaredHeld(); it
+     * backs no proxy target, so a scope given no model keeps none.
+     *
+     * @var non-empty-list<class-string>|null
+     */
+    public ?array $declaredHeld = null;
+
+    /**
      * The classes an `instanceof` proof holds `$this->resource` to inside the ternary arm, or the value in an `if`
      * block, it proves, or null. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver reads it before
      * the redeclaration and the backing class.
@@ -179,15 +204,6 @@ final class AnalysisScope
      * @var non-empty-list<class-string>|null
      */
     public ?array $provenProxy = null;
-
-    /**
-     * The `$this` read paths, as property names outermost first, with what an `instanceof` ternary's proven arm holds
-     * each to while it resolves, innermost last. Set and restored by NarrowsInstanceofSubjects; ReceiverClassResolver
-     * reads them.
-     *
-     * @var list<NarrowedRead>
-     */
-    public array $narrowedReads = [];
 
     /**
      * The proof on `$this->resource` a value inside its span resolves under while the proof leaves provenProxy null,
@@ -207,11 +223,17 @@ final class AnalysisScope
     public ?array $collectedElement = null;
 
     /**
-     * False while MethodReturnTypeResolver's body fallback analyzes a method: it flattens the shape into a type string
-     * with no FQCN channel and drops the whole shape once a value names a token. Filter code reads it to publish the
-     * most specific answer that names none.
+     * False while a reader that keeps no FQCN channel reads an accessor's getter, through AccessorBodyAnalyzer and
+     * AstEngine::analyzeModelClosure(), so filter code publishes the most specific answer naming no token. No publish
+     * run seeds it since the body fallback carries channels: only tests reach that mode, and #96 decides its fate.
      */
     public bool $carriesImports = true;
+
+    /**
+     * True while MethodReturnTypeResolver's body fallback analyzes a method, so a plain backed enum's case, alone or
+     * in a list, types as the literal it sends: ValueResolver::resolveConstantValue(). Its enum's type is vaguer.
+     */
+    public bool $casesAsLiterals = false;
 
     /**
      * Whether the response the runtime class's analysis feeds re-indexes a numeric-keyed array into a list, as an API
@@ -221,8 +243,8 @@ final class AnalysisScope
     public bool $reindexesNumericKeys = false;
 
     /**
-     * Whether JsonResource::filter() reaches the value being read, so a nested resource around null is sent as null.
-     * False while a map() body resolves whose result stays a Collection: filter() recurses into arrays only.
+     * False while a map() body resolves whose result stays a Collection, which JsonResource::filter() never enters, as
+     * it recurses into arrays only; Reading::filterReaches() adds whether a filter runs over the body at all.
      */
     public bool $filtersNestedResources = true;
 
@@ -231,6 +253,21 @@ final class AnalysisScope
      * VariableHandler's values()/all() arm sets it for its receiver, and only VariableHandler's map arm reads it.
      */
     public bool $mapResultArrayed = false;
+
+    /**
+     * Whether the value read is what a closure returns, where Inertia, having called the closure, sends a callable as
+     * `{}`. ClosureHandler sets it for its body; the dispatcher clears it below a handler that keeps no held object.
+     */
+    public bool $readsCallableReturn = false;
+
+    /**
+     * The keys the `@return` of the method whose own level is being read types, true where it types every key: a key
+     * among them reads in the gap mode, and so does a read bringing keys beside them (readingKey(), readingLevel()).
+     * A frame sets it as its body's read starts, and a value read, a level of its own, reads with none.
+     *
+     * @var TypedKeys
+     */
+    public array|true $typedKeys = [];
 
     /**
      * Closure parameter names bound to an expression: a required `when()` parameter to its condition's `$this->prop`,
@@ -254,8 +291,9 @@ final class AnalysisScope
      * the block a test runs, the rest of a block past a guard that always leaves it, or a ternary's arm while it
      * resolves. A proof holds the classes of the one around it too, and narrows whatever the variable is bound to.
      *
-     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS. Each holds
-     * for the offsets past its `after` and through its `before`.
+     * The proofs on an API resource's `$this->resource`, for the blocks a test runs, sit under PROXY_GUARDS, and those
+     * on a chain of property reads on `$this` under its proofKey(). Each holds for the offsets past its `after` and
+     * through its `before`; one a ternary's arm binds on a chain holds at every offset while the arm resolves.
      *
      * @var VarGuardBindingsMap
      */
@@ -311,9 +349,26 @@ final class AnalysisScope
     public array $relativeParameters = [];
 
     /**
-     * Closure params bound to a whole relation collection rather than one element — a to-many
-     * `whenLoaded` param. Read for a bare return of the param, and as the element-model fallback
-     * for an untyped `->map()` closure param.
+     * The parameters bound from a guarded receiver (ReceiverType::$guarded): `element` where only what the parameter's
+     * element yields is guarded, `guarded` where the parameter is, and `unread` where it is bound in a callback no
+     * reading reaches without the guard, so a helper it is handed keeps the guard across a declared parameter.
+     *
+     * @var array<string, ParameterGuard>
+     */
+    public array $guardedParameters = [];
+
+    /**
+     * The parameters bound from the element of a variable's join, with the writes that join left out, which a read
+     * through the parameter warns of where it publishes a type.
+     *
+     * @var LeftOutParametersMap
+     */
+    public array $leftOutParameters = [];
+
+    /**
+     * Params bound to a whole collection of one model rather than one element: a to-many `whenLoaded` param, a passed
+     * Eloquent collection, or one a `@param` collection generic declares, which names its classes and kind of key too.
+     * Read for a bare return of the param, and as the element-model fallback for an untyped `->map()` closure param.
      *
      * @var VarCollectionBindingsMap
      */
@@ -473,6 +528,7 @@ final class AnalysisScope
         // The subject alone decides this, so every scope carries it without the builder having to remember;
         // ResourceAstAnalyzer re-derives it once an instanceof guard supplies a backing the constructor lacked.
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($subjectReflection, $modelClass);
+        $this->seedDeclaredHeld();
     }
 
     /**
@@ -561,6 +617,78 @@ final class AnalysisScope
     }
 
     /**
+     * The varGuardBindings key an `instanceof` proof on a subject sits under: a variable's name, PROXY_GUARDS for
+     * `$this->resource`, or `$this->` and the property names a chain of reads on `$this` spells; null for any other.
+     */
+    public static function proofKey(Expr $subject): ?string
+    {
+        if ($subject instanceof Variable) {
+            return is_string($subject->name) ? $subject->name : null;
+        }
+
+        $path = self::thisReadPath($subject);
+
+        return $path === null ? null : '$this->'.implode('->', $path);
+    }
+
+    /**
+     * A proof that holds at every offset while the code it covers resolves: a ternary arm's, or the one a closure
+     * parameter takes from the variable its call passes.
+     *
+     * @param  non-empty-list<class-string>  $classes
+     * @return VarGuardBinding
+     */
+    public static function armProof(array $classes): array
+    {
+        return ['classes' => $classes, 'after' => PHP_INT_MIN, 'before' => null, 'arm' => true];
+    }
+
+    /**
+     * Whether a proof is one armProof() made, which no position bounds, unlike an `if` block's.
+     *
+     * @param  VarGuardBinding  $guard
+     */
+    public static function isArmProof(array $guard): bool
+    {
+        return isset($guard['arm']);
+    }
+
+    /**
+     * The property names a chain of named property reads on `$this` spells, outermost first, such as `owner`, `team`
+     * for `$this->owner?->team`; null for any other expression.
+     *
+     * @return non-empty-list<string>|null
+     */
+    public static function thisReadPath(Expr $expr): ?array
+    {
+        $path = [];
+
+        while (($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) && $expr->name instanceof Identifier) {
+            array_unshift($path, $expr->name->toString());
+            $expr = $expr->var;
+        }
+
+        return $path !== [] && $expr instanceof Variable && $expr->name === 'this' ? $path : null;
+    }
+
+    /**
+     * The name a returned variable's walk reads the variable under, bound in varValueBindings to the keys it holds.
+     */
+    public static function walkAlias(string $name): string
+    {
+        // No PHP variable can be named `@…`, so a read of the alias reaches only the keys bound to it.
+        return '@'.$name;
+    }
+
+    /**
+     * Whether a value is a read of the name walkAlias() gives a walked variable.
+     */
+    public static function isWalkAlias(Expr $value): bool
+    {
+        return $value instanceof Variable && is_string($value->name) && str_starts_with($value->name, '@');
+    }
+
+    /**
      * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
      * them: the one way a builder rebases a scope after construction.
      *
@@ -571,6 +699,7 @@ final class AnalysisScope
     {
         $this->subjectReflection = $subject;
         $this->runtime = $this->runtime->withClass($subject);
+        $this->seedDeclaredHeld();
         $this->setBackingModel($modelClass);
         $this->seedCollectionFacts($subject);
     }
@@ -584,6 +713,15 @@ final class AnalysisScope
     {
         $this->modelClass = $modelClass;
         $this->forwardsUndeclaredMembersTo = self::proxyTargetFor($this->subjectReflection, $modelClass);
+    }
+
+    /**
+     * Derive declaredHeld from what proxyDeclarer() declares: the constructor and rebase() run it, and a builder that
+     * swaps in a subclass as the runtime class runs it again.
+     */
+    public function seedDeclaredHeld(): void
+    {
+        $this->declaredHeld = self::declaredHeldBy($this->proxyDeclarer());
     }
 
     /**
@@ -733,13 +871,26 @@ final class AnalysisScope
     {
         if ($this->subjectReflection->isSubclassOf(ResourceCollection::class)) {
             return new ReceiverType(
-                [Collection::class, LengthAwarePaginator::class, Paginator::class, CursorPaginator::class],
+                [Collection::class, ...array_values(PaginatorSteps::BUILT)],
                 collectedItems: true,
                 collectedElement: $this->collectedElement,
             );
         }
 
         return $this->forwardsUndeclaredMembersTo === null ? null : ReceiverType::of($this->forwardsUndeclaredMembersTo);
+    }
+
+    /**
+     * The class whose declarations say what `$this->resource` holds: the runtime class where it extends the subject, as
+     * a subclass running an ancestor's body does, so its own model and tags win there too; else the subject.
+     *
+     * @return ReflectionClass<object>
+     */
+    public function proxyDeclarer(): ReflectionClass
+    {
+        $runtime = $this->runtime->class;
+
+        return $runtime->isSubclassOf($this->subjectReflection->getName()) ? $runtime : $this->subjectReflection;
     }
 
     /**
@@ -765,17 +916,23 @@ final class AnalysisScope
     }
 
     /**
-     * The inline `@var` on a write nested in a block that assigned a value, which still types that value where a join
-     * carries it past the block, or null.
+     * The inline `@var` on the write that assigned a value, which still types that value where a join carries it past
+     * the span the tag holds for, or null.
      *
      * @return VarDocBinding|null
      */
     public function declaredWrite(string $name, Expr $value): ?array
     {
-        return array_find(
-            $this->varDocBindings[$name] ?? [],
-            fn (array $binding): bool => isset($binding['nested']) && $binding['expr'] === $value,
-        );
+        return array_find($this->varDocBindings[$name] ?? [], fn (array $binding): bool => $binding['expr'] === $value);
+    }
+
+    /**
+     * Whether the scope reads a callback no reading reaches without the guard, as an `unread` parameter bound in it
+     * says, so nothing read in it may publish a conditional's first-token guess.
+     */
+    public function readsUnreadCallback(): bool
+    {
+        return in_array('unread', $this->guardedParameters, true);
     }
 
     /**
@@ -798,6 +955,27 @@ final class AnalysisScope
     public function proofAt(string $name, int $offset): ?array
     {
         return self::latestGuard($this->varGuardBindings[$name] ?? [], $offset);
+    }
+
+    /**
+     * The proofs on chains of property reads on `$this`, by key: a variable's are its own, and on an API resource the
+     * proxy's reach a nested body through provenProxy.
+     *
+     * @return VarGuardBindingsMap
+     */
+    public function thisPathProofs(): array
+    {
+        if ($this->varGuardBindings === []) {
+            return [];
+        }
+
+        $proxy = $this->hasResourceProxy() ? self::PROXY_GUARDS : null;
+
+        return array_filter(
+            $this->varGuardBindings,
+            fn (string $key): bool => $key !== $proxy && str_starts_with($key, '$this->'),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     /**
@@ -841,18 +1019,39 @@ final class AnalysisScope
     }
 
     /**
-     * The value a local written once holds at a read, but where a by-reference call reshapes it: none where a
-     * parameter's binding or a join holds there instead, as VariableHandler::boundValue() reads it.
+     * The writes a read of a local sees.
+     *
+     * Its one write, or the values the gap it falls in holds, a block write's or a branch join's; null where a
+     * parameter's binding may still hold, or a gap's write assigns no value the scan reads.
+     *
+     * @return non-empty-list<Expr>|null
      */
-    public function literalWriteAt(Variable $read): ?Expr
+    public function writesSeenBy(Variable $read): ?array
     {
         $name = $read->name;
 
-        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read)) || $this->gapAt($read) !== null) {
+        if (! is_string($name) || ($this->bindsName($name) && $this->holdsBinding($read))) {
             return null;
         }
 
-        return $this->literalLocalBinding($name);
+        $gap = $this->gapAt($read);
+
+        if ($gap !== null) {
+            // A gap holds an empty list only beside the old binding.
+            return $gap[3] || $gap[2] === null || $gap[2] === [] ? null : $gap[2];
+        }
+
+        return isset($this->localVarBindings[$name]) ? [$this->localVarBindings[$name]] : null;
+    }
+
+    /**
+     * The one write a read of a local sees; null where it sees none, or a join of several.
+     */
+    public function soleWriteSeenBy(Variable $read): ?Expr
+    {
+        $writes = $this->writesSeenBy($read);
+
+        return $writes !== null && count($writes) === 1 ? $writes[0] : null;
     }
 
     /**
@@ -875,6 +1074,110 @@ final class AnalysisScope
             return $read();
         } finally {
             $this->restoreState($state);
+        }
+    }
+
+    /**
+     * Run a read away from a closure's returned value, as an array item or a prop's wrapped value is, then restore it.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function apartFromReturn(Closure $read): mixed
+    {
+        $returned = $this->readsCallableReturn;
+        $this->readsCallableReturn = false;
+
+        try {
+            return $read();
+        } finally {
+            $this->readsCallableReturn = $returned;
+        }
+    }
+
+    /**
+     * Run a read that needs each enum case's enum, such as an `EnumResource` payload, with casesAsLiterals off, then
+     * restore it; every method body the read reaches reads its cases so too: AnalysisMemo::readingCasesAsEnums().
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function readingCasesAsEnums(Closure $read): mixed
+    {
+        $literals = $this->casesAsLiterals;
+        $this->casesAsLiterals = false;
+
+        try {
+            return resolve(AnalysisMemo::class)->readingCasesAsEnums($read);
+        } finally {
+            $this->casesAsLiterals = $literals;
+        }
+    }
+
+    /**
+     * Whether the frame's `@return` types a key, which an index signature, standing for many keys, never is.
+     */
+    public function typesKey(string $name): bool
+    {
+        return $this->typedKeys !== []
+            && ($this->typedKeys === true || in_array($name, $this->typedKeys, true))
+            && ! JsEmitter::isIndexSignatureKey($name);
+    }
+
+    /**
+     * Run a key's value read in the gap mode where the frame's `@return` types the key, so a merge can fill each arm
+     * the read drops in place; any other read keeps the mode it is in.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function readingKey(string $name, Closure $read): mixed
+    {
+        return $this->typesKey($name) ? resolve(AnalysisMemo::class)->showingGaps($read) : $read();
+    }
+
+    /**
+     * Run a read whose keys land at the frame's own level without a key of their own, as a spread or a whole return
+     * does, in the gap mode where $set, by default the frame's typed keys, holds one; else it keeps its mode.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @param  TypedKeys|null  $set
+     * @return TRead
+     */
+    public function readingLevel(Closure $read, array|true|null $set = null): mixed
+    {
+        return ($set ?? $this->typedKeys) === [] ? $read() : resolve(AnalysisMemo::class)->showingGaps($read);
+    }
+
+    /**
+     * Run a read with $typed as the frame's typed keys, then put the frame's own back, even on a throw.
+     *
+     * @template TRead
+     *
+     * @param  TypedKeys  $typed
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function typingKeys(array|true $typed, Closure $read): mixed
+    {
+        if ($typed === $this->typedKeys) {
+            return $read();
+        }
+
+        [$own, $this->typedKeys] = [$this->typedKeys, $typed];
+
+        try {
+            return $read();
+        } finally {
+            $this->typedKeys = $own;
         }
     }
 
@@ -1017,6 +1320,8 @@ final class AnalysisScope
             'keyBuiltLocals' => $this->keyBuiltLocals,
             'passedValues' => $this->passedValues,
             'relativeParameters' => $this->relativeParameters,
+            'guardedParameters' => $this->guardedParameters,
+            'leftOutParameters' => $this->leftOutParameters,
         ];
     }
 
@@ -1045,6 +1350,8 @@ final class AnalysisScope
         $this->keyBuiltLocals = $snapshot['keyBuiltLocals'];
         $this->passedValues = $snapshot['passedValues'];
         $this->relativeParameters = $snapshot['relativeParameters'];
+        $this->guardedParameters = $snapshot['guardedParameters'];
+        $this->leftOutParameters = $snapshot['leftOutParameters'];
     }
 
     /**
@@ -1056,8 +1363,8 @@ final class AnalysisScope
     }
 
     /**
-     * Set the caller's state aside to read any method's body, as within()'s $enter: no caller name reaches the body,
-     * which reads its own file's imports and its own declaring class, and only $proofs of `$this` reads hold.
+     * Set the caller's state aside to read any method's body, as within()'s $enter: no caller name or typed key reaches
+     * the body, which reads its own file's imports and its own declaring class, and only $proofs of `$this` reads hold.
      *
      * @param  NonNullReadsMap  $proofs  the caller's proofs that hold across the call
      * @param  list<list<string>>  $rewritten  the `$this` read paths the body writes whole, which no proof holds in it
@@ -1067,15 +1374,23 @@ final class AnalysisScope
         // A write replaces the path and every path through it; an undeclared `$this->prop` reads through the proxy.
         $replacesProxy = $this->hasResourceProxy() && in_array(['resource'], $rewritten, true);
         $this->provenProxy = $replacesProxy ? null : $this->provenProxy;
-        $this->narrowedReads = $replacesProxy ? [] : array_values(array_filter(
-            $this->narrowedReads,
-            fn (array $read): bool => ! array_any($rewritten, fn (array $path): bool => array_slice($read[0], 0, count($path)) === $path),
-        ));
+        $paths = [];
+
+        // An `if` proof holds at this body's offsets alone; a ternary arm's holds at every offset, a callee's too.
+        foreach ($replacesProxy ? [] : $this->thisPathProofs() as $key => $guards) {
+            $held = array_values(array_filter($guards, self::isArmProof(...)));
+
+            if ($held !== [] && ! array_any($rewritten, fn (array $path): bool => str_starts_with($key.'->', '$this->'.implode('->', $path).'->'))) {
+                $paths[$key] = $held;
+            }
+        }
 
         $this->visitedSpreadMethods[self::spreadMethodKey($method)] = true;
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->varGuardBindings = $paths;
         $this->nonNullReads = $proofs;
         $this->resolvingLocalVars = [];
+        $this->typedKeys = [];
         $this->declaringFileClass = LaravelTsPublish::methodDeclaringFileClass($method);
         $this->declaringClass = $method->getDeclaringClass();
     }
@@ -1156,7 +1471,9 @@ final class AnalysisScope
         }
 
         $outer = $this->nameBindings();
+        $paths = $this->thisPathProofs();
         $this->restoreNameBindings(self::NO_NAME_BINDINGS);
+        $this->varGuardBindings = $paths;
 
         // The body's scan counts a by-reference import as a write at the closure, so the import reads `unknown`.
         foreach ($closure->uses as $use) {
@@ -1256,6 +1573,14 @@ final class AnalysisScope
                 $this->relativeParameters[$to] = true;
             }
 
+            if (isset($snapshot['guardedParameters'][$from])) {
+                $this->guardedParameters[$to] = $snapshot['guardedParameters'][$from];
+            }
+
+            if (isset($snapshot['leftOutParameters'][$from])) {
+                $this->leftOutParameters[$to] = $snapshot['leftOutParameters'][$from];
+            }
+
             if (isset($snapshot['varCollectionBindings'][$from])) {
                 $this->varCollectionBindings[$to] = $snapshot['varCollectionBindings'][$from];
             }
@@ -1272,7 +1597,7 @@ final class AnalysisScope
         $guard = self::latestGuard($snapshot['varGuardBindings'][$from] ?? [], $offset);
 
         if ($guard !== null) {
-            $this->varGuardBindings[$to] = [['classes' => $guard['classes'], 'after' => PHP_INT_MIN, 'before' => null]];
+            $this->varGuardBindings[$to] = [self::armProof($guard['classes'])];
         }
 
         if (isset($snapshot['varDocBindings'][$from])) {
@@ -1293,22 +1618,24 @@ final class AnalysisScope
     }
 
     /**
-     * The local bindings a reader may take by their syntax, such as an array literal's keys: each but those a
-     * by-reference call keeps only in some forms, which only a read of the value's type can check.
+     * The classes other than a model a subject declares its `$this->resource` to hold; null for a subject with no
+     * resource proxy, or one declaring only models or nothing.
      *
-     * @return LocalVarBindingsMap
+     * @param  ReflectionClass<object>  $subject
+     * @return non-empty-list<class-string>|null
      */
-    public function literalLocalBindings(): array
+    private static function declaredHeldBy(ReflectionClass $subject): ?array
     {
-        return array_diff_key($this->localVarBindings, $this->byReferenceForms);
-    }
+        if (! $subject->isSubclassOf(JsonResource::class) || $subject->isSubclassOf(ResourceCollection::class)) {
+            return null;
+        }
 
-    /**
-     * The local binding of one name a reader may take by its syntax, as literalLocalBindings() lists it, or null.
-     */
-    public function literalLocalBinding(string $name): ?Expr
-    {
-        return isset($this->byReferenceForms[$name]) ? null : ($this->localVarBindings[$name] ?? null);
+        $held = array_values(array_filter(
+            ProxyDeclaration::of($subject)['classes'] ?? [],
+            fn (string $class): bool => ! is_a($class, Model::class, true),
+        ));
+
+        return $held === [] ? null : $held;
     }
 
     /**
@@ -1319,7 +1646,7 @@ final class AnalysisScope
      */
     private static function collectionFacts(ReflectionClass $class): array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'collection-facts:'.$class->getName(),
             static fn (): array => [
                 ResourceCollections::reindexesNumericKeys($class),
@@ -1336,7 +1663,7 @@ final class AnalysisScope
      */
     private static function picksItems(ReflectionClass $collection): bool
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'collection-picks:'.$collection->getName(),
             static fn (): bool => ! ResourceCollections::keepsRawItems($collection),
         );
@@ -1477,7 +1804,13 @@ final class AnalysisScope
      */
     private function parameterBindingTables(): array
     {
-        return [...$this->classBindingTables(), $this->varValueBindings, $this->relativeParameters];
+        return [
+            ...$this->classBindingTables(),
+            $this->varValueBindings,
+            $this->relativeParameters,
+            $this->guardedParameters,
+            $this->leftOutParameters,
+        ];
     }
 
     /**
@@ -1530,6 +1863,8 @@ final class AnalysisScope
                 $this->keyBuiltLocals[$name],
                 $this->passedValues[$name],
                 $this->relativeParameters[$name],
+                $this->guardedParameters[$name],
+                $this->leftOutParameters[$name],
             );
         }
     }
@@ -1553,10 +1888,11 @@ final class AnalysisScope
             'resolvingLocalVars' => $this->resolvingLocalVars,
             'readingLocals' => $this->readingLocals,
             'visitedSpreadMethods' => $this->visitedSpreadMethods,
-            'narrowedReads' => $this->narrowedReads,
             'appliedProxyProof' => $this->appliedProxyProof,
             'filtersNestedResources' => $this->filtersNestedResources,
             'mapResultArrayed' => $this->mapResultArrayed,
+            'readsCallableReturn' => $this->readsCallableReturn,
+            'typedKeys' => $this->typedKeys,
         ];
     }
 
@@ -1578,9 +1914,10 @@ final class AnalysisScope
         $this->resolvingLocalVars = $state['resolvingLocalVars'];
         $this->readingLocals = $state['readingLocals'];
         $this->visitedSpreadMethods = $state['visitedSpreadMethods'];
-        $this->narrowedReads = $state['narrowedReads'];
         $this->appliedProxyProof = $state['appliedProxyProof'];
         $this->filtersNestedResources = $state['filtersNestedResources'];
         $this->mapResultArrayed = $state['mapResultArrayed'];
+        $this->readsCallableReturn = $state['readsCallableReturn'];
+        $this->typedKeys = $state['typedKeys'];
     }
 }

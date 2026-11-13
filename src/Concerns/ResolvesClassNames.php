@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use PhpParser\Node;
 use ReflectionClass;
@@ -19,18 +21,13 @@ trait ResolvesClassNames
      * Resolve a type name from a docblock to its FQCN by consulting the declaring class's
      * `use` imports, its own namespace, and then falling back to the original name.
      *
-     * Delegates to the canonical implementation on LaravelTsPublish.
-     *
      * @template T of object
      *
      * @param  ReflectionClass<T>  $declaringClass
      */
     protected function resolveDocblockType(string $type, ReflectionClass $declaringClass): string
     {
-        $useMap = LaravelTsPublish::parseFileUseStatements($declaringClass);
-        $namespace = $declaringClass->getNamespaceName();
-
-        return LaravelTsPublish::resolveDocblockTypeName($type, $useMap, $namespace);
+        return DocblockNames::resolve($type, $declaringClass);
     }
 
     /**
@@ -38,7 +35,8 @@ trait ResolvesClassNames
      *
      * Defaults to the `$resource` property (e.g. `/** @var MediaType|null *\/`).
      *
-     * Each `@var` union member, `?` stripped, resolves through the file's imports, then the class's own namespace.
+     * The first class or enum arm of its `@var` union not spelled with generics, as DeclaredClasses::docblockArms()
+     * resolves it through the file that declares the property, which PropertyDocblockTypeReader::tag() finds.
      *
      * @template T of object
      *
@@ -52,43 +50,27 @@ trait ResolvesClassNames
             return null; // @codeCoverageIgnore
         }
 
-        // Check the property type from reflection
-        // E.g. for `public MediaType $resource`, this would return `MediaType::class`
-        // Note: JsonResource::$resource forbids child-class type narrowing, so this is unreachable for 'resource'.
-        $info = LaravelTsPublish::propertyTypes($declaringClass, $property);
-        if ($info['classFqcns'] !== []) {
-            return $info['classFqcns'][0]; // @codeCoverageIgnore
+        $reflection = $declaringClass->getProperty($property);
+        $declaring = $reflection->getDeclaringClass()->getName();
+
+        // JsonResource::$resource forbids child-class type narrowing, so this is unreachable for 'resource'.
+        $native = DeclaredClasses::nativeClasses($reflection->getType(), $declaringClass->getName(), $declaring);
+
+        if ($native !== null) {
+            return $native[0]; // @codeCoverageIgnore
         }
 
-        // If the property doesn't have a native type declaration, check for a @var annotation in the docblock
-        $docComment = $declaringClass->getProperty($property)->getDocComment();
-        $declared = $docComment === false
-            ? null
-            : resolve(PropertyDocblockTypeReader::class)->extractVarType($docComment);
+        $tag = resolve(PropertyDocblockTypeReader::class)->tag($reflection, $declaringClass);
 
-        if ($declared === null || $declared === '') {
+        if ($tag === null) {
             return null; // @codeCoverageIgnore
         }
 
-        // Split the @var value on | to handle union types in any order (e.g. null|Type or Type|null)
-        $skip = ['null', 'mixed', 'false', 'true', 'bool', 'int', 'float', 'string',
-            'array', 'object', 'void', 'iterable', 'callable', 'never', 'static', 'self'];
+        // A generic arm, such as `Collection<int, string>`, holds items; a wrapped read wants a plain enum or model.
+        $plain = array_filter(LaravelTsPublish::splitPhpDocUnionType($tag['type']), fn (string $arm): bool => ! str_contains($arm, '<'));
+        $arms = DeclaredClasses::docblockArms(implode('|', $plain), $tag['context'], $declaringClass->getName(), $declaring);
 
-        foreach (LaravelTsPublish::splitPhpDocUnionType($declared) as $token) {
-            $token = ltrim(trim($token), '?');
-
-            if ($token === '' || in_array(strtolower($token), $skip, true)) {
-                continue;
-            }
-
-            $fqcn = $this->resolveDocblockType($token, $declaringClass);
-
-            if (class_exists($fqcn) || enum_exists($fqcn)) {
-                return $fqcn;
-            }
-        }
-
-        return null;
+        return array_find($arms['classes'], fn (string $class): bool => ! interface_exists($class));
     }
 
     /**

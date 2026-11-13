@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
@@ -45,11 +47,10 @@ use ReflectionMethod;
 /**
  * A method's return type: its declaration, else, when that is too vague to publish, the shape its literal body spells
  * for the declaration's array arm beside its other arms, else the value its returns hold. Memoized per `class@method`,
- * known or assumed runtime class, and bindings; docs/components/receiver-types.md § Following a method's return type.
+ * runtime class, bindings and Inertia reading; docs/components/receiver-types.md § Following a method's return type.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PassedBinding from ParameterBinder
- * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type OwnReturn = array{Return_, bool}
  *
@@ -57,7 +58,6 @@ use ReflectionMethod;
  */
 final class MethodReturnTypeResolver
 {
-    use BuildsInlineObjectTypes;
     use InspectsAstNodes;
 
     /**
@@ -65,7 +65,8 @@ final class MethodReturnTypeResolver
      * declines one naming a model with no published file.
      *
      * @param  class-string  $class
-     * @param  CallSite|null  $site  the call, read where it is written; null reads the body with its declarations only
+     * @param  CallSite|null  $site  the call, read where it is written, whose caller's reading the body takes; null
+     *                               reads the body with its declarations only, as a value Inertia never sends
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or only assumed, as a receiver's is: what
      *                                      `static` names in the body and whose model `$this` reads, as PHP forwards it
@@ -85,12 +86,15 @@ final class MethodReturnTypeResolver
 
         // Read before the memo opens the callee's frame, so what the arguments record belongs to the caller's.
         $passed = $site === null ? [] : $this->passedToBody($class, $methodName, $site);
+        $reading = ($site?->reading() ?? Reading::Encoded)->over($class);
+        $memo = resolve(AnalysisMemo::class);
+        $literals = ! $memo->readsCasesAsEnums();
 
-        return resolve(AnalysisMemo::class)->remember(
+        return $memo->remember(
             'method-return:'.$class.'@'.$methodName.CallSite::signature($passed).($backing === null ? '' : '@backing:'.$backing)
-                .($runtime?->memoKey($class) ?? ''),
-            function () use ($class, $methodName, $passed, $backing, $runtime): ?array {
-                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime);
+                .($runtime?->memoKey($class) ?? '').$reading->memoKey(),
+            function () use ($class, $methodName, $passed, $backing, $runtime, $reading, $literals): ?array {
+                $result = $this->reflectOrReadBody($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
 
                 return $result !== null && ValueResult::namesOnlyPublishedModels($result) ? $result : null;
             },
@@ -139,6 +143,7 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  bool  $literals  false while a read needs each case the body returns as its enum
      * @return ValueExpressionResult|null
      */
     private function reflectOrReadBody(
@@ -147,6 +152,8 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading,
+        bool $literals,
     ): ?array {
         $reflected = $this->reflected($class, $methodName);
 
@@ -154,8 +161,11 @@ final class MethodReturnTypeResolver
             return $reflected;
         }
 
-        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime)
-            ?? $this->declaredOverVagueList($this->bodyValue($class, $methodName, $passed, $backing, $runtime), $reflected)
+        return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading, $literals)
+            ?? $this->declaredOverVagueList(
+                $this->bodyValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals),
+                $reflected,
+            )
             ?? $reflected;
     }
 
@@ -167,8 +177,11 @@ final class MethodReturnTypeResolver
      */
     private function reflected(string $class, string $methodName): ?array
     {
-        return resolve(ReflectedTypeAcceptor::class)
+        $reflected = resolve(ReflectedTypeAcceptor::class)
             ->accept(LaravelTsPublish::methodOrDocblockReturnTypes(new ReflectionClass($class), $methodName));
+
+        // A shape's `?` declares a key that may be missing, never a MissingValue the filter removes.
+        return $reflected === null ? null : ObjectMembers::withOptionalKeysAbsent($reflected);
     }
 
     /**
@@ -187,9 +200,9 @@ final class MethodReturnTypeResolver
     }
 
     /**
-     * The inline object a method's literal return body spells, beside every non-array arm its declaration names, open
-     * where it holds keys the analysis never read; null when a return the shape does not describe is left over, or
-     * the shape spells nothing importable.
+     * The inline object a method's literal return body spells, with its members' import channels as an inline literal
+     * carries them, beside every non-array arm its declaration names, open where it holds keys the analysis never read;
+     * null when a return the shape does not describe is left over.
      *
      * The cycle guard stays per method, whatever the call passes, so a recursion passing a new value each time still
      * stops at its first repeat.
@@ -198,6 +211,7 @@ final class MethodReturnTypeResolver
      * @param  ValueExpressionResult|null  $reflected
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  bool  $literals  whether a plain enum case types as the literal it sends, as the body fallback reads it
      * @return ValueExpressionResult|null
      */
     private function bodyType(
@@ -207,6 +221,8 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading,
+        bool $literals,
     ): ?array {
         $key = 'method-body:'.$class.'@'.$methodName;
         $otherArms = $this->nonArrayArms($reflected);
@@ -231,10 +247,11 @@ final class MethodReturnTypeResolver
                 $class,
                 $methodName,
                 $backing ?? (is_a($runs, Model::class, true) ? $runs : null),
-                carriesImports: false,
+                casesAsLiterals: $literals,
                 passed: $passed,
                 readsCall: true,
                 runtime: $runtime,
+                reading: $reading,
             );
         } finally {
             $memo->leave($key);
@@ -244,16 +261,9 @@ final class MethodReturnTypeResolver
             return null;
         }
 
-        // The inline type carries custom imports and no FQCN channel, so a member keeps its type only where the imports
-        // bring in every name it spells and no class on its channels publishes under one; any other is `unknown`.
-        $imported = ImportMaps::localNames($analysis->customImports);
-
-        foreach ($analysis->properties as $index => $property) {
-            if (array_intersect($analysis->channelNames($property['name']), $imported) !== []
-                || ! TsTypeString::importsCover($property['type'], $analysis->customImports)) {
-                $analysis->properties[$index]['type'] = 'unknown';
-            }
-        }
+        // First: forgetUnpublishableMembers() would make a fill whose override and model share a name `unknown` whole.
+        InlineObjectResult::readFillsClassLess($analysis);
+        $analysis->forgetUnpublishableMembers();
 
         // Keys the walk never read reach the return, as a caller's do in a parameter it starts with no seed.
         if ($analysis->holdsUnreadKeys) {
@@ -266,43 +276,17 @@ final class MethodReturnTypeResolver
             }
         }
 
-        $type = $this->buildInlineObjectType($analysis);
+        $object = new InlineObjectResult()->of($analysis);
+        $object['type'] = TsTypeString::hoistNull([$object['type'], ...$otherArms]);
 
-        if (! TsTypeString::importsCover($type, $analysis->customImports)) {
-            return null;
+        // A member left `unknown` brings no import.
+        $object['customImports'] = ImportMaps::spelledIn($object['customImports'] ?? [], $object['type']);
+
+        if ($object['customImports'] === []) {
+            unset($object['customImports']);
         }
 
-        $imports = $this->spelledImports($analysis->customImports, $type);
-
-        return [
-            ...ValueResult::unknown(),
-            'type' => TsTypeString::hoistNull([$type, ...$otherArms]),
-            ...($imports === [] ? [] : ['customImports' => $imports]),
-        ];
-    }
-
-    /**
-     * The custom imports a shape spells a name of, each name once, so a member left `unknown` brings none.
-     *
-     * @param  TypesImportMap  $imports
-     * @return TypesImportMap
-     */
-    private function spelledImports(array $imports, string $type): array
-    {
-        $spelled = [];
-
-        foreach ($imports as $path => $names) {
-            $kept = array_filter(
-                array_unique($names),
-                fn (string $name): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($name), $type),
-            );
-
-            if ($kept !== []) {
-                $spelled[$path] = array_values($kept);
-            }
-        }
-
-        return $spelled;
+        return $object;
     }
 
     /**
@@ -311,6 +295,7 @@ final class MethodReturnTypeResolver
      * @param  class-string  $class
      * @param  array<string, PassedBinding>  $passed
      * @param  class-string<Model>|null  $backing
+     * @param  bool  $literals  whether a plain enum case types as the literal it sends, as the body fallback reads it
      * @return ValueExpressionResult|null
      */
     private function bodyValue(
@@ -319,6 +304,8 @@ final class MethodReturnTypeResolver
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading,
+        bool $literals,
     ): ?array {
         $file = new ReflectionMethod($class, $methodName)->getFileName();
         $key = 'method-body:'.$class.'@'.$methodName;
@@ -329,8 +316,19 @@ final class MethodReturnTypeResolver
             return null;
         }
 
+        $dropped = DroppedUnionArms::dropped();
+
         try {
-            return resolve(AstEngine::class)->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime);
+            // A body left only the null a dropped arm leaves is one it cannot type, so that null is never published.
+            return DroppedUnionArms::replaceable(
+                function () use ($class, $methodName, $passed, $backing, $runtime, $reading, $literals, $dropped): ?array {
+                    $value = resolve(AstEngine::class)
+                        ->analyzeMethodValue($class, $methodName, $passed, $backing, $runtime, $reading, $literals);
+
+                    return $value !== null && DroppedUnionArms::leftNullSince($value['type'], $dropped) ? null : $value;
+                },
+                static fn (?array $value): bool => $value !== null,
+            );
         } finally {
             $memo->leave($key);
         }

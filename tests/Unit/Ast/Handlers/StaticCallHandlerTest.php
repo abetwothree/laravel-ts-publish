@@ -5,15 +5,17 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\StaticCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DirectCallsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceShadowedParameterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\NullOnlyMaker;
 use Illuminate\Http\Request;
@@ -31,6 +33,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
@@ -68,10 +71,10 @@ function staticCallHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -117,10 +120,10 @@ final class StaticCallHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -611,6 +614,22 @@ it('resolves EnumResource::make($this->status) to the enum channel', function ()
     ]);
 });
 
+// The body fallback reads each case as the literal json_encode() writes, which a pure enum's case has none of.
+it('types an enum\'s cases() as the list its cases encode as', function (string $php, bool $literals, array $expected) {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->casesAsLiterals = $literals;
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope)->resolve($expr))
+        ->toBe($expected);
+})->with([
+    'a string-backed enum' => ['\\'.Grade::class.'::cases()', false, ['type' => 'GradeType[]', 'optional' => false, 'embeddedEnumFqcns' => [Grade::class]]],
+    'an int-backed enum' => ['\\'.Status::class.'::cases()', false, ['type' => 'StatusType[]', 'optional' => false, 'embeddedEnumFqcns' => [Status::class]]],
+    'a pure enum' => ['\\'.Visibility::class.'::cases()', false, ['type' => 'VisibilityType[]', 'optional' => false, 'embeddedEnumFqcns' => [Visibility::class]]],
+    'as literals' => ['\\'.Grade::class.'::cases()', true, ['type' => "('pass' | 'fail')[]", 'optional' => false]],
+    'a pure enum, as literals' => ['\\'.Visibility::class.'::cases()', true, ['type' => 'unknown[]', 'optional' => false]],
+]);
+
 // A local assigned once is followed to what it holds; any other payload is resolved, and kept when it holds one enum.
 it('wraps the one enum a resolved payload holds', function (string $php, array $expected) {
     $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
@@ -667,6 +686,21 @@ it('follows a whenHas() parameter named like the local its value is assigned to'
 
     expect(array_map(fn (array $property): array => [$property['name'], $property['type'], $property['optional']], $properties))
         ->toBe([['status', 'StatusType', true]]);
+});
+
+// A wrap needs each case as its enum, so every helper its payload reaches reads its cases so, however deep.
+it('wraps the case a vague helper returns through each helper, local, closure and service its payload reaches', function () {
+    expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray([
+        'draft_resource' => 'AsEnum<typeof Status>',
+        'draft_list' => 'AsEnum<typeof Status>[]',
+        'outer_resource' => 'AsEnum<typeof Status>',
+        'outer_list' => 'AsEnum<typeof Status>[]',
+        'outer_drafts_resource' => 'AsEnum<typeof Status>[]',
+        'local_outer_resource' => 'AsEnum<typeof Status>',
+        'when_outer_resource?' => 'AsEnum<typeof Status>',
+        'service_outer_resource' => 'AsEnum<typeof Status>',
+        'tagged' => '{ t: AsEnum<typeof Status>; o: AsEnum<typeof Status> }',
+    ]);
 });
 
 // Only a collection wraps a list, and two enums that share a name are not one enum.

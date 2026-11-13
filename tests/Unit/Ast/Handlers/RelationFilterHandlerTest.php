@@ -5,10 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationFilterHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -69,10 +70,10 @@ function relationFilterStubEngine(array $result): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         /** Fails the test: no array is analyzed in this case. */
@@ -110,10 +111,10 @@ function relationFilterHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -422,7 +423,12 @@ it('reads a model\'s own resource relation in its getter and method bodies', fun
     expect($getter['type'])->toBe("Pick<User, 'id' | 'name'>")
         ->and($getter['classFqcns'])->toBe([User::class])
         ->and(resolve(MethodReturnTypeResolver::class)->resolve(OwnResourceRelationModel::class, 'resourceAuthorFields'))
-        ->toBe(['type' => '{ author: { id: number; email: string } }', 'optional' => false]);
+        ->toBe([
+            'type' => "{ author: Pick<User, 'id' | 'email'> }",
+            'optional' => false,
+            'keepsKeys' => true,
+            'embeddedModelFqcns' => [User::class],
+        ]);
 });
 
 // On a model that declares a real `map` relation, `$this->resource->map` is that relation, exactly as `$this->map` is.
@@ -478,9 +484,9 @@ it('binds no map proxy element model from a single relation, under both spelling
     '$this->resource->author->map->only([\'id\'])',
 ]);
 
-// The body fallback flattens a method body into a type with no FQCN channel and drops a shape naming a token, so there
-// a filter publishes the most specific answer that names none: a member whose type names a token, such as an enum or
-// class cast column or a relation, is `unknown`, and the rest keep theirs.
+// A scope that carries no import, as an accessor's import-less read is, has a filter publish the most specific answer
+// that names no token: a member whose type names a token, such as an enum or class cast column or a relation, is
+// `unknown`, and the rest keep theirs.
 it('publishes a relation filter that names no token where the scope carries no import', function (string $model, string $php, array $expected) {
     $scope = new AnalysisScope(new ReflectionClass($model), $model);
     $scope->carriesImports = false;

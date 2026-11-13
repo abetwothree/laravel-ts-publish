@@ -12,16 +12,20 @@ These classes carry receiver inference:
 | Class | Owns |
 | --- | --- |
 | [`ReceiverClassResolver`] | The classes an expression holds, returned as a `ReceiverType` |
-| [`DeclaredClasses`] | The classes a declaration names: a method's native return or `@return`, a native type, a docblock union's class arms |
-| [`CollectionSteps`] | What a collection step does to the items and their keys, for the resolver and the relation-chain and `collect()` handlers |
+| [`DeclaredClasses`] | The classes a declaration names: a method's native return, else the tentative one PHP declares on its own classes' methods (`reflectedReturnType()`, which reads the return of any method a receiver may name), else its `@return`; a native type, a docblock union's class arms, an intersection's members, a generic's arguments, a collection generic's key and model (`collectionGeneric()`); and the two class-like checks, `isValueClass()` and the trait-inclusive `isClassLike()` |
+| [`ProxyDeclaration`] | What an API resource's `$this->resource` is declared to hold, from its `@var`, `@extends`, `@mixin` or `@property`, and the model that names; what it holds over its backing class (`heldOver()`), for the subject and, through `held()` and `forwarded()`, for a member read off another API resource |
+| [`CollectionSteps`] | A chain's steps, root first, what each does to the items and their keys, and which hands back one item, for the receiver resolvers and the model-finder, relation-chain and `collect()` handlers, the last two walking a chain through `walk()` |
+| [`PaginatorSteps`] | The paginators Laravel builds, and which of a paginator's own steps hand back the same one, for `ModelFinderHandler` and `InertiaResourcePropHandler` |
 | [`QueryForwarding`] | The class a relation or Eloquent builder forwards a call it does not declare to |
-| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items |
+| [`LoadedRelations`] | The members a `load()` or `loadMissing()` call adds to the model it runs on, read off its literal argument |
+| [`ReceiverType`] | The answer: `classes`, a `shortCircuits` flag after a `?->`, the `elementModel` a collection carries and `keyed` once a step leaves its keys out of `0..n-1`, or the `relatedModel` a relation, query or factory builds; `unsaved` for a model no row may back yet and `attributeless` for a `new` one holding no attributes (see [Receiver rules](#receiver-rules)); and `collectedItems` with `collectedElement` for a resource collection's items; `guarded` for one reached from a resource collection's `$collection` or what an API resource forwards to, which `carried()`, `merge()` and a gap's join hand down the chain; `guardsElement` for a collection whose element only a method's declared list names, whose item, query of the items or callback parameter is `guarded` while its own steps are not; `stringKeyed` where that list names its keys `string`, so its `all()` keeps the declared record; `joined` for a variable's join of the values a gap holds, which `fromGap()` agrees through `merge()`, with the writes it left out as naming no class in `leftOut`, which `carried()`, `merge()` and a callback parameter bound from a joined collection's element by a receiver's `map()` or a `collect()` pipeline (`AnalysisScope::$leftOutParameters`) hand down; a property or method read through a receiver holding it warns once it publishes a type, and a bound parameter's attribute read only where the parameter is in `leftOutParameters` (`warnOfLeftOut()`); and `tagOnly` for the classes only a write's inline `@var` names over a value naming none, `$this` and a relative tag's included, each with that write, which a read they cannot answer leaves out with a warning, but for a class a relative tag over `$this` names that declares the member, unless the write ends a parameter's block (`ReceiverMemberReader::leftOutWrite()`) |
 | [`ReceiverMethodCallHandler`] | `$x->m()`, `$x?->m()` and `$expr::m()`, including a bare `$this->m()` a resource forwards |
 | [`ReceiverPropertyFetchHandler`] | `$x->prop` and `$x?->prop` |
+| [`ReceiverMemberReader`] | One member read off a class a receiver holds, as the value it sends (`value()`) or the classes it holds (`classes()`): a model's attribute else its relation, an enum's member, or a public property |
 | [`ReceiverMethodReturnResolver`] | The convention rules, then [the order for one class](#the-order-for-one-class) |
 | [`MacroCallResolver`] | The macro a `Macroable` subject's `__call()` runs for a name it does not declare, and what that macro returns |
-| [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-no-fqcn-channel): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
-| [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`] | What an `instanceof` condition proves, and the binding its proven arm resolves under |
+| [`MethodReturnTypeResolver`] | A method's declared return, then the [body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does): the literal shape, else [the value its returns hold](#a-method-read-as-a-value-carries-import-channels) |
+| [`ReadsInstanceofChains`], [`NarrowsInstanceofSubjects`], [`InstanceofNarrowing`] | What an `instanceof` condition proves, the binding its proven arm resolves under, and what its classes narrow a value's to |
 
 ## Receiver resolution
 
@@ -33,26 +37,27 @@ reflection answers, a decline included.
 
 | Expression | Receiver |
 | --- | --- |
-| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the ternary arm or `if` block it proves (`AnalysisScope::$provenProxy`), and in a block past a member or key write that keeps its class (`CollectsInstanceofGuards::keepsProvenClass()`), else every class the subject's own redeclaration names, such as `/** @var MediaType\|null */ public $resource`, else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `collectedElement` the element `$this->collection` lists. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`), with `\| null` where that redeclaration admits null and no `instanceof` guard in `toArray()` tests it (`redeclaresNullableProxy()`); else the redeclaration |
+| `$this->resource` on an API resource only | `ReceiverClassResolver::proxyHeld()`: the classes an `instanceof` proof holds it to inside the ternary arm or `if` block it proves (`AnalysisScope::$provenProxy`), and in a block past a member or key write that keeps its class (`CollectsInstanceofGuards::keepsProvenClass()`), else every class `ProxyDeclaration::of()` reads off `AnalysisScope::proxyDeclarer()`, the runtime class where a subclass runs its parent's body: the subject's own redeclaration, such as `/** @var MediaType\|null */ public $resource`, else a tag naming a [held class][glossary], `@extends JsonResource<PostStats>`, `@mixin PostStats` or class-level `@property PostStats $resource`, the class's own before an ancestor's. A tag naming one model, or only classes the backing class is, the model or an `instanceof` guard's class, as `@mixin Post` or `@mixin Arrayable` over a post does, names the backing class instead, and one naming only a class nothing loads, `Model` or `\Eloquent` declares nothing; beside `#[TsResource(model:)]` a tag keeps only the classes that model is. Else `AnalysisScope::proxyReceiver()`: the backing model from `AnalysisScope::$forwardsUndeclaredMembersTo`, or on a `ResourceCollection` its items, `Support\Collection \| LengthAwarePaginator \| Paginator \| CursorPaginator` with `collectedItems` set and `collectedElement` the element `$this->collection` lists. A redeclaration holds the backing class instead when every class it names admits it, as `@var Model` or `@var Post\|string` admits a `Post`; otherwise one with an arm that names no class names nothing. On a collection a proof or a redeclaration keeps the items, naming only the class they arrive in. Read whole it publishes the items as `heldItems()` spells them; under a proof, the proven classes' own published types, or `unknown` for the whole ternary when they have none; else the backing model's interface when the subject does not redeclare `$resource` or one class it names admits it (`proxyModel()`), with `\| null` where that redeclaration admits null and no `instanceof` guard in `toArray()` tests it (`redeclaresNullableProxy()`); else the redeclaration; else the held classes a tag declares (`AnalysisScope::$declaredHeld`), with that `\| null` |
 | `$this->prop` the subject declares, by `SubjectPropertyTypeResolver::declaresOwnProperty()` | Its native class type, else its full `@var` type, at any visibility |
 | `$this->prop` on a model-backed subject, and `$this->resource->prop` | An attribute the model lists under the name, or its snake_case accessor: `ModelAttributeResolver::resolveAttributeClass()`, else the one model its `resolveAttribute()` type names, such as an untyped getter's body return. It is read before the relation, as `Model::__get()` reads it, so an attribute holding no class names none. Else the relation: its `morphTo` targets or `resolveMorphToBound()`, an `Eloquent\Collection` with `elementModel` for a to-many relation, or the related model. Else the one model an `@property` tag names, which a dynamic or set relation fills |
 | `$var` | The scope's bindings, in the order under [Variables](#variables) |
-| `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. |
+| `<receiver>->prop`, `<receiver>?->prop` | A model's attribute or relation, as above. On any other class, a public, non-static property's class. On an API resource that is not a collection, `resource`, and a property it does not declare, which Laravel's own `__get()` forwards, read off what `ProxyDeclaration::held()` says it holds; one holding several classes names nothing for a member |
 | `E::Case`, `self::Case`, `static::Case` | The enum `E` when it is an enum with that case, so a local holding one, a ternary of cases and `E::from()` read as the enum; any other class constant declines |
 | `$this->m()` | The method `thisMemberClass()` reaches, the runtime class's or the declaring class's private one ([AST engine § AnalysisScope](ast-engine.md#analysisscope)), at any visibility. On a `JsonResource` that does not declare it, what a macro registered under that name returns, else the public method of the class `proxyCallTarget()` names, as below, or of a collection's items. |
 | `<model>->relation()` | `DeclaredClasses::returnClasses()`, or `Relation` when the method declares nothing, with `relatedModel` set, which `->getRelated()` then names |
-| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `QueryForwarding::forwardedClass()` names, and a relation hands itself back where its builder returns `$this`. A factory's `make()` and `create()` name the model, and a count step declines |
-| `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches |
+| `<query, relation or factory>->m()` | Its `relatedModel` where the method's docblock returns the class's model template, `TModel` or `TRelatedModel`, alone or beside `null`, marked unsaved for `UNSAVED_QUERY_MODELS`; a trait's template reads as its `@use` tag binds it, so `first()`'s `TValue\|null` names the model. The receiver drops that `null`, since a `?->` read adds it and a plain read of a missing model throws; the call's value keeps it, by the `first()` rule under [Receiver rules](#receiver-rules). The same query where it returns itself, as `where()` does. A method the relation or builder does not declare runs on the class `QueryForwarding::forwardedClass()` names, and a relation hands itself back where its builder returns `$this`. A builder hands itself back for a call `Builder::__call()` runs on the base query (`QueryForwarding::forwardsToBaseQuery()`) and a soft-deleting model's `withTrashed()`, `withoutTrashed()` and `onlyTrashed()`; a scope, a macro or a custom builder's method declared as no class, as `Builder` or as a parent's `self` hands on what every return of its body is, the query it is given or one other model's query, and a scope's `null` or missing return is the query; one whose returns the engine cannot read, that also returns a value no call can follow, or whose returns name different things, names nothing, except through `resolvePresumingSteps()`, where it keeps the query, as does a name only a local macro could answer. A relation hands itself back where its builder's `__call()` does. A model's own method with no declared return, or declared as a bare `Builder` or collection, names the one query, model or list its body returns. `when()`/`unless()` hand the query back where each callback, written in place or the one write of a local, returns it, `null` or nothing, and `when($value)->m()` is the query where `m()` hands it back. `find()` and `findOrFail()` name the model for one `int` or `string` literal key and an `Eloquent\Collection` of it for an array literal; a variable may be either, so it declines. A factory's `make()` and `create()` name the model, and a count step declines |
+| `<collection>->first()`, `->last()`, `->firstWhere()` | The `elementModel` of a `Support\Collection` or an `Eloquent\Collection`, unless the call passes a `$default`, which Laravel returns where no item matches (`CollectionSteps::passesDefault()`). On a resource collection's items, `first()` and `last()` alone name the collected element, an API resource or the raw models' model, which a paginator's `__call()` reaches too |
+| `$this->collection` on a `ResourceCollection` | A `Support\Collection` with `collectedItems` set and the scope's `collectedElement`, as Laravel's constructor builds it, paged or not |
 | `<Eloquent collection>->find(1)` | The `elementModel` for one `int` or `string` literal key and no `$default`, where the class runs `Eloquent\Collection`'s own `find()`; a list, an `Arrayable` or a variable may return a collection |
-| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing. `values()` clears `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
+| `<collection>->sortBy()`, `->filter()`, `->values()`, `->load()` and the other steps that keep its items | The receiver's classes, or `Support\Collection` for `collect()` and `toBase()` and `LazyCollection` for `lazy()`, with its `elementModel`, since several of these steps inherit a docblock that names nothing; so does a `merge()` or `concat()` of `[]` or a list of the same model. An Eloquent collection's `toQuery()` is its model's query. A step whose own docblock only inherits returns what `Enumerable` declares. Through `resolvePresumingSteps()`, a step the resolver does not follow keeps the models unless `CollectionSteps::changesItems()` lists it. `values()` and `shuffle()` clear `keyed`, as an `Eloquent\Collection`'s `ELOQUENT_RELISTS` do for most arguments, since they re-index the models they keep; `SAME_ITEMS`, a `take()` of a literal count and a bare `sortKeys()` keep it; the other `SAME_ITEMS_KEYED` steps set it, since `json_encode()` then writes an object. A resource collection's items go to the receiver rules |
 | `<query or relation>->get()` | An `Eloquent\Collection` with the query's model as `elementModel`, wherever the docblock lists the model template, as `Collection<int, TModel>` does. A relation's `makeMany()` names no element, whose models no row backs yet |
 | `X::all()` | An `Eloquent\Collection` with `X` as `elementModel` on a concrete model, from `Model::all()`'s `Collection<int, static>` |
 | `<model>->getRelation('name')` | The relation as loaded, by the relation rule above, since an unloaded name throws |
 | `<model>->getRelationValue('name')` | The relation by the same rule, since it loads a name that is not loaded |
-| `$request->user()` | `AuthUserResolver::model()`, when that is not `null` |
-| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method |
+| `$request->user()`, and `user()` on `auth()`, the `Auth` facade, `request()`, `Auth::guard()` or `auth()->guard()` | `AuthUserResolver::model()`, when that is not `null`, for `$request->user()`. The other spellings take `AuthUserResolver::soleModel()`, that model only while no configured guard's provider names another Eloquent model, since a route's guard middleware can make any guard the default ([known gap][gap-guards]). Only the default guard is read, so a guard named on any spelling but `$request->user()`, such as `auth('admin')`, `Auth::guard('admin')` or `request()->user('admin')`, names nothing ([`ResolvesAuthHelperCalls`]) |
+| `<receiver>->m()`, `<receiver>?->m()` otherwise | `DeclaredClasses::returnClasses()` on every class, for a public method, with the `elementModel` a collection declared as `Collection<int, Comment>` lists where the run publishes that concrete model (`listedReturnModel()`), `keyed` for a `string`, `int|string` or `array-key` key, `stringKeyed` for a bare `string` one, and `guardsElement`. On an API resource that is not a collection, a method it does not declare, which Laravel's own `__call()` forwards unless a macro answers, runs on what `ProxyDeclaration::held()` says it holds |
 | `static::m()`, `self::m()`, `parent::m()` | The runtime class for `static`, the declaring class for `self`, or its parent for `parent`, then `DeclaredClasses::returnClasses()`, at any visibility, a declared `static` read as the runtime class, which each forwards. A name the class it reaches lacks, which a macro or the resource proxy answers, reads as `$this->m()` on that class, since PHP sends it to `__call()` |
-| `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare runs on a new `Builder` with the model as `relatedModel`, as `Model::__callStatic()` does, and a model's `Builder<static>` return keeps the model too |
+| `X::m()`, `$var::m()`, `$this->resource::m()` | The class, then `DeclaredClasses::returnClasses()`, for a public method. A concrete model's call to a method it does not declare, or to an attribute scope, reads as the same call on `X::query()`, since `Model::__callStatic()` runs it on a new query (`QueryForwarding::queriesStatically()`), and a model's `Builder<static>` return keeps the model too |
 | `X::factory()` | The factory class `X::factory()` returns when the package calls it while publishing, with `X` as `relatedModel`. A count argument, or a factory that cannot be built, declines |
 | `new X`, `new static`, `new self`, `new parent` | `X`, the runtime class for `static`, the declaring class for `self`, or its parent for `parent`, but nothing for Laravel's own JsonResource or ResourceCollection; marked unsaved, and `attributeless` for a model built with no constructor argument |
 | `resolve(X::class)`, `app(X::class)` | `X` |
@@ -61,6 +66,8 @@ reflection answers, a decline included.
 
 A type with a builtin arm names no class, such as `: string` or `@var UrlService|string`. Neither does a docblock part
 with text after its generics: `Collection<int, User>` names `Collection`, while `Collection<int, User>[]` is an array.
+A property's docblock, `$resource`'s included, resolves in the file that declares it, a parent's or a trait's, and a
+promoted property with no `@var` reads its constructor's `@param` ([`PropertyDocblockTypeReader::tag()`]).
 
 `$this->prop` and `$this->resource->prop` share one code path, because a `JsonResource` forwards what it does not
 declare through `__get()` and `__call()`, so the two are the same read at runtime. The one asymmetry is deliberate. A
@@ -73,20 +80,37 @@ property the resource declares answers only the `$this->prop` spelling, because 
 `ReceiverClassResolver::fromVariable()` reads the scope's tables in this order, and the first that binds the name
 answers:
 
-1. `varClassBindings`: a `morphTo` `whenLoaded()` parameter's targets.
+1. `varClassBindings`: a `morphTo` `whenLoaded()` parameter's targets, which `ParameterBinder::loadedBinding()` binds
+   with the relation's model or collection.
 2. `varDocBindings`: in an inline `@var` span, the assigned value's classes, or the `@var`'s when the value names none
    or only models with no published file, with the one concrete model a collection generic such as
-   `Collection<int, Comment>` lists as `elementModel`, and `keyed` for a `string` or `array-key` key. See
-   [AST engine § Declared locals](ast-engine.md#declared-locals).
+   `Collection<int, Comment>` or `Collection<Comment>` lists as `elementModel`, `keyed` for a `string`, `int|string` or
+   `array-key` key, and `stringKeyed` for a bare `string` one. An alias the `@var` names reads as its definition, in
+   the file that wrote it. See [AST engine § Declared locals](ast-engine.md#declared-locals).
 3. `varModelBindings`, then `varDeclaredBindings`, a called method's parameter's declared classes, then
-   `varCollectionBindings` as an `Eloquent\Collection` with `elementModel`, which a call passing such a collection not
-   `keyed` binds too, then `requestVarNames`, then a `varValueBindings` value bound to one enum case, such as a
-   parameter's default, as that enum.
+   `varCollectionBindings` with `elementModel`: a `@param` collection generic's classes and keys, as `varDocBindings`
+   reads an inline `@var`'s, else an `Eloquent\Collection`, which a call passing such a collection not `keyed` and a
+   to-many `whenLoaded()` parameter bind too; then `requestVarNames`, then a `varValueBindings` value bound to one enum
+   case, such as a parameter's default, as that enum.
 4. `closureParamExprBindings`, where a readable `new X` default binds as unsaved, else `localVarBindings`, resolved
    recursively under the `resolvingLocalVars` guard.
 
 Steps 1, 3 and 4's `closureParamExprBindings` answer only while `AnalysisScope::holdsBinding()` does: past the body's
 first write that replaces a parameter, step 4's `localVarBindings` answers.
+
+A parameter `ParameterBinder` bound from a guarded receiver, a callback's from its element or a helper's from its
+argument, keeps that guard through `AnalysisScope::$guardedParameters`: `guarded`, or `element` for a declared list.
+The guard withdraws only what no reading reached without it, so a declaration reads as it does unguarded:
+
+- A callback parameter's declared model stays unguarded where the declaration alone reads the callback: always in
+  `array_map()` and `collect()->map()`, which take the guard where `readsGuarded()` finds the array read off a guarded
+  receiver, through `collect()` but never past an inline `@var` local; on a receiver's `map()`, where
+  `mayHoldCollection()` holds.
+- A helper's declared parameter of any class binds a guarded argument as it binds one never passed (`CallSite`).
+  Only a value read off an `unread` callback parameter, one a guarded receiver's `map()` binds, keeps its guard
+  across it, since no reading reaches that callback without it.
+- An inline `@var` over a guarded value types the local by the `@var` alone. Over a declared list's value it lifts only
+  the element's guard: the keys stay, and the element where the `@var` names it too (`unguarded()`).
 
 Then the `instanceof` proof `AnalysisScope::guardAt()` finds for the read, in `varGuardBindings`, narrows the answer
 class by class, as [a ternary's tested read](#a-ternarys-instanceof-condition) is. The value keeps its element and keys
@@ -116,6 +140,15 @@ ternary, a `??` or a block's write that joins it, and to a parameter it is passe
 argument narrows (`relativeParameters`). Such an inline `@var` names no collection element, and an `instanceof`
 proof's classes drop the mark.
 
+### Intersections
+
+A declaration spelling `A&B`, native or docblock, a DNF arm such as `(A&B)|null` included, holds its primary member, the
+first that is no interface, in `ReceiverType::$classes` and the rest in `$intersections`. A call or property read goes
+to `ReceiverType::memberOwner()`: the class where it declares the public member, else the first other member that does,
+so `Post&HasLabel`'s `label()` types from `HasLabel`. A resource's declared intersection joins `proxyHeld()`, and its
+other members answer last in `proxyCallOrder()`. A union keeps them only where every part names them, and a receiver
+built without them reads the primary member alone, never a class the value is not.
+
 ### Visibility
 
 On `$this`, or through `self::`, `static::` or `parent::`, a member counts at any visibility. On any other receiver only
@@ -131,7 +164,8 @@ names and the same `->` or `?->` at each step. A method call never qualifies, be
 different value from the one the test saw.
 
 When the proven arm is the tested read itself, `narrowed()` narrows each class `R` it resolves to against the tested
-classes `T`. The first case that matches decides, whatever order the tests are written in:
+classes `T` (`InstanceofNarrowing::classes()`). The first case that matches decides, whatever order the tests are
+written in:
 
 1. `R` is a `T`, or a subtype of one: `R` stays.
 2. Some `T` is an interface unrelated to `R` by inheritance: `R` stays. A subtype of `R` may pass that test without
@@ -153,13 +187,15 @@ its unproven answer. A redeclaration that admits null is the exception: the test
 `instanceof Post` on `@var Post|null` records `Post`.
 
 On a `$this->prop` subject, a read in the arm of the same property names on `$this`, through `->` or `?->`, holds what
-the test leaves of the subject, its collection's element and keys included (`AnalysisScope::$narrowedReads`): under
+the test leaves of the subject, its collection's element and keys included (its proof in `varGuardBindings`): under
 `$this->imageable instanceof Post`, the arm's `$this->imageable->title` publishes `string`.
 
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
 parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
-holds `Post`, not every target. On an API resource it narrows `$this->resource` for each value inside a block it
-proves, so a collection's items read as the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
+holds `Post`, not every target. It narrows a `$this->prop` chain as the ternary does, inside each block it proves and
+past a guard that leaves, while every call between the test and the read is one `ThisPathWrites` knows cannot reach it.
+On an API resource it narrows `$this->resource` for each value inside a block it proves, so a collection's items read as
+the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
 
 A subject method the proven arm or block calls as a value reads its body with `$this->resource` backed by the one model
 the proof leaves: `SubjectMethodTypeResolver` passes it as `MethodReturnTypeResolver::resolve()`'s `$backing`, and the
@@ -194,13 +230,16 @@ never emitted or imported, so it can accept the classes `morphToDocblockTargets(
 
 ## Following a method's return type
 
-`ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`. It asks
+`ReceiverMethodCallHandler` claims `MethodCall`, `NullsafeMethodCall` and `StaticCall`, but a `Conditionable` `when()`
+or `unless()`, which `ConditionableCallHandler` answers before it from the same receiver. It asks
 `ReceiverClassResolver::resolve()` for a call's receiver, or `resolveStaticReceiver()` for the class a static call is
 made on. `ReceiverMethodReturnResolver::resolve()` then types the method on every class the receiver holds and merges
 the answers. When any class declines, the whole call declines. The one exception is a resource collection's items: a
 class that neither declares the method nor, as a paginator, forwards it to `Support\Collection` is skipped, since the
 call throws there and no response carries that arm. So `total()` publishes `number` from `LengthAwarePaginator` alone,
-and a method no class runs declines.
+and a method no class runs declines. A method an API resource does not declare is typed on what
+`ProxyDeclaration::forwarded()` names, as its `__call()` forwards it, so `PostResource::make($post)->getKey()` is
+`number`; one that overrides `__call()` declines the call.
 
 Two receivers come from outside `resolve()`, which names nothing for a bare `$this`:
 
@@ -236,21 +275,21 @@ Earlier claimants of these node classes decline a call they cannot type, as
 or on a model-less subject's own typed property. Through `$this->resource` it reads the class `proxyCallTarget()` finds,
 final even when it types nothing, by `SubjectMethodTypeResolver::resolveForwarded()`, as `$this->resource::m()` does,
 and the bare `$this->m()`, `$this::m()`, `static::m()` and `self::m()` do when no macro has the name: only a public
-method, with the receiver rules' answer for a model method they type (`typesModelMethod()`), such as `toArray()` or
-`getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a subject's own property it reads `forwardedOn()` and
-leaves those methods, and a filter on a held model, to the receiver rules, as it leaves a resource collection's items.
-Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s, inside a relation's closure too, so
-`$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
+method, with the receiver rules' answer for a model method a model rule types (`typesModelMethod()`, every rule
+`modelRule()` holds), such as `getKey()`, `toArray()` or `getCasts()`, else `MethodReturnTypeResolver::resolve()`. On a
+subject's own property it reads `forwardedOn()` and leaves those methods, and a filter on a held model, to the receiver
+rules, as it leaves a resource collection's items. Every other `$this->prop->m()` is `ReceiverMethodCallHandler`'s,
+inside a relation's closure too, so `$this->checks->toArray()` reads `PublishChecks`, never the resource's model.
 
 ### Receiver rules
 
-`ReceiverMethodReturnResolver` checks nine convention rules on each class before
+`ReceiverMethodReturnResolver` checks eleven convention rules on each class before
 [the order for one class](#the-order-for-one-class). They read the receiver's model rather than a signature, because
-Laravel declares all nine loosely. `Model::getKey()` and `getAuthIdentifier()` return `mixed`,
-`Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to `Record<string, unknown>`,
-`Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`, `Collection::all()` declares
-`array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the template `TValue|null`. Each
-rule answers only on the receiver it names:
+Laravel declares ten loosely and `load()`'s `$this` names no relation it adds. `Model::getKey()`, `getAuthIdentifier()`
+and `getAttribute()` return `mixed`, `Collection::modelKeys()` reflects to `(string | number)[]`, `Model::only()` to
+`Record<string, unknown>`, `Model::except()`, `Model::toArray()` and other `Model` arrays to the list `unknown[]`,
+`Collection::all()` declares `array<TKey, TValue>`, `resolveRouteBinding()` declares `Model|null`, and `first()` the
+template `TValue|null`. Each rule answers only on the receiver it names:
 
 - **`getKey()`**: on a concrete model that inherits `Model::getKey()`, the key type from
   `ModelAttributeResolver::keyTsType()`, so `HasUuids`, `HasUlids` and `#[Table(keyType: ...)]` count. `Model` itself
@@ -296,6 +335,14 @@ rule answers only on the receiver it names:
 - **`resolveRouteBinding()`, `resolveSoftDeletableRouteBinding()`**: on a concrete model that inherits `Model`'s own,
   the receiver's own class or `null`, such as `User | null`, because the query runs on the receiver itself.
   `resolveChildRouteBinding()` gets no rule, as it returns a related model.
+- **`getAttribute()`, `getAttributeValue()`**: on a concrete model that runs `HasAttributes`' own, called with one
+  literal string key, what `->key` reads ([`ReceiverMemberReader::value()`][`ReceiverMemberReader`]), since
+  `Model::__get()` is `getAttribute()`. Laravel's `getAttribute()` reads through `getAttributeValue()`, and a relation
+  through `getRelationValue()`, so an override of the first, as a translatable-attributes trait makes, declines both
+  calls, and one of the second declines a relation's name. `getAttributeValue()` never loads a relation, so a
+  relation's name stays `unknown`, though Laravel sends `null`. Any other key, an unpacked argument, an override of the
+  method itself and `getRawOriginal()` or `getOriginal()` keep their reflected `mixed`. In a model's own body the
+  receiver is `$this` (`ReceiverMethodCallHandler::filteredModelSubject()`).
 - **`only()`, `except()`**: a class that runs `Support\Collection`'s own filter publishes `Record<string, unknown>` for
   any key list. A receiver holding exactly one model whose filter is `Model`'s own, or an override reflection cannot
   type, gets what `RelationFilterHandler` builds for a relation to that model. The answer is a `Pick<>` when every
@@ -303,6 +350,21 @@ rule answers only on the receiver it names:
   gives `Record<string, unknown>`. An `Eloquent\Collection` with `elementModel` set that runs its own filter, which
   keeps whole models by primary key, publishes them as a list, with the object arm only where `only(null)` or
   `except(null)` keeps a `keyed` collection's keys (`CollectionSteps::eloquentKeyedAfter()`).
+- **`load()`, `loadMissing()`**: in any case PHP calls them by, on a concrete model, or an `Eloquent\Collection` with
+  `elementModel` set, that runs Laravel's own, the model intersected with the members `LoadedRelations` reads off the
+  literal argument, as Laravel's eager-load parser does: `Post & { author: User }`, or `(Post & { author: User })[]`.
+  Each member is keyed as `toArray()` writes it, by `ModelAttributeResolver::sentRelationKey()`, and typed as the
+  relation's read publishes it, nested under a dotted path. A column list is a `Pick<>` of the columns `toArray()`
+  writes. A to-one relation adds `| null` where a closure may filter its row out, or a side holds no key Laravel
+  matches the row by: its own column list, its parent's, or a model no row backs. A member whose payload no type admits
+  is left out: a closure that may change the columns (a `select()`, a scope, a builder macro), a `morphTo` under
+  columns or a child, one a `makeHidden()`, `setHidden()` or `setVisible()` earlier in the chain keeps out of
+  `toArray()`, and for `loadMissing()` one the model's `$with` or an eager load earlier in the chain loads narrowed. A
+  non-literal argument, or none left, keeps the model's own type. The chain before the call is read only through
+  `LoadedRelations::READS_THROUGH`, a `where…()` and a bare `fresh()`, each on the model, its query or its collection
+  and answered by no code of the application's own (the model's, its custom builder's or its custom collection's
+  method, a macro or a scope), through a scope for `load()`, and up to the signed-in user of Laravel's own guard or
+  request; any other step keeps the model's own type. The members ride only the call's own value.
 
 A collection marked `keyed` gives the `modelKeys()`, `all()` and `toArray()` lists the object arm `json_encode()` writes
 for keys out of `0..n-1`, as in `Comment[] | Record<string, Comment>`. The list arm stays, for the `[]` an empty
@@ -319,7 +381,7 @@ token, so they apply the published-model check of step 6 themselves. When no mod
 read the declared key. They decline, leaving `getKey()` on `mixed` and `modelKeys()` on its reflected
 `(string | number)[]`, only where code decides the key.
 
-One more rule reads no model, and runs before the nine on a resource collection's items alone:
+One more rule reads no model, and runs before the eleven on a resource collection's items alone:
 
 - **A resource collection's items** (`collectedItems`): `toArray()` and `jsonSerialize()` publish the held value,
   `ReceiverMethodReturnResolver::heldItems()`. It has one arm per class: `R[]` for `Support\Collection`, or
@@ -330,10 +392,30 @@ One more rule reads no model, and runs before the nine on a resource collection'
   `R` is the collected element, an API resource or the raw models' model; with none it is `unknown` and the item and
   list rules decline.
 
+Two more read the call's own arguments:
+
+- **`random()`**: on a collection whose item is known, a resource collection's element or an `elementModel` the run
+  publishes by the check a relation names its model by (`PublishedModelRegistry::isPublished()`), that runs
+  `Collection`'s or `LazyCollection`'s own: the item for no `$number` or a `null` one, since an empty collection
+  throws; a list for an integer literal or a callable; both where the argument may be null. A list picked with
+  `$preserveKeys` adds the object arm, and an unpacked call keeps every arm. Any other receiver keeps the docblock
+  reading.
+- **A conditional `@return`** on a resource collection's items, on a `guarded` receiver, a callback or helper
+  parameter included, or on what an API resource forwards a call to: where the docblock reader keeps only the first
+  token of one an arm of which reads no type (`LaravelTsPublish::extractReturnTypeFromDocblock()`), a reading equal to
+  that token's type is withdrawn, so `$this->collection->random()` with no element, and
+  `$this->collection->pluck('title')->random()`, publish `unknown`, never a word of the condition. A rule's answer and
+  a bracketed type that is no conditional, such as `(int|string)[]`, stand, and so does a body's, except where the
+  first token spells a type, as `($int is true ? int : string)` does, so no body is read. Inside a callback the guard
+  leaves unread, every receiver reads this way, and an argument it passes keeps the guard. A guarded paginator's step
+  that hands the paginator back, such as `through()`, publishes nothing, since its properties never spell the
+  `toArray()` Laravel sends; a resource collection's own paginator keeps that reading.
+
 A method a relation or an Eloquent builder does not declare is typed on the class Laravel runs it on,
 `QueryForwarding::forwardedClass()`. `Relation::__call()` forwards it to the Eloquent `Builder`,
-whose `__call()` sends a name its `$passthru` lists to `Query\Builder`. A macro under the name runs first, so it
-forwards nowhere, and a builder method that is not public is out of the relation's reach, so it declines.
+whose `__call()` sends a name its `$passthru` lists to `Query\Builder`, and runs any other name the base query has
+on it, handing the Eloquent builder back. A macro or a model scope under the name runs first, so it forwards nowhere,
+and a builder method that is not public is out of the relation's reach, so it declines.
 `$this->comments()->count()` publishes `number` and `exists()` `boolean`; `max()` declares `mixed`, so it stays
 `unknown`.
 
@@ -350,9 +432,10 @@ step can decline:
    class declares, the call keeps the receiver's own type. It adds `| null` when the return admits `null`, so
    `Model::fresh()` on a `User` is `User | null`.
 4. Otherwise `MethodReturnTypeResolver::resolve()` answers: the native signature, then the `@return` docblock when the
-   signature is vague, then [the body fallback](#the-body-fallback-carries-no-fqcn-channel), then
+   signature is vague, then [the body fallback](#the-body-fallback-carries-channels-as-an-inline-literal-does), then
    [the value its returns hold](#a-method-read-as-a-value-carries-import-channels). A conditional `@return` whose every
-   branch is a string type, as `Str::upper()` declares, reads `string`.
+   branch is a string type, as `Str::upper()` declares, reads `string`; one whose every arm reads a type reads their
+   union, as `Str::contains()` reads `boolean`. A `mixed`, template, `static` or `$this` arm keeps the first token.
 5. A vague result declines. `unknown[]` would claim a list where an associative array or a `keyBy()` collection is a
    JSON object. A concrete model keeps the `Record<string, unknown>` of a method it inherits from `Model`, such as
    `getAttributes()` or `getDirty()`, since Laravel keys those arrays by attribute name.
@@ -361,7 +444,7 @@ step can decline:
    `MethodReturnTypeResolver::resolve()` applies the same check for the call paths that read through it, and the direct
    reflection in `ResolvesRelatedModelTypes` applies it itself, so here it still guards step 3.
 
-### The body fallback carries no FQCN channel
+### The body fallback carries channels as an inline literal does
 
 When a declared return is too vague to publish, such as a bare `: array`, `MethodReturnTypeResolver` analyzes the method
 body once per set of bindings its calls' arguments make. The shape spelled by its literal return, or by a returned
@@ -370,7 +453,7 @@ variable the walk reads, replaces the declaration's array arms, so `PriceQuoteSe
 too, so it publishes what the bare `$this->m()` does. A vague `@return array<string, …>` wins over the native `array` in
 `methodOrDocblockReturnTypes()`, and by the same rule over a body value whose arms it spells with a `Record` for the
 `unknown[]`, as a parameter returned untouched can be: a string-keyed array encodes as a `Record`, never as a list
-(`TsTypeString::spellsListAsRecord()`).
+(`TsTypeString::documentedWins()`, through `spellsListAsRecord()`).
 
 A returned parameter that the body writes only through its keys still holds every key its caller passed. The walk starts
 from them where `ObjectMembers::seed()` reads the parameter's bound value, as `GuardedLinkPayload` pins; otherwise the
@@ -389,21 +472,39 @@ that calls itself terminates, whatever each call passes. An int key publishes qu
 then [re-indexes](resource-ast-analyzer.md#numeric-keys) such a shape into the list Laravel sends, so
 `ServiceReturnResource.tiers` publishes `string[]`.
 
-The inline type follows
-[the shape rule](model-attribute-resolver.md#a-shape-keeps-a-member-only-where-its-own-imports-cover-it), checked per
-method rather than per member: against the whole method's custom imports and the classes on its channels
-(`MethodAnalysis::channelNames()`). An override, such as `'chart' => new Chart`, keeps its type and import; a model is
-`unknown`, and its siblings keep their types. `UiUntypedChartKindResource` pins an enum spelled like a composed class
-beside it. In a scope that carries no import, `ValueResolver::resolveClassConstant()` types a plain backed enum's case
-as the literal it sends (`EnumValueTypes::caseValue()`), so `$r ? ChartEnum::Bar : UiTone::Bright` publishes
-`'bar' | UiToneDto`, and drops a pure enum's case, which `json_encode()` cannot write. A `JsonSerializable` enum keeps
-`unknown`, since `json_encode()` sends its `jsonSerialize()`, not its value. A case of an enum
-`LaravelTsPublish::retypedEnumType()` answers for keeps its override and brings no name of its own. A case an accessor's
-getter returns, or one passed to a helper that returns it, types the same way as a case written in place. Any other read
-of an enum, such as a cast attribute or a list of a plain enum's cases, is `unknown`.
+The analysis folds through `InlineObjectResult::of()`, as an inline literal does, so each member keeps its type and the
+import channels of the classes it names: a model, an API resource, an enum or its `EnumResource` wrap, a filter's
+`Pick<>`. `BodyFallbackChannelsTest` pins each against the same literal written in place. A member a `@return` fill
+typed first reads with no class, as `of()` reads one (`InlineObjectResult::readFillsClassLess()`). Then
+`MethodAnalysis::forgetUnpublishableMembers()` publishes `unknown` for two kinds of member and forgets their channels,
+while their siblings keep their types:
 
-Attribute filters are the exception, because they know an answer that names no token. `bodyType()` analyzes with
-`carriesImports: false`, which sets `AnalysisScope::$carriesImports`, and the filter code reads the flag:
+- One naming a model with no published file, which `resolve()`'s check would decline the whole shape for.
+- One whose class publishes under a name a custom import brings. The reader holds the shape as one key, which aliases
+  every token of a name alike, so an enum spelled like a composed class beside it would take that class's tokens.
+  `UiUntypedChartKindResource` pins it.
+
+The analysis sets `AnalysisScope::$casesAsLiterals`, so `ValueResolver::resolveConstantValue()` types a plain backed
+enum's case as the literal it sends (`EnumValueTypes::caseValue()`), alone or listed in a class constant, a list
+literal, `collect()` or `cases()`: `['v' => Status::Draft]` publishes `{ v: 0 }` and
+`[Status::Draft, Status::Published]` `(0 | 1)[]`, where the enum's type is vaguer. So
+`$r ? ChartEnum::Bar : UiTone::Bright` publishes `'bar' | UiToneDto`. A literal binds no enum, so where a `map()` or
+`array_map()` callback reads nothing off one, in any caller, the array is read again with its cases as their enums
+(`BindsMapCallbacks::mappedReadingCases()`). A pure enum's case, which `json_encode()` cannot write, and a
+`JsonSerializable` enum's, whose `jsonSerialize()` it sends, type nothing; a case of an enum
+`LaravelTsPublish::retypedEnumType()` answers for keeps its override. A case an accessor's getter returns types the same
+way where the body reads the accessor whole: the getter is analyzed under the flag too, with memo entries of its own, so
+an in-place read never replays the literal. An `EnumResource` payload reads its cases as their enum
+(`AnalysisScope::readingCasesAsEnums()`), so the wrap publishes as in place. Any other read of an enum, such as a cast
+attribute or `->value`, publishes as it does in place. The flag keys its own `analysis:` memo entry. The value read sets
+it too, so a `: mixed` helper returning `Status::Draft` publishes `0`. While a read needs the case's enum, such as an
+`EnumResource` payload or a map callback's re-read, `AnalysisMemo::readingCasesAsEnums()` holds for its whole extent, so
+every body it reaches, however many frames deep (a helper, its shape, an accessor's getter, a macro, a spread), reads
+its cases as their enums, and each memo answer computed then is kept under a key of its own.
+
+Attribute filters know an answer that names no token, which a reader that carries no import publishes.
+`AnalysisScope::$carriesImports` is false only for an accessor's getter read that way
+([AccessorBodyAnalyzer § A reader that carries no import][reader-no-import]), and the filter code reads the flag:
 
 - A literal key list publishes the inline shape, never a `Pick<>`. A member whose type names a token, such as an enum
   column or a relation, is `unknown` there, so its siblings keep their types.
@@ -416,22 +517,8 @@ Attribute filters are the exception, because they know an answer that names no t
   `ModelAttributeResolver::serializedAttributeNames()` lists. A `null` arm stays, and any other token makes the whole
   answer `unknown`.
 
-A filter in the getter of an accessor the body reads is covered too. When the accessor's type comes from its getter
-body, `AccessorBodyAnalyzer` analyzes that getter without imports as well, so the method keeps its shape. The model file
-and every resource still publish the getter's own analysis, and `CommentRelationFiltersResource` and
-`ReleaseColumnsResource` pin both kinds of body. See
-[AccessorBodyAnalyzer § A reader that carries no import][reader-no-import].
-
-An `EnumResource` wrap over a closure parameter's column, a local or any other resolved payload, and a
-`$this->helper()` that `SubjectHelperReturnResolver` reads, stay `unknown` without imports, so their siblings keep their
-types.
-
-An accessor still costs the method its whole shape when its type names a class any other way:
-
-- Through its closure signature or its `Attribute<>` docblock.
-- Through an old-style getter's return type or `@return` docblock.
-- Through an `@property` tag.
-- Through a getter that returns a class-typed value without a filter, such as `fn () => $this->author`.
+A method body reads an accessor as the model file publishes it, filters included. `CommentRelationFiltersResource` and
+`ReleaseColumnsResource` pin both kinds of body.
 
 ### A method read as a value carries import channels
 
@@ -454,7 +541,7 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
 - **Skips a dependency's method**: built in, under a vendor directory Composer registered, or in this package's own
   `src/` (`DependencyFiles`).
 - **An untyped body that can end without a value** adds `| null`, as `SubjectHelperReturnResolver` does.
-- **Unlike the shape, it carries import channels**, so a helper that returns an enum or a model imports it.
+- **It carries import channels, as the shape does**, so a helper that returns an enum or a model imports it.
 
 It shares the `method-body:` cycle guard with the shape, so a recursion through either reader stops at its first repeat.
 
@@ -463,15 +550,23 @@ It shares the `method-body:` cycle guard with the shape, so a recursion through 
 `ReceiverPropertyFetchHandler` claims `PropertyFetch` and `NullsafePropertyFetch`, and does for a property read what
 `ReceiverMethodCallHandler` does for a call. So `$post?->title` is `string | null` once `$post` is known to hold a
 `Post`. A `$this->prop` leaf declines outright, since `ThisPropertyHandler` owns it and reads the subject's own
-declaration first. See [AST engine § Subject mode](ast-engine.md#subject-mode).
+declaration first. See [AST engine § Subject mode](ast-engine.md#subject-mode). With no backing model, a `$this->prop`
+the subject does not declare reads through `ReceiverMemberReader::value()` on what `proxyHeld()` names, when that is
+only classes other than a model, as `JsonResource::__get()` forwards it.
 A read on `$this->prop` types from the class `prop` holds, as a call does.
 
-Each class types the property one of two ways:
+[`ReceiverMemberReader::value()`][`ReceiverMemberReader`] types the property on each class one of two ways, after
+`ProxyDeclaration::forwarded()` sends a read off an API resource to what it holds, as above: `->resource` read whole
+publishes those classes, with the null its declaration admits, unless the class redeclares `$resource`.
 
 - **A model**: `ModelAttributeResolver::resolveAttribute()`, then `resolveRelation()`, the order `Model::__get()` uses.
   A relation carries its `modelFqcn`, and a morph union its targets as `embeddedModelFqcns`, so the emitted token keeps
   its import. On an `attributeless` receiver a column adds `| null`, as Laravel reads a missing attribute, unless the
-  model's new instance holds a default for it or an accessor or cast class computes it; a relation reads as ever.
+  model's new instance holds a default for it or an accessor or cast class computes it. A relation to one adds
+  `| null` there too where it has no default model and a column it finds its row by was left unwritten
+  (`LoadedRelations::parentKeys()`): the foreign key, and a `morphTo()`'s type, or the local key of a `hasOne()` or
+  `morphOne()`; a through relation's local key `ReceiverMemberReader` adds itself. A relation to many sends the empty
+  list its type admits.
 - **Any other class**: a public, non-static property, typed by `SubjectPropertyTypeResolver::resolve()` in the same
   three steps as subject mode. It must name only published models, for the reasons under
   [the order for one class](#the-order-for-one-class).
@@ -482,13 +577,25 @@ what it declines falls to the reflected property. `->value` publishes the enum's
 [reader that carries imports][reader-no-import], an enum [`PublishedEnums`] says `ts:publish` writes, and no case whose
 `#[TsCase]` changes what the alias spells. Otherwise the read is the literal union of what PHP sends. A case past
 ±(2⁵³−1) makes `->value` `number`, and the interfaces read `string | number` and `string`. `PropertyChainHandler`'s
-wrapped-enum arm asks the same class.
+wrapped-enum arm asks the same class (`EnumValueTypes::member()`).
+
+A read off a case itself, `Status::Draft->value`, publishes the literal that case sends
+(`EnumValueTypes::caseMember()`), `0` here, and so does each case arm of a ternary or `match` receiver, with `| null`
+for `?->`. A `match` is a receiver too: each arm but a `throw` resolves as a ternary's do.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
-[registry's rule][queue-contract] for same-named classes. One declining arm declines the read. The read gains
-`| null` for its own `?->` or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and
-`VariableHandler` claim these node classes earlier. [The inventory][inventory] records where each steps aside, and where
-`VariableHandler` does not.
+[registry's rule][queue-contract] for same-named classes. One declining arm declines the read, but on a `joined`
+receiver a concrete model that runs Model's own `__get()`, `getAttribute()` and `getAttributeValue()`, and has no
+attribute, `@property`, method or property of the name, reads `null` beside a class that types it
+(`ReceiverMemberReader::lacks()`), and a `tagOnly` class that cannot answer, such as an interface, a plain object
+without the member, or a model whose untyped accessor or override answers it, is left out with a warning naming its
+write; any other abstract model, an unbounded `morphTo`'s included, or override declines it. A class a `static`,
+`self` or `parent` over `$this` names that declares the member, typed or not, declines it too, since the subject runs
+that member or an override, unless the write ends a parameter's block. Left out, `$this` warns that the class it is
+read as does not declare the member, or that the member could not be typed. A method read and a member's receiver
+leave out a declining `tagOnly` class the same way. The read gains `| null` for its own `?->`
+or the receiver's `shortCircuits` flag, never twice. `PropertyChainHandler` and `VariableHandler` claim these node
+classes earlier. [The inventory][inventory] records where each steps aside, and where `VariableHandler` does not.
 
 ## Related
 
@@ -498,7 +605,7 @@ These pages cover the neighbors of receiver resolution:
 - [ResourceAstAnalyzer § Attribute filters on any model receiver][resource-filters]: how `RelationFilterHandler` builds
   the filter answers the receiver rules reuse.
 - [AccessorBodyAnalyzer](accessor-body-analyzer.md): getter bodies, the other reader that can carry no import.
-- [Known gaps § A shape whose values name a class loses those values][gap-shape]: what the body fallback costs a user.
+- [Known gaps § A shape whose values name a class can lose some of them][gap-shape]: what the body fallback costs a user.
 - [API Resources § Method Return Types](https://tolki.abe.dev/ts/api-resources.html#method-return-types): what users see
   of receiver inference.
 - [Type inference gates](../testing/type-inference-gates.md): the CI checks that catch a regression to `unknown` or an
@@ -507,18 +614,27 @@ These pages cover the neighbors of receiver resolution:
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
 [`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
+[`InstanceofNarrowing`]: ../../src/Ast/Receivers/InstanceofNarrowing.php
+[`LoadedRelations`]: ../../src/Ast/Receivers/LoadedRelations.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php
 [`MethodReturnTypeResolver`]: ../../src/Ast/Members/MethodReturnTypeResolver.php
-[`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/NarrowsInstanceofSubjects.php
+[`NarrowsInstanceofSubjects`]: ../../src/Ast/Concerns/Narrowing/NarrowsInstanceofSubjects.php
+[`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
+[`PropertyDocblockTypeReader::tag()`]: ../../src/Ast/Docblocks/PropertyDocblockTypeReader.php
+[`ProxyDeclaration`]: ../../src/Ast/Resources/ProxyDeclaration.php
 [`PublishedEnums`]: ../../src/Collectors/PublishedEnums.php
 [`QueryForwarding`]: ../../src/Ast/Receivers/QueryForwarding.php
-[`ReadsInstanceofChains`]: ../../src/Ast/Concerns/ReadsInstanceofChains.php
+[`ReadsInstanceofChains`]: ../../src/Ast/Concerns/Narrowing/ReadsInstanceofChains.php
 [`ReceiverClassResolver`]: ../../src/Ast/Receivers/ReceiverClassResolver.php
-[`ReceiverMethodCallHandler`]: ../../src/Ast/Handlers/ReceiverMethodCallHandler.php
+[`ReceiverMethodCallHandler`]: ../../src/Ast/Handlers/Calls/ReceiverMethodCallHandler.php
+[`ReceiverMemberReader`]: ../../src/Ast/Receivers/ReceiverMemberReader.php
 [`ReceiverMethodReturnResolver`]: ../../src/Ast/Receivers/ReceiverMethodReturnResolver.php
-[`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/ReceiverPropertyFetchHandler.php
+[`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/Members/ReceiverPropertyFetchHandler.php
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
-[gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-loses-those-values-in-one-of-two-ways
+[`ResolvesAuthHelperCalls`]: ../../src/Ast/Concerns/ResolvesAuthHelperCalls.php
+[glossary]: ../../GLOSSARY.md
+[gap-guards]: ../known-gaps.md#with-two-user-models-the-signed-in-user-publishes-unknown-past-auth-auth-and-request
+[gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
 [params]: ast-engine.md#a-called-methods-parameters
 [declines]: ast-engine.md#a-handler-declines-what-it-cannot-type

@@ -34,7 +34,7 @@ export interface MerchantResource
     suppliers?: SupplierCollection | never[];
     unpublished_guess?: unknown;
     unpublished_guess_collection?: unknown;
-    staff_map_only?: ({ id: number; name: string; role: RoleType | null; last_login_at: string | null })[];
+    staff_map_only?: { id: number; name: string; role: RoleType | null; last_login_at: string | null }[];
     registrars_map_except?: { name: string }[];
     history_event_map_only?: unknown;
 }

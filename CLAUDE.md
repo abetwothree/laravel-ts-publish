@@ -2,7 +2,7 @@
 
 ## Guidelines
 
-You must remember to follow all instructions in this AGENTS.md file, and you must not deviate from them unless they are incorrect and you have a better widely accepted standard from top programmers or largely used projects. You must ensure that the code is clean, well-documented, and follows best practices for TypeScript development.
+You must remember to follow all instructions in this CLAUDE.md file, and you must not deviate from them unless they are incorrect and you have a better widely accepted standard from top programmers or largely used projects. You must ensure that the code is clean, well-documented, and follows best practices for TypeScript development.
 
 ## What is the abetwothree/laravel-ts-publish project?
 
@@ -243,3 +243,7 @@ Code in `src/Ast` should not depend on any specific analyzer; it should provide 
 Code in `src/Analyzers` must offload all AST analysis to the engine in `src/Ast` and should not attempt to analyze the AST directly.
 
 The `src/Ast/AstEngine.php` should be a public entry to point for any 3rd party to point a class and/or method for AST analysis and get back the `src/Ast/AnalysisResult.php` with the TypeScript representation of the analyzed structure. Everything else in `src/Ast` is internal and can be refactored freely without affecting external consumers.
+
+## Fixture App
+
+The `fixture-app/` directory contains an application that may be used to probe and test behavior while developing features. See `docs/testing/fixture-app.md` for guidance on how to use and interact with the fixture app during development.

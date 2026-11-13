@@ -4,31 +4,36 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\PrintsTopLevelMembers;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\SharedEnumKinds;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ParentCallChain;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\DottedTopLevelKeys;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TsCastsImportResolver;
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use Composer\ClassMapGenerator\ClassMapGenerator;
 use ReflectionClass;
 
 /**
  * @phpstan-import-type TsCastsUnpacked from TsCastsReader
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ComposedFile from FileImportNames
+ * @phpstan-import-type PrintedMember from FileImportNames
  * @phpstan-import-type ShapeTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish
+ * @phpstan-import-type CastMap from MethodAnalysis
+ * @phpstan-import-type SentEntry from DottedTopLevelKeys
  *
  * @phpstan-type TsCastsParseResult = array{
  *     overrides: array<string, string>,
@@ -41,11 +46,12 @@ use ReflectionClass;
  *     typeImports: TypesImportMap,
  *     valueImports: TypesImportMap,
  * }
- * @phpstan-type OverrideEntry = array{type: string, optional: bool}
+ * @phpstan-type OverrideEntry = SentEntry
  * @phpstan-type SharedPropMap = array<array-key, OverrideEntry>
  */
 class InertiaSharedDataAnalyzer
 {
+    use PrintsTopLevelMembers;
     use RewritesEnumResourceProps;
 
     /**
@@ -111,7 +117,7 @@ class InertiaSharedDataAnalyzer
      */
     protected function buildResult(string $middlewareClass): array
     {
-        $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share');
+        $analysis = resolve(AstEngine::class)->analyzeMethod($middlewareClass, 'share', reading: Reading::Inertia);
         $keys = array_column($analysis->properties, 'name');
 
         // Each location decides alone, so share() outranks the class whatever the spelling; a loser imports nothing.
@@ -122,21 +128,23 @@ class InertiaSharedDataAnalyzer
         $docblock = $this->parseDocblockFromMiddleware($middlewareClass);
         $docblockOverrides = array_map(fn (array $info): string => $info['type'], $docblock);
 
+        $importPaths = JsEmitter::retargetCasts($tsCasts['importPaths'], $targets);
         $resolver = new TsCastsImportResolver;
-        $resolvedTsCasts = $resolver->resolve(
-            JsEmitter::retargetCasts($tsCasts['overrides'], $targets),
-            JsEmitter::retargetCasts($tsCasts['importPaths'], $targets),
-        );
+        $resolvedTsCasts = $resolver->resolve(JsEmitter::retargetCasts($tsCasts['overrides'], $targets), $importPaths);
         $this->carryDocblockImports($analysis, $docblock, $resolvedTsCasts['overrides']);
 
-        $mergedOverrides = JsEmitter::castsByKey(
-            $this->normalizeOverrideKeys(
-                array_replace($docblockOverrides, $resolvedTsCasts['overrides']),
-                JsEmitter::retargetCasts($tsCasts['optionalOverrides'] ?? [], $targets),
-                $this->propFlagsOutsideDocblock($analysis, $docblockOverrides),
-            ),
-            $keys,
+        $overrides = $this->normalizeOverrideKeys(
+            array_replace($docblockOverrides, $resolvedTsCasts['overrides']),
+            JsEmitter::retargetCasts($tsCasts['optionalOverrides'] ?? [], $targets),
+            $this->propFlagsOutsideDocblock($analysis, $docblockOverrides),
         );
+        $overrideTargets = JsEmitter::castTargets(array_map(strval(...), array_keys($overrides)), $keys);
+        $mergedOverrides = JsEmitter::retargetCasts($overrides, $overrideTargets);
+        $castPaths = JsEmitter::retargetCasts(
+            $this->castPathsByName($resolvedTsCasts['overrides'], $importPaths),
+            $overrideTargets,
+        );
+        $docblockByKey = JsEmitter::retargetCasts($this->docblockByName($docblock), $overrideTargets);
 
         // The overrides are laid over the props below, so they can add or retype a key a signature covers.
         resolve(IndexSignatureReconciler::class)->reconcile(
@@ -145,28 +153,23 @@ class InertiaSharedDataAnalyzer
             subject: $middlewareClass,
         );
 
-        $this->forgetOverriddenChannels($analysis, $mergedOverrides);
-        SharedEnumKinds::spellApart($analysis);
+        $castsInForce = $this->castsInForce($analysis, $mergedOverrides, $castPaths, $docblockByKey);
+        resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
-        $renumbered = $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass);
-
-        $propsType = $this->buildTypeStringWithOverrides(
-            TopLevelRenumbering::rekey($props, $renumbered),
-            TopLevelRenumbering::rekey($mergedOverrides, $renumbered),
+        $members = $this->buildMembersWithOverrides(
+            $props,
+            $mergedOverrides,
+            $this->renumberTopLevel($props, $mergedOverrides, $middlewareClass),
         );
-
-        $inferredImports = $this->buildInferredImports($analysis, $propsType);
+        $file = $this->composeSharedData($analysis, $members, $resolvedTsCasts['typeImports']);
         ComposedClassTypes::warnOfSharedNames($middlewareClass, ComposedClassTypes::classesIn($analysis->customImports));
 
         return [
-            'sharedPageProps' => $propsType,
+            'sharedPageProps' => $file['types'][0],
             'withAllErrors' => $this->resolveWithAllErrors($middlewareClass),
-            'typeImports' => ImportMaps::merge(
-                CastChannels::withoutOtherPaths($inferredImports['typeImports'], $resolvedTsCasts['typeImports']),
-                $resolvedTsCasts['typeImports'],
-            ),
-            'valueImports' => $inferredImports['valueImports'],
+            'typeImports' => ImportMaps::merge($file['typeImports'], $resolvedTsCasts['typeImports']),
+            'valueImports' => $file['valueImports'],
         ];
     }
 
@@ -181,7 +184,7 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Flatten the analysis into a prop map, later declarations of a key winning.
+     * Flatten the analysis into a prop map, later declarations of a key winning; one a dotted key replaces is `closed`.
      *
      * @return SharedPropMap
      */
@@ -190,7 +193,11 @@ class InertiaSharedDataAnalyzer
         $props = [];
 
         foreach ($analysis->properties as $property) {
-            $props[$property['name']] = ['type' => $property['type'], 'optional' => $property['optional']];
+            $props[$property['name']] = [
+                'type' => $property['type'],
+                'optional' => $property['optional'],
+                ...(isset($analysis->closedToDottedKeys[$property['name']]) ? ['closed' => true] : []),
+            ];
         }
 
         foreach (self::FRAMEWORK_OWNED_PROPS as $name) {
@@ -201,64 +208,22 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Resolve the imports the inferred props need, keeping only names the rendered type spells.
+     * Join the printed members into the props type, same-named classes aliased apart, beside the imports it spells.
      *
-     * An override replaces a whole prop, so the type it displaced must not keep an import alive.
-     *
-     * @return array{typeImports: TypesImportMap, valueImports: TypesImportMap}
+     * @param  list<PrintedMember>  $members
+     * @param  TypesImportMap  $castImports  the imports of the casts in force
+     * @return ComposedFile
      */
-    protected function buildInferredImports(MethodAnalysis $analysis, string $propsType): array
+    protected function composeSharedData(MethodAnalysis $analysis, array $members, array $castImports): array
     {
-        $imports = new AnalysisImports()->build($analysis, '');
+        $customImports = ImportMaps::merge($analysis->customImports, $castImports);
+        $member = FileImportNames::objectMember($analysis, $members, brought: ImportMaps::localNames($customImports));
 
-        return [
-            'typeImports' => $this->keepSpelledNames(ComposedClassTypes::resolveImports($imports['typeImports'], ''), $propsType),
-            'valueImports' => $this->keepSpelledNames($imports['valueImports'], $propsType),
-        ];
+        return FileImportNames::compose([$member], $customImports, '');
     }
 
     /**
-     * Drop every import name the rendered props type never spells, and any path left empty.
-     *
-     * @param  TypesImportMap  $imports
-     * @return TypesImportMap
-     */
-    protected function keepSpelledNames(array $imports, string $propsType): array
-    {
-        foreach ($imports as $path => $names) {
-            $used = array_values(array_filter(
-                $names,
-                fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $propsType),
-            ));
-
-            if ($used === []) {
-                unset($imports[$path]);
-
-                continue;
-            }
-
-            $imports[$path] = $used;
-        }
-
-        return $imports;
-    }
-
-    /**
-     * Drop every FQCN channel belonging to an overridden key, so its import dies with its type.
-     *
-     * @param  SharedPropMap  $overrides
-     */
-    protected function forgetOverriddenChannels(MethodAnalysis $analysis, array $overrides): void
-    {
-        foreach (array_keys($overrides) as $name) {
-            $analysis->forgetChannels((string) $name);
-        }
-    }
-
-    /**
-     * Parse #[TsCasts] attributes from the middleware class and its share() method.
-     *
-     * Method-level attributes take priority over class-level, matching Laravel's cast resolution order.
+     * Parse the #[TsCasts] attributes of the middleware's share() chain, a later location winning a key.
      *
      * @param  class-string  $className
      * @return TsCastsParseResult
@@ -276,24 +241,24 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * The middleware's #[TsCasts] instances in precedence order: the class, then its share() method.
+     * The #[TsCasts] instances of the middleware's share() chain, root first, each class's before its own share()'s.
      *
      * @param  class-string  $className
      * @return list<TsCasts>
      */
     protected function tsCastsAttributesFromMiddleware(string $className): array
     {
-        /** @var ReflectionClass<object> $reflection */
-        $reflection = new ReflectionClass($className);
-
+        $declaring = resolve(ParentCallChain::class)->declaringClasses($className, 'share');
         $attributes = [];
 
-        foreach ($reflection->getAttributes(TsCasts::class) as $attr) {
-            $attributes[] = $attr->newInstance();
-        }
+        foreach (array_reverse($this->castClasses($className, $declaring)) as $class) {
+            $located = $class->getAttributes(TsCasts::class);
 
-        if ($reflection->hasMethod('share')) {
-            foreach ($reflection->getMethod('share')->getAttributes(TsCasts::class) as $attr) {
+            if (in_array($class->getName(), $declaring, true)) {
+                $located = [...$located, ...$class->getMethod('share')->getAttributes(TsCasts::class)];
+            }
+
+            foreach ($located as $attr) {
                 $attributes[] = $attr->newInstance();
             }
         }
@@ -358,27 +323,17 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Build a TypeScript object type string, applying overrides where present.
+     * Print each prop as an object type's member, an override in its place, where Inertia sends its key.
      *
      * @param  SharedPropMap  $props  the AST-inferred props
      * @param  SharedPropMap  $overrides  normalized type overrides keyed by property name
+     * @param  array<array-key, string>  $renumbered  the key Laravel sends each prop on, by its name
+     * @return list<PrintedMember>
      */
-    protected function buildTypeStringWithOverrides(array $props, array $overrides): string
+    protected function buildMembersWithOverrides(array $props, array $overrides, array $renumbered = []): array
     {
-        if ($props === [] && $overrides === []) {
-            return TsTypeStringService::EMPTY_OBJECT;
-        }
-
-        $parts = [];
-
         // An override keeps its prop's place, and one no prop has goes after them.
-        foreach (array_replace($props, $overrides) as $key => $entry) {
-            $key = (string) $key;
-            $parts[] = JsEmitter::validJsObjectKey($key, allowIndexSignature: true)
-                .($entry['optional'] && ! JsEmitter::isIndexSignatureKey($key) ? '?: ' : ': ').$entry['type'];
-        }
-
-        return '{ '.implode(', ', $parts).' }';
+        return $this->printTopLevel($props, $overrides, $renumbered);
     }
 
     /**
@@ -421,5 +376,92 @@ class InertiaSharedDataAnalyzer
         $docblockNames = array_map(fn (int|string $key): string => rtrim((string) $key, '?'), array_keys($docblockOverrides));
 
         return array_diff_key(array_column($analysis->properties, 'optional', 'name'), array_flip($docblockNames));
+    }
+
+    /**
+     * Each class from the middleware up to the deepest declaring a share() the analysis reads.
+     *
+     * PHP gives no class its parent's attributes, so each is a cast location of its own.
+     *
+     * @param  class-string  $className
+     * @param  list<class-string>  $declaring  the classes declaring each share() the analysis reads
+     * @return non-empty-list<ReflectionClass<object>>
+     */
+    private function castClasses(string $className, array $declaring): array
+    {
+        $class = new ReflectionClass($className);
+        $deepest = $declaring === [] ? $className : $declaring[array_key_last($declaring)];
+        $chain = [$class];
+
+        while ($class->getName() !== $deepest && ($class = $class->getParentClass()) !== false) {
+            $chain[] = $class;
+        }
+
+        return $chain;
+    }
+
+    /**
+     * Each key a #[TsCasts] entry names, without the `?` normalizeOverrideKeys() drops, with the entry's import path.
+     *
+     * @param  array<array-key, string>  $casts
+     * @param  array<array-key, string>  $paths
+     * @return array<array-key, string|null>
+     */
+    private function castPathsByName(array $casts, array $paths): array
+    {
+        $byName = [];
+
+        foreach (array_keys($casts) as $key) {
+            $name = (string) $key;
+            $byName[str_ends_with($name, '?') ? substr($name, 0, -1) : $name] = $paths[$key] ?? null;
+        }
+
+        return $byName;
+    }
+
+    /**
+     * Each docblock entry by the key it retypes, without the `?` normalizeOverrideKeys() drops.
+     *
+     * @param  array<string, ShapeTypeInfo>  $docblock
+     * @return array<array-key, ShapeTypeInfo>
+     */
+    private function docblockByName(array $docblock): array
+    {
+        $byName = [];
+
+        foreach ($docblock as $key => $info) {
+            $byName[rtrim((string) $key, '?')] = $info;
+        }
+
+        return $byName;
+    }
+
+    /**
+     * The cast in force for each key a #[TsCasts] entry, the share() docblock or a share() helper's own method cast
+     * retypes, with its imports, and for a docblock entry the class behind each token it names.
+     *
+     * @param  SharedPropMap  $overrides
+     * @param  array<array-key, string|null>  $paths  each key a #[TsCasts] entry wins, with that entry's import path
+     * @param  array<array-key, ShapeTypeInfo>  $docblock  each docblock entry, by the key it retypes
+     * @return CastMap
+     */
+    private function castsInForce(MethodAnalysis $analysis, array $overrides, array $paths, array $docblock): array
+    {
+        $inForce = $analysis->casts;
+
+        foreach ($overrides as $key => $override) {
+            if (array_key_exists($key, $paths)) {
+                $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key]];
+            } elseif (isset($docblock[$key])) {
+                $inForce[$key] = [
+                    'type' => $override['type'],
+                    'import' => null,
+                    'customImports' => $docblock[$key]['customImports'],
+                    'tokenFqcns' => $docblock[$key]['tokenFqcns'] ?? [],
+                ];
+            }
+        }
+
+        return $inForce;
     }
 }

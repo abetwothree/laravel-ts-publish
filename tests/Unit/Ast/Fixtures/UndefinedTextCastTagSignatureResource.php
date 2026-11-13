@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Support\Opaque;
 
 /** Its `_tag` casts name `undefined` only inside a string literal and a `Record`, beside an optional `price_tag`. */
 #[TsCasts(['state_tag' => "'undefined' | 'defined'", 'extra_tag' => 'Record<string, number | undefined>'])]
@@ -41,6 +42,6 @@ final class UndefinedTextCastTagSignatureResource extends JsonResource
     /** Deliberately untyped. */
     protected function opaque()
     {
-        return $this->resource->getAttribute('title');
+        return Opaque::value($this->resource->title);
     }
 }

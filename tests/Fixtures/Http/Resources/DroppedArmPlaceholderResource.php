@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
+use Workbench\App\Support\Opaque;
 
 /**
  * A test-only resource whose `[]` and `null` arms, and typed ones, sit beside values the engine cannot type: in a
@@ -82,12 +83,12 @@ class DroppedArmPlaceholderResource extends JsonResource
     /** Declared only as an array. */
     public function declaredRows(): array
     {
-        return $this->resource->getAttribute('tags')->all();
+        return Opaque::value($this->resource->tags)->all();
     }
 
     /** Deliberately untyped. */
     public function opaqueRows()
     {
-        return $this->resource->getAttribute('tags');
+        return Opaque::value($this->resource->tags);
     }
 }

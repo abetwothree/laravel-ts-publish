@@ -44,3 +44,5 @@ export const FreightClass = defineEnum({
 export type FreightClassType = 'standard' | 'express';
 
 export type FreightClassKind = 'Standard' | 'Express';
+
+export type FreightClass = FreightClassType;

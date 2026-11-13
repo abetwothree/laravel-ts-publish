@@ -64,7 +64,7 @@ it('returns null when the resolved root class does not extend the base class', f
 });
 
 it('returns null gracefully when $baseClass does not exist, instead of erroring', function () {
-    // Decision: the InertiaTableAnalyzer table base is a string FQCN the host app may not have
+    // Decision: the InertiaTableHandler table base is a string FQCN the host app may not have
     // installed. is_a($fqcn, $baseClass, true) must stay silent, not require class_exists($baseClass).
     $expr = firstStatementExpr('<?php Workbench\App\Models\Post::query();');
 

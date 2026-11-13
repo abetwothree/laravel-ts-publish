@@ -7,15 +7,15 @@ namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects;
 use ArrayObject;
 
 /**
- * A test-only payload whose helpers overwrite a key by spreading a function, a parent method or a chained call, also
- * inside a nested array, an argument or a helper read as a value.
+ * A test-only payload whose helpers overwrite a key by spreading a decoded array, a parent method or a chained
+ * call, also inside a nested array, an argument or a helper read as a value.
  */
 class OverwrittenSpreadBase extends OverwrittenSpreadGrand
 {
     /** @return array<string, mixed> */
     protected function m(): array
     {
-        return ['a' => 1, ...array_merge(['a' => 'x'], [])];
+        return ['a' => 1, ...(array) json_decode('{"a":"x"}', true)];
     }
 
     /** @return array<string, mixed> */
@@ -39,13 +39,13 @@ class OverwrittenSpreadBase extends OverwrittenSpreadGrand
     /** @return array<string, mixed> */
     protected function nestedLiteral(): array
     {
-        return ['v' => ['k' => 1, ...array_merge(['k' => 'x'], [])], 'b' => true];
+        return ['v' => ['k' => 1, ...(array) json_decode('{"k":"x"}', true)], 'b' => true];
     }
 
     /** @return array<string, mixed> */
     protected function deeperLiteral(): array
     {
-        return ['v' => ['w' => ['k' => 1, ...array_merge(['k' => 'x'], [])]], 'b' => true];
+        return ['v' => ['w' => ['k' => 1, ...(array) json_decode('{"k":"x"}', true)]], 'b' => true];
     }
 
     /**

@@ -9,11 +9,15 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * One list or object arm of an array's published type, as its named members and the keys it leaves unnamed. A write
  * joins its value into each key it may reach, or makes each member it may remove optional; a list a write may key
  * otherwise also becomes that object, kept beside the list.
+ *
+ * The write model; Support\TypeStrings\ArrayArms reads an arm without one.
  *
  * @phpstan-type Member array{optional: bool, type: string}
  * @phpstan-type ArrayWrite array{path: list<string>, key: string|ElementKey, value: string|null}
@@ -50,7 +54,8 @@ final readonly class ArrayArm
      */
     public static function written(string $type, array $writes, bool $reindexes, bool $ordered): ?string
     {
-        return self::folded($type, $writes, $reindexes, $ordered);
+        // A gap arm, which no rule typed, no write reads: the arms beside it settle as they do without it.
+        return VisibleGaps::carried($type, static fn (string $type): ?string => self::folded($type, $writes, $reindexes, $ordered));
     }
 
     /**
@@ -195,7 +200,9 @@ final readonly class ArrayArm
      */
     private static function intKey(string $name): ?int
     {
-        return PhpArrayKey::storedInt(trim($name, '"\''));
+        $key = PrintedKey::decode($name);
+
+        return $key === null ? null : PhpArrayKey::storedInt($key);
     }
 
     /**
@@ -233,8 +240,8 @@ final readonly class ArrayArm
     }
 
     /**
-     * Each arm printed, once, an intersection parenthesized beside another arm, and the list the class sends the object
-     * arm as where it may, unless the list arm already holds each value that list may hold.
+     * Each arm printed, once, an intersection or an arrow parenthesized beside another arm, and the list the class
+     * sends the object arm as where it may, unless the list arm already holds each value that list may hold.
      *
      * @param  array<string, self>  $arms  by kind
      * @param  list<ArrayWrite>|null  $writes  the writes the arms settled under; null leaves out the list
@@ -248,10 +255,7 @@ final readonly class ArrayArm
         $held = $listed === null || (isset($arms['list']) && array_diff($listed, $arms['list']->rest) === []);
         $printed = array_values(array_unique($held ? $printed : [...$printed, TsTypeShape::listType($listed)]));
 
-        return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(
-            fn (string $arm): string => count(TsTypeShape::splitTopLevel($arm, ['&'])) > 1 ? '('.$arm.')' : $arm,
-            $printed,
-        ));
+        return count($printed) === 1 ? $printed[0] : implode(' | ', array_map(TsTypeShape::groupedArm(...), $printed));
     }
 
     /**
@@ -436,7 +440,12 @@ final readonly class ArrayArm
      */
     private function canList(bool $reindexes): bool
     {
-        $kept = array_filter($this->members, fn (array $member): bool => ! $member['optional']);
+        // The open marker is no key the array holds.
+        $kept = array_filter(
+            $this->members,
+            fn (array $member, int|string $name): bool => ! $member['optional'] && ! VisibleGaps::isMarker((string) $name),
+            ARRAY_FILTER_USE_BOTH,
+        );
 
         // By key, since PHP stores a bare number's name as an int key.
         return array_diff_key($kept, array_flip($this->listedNames($reindexes))) === [];

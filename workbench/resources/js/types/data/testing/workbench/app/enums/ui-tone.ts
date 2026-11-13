@@ -16,3 +16,5 @@ export const UiTone = defineEnum({
 export type UiToneType = 'bright' | 'dim';
 
 export type UiToneKind = 'Bright' | 'Dim';
+
+export type UiTone = UiToneType;

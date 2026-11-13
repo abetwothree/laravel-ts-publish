@@ -13,7 +13,7 @@ use Workbench\App\Packages\Ui\Panel;
 
 /**
  * Reads a value object that keeps its members' overrides through a docblock shape, a JsonSerializable's docblock shape
- * and an untyped helper, and a published model through a docblock shape and an untyped helper, which stays `unknown`.
+ * and an untyped helper, and a published model through a docblock shape and an untyped helper.
  */
 class UiBoardShapesResource extends JsonResource
 {

@@ -4,46 +4,53 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ResourceExpressionHandlers;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ArrayMergeHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\BinaryOpHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CastHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClassConstantHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CollectionPipelineHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConstFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\FirstClassCallableHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaResourcePropHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InertiaWrapperHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\MatchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ModelFinderHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\NewResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\OffsetReadHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\PropertyChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverMethodCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ReceiverPropertyFetchHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationCollectionChainHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\RelationFilterHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ToResourceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ArrayMergeHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ConditionableCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\ReceiverMethodCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\StaticCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\CollectionPipelineHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\ModelFinderHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationCollectionChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections\RelationFilterHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaResourcePropHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaWrapperHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\PropertyChainHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ReceiverPropertyFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\BinaryOpHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\MatchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\OffsetReadHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\TernaryHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ConditionalMethodHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\NewResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ToResourceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\CastHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClassConstantHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ConstFetchHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\FirstClassCallableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ScalarHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\FinderChainEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FinderChainResource;
+use Inertia\AlwaysProp;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -85,6 +92,7 @@ function resourceExpressionHandlerOrder(): array
         ConditionalMethodHandler::class,
         ToResourceHandler::class,
         InertiaWrapperHandler::class,
+        ModelFinderHandler::class,
         StaticCallHandler::class,
         NewResourceHandler::class,
         ThisPropertyHandler::class,
@@ -98,12 +106,13 @@ function resourceExpressionHandlerOrder(): array
         MatchHandler::class,
         OffsetReadHandler::class,
         ReceiverPropertyFetchHandler::class,
+        ConditionableCallHandler::class,
         ReceiverMethodCallHandler::class,
         KnownMethodRuleHandler::class,
     ];
 }
 
-/** A throwaway engine: make()/withoutResourceHandlers() only construct handlers, they never resolve anything. */
+/** A throwaway engine: make() and forSubject() only construct handlers, they never resolve anything. */
 function resourceExpressionHandlersTestEngine(): ExpressionEngine
 {
     return new class implements ExpressionEngine
@@ -118,10 +127,10 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called while merely constructing handlers');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -131,32 +140,13 @@ function resourceExpressionHandlersTestEngine(): ExpressionEngine
     };
 }
 
-it('returns all 28 handlers in the documented dispatch order', function () {
+it('returns all 30 handlers in the documented dispatch order', function () {
     $classes = array_map(
         fn (ExpressionHandler $handler): string => $handler::class,
         ResourceExpressionHandlers::make(resourceExpressionHandlersTestEngine()),
     );
 
     expect($classes)->toBe(resourceExpressionHandlerOrder());
-});
-
-it('excludes exactly ConditionalMethodHandler, ToResourceHandler and RelationFilterHandler from withoutResourceHandlers(), same relative order', function () {
-    $classes = array_map(
-        fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::withoutResourceHandlers(),
-    );
-
-    $expected = array_values(array_filter(
-        resourceExpressionHandlerOrder(),
-        fn (string $class): bool => ! in_array($class, [
-            ConditionalMethodHandler::class,
-            ToResourceHandler::class,
-            RelationFilterHandler::class,
-        ], true),
-    ));
-
-    expect($classes)->toHaveCount(25)
-        ->and($classes)->toBe($expected);
 });
 
 // A model's getter body reads the model's own relations, whose only()/except() only RelationFilterHandler types.
@@ -171,7 +161,7 @@ it('keeps RelationFilterHandler in forModelClosures() and excludes ConditionalMe
         fn (string $class): bool => ! in_array($class, [ConditionalMethodHandler::class, ToResourceHandler::class], true),
     ));
 
-    expect($classes)->toHaveCount(26)
+    expect($classes)->toHaveCount(28)
         ->and($classes)->toBe($expected)
         ->and($classes)->toContain(RelationFilterHandler::class);
 });
@@ -184,7 +174,7 @@ it('excludes only ConditionalMethodHandler from forNonResourceSubjects(), same r
         ResourceExpressionHandlers::forNonResourceSubjects(),
     );
 
-    expect($classes)->toHaveCount(27)
+    expect($classes)->toHaveCount(29)
         ->and($classes)->toBe(array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])));
 });
 
@@ -204,41 +194,62 @@ it("gives a JsonResource subject make() and any other subject forNonResourceSubj
     'a model' => [Comment::class, false],
 ]);
 
-// Inertia sends shared data as it sends page props: ToResourceHandler would type a shared resource as a nested key's
-// value, and without ModelFinderHandler no shared paginator is seen.
-it('gives a shared-data middleware the page-prop handlers, InertiaResourcePropHandler before ToResourceHandler', function () {
-    $classes = array_map(
-        fn (ExpressionHandler $handler): string => $handler::class,
-        ResourceExpressionHandlers::forSubject(HandleInertiaRequests::class, resourceExpressionHandlersTestEngine()),
-    );
+// ToResourceHandler would type a resource as a nested key's value, where Inertia sends its response, and
+// StaticCallHandler would claim a table before InertiaTableHandler typed it.
+it('inserts InertiaResourcePropHandler before ToResourceHandler, and InertiaTableHandler before StaticCallHandler, in forInertia()', function () {
+    $profile = ResourceExpressionHandlers::forInertia(ResourceExpressionHandlers::forNonResourceSubjects());
+    $expected = array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class]));
+    array_splice($expected, (int) array_search(ToResourceHandler::class, $expected, true), 0, [InertiaResourcePropHandler::class]);
+    array_splice($expected, (int) array_search(StaticCallHandler::class, $expected, true), 0, [InertiaTableHandler::class]);
 
-    $expected = [];
-
-    foreach (array_values(array_diff(resourceExpressionHandlerOrder(), [ConditionalMethodHandler::class])) as $class) {
-        if ($class === ToResourceHandler::class) {
-            $expected[] = InertiaResourcePropHandler::class;
-        }
-
-        if ($class === StaticCallHandler::class) {
-            $expected[] = ModelFinderHandler::class;
-        }
-
-        $expected[] = $class;
-    }
-
-    expect($classes)->toBe($expected);
+    expect(array_map(fn (ExpressionHandler $handler): string => $handler::class, $profile))->toBe($expected)
+        ->and($profile[0])->toEqual(new FirstClassCallableHandler(invoked: true));
 });
 
-// Inertia calls each callable a middleware shares, while a broadcast event's payload is encoded as it stands, so only
-// the event warns.
-it('types a first-class callable as its call only in a shared-data middleware', function (string $subject, string $type, int $warnings) {
+// Laravel runs the query a chain rooted at a model spells wherever the chain is, so every profile types it alike.
+it('types a finder chain in an API resource and a broadcast event as a page does', function (string $class, string $method, string $find) {
+    expect(analyzedKeyTypes($class, $method))->toBe([
+        $find => 'User | null',
+        'plain_find' => 'User | null',
+        'pluck_first' => 'number | null',
+        'where_get' => 'User[]',
+    ]);
+})->with([
+    'an API resource' => [FinderChainResource::class, 'toArray', 'find?'],
+    'a broadcast event' => [FinderChainEvent::class, 'broadcastWith', 'find'],
+]);
+
+// With no published set to read, a framework model is still known to have no file, so its name would import nothing.
+it('declines a finder chain on a model no file publishes, in every profile', function (string $subject, Reading $reading) {
+    $expr = runtimeClassCall('\\Illuminate\\Foundation\\Auth\\User::query()->first()');
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null, reading: $reading)->resolve($expr)['type'])->toBe('unknown');
+})->with([
+    'an API resource' => [CommentResource::class, Reading::Encoded],
+    'a broadcast event' => [PayloadDiffersEvent::class, Reading::Encoded],
+    'a shared-data middleware read for Inertia' => [HandleInertiaRequests::class, Reading::Inertia],
+]);
+
+// Without an insertion point forInertia() would drop a page-prop handler silently, and every value that handler types.
+it('throws when forInertia() is given a list without ToResourceHandler or StaticCallHandler', function (array $handlers, string $missing) {
+    expect(fn () => ResourceExpressionHandlers::forInertia($handlers))
+        ->toThrow(LogicException::class, "forInertia() inserts a page-prop handler before {$missing}, which the list lacks.");
+})->with([
+    'the model-getter list' => [fn (): array => ResourceExpressionHandlers::forModelClosures(), ToResourceHandler::class],
+    'a list without StaticCallHandler' => [fn (): array => [new ToResourceHandler], StaticCallHandler::class],
+]);
+
+// Inertia calls each callable it sends, while anything else is encoded as it stands, so only a read for Inertia types
+// the call; a share middleware's body read for an API resource is one of the latter.
+it('types a first-class callable as its call only where Inertia reads it', function (string $subject, Reading $reading, string $type, int $warnings) {
     $now = new FuncCall(new Name('now'), [new VariadicPlaceholder]);
 
-    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null)->resolve($now)['type'])->toBe($type)
+    expect(new ResourceAstAnalyzer(new ReflectionClass($subject), null, reading: $reading)->resolve($now)['type'])->toBe($type)
         ->and(AnalysisWarnings::all())->toHaveCount($warnings);
 })->with([
-    'a shared-data middleware' => [HandleInertiaRequests::class, 'string', 0],
-    'a broadcast event' => [PayloadDiffersEvent::class, 'Record<string, never>', 1],
+    'a shared-data middleware read for Inertia' => [HandleInertiaRequests::class, Reading::Inertia, 'string', 0],
+    'a shared-data middleware read for anything else' => [HandleInertiaRequests::class, Reading::Encoded, 'Record<string, never>', 1],
+    'a broadcast event' => [PayloadDiffersEvent::class, Reading::Encoded, 'Record<string, never>', 1],
 ]);
 
 // Ordering pin #1: both handlers claim a first-class-callable $this->when(...) —
@@ -248,7 +259,7 @@ it('tries FirstClassCallableHandler before ConditionalMethodHandler for a first-
     $expr = new MethodCall(new Variable('this'), 'when', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 });
 
 // ReceiverMethodCallHandler also claims only()/except(), so the order of the two cannot decide this Pick<>, in either
@@ -308,7 +319,18 @@ it('tries InertiaWrapperHandler before StaticCallHandler for Inertia::always(...
     $expr = new StaticCall(new Name('Inertia'), 'always', [new Arg(new String_('en'))]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => 'string']);
+});
+
+// NewResourceHandler reads a `new` of a class that is no resource as `unknown`, so it would floor a prop object Inertia
+// reads; json_encode() sends one as `{}`, so where it reads, the wrapper declines and that `unknown` stands.
+it('tries InertiaWrapperHandler before NewResourceHandler for new AlwaysProp(...) where Inertia reads it', function () {
+    $expr = new New_(new Name(AlwaysProp::class), [new Arg(new String_('en'))]);
+    $encoded = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
+    $inertia = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class, reading: Reading::Inertia);
+
+    expect($inertia->resolve($expr))->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true, 'heldProp' => true, 'closedToDottedKeys' => 'string'])
+        ->and($encoded->resolve($expr))->toBe(['type' => 'unknown', 'optional' => false]);
 });
 
 // Ordering pin #5: KnownFunctionCallHandler gates only the inner auth() call on isFirstClassCallable(),
@@ -318,7 +340,7 @@ it('tries FirstClassCallableHandler before KnownFunctionCallHandler for auth()->
     $expr = new MethodCall(new FuncCall(new Name('auth')), 'user', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 });
 
 // Ordering pin #6: ToResourceHandler matches on the method name alone and then calls getArgs(),
@@ -328,5 +350,5 @@ it('tries FirstClassCallableHandler before ToResourceHandler for $this->post->to
     $expr = new MethodCall(new PropertyFetch(new Variable('this'), 'post'), 'toResource', [new VariadicPlaceholder]);
     $analyzer = new ResourceAstAnalyzer(new ReflectionClass(CommentResource::class), Comment::class);
 
-    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false]);
+    expect($analyzer->resolve($expr))->toBe(['type' => 'Record<string, never>', 'optional' => false, 'heldObject' => true]);
 });

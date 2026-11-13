@@ -24,5 +24,6 @@ class UsesInsteadofTraits
 {
     use InsteadofTraitA, InsteadofTraitB {
         InsteadofTraitA::label insteadof InsteadofTraitB;
+        InsteadofTraitB::label as labelFromB;
     }
 }

@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\JsonApiVa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\KeylessToArrayApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingOverrideApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\LoopingToArrayApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\NestedAppendedNamesApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArrayReturnApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToArraySpreadApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ParentToAttributesSpreadApiResource;
@@ -28,6 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Controllers\InertiaJsonApiController;
 use Workbench\App\Http\Resources\JsonApi\AttributesPostResource;
@@ -301,6 +303,17 @@ test('a JSON:API collection prop after withoutWrapping() is the bare list', func
 test('keyless names in a toAttributes() that returns a variable read the model attributes', function () {
     expect(publishedResourceKeyTypes(VariableAttributesPostResource::class, Post::class))
         ->toMatchArray(['attributes' => '{ title: string; word_count: number | null; content?: string; is_long: boolean }']);
+});
+
+// Laravel reads a keyless name as a model attribute only at the top of the attributes; a nested one is a value.
+test('a name spread under a nested key beside a resource\'s arm reads as no attribute of the model', function () {
+    $post = new Post(['title' => 'hi', 'content' => 'body']);
+    $post->id = 9;
+
+    expect(publishedResourceKeyTypes(NestedAppendedNamesApiResource::class, Post::class)['attributes'] ?? null)
+        ->toBe('{ title: string; row: PageItemResource }')
+        ->and(json_encode(new NestedAppendedNamesApiResource($post)->resolve(Request::create('/'))))
+        ->toContain('"row":{"0":"content","id":9,"title":"hi"}');
 });
 
 test('a morph relationship publishes each target\'s type literal', function () {

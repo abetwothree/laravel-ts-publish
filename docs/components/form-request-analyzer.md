@@ -18,8 +18,8 @@ These classes and files produce and consume the analysis:
   top-level fields.
 - [`form-request.blade.php`](../../resources/views/form-request.blade.php): skips prohibited fields, appends a field's
   `| null`, and renders a dynamic request as `Record<string, unknown>`.
-- [`KnownMethodRuleHandler`](../../src/Ast/Handlers/KnownMethodRuleHandler.php): types `$request->validated('key')`
-  through `analyzeField()`.
+- [`KnownMethodRuleHandler`](../../src/Ast/Handlers/Calls/KnownMethodRuleHandler.php): types
+  `$request->validated('key')` through `analyzeField()`.
 
 ## `rules()` runs for real
 
@@ -71,10 +71,10 @@ Each shape composes by its own rule:
 - **List** (every key numeric): each index composes, prohibited ones drop, duplicates collapse, and the rest union
   inside `[]`, or `never[]` when none is left. An object keyed `"0"` is a type no JSON array is assignable to.
 
-`arrayWrapType()` parenthesizes a union or an intersection before appending `[]`, because `'a' | 'b'[]` means
-`'a' | ('b'[])`. `hasTopLevelSeparator()` tracks bracket depth and skips quoted literals, so a `|` inside a shape or
-inside `'>a'` adds no parentheses. Its depth floors at zero, so malformed input gets a redundant paren, never a missing
-one.
+A list type is `TsTypeShape::listType()`'s, which parenthesizes a union, an intersection or an arrow before appending
+`[]`, because `'a' | 'b'[]` means `'a' | ('b'[])`. It reads the type with the type scanner, so a `|` inside a shape or
+inside a literal such as `'>a'` or `'it\'s|x'` adds no parentheses. Depth floors at zero, so malformed input gets a
+redundant paren, never a missing one.
 
 ## A composed key keeps its own presence rules
 

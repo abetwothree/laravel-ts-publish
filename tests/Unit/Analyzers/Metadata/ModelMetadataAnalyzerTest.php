@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CollidingProv
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DeclaredLocalMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocblockOverridesEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\DocumentedSpreadHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalarMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
@@ -27,11 +28,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedMod
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NinthTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalDocblockEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
+use Workbench\App\Enums\Role;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /**
  * @param  class-string<ModelMetadataProvider>  $providerClass
@@ -41,6 +45,12 @@ function analyzeMetadataTypesFor(string $providerClass, array $payloadKeys): Mod
 {
     return resolve(ModelMetadataAnalyzer::class)->analyze($providerClass, $payloadKeys);
 }
+
+// provide()'s own docblock is laid over its keys by the analyzer, but a spread helper's is read only by the refiner.
+test('a helper spread into provide() fills a member its own @return types where its body leaves it unknown', function () {
+    expect(analyzeMetadataTypesFor(DocumentedSpreadHelperMetadataProvider::class, ['recipients'])->types)
+        ->toBe(['recipients' => '{ name: string; settings: { digest: boolean } | null }[]']);
+});
 
 test('binds the Model parameter so its Laravel-typed method calls infer', function () {
     $analysis = analyzeMetadataTypesFor(BoundModelMetadataProvider::class, ['table', 'keyName', 'routeKeyName', 'morphClass']);
@@ -171,6 +181,27 @@ test('a docblock override removes the inferred import it displaced', function ()
     expect($analysis->types)->toBe(['role' => 'string'])
         ->and($analysis->sources)->toBe(['role' => 'docblock'])
         ->and($analysis->typeImports)->toBe([]);
+});
+
+test('a subclass whose parseDeclaredTypes() returns no docblock tokens still types and imports the docblock key', function () {
+    $analyzer = new class extends ModelMetadataAnalyzer
+    {
+        /**
+         * The declared types in the shape they had before docblock keys carried their tokens.
+         *
+         * @return array<string, mixed>
+         */
+        protected function parseDeclaredTypes(ReflectionMethod $method): array
+        {
+            return array_diff_key(parent::parseDeclaredTypes($method), ['tokens' => true]);
+        }
+    };
+
+    $analysis = $analyzer->analyze(OptionalDocblockEnumMetadataProvider::class, ['table', 'role'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe(['table' => 'string', 'role' => 'RoleType'])
+        ->and($analysis->typeImports)->toBe(['../enums' => ['RoleType']])
+        ->and(new OptionalDocblockEnumMetadataProvider()->provide(new User))->toBe(['table' => 'users', 'role' => Role::Admin]);
 });
 
 test('a TsCasts import is not duplicated by the engine-applied attribute', function () {

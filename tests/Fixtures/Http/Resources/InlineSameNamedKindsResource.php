@@ -10,7 +10,8 @@ use Workbench\App\Models\Post;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
- * A test-only resource whose nested array reads the case names of two same-named enums, and no other token of either.
+ * A test-only resource whose nested array reads the case names of two same-named enums, and no other token of either;
+ * a case built by `from()`, since a case's own `->name` publishes its literal.
  *
  * @mixin Post
  */
@@ -20,7 +21,7 @@ class InlineSameNamedKindsResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'inner' => ['a' => $this->status->name, 'b' => CrmStatus::Lead->name],
+            'inner' => ['a' => $this->status->name, 'b' => CrmStatus::from('lead')->name],
         ];
     }
 }

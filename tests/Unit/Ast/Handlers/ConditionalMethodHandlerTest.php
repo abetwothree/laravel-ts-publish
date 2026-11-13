@@ -6,9 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ConditionalMethodHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ConditionalMethodHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
@@ -109,10 +110,10 @@ function conditionalMethodHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -148,10 +149,10 @@ final class ConditionalMethodHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -217,10 +218,10 @@ final class ConditionalMethodHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -668,7 +669,7 @@ it('binds a transform() callback parameter to the value its call passes', functi
     'a to-one whenLoaded variable, bare' => ['$this->whenLoaded("author", fn ($author) => $this->transform($author, fn ($author) => $author))', 'User'],
     'a relation-chain map variable' => [
         '$this->comments->map(fn ($c) => $this->transform($c, fn ($c) => ["id" => $c->id, "who" => $c->user?->name]))',
-        '({ id: number; who: string | null })[]',
+        '{ id: number; who: string | null }[]',
     ],
     'a to-many whenLoaded variable' => [
         '$this->whenLoaded("comments", fn ($comments) => $this->transform($comments, fn ($comments) => $comments))',

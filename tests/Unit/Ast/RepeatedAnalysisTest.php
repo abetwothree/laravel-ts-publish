@@ -7,8 +7,9 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\GuessesModelResources;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceResponseBody;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\HelperCallablePropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DataKeyPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemsKeyPostCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCollection;
@@ -113,6 +115,23 @@ test('a resource spread twice inside another analysis is analyzed once', functio
 
     expect(array_column($properties, 'type', 'name'))->toBe(['badge' => 'string', 'header' => 'boolean', 'footer' => 'boolean'])
         ->and($lookups['own:'.PostBadgeResource::class.'::toArray'] ?? 0)->toBe(1);
+});
+
+// Inertia calls a callable a body returns, which json_encode() writes as `{}` and a response's extras decode as `[]`,
+// and filter() sends a resource around null as null, so the readings never share an answer.
+test('a body is analyzed once per reading, apart', function () use ($countLookups) {
+    $lookups = $countLookups();
+    $engine = resolve(AstEngine::class);
+    $readings = [...Reading::cases(), ...Reading::cases()];
+
+    $types = array_map(
+        fn (Reading $reading): ?string => $engine
+            ->analyzeMethod(HelperCallablePropsController::class, 'meta', reading: $reading)->properties[0]['type'] ?? null,
+        $readings,
+    );
+
+    expect($types)->toBe([...$once = ['Record<string, never>', 'never[]', 'Record<string, never>', 'string', 'string'], ...$once])
+        ->and($lookups['own:'.HelperCallablePropsController::class.'::meta'] ?? 0)->toBe(5);
 });
 
 test('an accessor body is analyzed once per model, attribute and import mode', function () use ($countLookups) {

@@ -6,16 +6,34 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Grade as FixtureGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullProofProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullReturningGetProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeBodyWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeMethodWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ShadowedEnumParcel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\StatusLegsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
@@ -781,6 +799,25 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->and($data->enumMutators)->toBeEmpty();
     });
 
+    test('a cast\'s list<Dto> keeps the DTO\'s enum members with their imports', function () {
+        $data = (new ModelTransformer(StatusLegsPost::class))->data();
+        $post = (new StatusLegsPost)->setRawAttributes(['content' => '[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]']);
+
+        expect($data->columns['content']['type'])->toBe('{ code: string; status: StatusType; priority: PriorityType | null }[]')
+            ->and(array_merge(...array_values($data->typeImports)))->toContain('StatusType', 'PriorityType')
+            ->and(json_encode($post->toArray()['content']))
+            ->toBe('[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]');
+    });
+
+    test('a cast\'s list<Dto> leaves an enum member the config excludes unknown, with no import', function () {
+        config()->set('ts-publish.enums.excluded', [Status::class]);
+
+        $data = (new ModelTransformer(StatusLegsPost::class))->data();
+
+        expect($data->columns['content']['type'])->toBe('{ code: string; status: unknown; priority: PriorityType | null }[]')
+            ->and(array_merge(...array_values($data->typeImports)))->not->toContain('StatusType')->toContain('PriorityType');
+    });
+
     test('uses aliased const names for Deal model enum columns', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
@@ -924,9 +961,12 @@ describe('ModelTransformer with Warehouse model', function () {
     test('column cast to CastsAttributes returning a plain class inlines its shape', function () {
         $data = (new ModelTransformer(Warehouse::class))->data();
 
-        // CoordinateCast::get() returns Coordinate, a plain class this package publishes no file for.
+        // CoordinateCast::get() returns Coordinate, a plain class this package publishes no file for. Laravel calls it
+        // for a NULL column too, so the nullable column sends a Coordinate, never null.
         expect($data->columns)->toHaveKey('coordinate_data')
-            ->and($data->columns['coordinate_data']['type'])->toBe('{ lat: number; lng: number } | null');
+            ->and($data->columns['coordinate_data']['type'])->toBe('{ lat: number; lng: number }')
+            ->and(sentAsJson((new Warehouse)->setRawAttributes(['coordinate_data' => null])->setAppends([])->toArray())->coordinate_data)
+            ->toEqual((object) ['lat' => 0, 'lng' => 0]);
     });
 
     test('appended attribute returning a plain class inlines its shape', function () {
@@ -1933,11 +1973,35 @@ describe('ModelTransformer with a const and a type that share a name', function 
             ->and($data->enumColumns['clearance']['constName'])->toBe('WorkbenchClearance');
     });
 
-    test('a const named like the model\'s own interface keeps its name: a value import merges with a local interface', function () {
+    test('a const named like the model\'s own interface steps aside, since the enum\'s module exports a type of that name', function () {
         $data = (new ModelTransformer(Grade::class))->data();
 
-        expect($data->valueImports['../enums'])->toBe(['Grade'])
-            ->and($data->enumColumns['grade']['constName'])->toBe('Grade');
+        expect($data->valueImports['../enums'])->toBe(['Grade as WorkbenchGrade'])
+            ->and($data->enumColumns['grade']['constName'])->toBe('WorkbenchGrade')
+            ->and($data->columns['grade']['type'])->toBe('GradeType');
+    });
+
+    test('two same-named enums a model of that name casts both step aside for the model', function () {
+        $data = (new ModelTransformer(FixtureGrade::class))->data();
+        $values = array_merge(...array_values($data->valueImports));
+
+        expect($values)->toContain('Grade as WorkbenchGrade', 'Grade as FixturesGrade')
+            ->and($data->enumColumns['grade']['constName'])->toBe('WorkbenchGrade')
+            ->and($data->enumColumns['subject']['constName'])->toBe('FixturesGrade')
+            ->and($data->columns['grade']['type'])->toBe('WorkbenchGradeType')
+            ->and($data->columns['subject']['type'])->toBe('FixturesGradeType');
+    });
+
+    test('declaredNames() lists every interface the split template can declare', function () {
+        expect((new ModelTransformer(Grade::class))->declaredNames())->toBe([
+            'Grade', 'GradeResource', 'GradeMutators', 'GradeMutatorsResource', 'GradeRelations', 'GradeAll', 'GradeAllResource',
+        ]);
+    });
+
+    test('declaredNames() lists the two interfaces the full template declares', function () {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::model-full');
+
+        expect((new ModelTransformer(Grade::class))->declaredNames())->toBe(['Grade', 'GradeResource']);
     });
 });
 
@@ -1956,18 +2020,88 @@ describe('ModelTransformer with accessors that union two models sharing a name',
             ->toBe('{ first: WorkbenchUser | null; either: WorkbenchUser | CrmUser | null }');
     });
 
-    // One relation, `sender`, uses the application model, so the file aliases that model after the relation.
+    // One relation, `sender`, uses the application model, so the file aliases that model after the relation. The
+    // `updated_at` getter declares a native `array`, and Laravel calls it for a NULL column too.
     test('an accessor typed by a docblock union whose arms render alike publishes an array of each model', function () {
         $data = (new ModelTransformer(HandoverCrew::class))->data();
 
         expect($data->mutators['crew']['type'])->toBe('SenderUser[] | CrmUser[]')
             ->and($data->appends['standby']['type'])->toBe('SenderUser[] | CrmUser[]')
-            ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[] | null')
+            ->and($data->columns['updated_at']['type'])->toBe('SenderUser[] | CrmUser[]')
+            ->and(sentAsJson((new HandoverCrew)->setRawAttributes(['updated_at' => null])->toArray())->updated_at)->toBe([])
             ->and($data->typeImports)->toBe([
                 '../../../../../workbench/app/models' => ['User as SenderUser'],
                 '../../../../../workbench/crm/models' => ['User as CrmUser'],
             ]);
     });
+});
+
+describe('a nullable column cast to a class or read through an accessor', function () {
+    test('publishes the null the cast\'s get() or the getter declares, as the resolver does', function (string $model, string $column, string $type) {
+        expect((new ModelTransformer($model))->data()->columns[$column]['type'])->toBe($type)
+            ->and(resolve(ModelAttributeResolver::class)->resolveAttribute($model, $column)['type'])->toBe($type);
+    })->with([
+        'a Castable whose caster\'s get() declares a non-null type' => [CastNullWarehouse::class, 'color', '{ x: number; y: number }'],
+        'an arrow-typed override' => [CastNullWarehouse::class, 'priority', '(() => string) | null'],
+        'a getter declaring a non-null array{a: int}' => [AccessorNullWarehouse::class, 'status', '{ a: number }'],
+        'a getter declaring ?array natively, its docblock leaving the null out' => [AccessorNullWarehouse::class, 'color', '{ a: number | null } | null'],
+        'an old-style getter declaring a non-null string' => [AccessorNullWarehouse::class, 'priority', 'string'],
+        'an untyped getter whose docblock declares a nested null only' => [AccessorNullWarehouse::class, 'manager_id', '{ a: number | null }'],
+        'a serializing caster whose serialize() declares nothing' => [SerializedCastNullWarehouse::class, 'phone', 'string | null'],
+        'a caster that is inbound too' => [SerializedCastNullWarehouse::class, 'coordinate_data', 'string | null'],
+        'a non-null getter beside a class cast' => [AccessorCastNullWarehouse::class, 'phone', 'string | null'],
+        'a getter declaring mixed' => [AccessorCastNullWarehouse::class, 'coordinate_data', '{ a: number | null }'],
+        'a non-null getter beside a datetime cast' => [AccessorCastNullWarehouse::class, 'status', 'string'],
+        'a serialize() method declaring nothing, without the interface' => [SerializeMethodWarehouse::class, 'phone', 'string | null'],
+        'a serialize() method declaring a string, without the interface' => [SerializeMethodWarehouse::class, 'coordinate_data', 'string'],
+        'a mixed serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'status', '{ x: number; y: number } | null'],
+        'a mixed serialize(), with the interface' => [SerializeMethodWarehouse::class, 'color', 'unknown | null'],
+        'an array serialize() method, without the interface' => [SerializeMethodWarehouse::class, 'priority', '{ x: number; y: number }'],
+        'an array serialize() method over a shape, without the interface' => [SerializeMethodWarehouse::class, 'manager_id', '{ a: number }'],
+        'a mixed serialize() over a number, typed by its returns' => [VagueSerializeWarehouse::class, 'phone', 'string | null'],
+        'an object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'coordinate_data', '{ x: number; y: number }'],
+        'a ?object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'status', '{ x: number; y: number } | null'],
+        'an array|object serialize() method over a value object' => [VagueSerializeWarehouse::class, 'color', '{ x: number; y: number }'],
+        'an object serialize() method over a number' => [VagueSerializeWarehouse::class, 'priority', 'object'],
+        'an array serialize() method writing an object over a string' => [VagueSerializeWarehouse::class, 'manager_id', 'unknown[] | Record<string, unknown>'],
+        'an array serialize() method writing a list over a string' => [VagueSerializeWarehouse::class, 'secondary_contact_id', 'unknown[] | Record<string, unknown>'],
+        'a Castable whose caster\'s serialize() declares mixed' => [VagueSerializeWarehouse::class, 'primary_contact_id', 'unknown | null'],
+        'a typed serialize() over a get() that may return null, on a not-null column' => [SerializeBodyWarehouse::class, 'name', 'string'],
+        'an undeclared serialize() typed by its returns' => [SerializeBodyWarehouse::class, 'phone', 'string | null'],
+        'an undeclared serialize() typed by its returns over a get() that may return null' => [SerializeBodyWarehouse::class, 'coordinate_data', 'string | null'],
+        'a typed serialize() over an untyped get() whose body proves a string, on a not-null column' => [UntypedGetSerializePost::class, 'title', 'string'],
+        'a typed serialize() over an untyped get() whose @return documents a number' => [UntypedGetSerializePost::class, 'content', 'object'],
+        'a typed serialize() over an untyped get() whose body proves nothing, which adds no null' => [UntypedGetSerializePost::class, 'category', 'string'],
+        'a typed serialize() over a get() declaring mixed' => [NullProofProduct::class, 'name', 'string'],
+        'a typed serialize() over a get() documenting mixed' => [NullProofProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() replacing a NULL through ??' => [NullProofProduct::class, 'sku', 'string'],
+        'a typed serialize() over a get() replacing an empty value through ?:' => [NullProofProduct::class, 'price', 'string'],
+        'a typed serialize() over a get() reading the raw attribute with a default' => [NullProofProduct::class, 'quantity', 'string'],
+        'a typed serialize() over a get() reading its own cast on another model' => [NullProofProduct::class, 'is_active', 'string'],
+        'a typed serialize() over a get() the engine cannot read' => [NullProofProduct::class, 'is_featured', 'string'],
+        'a typed serialize() over a get() with a null ternary arm' => [NullReturningGetProduct::class, 'name', 'string'],
+        'a typed serialize() over a get() with a bare return' => [NullReturningGetProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() that may fall off its end' => [NullReturningGetProduct::class, 'sku', 'string'],
+        'a typed serialize() over a get() documenting int|null' => [NullReturningGetProduct::class, 'price', 'string'],
+        'a typed serialize() over a get() documenting mixed with a null ternary arm' => [NullReturningGetProduct::class, 'quantity', 'string'],
+        'a typed serialize() over a get() declaring mixed with a null ternary arm' => [NullReturningGetProduct::class, 'is_active', 'string'],
+        'an undeclared serialize() over a get() with a literal null read through a caster cycle' => [UnprovenNullProduct::class, 'name', 'string'],
+        'an undeclared serialize() over a get() with a literal null and a recursive helper' => [UnprovenNullProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() with a literal null and a recursive helper' => [UnprovenNullProduct::class, 'sku', 'string'],
+        'an undeclared serialize() over a get() with a literal null and two helpers calling each other' => [UnprovenNullProduct::class, 'price', 'string'],
+        'an undeclared serialize() over a get() with a literal null and a property fallback' => [UnprovenNullProduct::class, 'quantity', 'string'],
+        'an undeclared serialize() over a get() the engine cannot read' => [UnprovenNullProduct::class, 'is_active', 'string'],
+        'a typed serialize() over a get() the engine cannot read' => [UnprovenNullProduct::class, 'is_featured', 'string'],
+        'a typed serialize() over a get() reading another model\'s accessor through a cycle' => [CarriedNullProduct::class, 'name', 'string'],
+        'an undeclared serialize() over a get() reading another model\'s accessor through a cycle' => [CarriedNullProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() calling a helper that reads a model' => [CarriedNullProduct::class, 'sku', 'string'],
+        'an undeclared serialize() over a get() calling a helper that reads a model' => [CarriedNullProduct::class, 'price', 'string'],
+        'a typed serialize() over a get() reading another model\'s accessor' => [CarriedNullProduct::class, 'quantity', 'string'],
+        'an undeclared serialize() over a get() returning the raw value' => [CarriedNullProduct::class, 'is_active', 'string'],
+        'a typed serialize() over a get() returning on both arms of an if/else' => [AllBranchesReturnProduct::class, 'name', 'string'],
+        'a typed serialize() over a get() returning from every case of a switch with a default' => [AllBranchesReturnProduct::class, 'slug', 'string'],
+        'a typed serialize() over a get() returning from its try and its catch' => [AllBranchesReturnProduct::class, 'sku', 'string'],
+    ]);
 });
 
 describe('a nullable column whose declared type holds a nested null', function () {
@@ -2019,4 +2153,27 @@ describe('ModelTransformer with AsCollection::of() a class that has an override'
         'a model with an inherited override, each element sent by its toArray()' => [InheritingChildModel::class, 'UiNode[]', ['@js/types/ui' => ['UiNode']]],
         'a model with no override, which keeps unknown[]' => [User::class, 'unknown[]', []],
     ]);
+});
+
+// A relation method's `@phpstan-return` is read over a vaguer `@return`, as PHPStan reads it.
+test('a relation built through a helper and named only by @phpstan-return publishes', function () {
+    $data = (new ModelTransformer(PhpstanRelationPost::class))->data();
+
+    expect($data->relations['comments']['type'] ?? null)->toBe('Comment[]');
+});
+
+// LinksComments shares LinkingPost's namespace and is not imported, so only that namespace resolves its `@use` tag.
+test('a trait of the model\'s own namespace, used with no import, binds its template through @use', function () {
+    $data = (new ModelTransformer(LinkingPost::class))->data();
+
+    expect($data->appends['linked_items']['type'] ?? null)->toBe('Comment[]')
+        ->and($data->appends['first_linked']['type'] ?? null)->toBe('Comment | null')
+        ->and($data->appends['latest']['type'] ?? null)->toBe('Comment | null')
+        ->and($data->typeImports)->toBe(['../../../../../workbench/app/models' => ['Comment']]);
+});
+
+test('a getter reading getAttribute() of a literal key publishes the attribute it reads', function () {
+    $data = (new ModelTransformer(AttributeCardPost::class))->data();
+
+    expect($data->mutators['shout']['type'] ?? null)->toBe('string');
 });

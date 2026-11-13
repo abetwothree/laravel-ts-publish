@@ -7,12 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\HeldCallables;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -24,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr;
@@ -36,7 +39,7 @@ use ReflectionProperty;
 /**
  * Public entry point: `analyze()` — a class and a method in, properties and imports out.
  *
- * It and `AnalysisResult` are the engine's whole public surface. The other seven methods here are
+ * It and `AnalysisResult` are the engine's whole public surface. The other eight methods here are
  * `@internal` like the rest of `src/Ast`: each traffics in a DTO whose shape tracks inference.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -54,12 +57,13 @@ final class AstEngine
      *
      * @param  class-string  $class
      * @param  class-string<Model>|null  $modelClass  Backing model for `$this->prop` resolution; null to skip.
-     * @param  bool  $carriesImports  false when the caller keeps only the flattened types, never the FQCN channels
+     * @param  bool  $casesAsLiterals  true for the body fallback, whose plain enum cases type as the literals they send
      * @param  array<string, PassedBinding>  $passed  what a call passes the parameters whose declarations bind nothing
      * @param  bool  $readsCall  true when the caller reads what a call to the method returns, which for a JSON:API
      *                           resource's toArray() is its body, never the resource object it publishes
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
+     * @param  Reading  $reading  how the caller's values reach the client; the body enters it by Reading::entering()
      *
      * @internal
      */
@@ -67,10 +71,11 @@ final class AstEngine
         string $class,
         string $method = 'toArray',
         ?string $modelClass = null,
-        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
         array $passed = [],
         bool $readsCall = false,
         ?RuntimeClass $runtime = null,
+        Reading $reading = Reading::Encoded,
     ): MethodAnalysis {
         $reflection = new ReflectionClass($class);
         $runs = $runtime->class ?? $reflection;
@@ -80,8 +85,11 @@ final class AstEngine
             $modelClass = resolve(ModelClassResolver::class)->resolve($runs);
         }
 
-        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($carriesImports ? '' : '@importless')
-            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '');
+        $reading = $reading->entering($runs, $method, $readsCall)->over($class);
+
+        $key = 'analysis:'.$class.'@'.$method.'@'.($modelClass ?? '').($casesAsLiterals ? '@casesAsLiterals' : '')
+            .($readsCall ? '@call' : '').CallSite::signature($passed).($runtime?->memoKey($class) ?? '')
+            .$reading->memoKey();
 
         $analysis = resolve(AnalysisMemo::class)->remember(
             $key,
@@ -89,11 +97,12 @@ final class AstEngine
                 $reflection,
                 $method,
                 $modelClass,
-                $carriesImports,
+                $casesAsLiterals,
                 $key,
                 $passed,
                 $readsCall,
                 $runtime,
+                $reading,
             ),
         );
 
@@ -108,6 +117,8 @@ final class AstEngine
      * @param  class-string<Model>|null  $backing  the model a caller's `instanceof` proof holds `$this->resource` to
      * @param  RuntimeClass|null  $runtime  the caller's runtime class, known or assumed: what `static` names in the
      *                                      body, and whose model `$this` reads; null for the class itself, known
+     * @param  Reading  $reading  how the caller's values reach the client; a call read for its value runs no filter
+     * @param  bool  $casesAsLiterals  true for the body fallback, whose plain enum cases type as the literals they send
      * @return ValueExpressionResult|null
      *
      * @internal
@@ -118,6 +129,8 @@ final class AstEngine
         array $passed = [],
         ?string $backing = null,
         ?RuntimeClass $runtime = null,
+        Reading $reading = Reading::Encoded,
+        bool $casesAsLiterals = false,
     ): ?array {
         $context = resolve(MethodLocator::class)->locate($class, $method);
 
@@ -125,7 +138,8 @@ final class AstEngine
             return null;
         }
 
-        [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime);
+        [$analyzer, $scope] = $this->valueReader($context, $method, $passed, $backing, $runtime, $reading);
+        $scope->casesAsLiterals = $casesAsLiterals;
 
         return $this->returnsValue($context->method, $analyzer, $scope);
     }
@@ -155,6 +169,19 @@ final class AstEngine
         }
 
         return $reader->resolve($expr);
+    }
+
+    /**
+     * What `json_encode()` sends for an expression of the body an engine reads, with no `filter()` over it, read by
+     * that body's own analyzer: the value `additional()` adds beside a resource's body.
+     *
+     * @return ValueExpressionResult
+     *
+     * @internal
+     */
+    public function analyzeEncodedValue(Expr $expr, ExpressionEngine $engine): array
+    {
+        return ($engine instanceof ResourceAstAnalyzer ? $engine->encodedReader() : $engine)->resolve($expr);
     }
 
     /**
@@ -234,6 +261,8 @@ final class AstEngine
      *
      * @param  class-string<Model>  $modelClass
      * @param  bool  $carriesImports  false when an analysis that carries no import reads the accessor
+     * @param  bool  $casesAsLiterals  true when the body fallback reads the accessor, whose cases keep their literals
+     * @param  Reading  $reading  filtered where `filter()` reaches the value the accessor's reader reads
      * @return ValueExpressionResult
      *
      * @internal
@@ -243,12 +272,15 @@ final class AstEngine
         ClosureExpr|ArrowFunction $closure,
         MethodContext $context,
         bool $carriesImports = true,
+        bool $casesAsLiterals = false,
+        Reading $reading = Reading::Encoded,
     ): array {
         $scope = $this->bindingsFor($context);
 
         // A trait-declared accessor still reads `$this` as the model that uses the trait.
         $scope->rebase(self::genericReflection($modelClass), $modelClass);
         $scope->carriesImports = $carriesImports;
+        $scope->casesAsLiterals = $casesAsLiterals;
 
         $analyzer = new ResourceAstAnalyzer(
             $scope->subjectReflection,
@@ -257,6 +289,7 @@ final class AstEngine
             ResourceExpressionHandlers::forModelClosures(),
             $scope,
             $context,
+            reading: $reading,
         );
 
         return $analyzer->resolve($closure);
@@ -376,6 +409,7 @@ final class AstEngine
         array $passed,
         ?string $backing,
         ?RuntimeClass $runtime,
+        Reading $reading = Reading::Encoded,
     ): array {
         $runs = $runtime->class ?? $context->reflection;
         $modelClass = match (true) {
@@ -392,6 +426,7 @@ final class AstEngine
             scope: $scope,
             context: $context,
             runtime: $runtime,
+            reading: $reading,
         );
 
         return [$analyzer, $scope];
@@ -411,7 +446,7 @@ final class AstEngine
         // A generator returns a Generator, and a callable is the Closure object, never what calling it gives.
         if ($returns === []
             || $this->yields($stmts)
-            || array_any($returns, fn (Expr $returned): bool => $this->mayHoldCallable($returned, $scope))
+            || array_any($returns, fn (Expr $returned): bool => HeldCallables::mayHold($returned, $scope))
         ) {
             return null;
         }
@@ -428,7 +463,7 @@ final class AstEngine
         $result = ValueResult::unionResults($results);
 
         return $this->canEndWithoutValue($function)
-            ? [...$result, 'type' => ValueResult::withNullArm($result['type'])]
+            ? [...$result, 'type' => TsTypeString::withNullArm($result['type'])]
             : $result;
     }
 
@@ -443,11 +478,12 @@ final class AstEngine
         ReflectionClass $reflection,
         string $method,
         ?string $modelClass,
-        bool $carriesImports,
+        bool $casesAsLiterals,
         string $key,
         array $passed,
         bool $readsCall,
         ?RuntimeClass $runtime,
+        Reading $reading,
     ): MethodAnalysis {
         $memo = resolve(AnalysisMemo::class);
 
@@ -462,10 +498,11 @@ final class AstEngine
                 $reflection,
                 $modelClass,
                 $method,
-                carriesImports: $carriesImports,
                 passed: $passed,
                 runtime: $runtime,
                 readsCall: $readsCall,
+                reading: $reading,
+                casesAsLiterals: $casesAsLiterals,
             );
 
             return $analyzer->analyze();

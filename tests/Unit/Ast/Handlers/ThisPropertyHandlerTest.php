@@ -2,19 +2,17 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ThisPropertyHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members\ThisPropertyHandler;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SubjectProps;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\UserResource;
@@ -40,10 +38,10 @@ function thisPropertyHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -79,10 +77,10 @@ final class ThisPropertyHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -107,35 +105,6 @@ it('declines a property fetch not rooted at $this', function () {
     $result = (new ThisPropertyHandler)->resolve($expr, $scope, thisPropertyHandlerThrowingEngine());
 
     expect($result)->toBeNull();
-});
-
-it('extractPropertiesFromArray() resolves each keyed item through the engine, forcing $optional', function () {
-    $nameValue = new Variable('nameExpr');
-
-    $array = new Array_([
-        new ArrayItem($nameValue, new String_('name')),
-    ]);
-
-    $engine = new ThisPropertyHandlerArmStubEngine([
-        [$nameValue, ['type' => 'string', 'optional' => false]],
-    ]);
-
-    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, $engine, new AnalysisScope(new ReflectionClass(UserResource::class)), optional: true);
-
-    expect($analysis)->toBeInstanceOf(ResourceAnalysis::class)
-        ->and($analysis->properties)->toBe([
-            ['name' => 'name', 'type' => 'string', 'optional' => true, 'description' => ''],
-        ]);
-});
-
-it('extractPropertiesFromArray() skips unkeyed items — it does not support spreads', function () {
-    $array = new Array_([
-        new ArrayItem(new Variable('spread'), null, unpack: true),
-    ]);
-
-    $analysis = (new ThisPropertyHandler)->extractPropertiesFromArray($array, thisPropertyHandlerThrowingEngine(), new AnalysisScope(new ReflectionClass(UserResource::class)));
-
-    expect($analysis->properties)->toBe([]);
 });
 
 it('resolves a model-less subject through its own declared properties and property chains', function () {

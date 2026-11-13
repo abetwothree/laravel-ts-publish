@@ -13,6 +13,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use function Orchestra\Testbench\workbench_path;
 
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -33,12 +34,12 @@ test('a union records the arm it leaves out, and its published type is unchanged
         $dropped = DroppedUnionArms::stop();
     }
 
-    // 28/29 reach analyzeClosureUnion(), 31 is TernaryHandler's narrowed path, 32 data_get()'s default, 33 when()'s
-    // default, 35 a match arm and 37 a `??` right operand; 39 and 49 are a parameter's join past its block, the value
-    // passed and the one written, 58 a local's branch join and 66 a merge call's. All but 28/29 resolve their own arms.
+    // 29/30 reach analyzeClosureUnion(), 32 is TernaryHandler's narrowed path, 33 data_get()'s default, 34 when()'s
+    // default, 36 a match arm and 38 a `??` right operand; 40 and 50 are a parameter's join past its block, the value
+    // passed and the one written, 59 a local's branch join and 67 a merge call's. All but 29/30 resolve their own arms.
     expect(array_column($dropped, 'expression'))->toContain('$this->opaqueValue()')
         ->and(array_unique(array_column($dropped, 'subject')))->toBe([UnionHonestyResource::class])
-        ->and(array_column($dropped, 'line'))->toBe([28, 29, 31, 32, 33, 35, 37, 39, 49, 58, 66])
+        ->and(array_column($dropped, 'line'))->toBe([29, 30, 32, 33, 34, 36, 38, 40, 50, 59, 67])
         ->and(array_column($dropped, 'site'))->toBe([
             'closure-union', 'closure-union', 'ternary-narrowed', 'data-get-default', 'conditional-default', 'match-arm',
             'coalesce-right', 'binding-join', 'binding-join', 'walk-branch-join', 'merge-branch-join',
@@ -126,9 +127,17 @@ test('a new recording site cannot go unpinned', function () {
             continue;
         }
 
+        $entries = false;
+
         foreach ($finder->findInstanceOf($stmts, StaticCall::class) as $call) {
             if (! $call->class instanceof Name || $call->class->toString() !== DroppedUnionArms::class
-                || ! $call->name instanceof Identifier || $call->name->toString() !== 'record') {
+                || ! $call->name instanceof Identifier) {
+                continue;
+            }
+
+            $entries = $entries || in_array($call->name->toString(), ['leftOut', 'leftOutOfJoin'], true);
+
+            if ($call->name->toString() !== 'record') {
                 continue;
             }
 
@@ -138,12 +147,28 @@ test('a new recording site cannot go unpinned', function () {
                 ? $arg->value->value
                 : $file->getRelativePathname().':'.$call->getStartLine();
         }
+
+        // An entry takes each arm beside the site that dropped it as an `[$arm, '<site>']` pair written in its file.
+        $pairSites = [];
+
+        foreach ($entries ? $finder->findInstanceOf($stmts, Array_::class) : [] as $array) {
+            [$arm, $site] = count($array->items) === 2 ? $array->items : [null, null];
+
+            if ($arm !== null && $site !== null && $arm->key === null && $site->key === null && ! $arm->unpack
+                && ! $arm->value instanceof String_ && $site->value instanceof String_) {
+                $pairSites[] = $site->value->value;
+            }
+        }
+
+        // A file whose entries take no literal pair passes sites the scan cannot read, so its location fails below.
+        array_push($sites, ...($entries && $pairSites === [] ? [$file->getRelativePathname()] : $pairSites));
     }
 
-    $remedy = 'A DroppedUnionArms::record() site that no baseline row names. Give it a permanent UnionHonestyResource key '
-        .'that drops an arm there, then pin that key\'s drop in dropped-union-arms-baseline.php: a bare row fails the corpus test.';
+    $remedy = 'A DroppedUnionArms::record() site, or an `[$arm, \'<site>\']` pair a leftOut() entry takes, that no baseline row '
+        .'names. Give it a permanent UnionHonestyResource key that drops an arm there, then pin that key\'s drop in '
+        .'dropped-union-arms-baseline.php: a bare row fails the corpus test.';
 
     expect($unparsed)->toBe([], 'These src/ files do not parse, so the scan read none of their DroppedUnionArms::record() calls.')
-        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan did not find the closure-union recording site, so it may have read no record() call and proves nothing.')
+        ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan did not find the closure-union recording site, so it may have read no pair and proves nothing.')
         ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([], $remedy);
 });

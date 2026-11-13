@@ -9,12 +9,15 @@ use AbeTwoThree\LaravelTsPublish\Generators\ModelMetadataGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchiveSpreadingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MacroShadowingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Mixins\TicketMacro;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Collectors\ThrowingResourcesCollector;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Generators\CountingModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\RecordingModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\Chart;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\Clash\ChartType;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -253,7 +256,7 @@ test('a new route on an already-cached controller busts and regenerates its outp
 
 // The cache stores no analysis warnings, so a class it serves prints none until --fresh analyzes it again.
 test('a dropped-arm placeholder warning prints when the class is analyzed, and a cached run of the class prints none', function () {
-    $warning = UnionHonestyResource::class.': The value on line 28 publishes `null`, as if it were always null, because '
+    $warning = UnionHonestyResource::class.': The value on line 29 publishes `null`, as if it were always null, because '
         .'`$this->opaqueValue()` could not be typed and was left out of its union.';
 
     $this->artisan('ts:publish')->assertSuccessful()->expectsOutputToContain($warning);
@@ -744,6 +747,30 @@ test('the generators a partial run retains stay apart from the ones it published
         ->and($partial->retainedEnumGenerators)->toBeEmpty();
 });
 
+test('a run that serves the enums from the cache still warns of a composed class publishing an enum\'s name', function () {
+    Config::set('ts-publish.enums.additional_directories', [ChartType::class]);
+    Config::set('ts-publish.enums.included', [ChartType::class]);
+    Config::set('ts-publish.class_types.additional_directories', [Chart::class]);
+
+    $full = new Runner;
+    $full->useCache(CacheBootstrap::manifest());
+    $full->run();
+
+    $partial = new Runner;
+    $partial->shouldPublishEnums = false;
+    $partial->useCache(CacheBootstrap::manifest());
+    $partial->run();
+
+    expect($partial->enumGenerators)->toBeEmpty()
+        ->and($partial->retainedEnumGenerators->map(fn (EnumGenerator $generator): string => $generator->findable)->all())
+        ->toBe([ChartType::class])
+        ->and(AnalysisWarnings::all())->toContain([
+            'subject' => Chart::class,
+            'message' => 'Publishes the name [ChartType], which ['.ChartType::class.'] also publishes in the same namespace, '
+                .'so their barrel and the globals file cannot export both. Give one of them another name, or move it to a namespace of its own.',
+        ]);
+});
+
 test('a partial run that retains the models builds the morph map once', function (bool $laterPhases) {
     Config::set('ts-publish.inertia.enabled', $laterPhases);
     expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0);
@@ -834,7 +861,7 @@ test('a template edited in place between two runs in one process reaches the sec
         expect(Artisan::call('ts:publish', ['--quiet' => true]))->toBe(0)
             ->and(file_get_contents($enumFile))->toStartWith("// v1\n");
 
-        // Blade skips the expiry check for a view this process compiled already, so only a flush makes it read v2.
+        // Blade skips the expiry check for a view this process rendered already, so each run must compile it afresh.
         file_put_contents($template, "// v2\n".$package);
         touch($template, time() + 5);
 

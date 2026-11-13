@@ -15,17 +15,17 @@ export interface RelationChainResource
 {
     first_members: User[];
     member_cards: { id: number; name: string }[];
-    member_profiles: ({ id: number; role: RoleType | null; owner: User })[];
-    member_map_only: ({ id: number; role: RoleType | null })[];
+    member_profiles: { id: number; role: RoleType | null; owner: User }[];
+    member_map_only: { id: number; role: RoleType | null }[];
     member_emails: string[];
     member_roles: (RoleType | null)[];
-    member_role_resources: AsEnum<typeof Role>[];
-    member_role_resources_filtered: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>>;
-    wrapped_filtered: { roles: AsEnum<typeof Role>[] | Record<string, AsEnum<typeof Role>> };
-    member_names_upper: unknown;
-    member_formatted: unknown;
-    member_mapped_fcc: unknown;
-    member_plucked_fcc: unknown;
+    member_role_resources: (AsEnum<typeof Role> | never[])[];
+    member_role_resources_filtered: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>;
+    wrapped_filtered: { roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> };
+    member_names_upper: string[];
+    member_formatted: string[];
+    member_mapped_fcc: Record<string, never>;
+    member_plucked_fcc: Record<string, never>;
     first_member: User | null;
     members_after_load: User[];
     first_member_after_load: User | null;

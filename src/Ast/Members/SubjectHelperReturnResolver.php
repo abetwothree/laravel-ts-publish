@@ -7,13 +7,14 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
@@ -43,7 +44,7 @@ final class SubjectHelperReturnResolver
      */
     public function resolveEnumResourceReturn(MethodCall $call, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
-        // Without imports the body fallback would drop its whole shape for the enum a wrap names.
+        // A reader that keeps no FQCN channel could not import the enum a typed wrap names.
         if (! $scope->carriesImports
             || ! $this->hasThisReceiver($call)
             || ! $call->name instanceof Identifier
@@ -94,7 +95,7 @@ final class SubjectHelperReturnResolver
         }
 
         if ($this->canEndWithoutValue($declaration)) {
-            $result['type'] = ValueResult::withNullArm($result['type']);
+            $result['type'] = TsTypeString::withNullArm($result['type']);
         }
 
         return $result;

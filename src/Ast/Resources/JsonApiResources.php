@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -121,7 +122,7 @@ final class JsonApiResources
      */
     public static function relationships(string $class, ?string $modelClass): array
     {
-        return resolve(AnalysisMemo::class)->remember(
+        return resolve(AnalysisMemo::class)->rememberFact(
             'json-api-relationships:'.$class.'@'.$modelClass,
             fn (): array => self::readRelationships($class, $modelClass),
         );
@@ -136,7 +137,7 @@ final class JsonApiResources
      */
     public static function includedResources(string $class): array
     {
-        return resolve(AnalysisMemo::class)->remember('json-api-included:'.$class, fn (): array => self::readIncludedResources($class));
+        return resolve(AnalysisMemo::class)->rememberFact('json-api-included:'.$class, fn (): array => self::readIncludedResources($class));
     }
 
     /**
@@ -387,7 +388,7 @@ final class JsonApiResources
      */
     private static function sendsList(string $relationType): ?bool
     {
-        return $relationType === 'unknown' ? null : str_ends_with(str_replace(' | null', '', $relationType), '[]');
+        return $relationType === 'unknown' ? null : str_ends_with(TsTypeString::withoutNullArm($relationType), '[]');
     }
 
     /**

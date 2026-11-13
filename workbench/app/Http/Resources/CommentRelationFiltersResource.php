@@ -11,7 +11,7 @@ use Workbench\App\Models\Comment;
 /**
  * Relation filters written inside the model itself: a method body the resource forwards to, and an accessor it reads.
  *
- * The method body's shape carries no import, so its filters publish types that name no model or enum.
+ * The method body's filters publish what the accessor's do, naming the models they hold.
  *
  * @mixin Comment
  */

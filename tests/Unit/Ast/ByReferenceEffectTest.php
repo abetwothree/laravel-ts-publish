@@ -32,6 +32,7 @@ it('leaves a value the type it held while it has the form the call keeps', funct
     'asort() keys a list out of order' => [ByReferenceEffect::KeepsObject, 'string[]', [], 'Record<number, string>'],
     'asort() keys a list of a union out of order' => [ByReferenceEffect::KeepsObject, '(string | number)[]', [], 'Record<number, string | number>'],
     'asort() keys a tuple out of order' => [ByReferenceEffect::KeepsObject, '[number, string]', [], 'Record<number, number | string>'],
+    'asort() keys a tuple with an optional union out of order' => [ByReferenceEffect::KeepsObject, '[number, (string | null)?]', [], 'Record<number, number | string | null>'],
     'asort() keys a nullable list out of order' => [ByReferenceEffect::KeepsObject, 'string[] | null', [], 'Record<number, string> | null'],
     'asort() of a class' => [ByReferenceEffect::KeepsObject, 'User', [], null],
     'a count keeps a number' => [ByReferenceEffect::KeepsNumber, 'number', [], 'number'],
@@ -47,16 +48,31 @@ it('leaves a value the type it held while it has the form the call keeps', funct
     'a walk writing every member\'s type' => [ByReferenceEffect::WritesElements, '{ a: number; b?: number }', ['number'], '{ a: number; b?: number }'],
     'a walk writing a Record\'s value type' => [ByReferenceEffect::WritesElements, 'Record<string, number>', ['number'], 'Record<string, number>'],
     'a walk writing a tuple\'s member types' => [ByReferenceEffect::WritesElements, '[number, number]', ['number'], '[number, number]'],
+    'a walk writing an arm of an optional union member' => [ByReferenceEffect::WritesElements, '[string, (string | null)?]', ['string'], '[string, (string | null)?]'],
     'a walk writing one member\'s type alone' => [ByReferenceEffect::WritesElements, '{ a: number; b: string }', ['string'], null],
     'a walk writing nothing' => [ByReferenceEffect::WritesElements, '{ a: number }', [], '{ a: number }'],
     'a walk over a class' => [ByReferenceEffect::WritesElements, 'User', [], null],
     'a replacing call' => [ByReferenceEffect::Replaces, 'string[]', [], null],
-    'preg_match()\'s matches over a value the scan cannot type, which a call that may not run leaves' => [ByReferenceEffect::WritesMatches, 'unknown', [], null],
-    'preg_match()\'s matches over an empty list' => [ByReferenceEffect::WritesMatches, 'never[]', [], 'string[]'],
-    'preg_match()\'s matches over an empty tuple' => [ByReferenceEffect::WritesMatches, '[]', [], 'string[]'],
-    'preg_match()\'s matches over a list of strings' => [ByReferenceEffect::WritesMatches, 'string[]', [], 'string[]'],
-    'preg_match()\'s matches over a string a call that may not run leaves' => [ByReferenceEffect::WritesMatches, 'string', [], null],
-    'preg_match()\'s matches over a nullable list' => [ByReferenceEffect::WritesMatches, 'string[] | null', [], null],
+]);
+
+// A call that may not run leaves the value held, so the matches replace only an empty list or a value they stand for.
+it('leaves preg_match()\'s matches over a value they stand for', function (string $type, string $matches, ?string $left) {
+    expect(ByReferenceEffect::WritesMatches->left($type, fn (string $element, string $key): array => [], matches: $matches))->toBe($left);
+})->with([
+    'a value the scan cannot type, which a call that may not run leaves' => ['unknown', 'string[]', null],
+    'an empty list' => ['never[]', 'string[]', 'string[]'],
+    'an empty tuple' => ['[]', 'string[]', 'string[]'],
+    'a list of strings' => ['string[]', 'string[]', 'string[]'],
+    'a string a call that may not run leaves' => ['string', 'string[]', null],
+    'a nullable list' => ['string[] | null', 'string[]', null],
+    'an empty list, under matches keyed by name' => ['never[]', '{ "0": string; n?: string; "1"?: string } | never[]', '{ "0": string; n?: string; "1"?: string } | never[]'],
+    'the same matches keyed by name' => [
+        '{ "0": string; n?: string; "1"?: string } | never[]',
+        '{ "0": string; n?: string; "1"?: string } | never[]',
+        '{ "0": string; n?: string; "1"?: string } | never[]',
+    ],
+    'a list of strings, under matches keyed by name' => ['string[]', '{ "0": string; n?: string; "1"?: string } | never[]', null],
+    'a list of strings, under offsets' => ['string[]', '[string, number][]', null],
 ]);
 
 // An API resource re-indexes a list a key-keeping sort reorders, so there it sends the list it was.
@@ -99,6 +115,7 @@ it('leaves a value the member a key path names keeps, rewritten where a key-keep
     'asort() of a list member' => [ByReferenceEffect::KeepsObject, '{ x: string[]; y: number }', ['x'], '{ x: Record<number, string>; y: number }'],
     'asort() of a nested list member' => [ByReferenceEffect::KeepsObject, '{ x: { y: string[] } }', ['x', 'y'], '{ x: { y: Record<number, string> } }'],
     'asort() of a list in a Record, whose other keys keep theirs' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]>', ['k'], 'Record<string, string[] | Record<number, string>>'],
+    'asort() of a list member under a key json_encode() escapes' => [ByReferenceEffect::KeepsObject, '{ "a\\/b": string[]; y: number }', ['a/b'], '{ "a\\/b": Record<number, string>; y: number }'],
     'asort() of a list member beside a Record arm' => [ByReferenceEffect::KeepsObject, 'Record<string, string[]> | { x: string[] }', ['x'], 'Record<string, string[] | Record<number, string>> | { x: Record<number, string> }'],
     'a member the type does not hold' => [ByReferenceEffect::KeepsList, '{ x: number[] }', ['y'], null],
     'a member of a list by a name' => [ByReferenceEffect::KeepsList, 'number[][]', ['x'], null],
@@ -121,3 +138,9 @@ it('keeps a value a recursive walk writes while every leaf it visits holds each 
     'a walk that writes nothing' => ['{ a: { b: string } }', [], '{ a: { b: string } }'],
     'a value that is no array' => ['User', [], null],
 ]);
+
+it('leaves a gap arm beside the arms a call leaves, and decides on those arms alone', function () {
+    expect(byReferenceLeft(ByReferenceEffect::KeepsList, 'string[] | $gap1'))->toBe('string[] | $gap1')
+        ->and(byReferenceLeft(ByReferenceEffect::KeepsNumber, 'number | $gap1'))->toBe('number | $gap1')
+        ->and(byReferenceLeft(ByReferenceEffect::KeepsList, 'null | $gap1'))->toBe(byReferenceLeft(ByReferenceEffect::KeepsList, 'null'));
+});

@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs;
+
+/**
+ * A namespaced function named like Laravel's `route()` helper, which an unqualified call in this namespace runs
+ * instead.
+ */
+function route(string $name, mixed $parameters = []): string
+{
+    return $name.serialize($parameters);
+}

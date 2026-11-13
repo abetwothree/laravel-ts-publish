@@ -4,21 +4,31 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
 
-uses(TestCase::class)->in(__DIR__);
+// The gap gate (.github/scripts/gap-gate.sh) reads every key in the gap mode, which must change no published byte.
+uses(TestCase::class)
+    ->beforeEach(fn () => ReturnMembers::$typesEveryKey = (bool) getenv('TS_PUBLISH_GAP_GATE'))
+    ->in(__DIR__);
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
@@ -40,10 +50,10 @@ function chainHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         /** Fails the test: no array is analyzed in this case. */
@@ -184,6 +194,30 @@ function inertiaProps(InertiaResponse $page, ?Request $request = null): stdClass
 }
 
 /**
+ * The JSON of the props Inertia sends for a page on a first visit, which is a list where every top-level key is an int.
+ */
+function inertiaPropsJson(InertiaResponse $page, ?Request $request = null): string
+{
+    $request ??= Request::create('/');
+    $request->headers->set('X-Inertia', 'true');
+
+    return (string) json_encode(json_decode((string) $page->toResponse($request)->getContent(), false)->props);
+}
+
+/**
+ * A fresh request bound as the app's, resolving the given user for `request()->user()` and `$request->user()`.
+ */
+function bindRequestUser(Authenticatable $user): Request
+{
+    $request = Request::create('/');
+    // Rebinding the request resets its user resolver to the auth guard's, so the resolver is set after.
+    app()->instance('request', $request);
+    $request->setUserResolver(fn (): Authenticatable => $user);
+
+    return $request;
+}
+
+/**
  * A request for a partial reload of a component's comma-separated keys.
  */
 function partialReload(string $component, string $only): Request
@@ -202,4 +236,30 @@ function runtimeClassCall(string $php): Expr
     assert($statement instanceof Expression);
 
     return $statement->expr;
+}
+
+/**
+ * The value one expression resolves to through a resource's profile, where `gapped('T')` reads as the type T, so a test
+ * hands a reader a value holding gap arms or the open marker as a read in the gap mode leaves one.
+ *
+ * @param  class-string  $resource
+ * @param  class-string|null  $model
+ * @return array<string, mixed>
+ */
+function gappedValue(string $php, string $resource, ?string $model = null): array
+{
+    $analyzer = new class(new ReflectionClass($resource), $model) extends ResourceAstAnalyzer
+    {
+        /** Read `gapped('T')` as T, and every other value as the resource reads it. */
+        protected function analyzeValueExpression(Expr $expr): array
+        {
+            $type = $expr instanceof FuncCall && $expr->name instanceof Name && $expr->name->toString() === 'gapped'
+                ? ($expr->getArgs()[0]->value ?? null)
+                : null;
+
+            return $type instanceof String_ ? ['type' => $type->value, 'optional' => false] : parent::analyzeValueExpression($expr);
+        }
+    };
+
+    return $analyzer->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr);
 }

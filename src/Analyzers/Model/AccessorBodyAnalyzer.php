@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Model;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
@@ -49,18 +51,26 @@ final class AccessorBodyAnalyzer
      *
      * @param  class-string<Model>  $modelFqcn
      * @param  bool  $carriesImports  false when the reader carries no import, so the getter's filters name no token
+     * @param  bool  $casesAsLiterals  true when the reader types a plain enum case as its literal, as the body fallback
+     *                                 does, so the getter's cases do too
      * @return TypeScriptTypeInfo|null null when there is no readable body, a cycle, nothing better than unknown, or a
      *                                 class or enum the model file cannot name
      */
-    public function analyze(string $modelFqcn, string $attributeName, bool $carriesImports = true): ?array
-    {
-        // Keyed per import mode, so an analysis that keeps imports never stands in for one that carries none. Its guard
-        // can still cut short the check with imports that an import-less read makes of a vague spelling.
-        $key = 'accessor-body:'.$modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless');
+    public function analyze(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports = true,
+        bool $casesAsLiterals = false,
+    ): ?array {
+        // Keyed per import mode, case reading and filter() reach, so no other reading's analysis stands in for this
+        // one. Its guard can still cut short the check with imports that an import-less read makes of a vague spelling.
+        $reading = resolve(AnalysisMemo::class)->filterReachesValue() ? Reading::EncodedFiltered : Reading::Encoded;
+        $key = 'accessor-body:'.$modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless')
+            .($casesAsLiterals ? '@casesAsLiterals' : '').$reading->memoKey();
 
         return resolve(AnalysisMemo::class)->remember(
             $key,
-            fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $key),
+            fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $key, $reading),
         );
     }
 
@@ -70,8 +80,14 @@ final class AccessorBodyAnalyzer
      * @param  class-string<Model>  $modelFqcn
      * @return TypeScriptTypeInfo|null
      */
-    private function analyzeOnce(string $modelFqcn, string $attributeName, bool $carriesImports, string $key): ?array
-    {
+    private function analyzeOnce(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports,
+        bool $casesAsLiterals,
+        string $key,
+        Reading $reading,
+    ): ?array {
         $memo = resolve(AnalysisMemo::class);
 
         if (! $memo->enter($key)) {
@@ -83,7 +99,7 @@ final class AccessorBodyAnalyzer
         try {
             // A body declined here gives way to what the model declares, so its placeholder is never published.
             return DroppedUnionArms::replaceable(
-                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $dropped),
+                fn (): ?array => $this->publishedBody($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $dropped, $reading),
                 fn (?array $info): bool => $info !== null,
             );
         } finally {
@@ -97,9 +113,15 @@ final class AccessorBodyAnalyzer
      * @param  class-string<Model>  $modelFqcn
      * @return TypeScriptTypeInfo|null
      */
-    private function publishedBody(string $modelFqcn, string $attributeName, bool $carriesImports, int $dropped): ?array
-    {
-        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports);
+    private function publishedBody(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports,
+        bool $casesAsLiterals,
+        int $dropped,
+        Reading $reading,
+    ): ?array {
+        $result = $this->resolveBody($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $reading);
 
         if ($result === null || ! $this->bodyStands($result, $dropped)) {
             return null;
@@ -119,7 +141,7 @@ final class AccessorBodyAnalyzer
     private function bodyStands(?array $result, int $dropped): bool
     {
         return $result !== null
-            && ! in_array($result['type'], ['unknown', 'never[]'], true)
+            && ! in_array(VisibleGaps::aside($result['type'])[0], ['unknown', 'never[]'], true)
             && ! DroppedUnionArms::leftNullSince($result['type'], $dropped);
     }
 
@@ -168,8 +190,13 @@ final class AccessorBodyAnalyzer
      * @param  class-string<Model>  $modelFqcn
      * @return ValueExpressionResult|null
      */
-    private function resolveBody(string $modelFqcn, string $attributeName, bool $carriesImports): ?array
-    {
+    private function resolveBody(
+        string $modelFqcn,
+        string $attributeName,
+        bool $carriesImports,
+        bool $casesAsLiterals,
+        Reading $reading,
+    ): ?array {
         $locator = resolve(MethodLocator::class);
         $engine = resolve(AstEngine::class);
         ['newStyle' => $newStyleName, 'oldStyle' => $oldStyleName] = $this->accessorMethodNames($attributeName);
@@ -178,7 +205,7 @@ final class AccessorBodyAnalyzer
         $getter = $newStyle === null ? null : $this->getterClosure($newStyle->method);
 
         if ($newStyle !== null && $getter !== null) {
-            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle, $carriesImports);
+            return $engine->analyzeModelClosure($modelFqcn, $getter, $newStyle, $carriesImports, $casesAsLiterals, $reading);
         }
 
         // A new-style method whose getter is not a closure — or a same-named non-accessor, e.g. a relation —
@@ -190,7 +217,14 @@ final class AccessorBodyAnalyzer
             return null;
         }
 
-        return $engine->analyzeModelClosure($modelFqcn, new ClosureExpr(['stmts' => $oldStyle->method->stmts]), $oldStyle, $carriesImports);
+        return $engine->analyzeModelClosure(
+            $modelFqcn,
+            new ClosureExpr(['stmts' => $oldStyle->method->stmts]),
+            $oldStyle,
+            $carriesImports,
+            $casesAsLiterals,
+            $reading,
+        );
     }
 
     /**

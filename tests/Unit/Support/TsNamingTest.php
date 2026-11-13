@@ -17,6 +17,17 @@ beforeEach(function () {
     $this->service = new TsNaming;
 });
 
+describe('resolveRelativePath', function () {
+    test('reads a path inside the project from its root', function () {
+        expect($this->service->resolveRelativePath(base_path('src/Nested/Thing.php')))->toBe('src/Nested/Thing.php');
+    });
+
+    test('reads a path outside the project from its vendor folder, and keeps any other path whole', function () {
+        expect($this->service->resolveRelativePath('/elsewhere/vendor/acme/pkg/src/Thing.php'))->toBe('vendor/acme/pkg/src/Thing.php')
+            ->and($this->service->resolveRelativePath('/elsewhere/src/Thing.php'))->toBe('/elsewhere/src/Thing.php');
+    });
+});
+
 describe('keyCase', function () {
     test('keyCase returns camelCase', function () {
         expect($this->service->keyCase('some_relation', 'camel'))->toBe('someRelation');

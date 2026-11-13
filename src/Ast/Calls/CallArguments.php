@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Name;
 use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
@@ -86,6 +89,22 @@ final class CallArguments
         }
 
         return new self($positional, $named, $paramNames, $unpack, $highest + 1);
+    }
+
+    /**
+     * The value a `collect($value)` call wraps; null for any other expression, a first-class callable included.
+     */
+    public static function collectArgument(Expr $expr): ?Expr
+    {
+        if (! $expr instanceof FuncCall
+            || ! $expr->name instanceof Name
+            || $expr->name->getLast() !== 'collect'
+            || $expr->isFirstClassCallable()
+        ) {
+            return null;
+        }
+
+        return self::for($expr, new ReflectionFunction('collect'))->named('value')?->value;
     }
 
     /**

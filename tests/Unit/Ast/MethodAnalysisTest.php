@@ -5,26 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
 
 it('is the base class ResourceAnalysis now extends, as an empty subclass', function () {
     expect(new ResourceAnalysis)->toBeInstanceOf(MethodAnalysis::class)
         ->and(new ReflectionClass(ResourceAnalysis::class)->getParentClass()->getName())->toBe(MethodAnalysis::class);
-});
-
-it('appends properties from the source, never replacing a same-name earlier entry', function () {
-    $target = new MethodAnalysis(properties: [
-        ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
-    ]);
-    $source = new MethodAnalysis(properties: [
-        ['name' => 'id', 'type' => 'string', 'optional' => true, 'description' => ''],
-    ]);
-
-    $target->merge($source);
-
-    expect($target->properties)->toBe([
-        ['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => ''],
-        ['name' => 'id', 'type' => 'string', 'optional' => true, 'description' => ''],
-    ]);
 });
 
 it('array-spread-merges the single-value class maps, later source winning on key collision', function () {
@@ -129,6 +114,83 @@ it('clears the cast entry of a key the source sets without one', function () {
     expect($target->casts)->toBe(['kept' => ['type' => 'K', 'import' => null]]);
 });
 
+// A declaration's token slots describe the text it wrote, which the source's value replaces.
+it('merges declared token slots as it merges casts', function () {
+    $user = 'Workbench\\App\\Models\\User';
+    // The target's `owner` row is gone, as a whole write the walk merges for its channels leaves it.
+    $target = new MethodAnalysis(properties: [
+        ['name' => 'kept', 'type' => 'User', 'optional' => false, 'description' => ''],
+    ]);
+    $target->declaredTokenFqcns = ['owner' => [$user], 'kept' => [$user]];
+    $source = new MethodAnalysis(properties: [
+        ['name' => 'owner', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+    ]);
+    $source->declaredTokenFqcns = ['either' => [null, $user]];
+
+    $target->merge($source);
+
+    expect($target->declaredTokenFqcns)->toBe(['kept' => [$user], 'either' => [null, $user]]);
+});
+
+it('reads a key as untyped: unknown, with no channel, and no custom import only its text spelled', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            [
+                'name' => 'either', 'type' => 'User | User', 'optional' => true, 'description' => '',
+                'fillType' => 'User | User', 'removed' => true,
+            ],
+            ['name' => 'chart', 'type' => 'UiNode', 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User', 'UiNode'], '@js/types/other' => ['User as Owner']],
+        inlineModelFqcns: ['either' => ['Workbench\\App\\Models\\User']],
+    );
+    $analysis->declaredTokenFqcns = ['either' => [null, 'Workbench\\App\\Models\\User']];
+
+    $analysis->untype('either');
+
+    expect($analysis->properties[0])->toBe([
+        'name' => 'either', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true,
+    ])
+        ->and($analysis->inlineModelFqcns)->toBe([])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode'], '@js/types/other' => ['User as Owner']]);
+});
+
+it('retypes a key class-less, keeping a custom import its new text still spells', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'pair', 'type' => '{ a: User; b: User; n: UiNode }', 'optional' => false, 'description' => ''],
+            ['name' => 'either', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User', 'UiNode']],
+        inlineModelFqcns: ['pair' => ['Workbench\\App\\Models\\User'], 'either' => ['Workbench\\App\\Models\\User']],
+    );
+    $analysis->declaredTokenFqcns = ['pair' => [null, 'Workbench\\App\\Models\\User']];
+
+    $analysis->retypeClassLess('pair', '{ a: User; b: unknown; n: unknown }');
+
+    expect($analysis->properties[0]['type'])->toBe('{ a: User; b: unknown; n: unknown }')
+        ->and($analysis->inlineModelFqcns)->toBe(['either' => ['Workbench\\App\\Models\\User']])
+        ->and($analysis->declaredTokenFqcns)->toBe([])
+        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
+});
+
+it('retypes a key class-less, dropping a custom import another key spells only in a literal', function () {
+    $analysis = new MethodAnalysis(
+        properties: [
+            ['name' => 'k', 'type' => 'User | User', 'optional' => false, 'description' => ''],
+            ['name' => 'kind', 'type' => "'User'", 'optional' => false, 'description' => ''],
+        ],
+        customImports: ['@js/types/ui' => ['User']],
+    );
+
+    $analysis->retypeClassLess('k', 'unknown');
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['k' => 'unknown', 'kind' => "'User'"])
+        ->and($analysis->customImports)->toBe([]);
+});
+
 it('merges carried classes once per kind', function () {
     $target = new MethodAnalysis(carried: ['enums' => ['Workbench\App\Enums\Status']]);
     $target->merge(new MethodAnalysis(carried: [
@@ -181,6 +243,41 @@ it('forgets every channel keyed by a property another value took over, and nothi
             'Workbench\App\Http\Resources\TagResource' => 'Workbench\App\Http\Resources\TagResource',
             'kept' => 'Workbench\App\Http\Resources\PostResource',
         ]);
+});
+
+it('publishes unknown for a member naming an unpublished model and forgets its channels, its siblings kept', function (?array $published, string $unpublished) {
+    if ($published !== null) {
+        PublishedModelRegistry::register($published);
+    }
+
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('kept', ['type' => 'Post', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\Post']);
+    $analysis->addProperty('nested', ['type' => '{ owner: Post }', 'optional' => false, 'embeddedModelFqcns' => ['Workbench\App\Models\Post']]);
+    $analysis->properties[] = ['name' => 'lost', 'type' => '{ m: User }', 'optional' => false, 'description' => ''];
+    $analysis->inlineModelFqcns['lost'] = [$unpublished];
+
+    $analysis->forgetUnpublishableMembers();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kept' => 'Post', 'nested' => '{ owner: Post }', 'lost' => 'unknown'])
+        ->and($analysis->hasFqcnChannel('lost'))->toBeFalse()
+        ->and($analysis->channelFqcns('kept'))->toBe(['Workbench\App\Models\Post'])
+        ->and($analysis->channelFqcns('nested'))->toBe(['Workbench\App\Models\Post']);
+})->with([
+    'a model the published set leaves out' => [['Workbench\App\Models\Post'], 'Workbench\App\Models\User'],
+    'a framework model, with no published set' => [null, 'Illuminate\Foundation\Auth\User'],
+]);
+
+// The key holding these members aliases every token of a name alike, so the enum would take the composed class's.
+it('publishes unknown for a member whose class publishes under a name a custom import brings, its siblings kept', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('kind', ['type' => 'ChartType', 'optional' => false, 'directEnumFqcn' => ChartEnum::class]);
+    $analysis->addProperty('chart', ['type' => 'ChartType', 'optional' => false, 'customImports' => ['@ui' => ['ChartType']]]);
+
+    $analysis->forgetUnpublishableMembers();
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe(['kind' => 'unknown', 'chart' => 'ChartType'])
+        ->and($analysis->hasFqcnChannel('kind'))->toBeFalse()
+        ->and($analysis->customImports)->toBe(['@ui' => ['ChartType']]);
 });
 
 it('appends inlineModelFqcns per property WITHOUT deduping, unlike its sibling inline maps', function () {
@@ -287,6 +384,10 @@ it('takes over every field of another analysis, both flags included', function (
     );
     $source->readsCompletely = false;
     $source->holdsUnreadKeys = true;
+    $source->holdsUnnamedKeys = true;
+    $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
+    $source->heldObjectKeys = ['a' => true];
+    $source->closedToDottedKeys = ['a' => true];
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);
@@ -298,6 +399,39 @@ it('takes over every field of another analysis, both flags included', function (
         ARRAY_FILTER_USE_BOTH,
     ))->toBe([])
         ->and(get_object_vars($target))->toBe(get_object_vars($source));
+});
+
+/**
+ * Each key's presence facts, by name.
+ *
+ * @return array<string, array{optional?: bool, absent?: bool, removed?: bool}>
+ */
+function presenceFactsOf(MethodAnalysis $analysis): array
+{
+    return array_map(
+        static fn (array $property): array => array_intersect_key($property, ['optional' => true, 'absent' => true, 'removed' => true]),
+        array_column($analysis->writtenProperties(), null, 'name'),
+    );
+}
+
+// No held value survives a removed value, as one survives a key left unset.
+it('tells a key whose value may be removed from one a write or a spread member may leave unset, through a merge', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('deferred', ['type' => 'string', 'optional' => true]);
+    $analysis->addProperty('skipped', ['type' => 'string', 'optional' => false], optional: true);
+    $analysis->addProperty('member', ['type' => 'string', 'optional' => true, 'absent' => true]);
+    $other = new MethodAnalysis;
+    $other->addProperty('when', ['type' => 'string', 'optional' => true]);
+    $analysis->merge($other);
+    $analysis->forgetChannels('when');
+    $analysis->renameKeys(['deferred' => 'later']);
+
+    expect(presenceFactsOf($analysis))->toBe([
+        'later' => ['optional' => true, 'removed' => true],
+        'skipped' => ['optional' => true, 'absent' => true],
+        'member' => ['optional' => true, 'absent' => true],
+        'when' => ['optional' => true, 'removed' => true],
+    ]);
 });
 
 it('drops the queued classes and custom imports a branch of a join only repeats from another', function () {
@@ -371,6 +505,11 @@ it('lists the enums the branches wrap a key in only where each wraps it, none re
         ->and(isset($merged->enumResources['s']))->toBe($listed === null);
 })->with([
     'another enum' => [['enumResources' => ['s' => 'App\\Priority']], 'StatusType | PriorityType | null', ['App\\Status', 'App\\Priority']],
+    'another enum beside the empty list a wrap around null sends' => [
+        ['enumResources' => ['s' => 'App\\Priority']],
+        'StatusType | never[] | PriorityType',
+        ['App\\Status', 'App\\Priority'],
+    ],
     'another enum also read bare' => [
         ['enumResources' => ['s' => 'App\\Priority'], 'directEnumFqcns' => ['s' => 'App\\Priority']],
         'StatusType | PriorityType',
@@ -410,7 +549,7 @@ describe('MethodAnalysis::addProperty()', function () {
         ], optional: true, description: 'doc');
 
         expect($analysis->properties)->toBe([[
-            'name' => 'status', 'type' => 'StatusType | null', 'optional' => true, 'description' => 'doc',
+            'name' => 'status', 'type' => 'StatusType | null', 'optional' => true, 'description' => 'doc', 'absent' => true,
         ]])
             ->and($analysis->enumResources)->toBe(['status' => 'Workbench\App\Enums\Status'])
             ->and($analysis->directEnumFqcns)->toBe([
@@ -445,7 +584,7 @@ describe('MethodAnalysis::addProperty()', function () {
         $analysis->addProperty('user', ['type' => 'User', 'optional' => false, 'modelFqcn' => 'Workbench\App\Models\User']);
 
         expect($analysis->properties)->toBe([
-            ['name' => 'post', 'type' => 'unknown', 'optional' => true, 'description' => ''],
+            ['name' => 'post', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true],
             ['name' => 'user', 'type' => 'User', 'optional' => false, 'description' => ''],
         ])
             ->and($analysis->modelFqcns)->toBe(['user' => 'Workbench\App\Models\User']);
@@ -478,4 +617,146 @@ it("lists the names each class on a property's channels publishes under, and non
         // A wrap spells the enum's own names, whatever a value of the enum publishes.
         ->and($analysis->channelNames('wrapped'))->toBe(['UiTone', 'UiToneType', 'UiToneKind'])
         ->and($analysis->channelNames('none'))->toBe([]);
+});
+
+it('names the inline channel each class is queued on, and none for a class of no such kind', function (string $fqcn, ?string $kind) {
+    expect(MethodAnalysis::channelKind($fqcn))->toBe($kind)
+        ->and(MethodAnalysis::queuesEmbedded($fqcn))->toBe($kind !== null);
+})->with([
+    'an enum' => ['Workbench\App\Enums\Status', 'enums'],
+    'a model' => ['Workbench\App\Models\User', 'models'],
+    'an API resource' => ['Workbench\App\Http\Resources\PostResource', 'resources'],
+    'a resource collection' => ['Workbench\App\Http\Resources\SupplierCollection', 'resources'],
+    'any other class' => ['Carbon\Carbon', null],
+]);
+
+it('lists a key\'s classes outside its inline queues, and the enums it wraps at its top', function () {
+    $analysis = new MethodAnalysis(
+        enumResources: ['k' => 'Workbench\App\Enums\Status'],
+        nestedResources: ['k' => 'Workbench\App\Http\Resources\PostResource'],
+        directEnumFqcns: ['k' => 'Workbench\App\Enums\Role'],
+        modelFqcns: ['k' => 'Workbench\App\Models\User'],
+        inlineEnumFqcns: ['k' => ['Workbench\App\Enums\Season']],
+        inlineModelFqcns: ['k' => ['Workbench\App\Models\Post']],
+        multiEnumResourceFqcns: ['k' => ['Workbench\App\Enums\Priority']],
+        inlineEnumResourceFqcns: ['k' => ['Workbench\App\Enums\UiTone']],
+    );
+
+    expect($analysis->singleChannelFqcns('k'))->toBe([
+        'Workbench\App\Enums\Status',
+        'Workbench\App\Enums\Role',
+        'Workbench\App\Enums\Priority',
+        'Workbench\App\Models\User',
+        'Workbench\App\Http\Resources\PostResource',
+    ])->and($analysis->topWrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority'])
+        ->and($analysis->wrappedEnumFqcns('k'))->toBe([
+            'Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority', 'Workbench\App\Enums\UiTone',
+        ])
+        ->and($analysis->singleChannelFqcns('none'))->toBe([]);
+});
+
+it('replaces a key\'s inline queues with the classes requeued, each keyed by itself too', function () {
+    $analysis = new MethodAnalysis(
+        inlineEnumFqcns: ['k' => ['Workbench\App\Enums\Season'], 'other' => ['Workbench\App\Enums\Season']],
+        inlineModelFqcns: ['k' => ['Workbench\App\Models\Post']],
+        inlineResourceFqcns: ['k' => ['Workbench\App\Http\Resources\PostResource']],
+    );
+
+    $analysis->requeueInline('k', ['Workbench\App\Enums\Role', 'Workbench\App\Models\User']);
+
+    expect($analysis->inlineEnumFqcns)->toBe([
+        'other' => ['Workbench\App\Enums\Season'],
+        'k' => ['Workbench\App\Enums\Role'],
+    ])->and($analysis->inlineModelFqcns)->toBe(['k' => ['Workbench\App\Models\User']])
+        ->and($analysis->inlineResourceFqcns)->toBe([])
+        ->and($analysis->directEnumFqcns)->toBe(['Workbench\App\Enums\Role' => 'Workbench\App\Enums\Role'])
+        ->and($analysis->modelFqcns)->toBe(['Workbench\App\Models\User' => 'Workbench\App\Models\User']);
+});
+
+it('reads each key once, as its last write where its first stood, and every entry of a signature', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('by', ['type' => 'User', 'optional' => false]);
+    $analysis->addSignatureEntry('[key: string]', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('id', ['type' => 'number', 'optional' => false]);
+    $analysis->addProperty('by', ['type' => 'string', 'optional' => true]);
+    $analysis->addSignatureEntry('[key: string]', ['type' => 'boolean', 'optional' => false]);
+
+    expect(array_map(static fn (array $property): string => $property['name'].': '.$property['type'], $analysis->writtenProperties()))
+        ->toBe(['by: string', '[key: string]: number | undefined', 'id: number', '[key: string]: boolean | undefined']);
+});
+
+// A per-key map one of these methods forgets would keep a moved key's classes, cast or readings under the old name.
+it('moves every per-key map with its key, through every method that moves, slices or forgets keys', function () {
+    $wide = ['properties', 'customImports', 'carried'];
+    $maps = array_values(array_filter(
+        array_map(
+            static fn (ReflectionProperty $property): string => $property->getName(),
+            new ReflectionClass(MethodAnalysis::class)->getProperties(ReflectionProperty::IS_PUBLIC),
+        ),
+        static fn (string $name): bool => ! in_array($name, $wide, true)
+            && (string) new ReflectionProperty(MethodAnalysis::class, $name)->getType() === 'array',
+    ));
+    $filled = static function () use ($maps): MethodAnalysis {
+        $analysis = new MethodAnalysis(properties: [
+            ['name' => 'k', 'type' => 'string', 'optional' => false, 'description' => ''],
+            ['name' => 'other', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ]);
+
+        foreach ($maps as $map) {
+            $analysis->{$map} = ['k' => ['K'], 'other' => ['O']];
+        }
+
+        return $analysis;
+    };
+    $slice = $filled()->sliceOf('k');
+    $renamed = $filled();
+    $renamed->renameKeys(['k' => 'n']);
+    $appended = new MethodAnalysis;
+    $appended->appendSlice($slice, keepsHeldObjects: true);
+    $merged = new MethodAnalysis;
+    $merged->appendSlice($slice, keepsHeldObjects: false);
+    $replaced = new MethodAnalysis;
+    $replaced->replaceWith($filled());
+    $forgotten = $filled();
+    $forgotten->forgetChannels('k');
+    // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
+    $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
+
+    expect($maps)->toHaveCount(14);
+
+    foreach ($maps as $map) {
+        expect($slice->{$map})->toBe(['k' => ['K']], $map)
+            ->and($renamed->{$map})->toBe(['n' => ['K'], 'other' => ['O']], $map)
+            ->and($appended->{$map})->toBe(['k' => ['K']], $map)
+            ->and($merged->{$map})->toBe($map === 'heldObjectKeys' ? [] : ['k' => ['K']], $map)
+            ->and($replaced->{$map})->toBe(['k' => ['K'], 'other' => ['O']], $map)
+            ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map);
+    }
+});
+
+it('slices one row of a named key, its last, and every row of a signature', function () {
+    $analysis = new MethodAnalysis(properties: [
+        ['name' => 'k', 'type' => 'string', 'optional' => false, 'description' => ''],
+        ['name' => '[key: string]', 'type' => 'number', 'optional' => false, 'description' => ''],
+        ['name' => 'k', 'type' => 'number', 'optional' => false, 'description' => ''],
+        ['name' => '[key: string]', 'type' => 'boolean', 'optional' => false, 'description' => ''],
+    ]);
+
+    expect(array_column($analysis->sliceOf('k')->properties, 'type'))->toBe(['number'])
+        ->and(array_column($analysis->sliceOf('[key: string]')->properties, 'type'))->toBe(['number', 'boolean']);
+});
+
+it('refuses to merge a key the analysis already holds, which a literal\'s fold writes once', function () {
+    $target = new MethodAnalysis;
+    $target->addProperty('k', ['type' => 'string', 'optional' => false]);
+    $source = new MethodAnalysis;
+    $source->addProperty('k', ['type' => 'number', 'optional' => false]);
+    $signatures = new MethodAnalysis;
+    $signatures->addSignatureEntry('[key: string]', ['type' => 'number', 'optional' => false]);
+    $more = new MethodAnalysis;
+    $more->addSignatureEntry('[key: string]', ['type' => 'string', 'optional' => false]);
+    $signatures->merge($more);
+
+    expect(fn () => $target->merge($source))->toThrow(LogicException::class)
+        ->and(array_column($signatures->properties, 'name'))->toBe(['[key: string]', '[key: string]']);
 });

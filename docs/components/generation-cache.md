@@ -22,14 +22,16 @@ each macro registered on `JsonResource`, by name and by what it runs: an invokab
 method. A closure counts as `Closure`, since its file is already a recorded dependency. Adding, removing or re-pointing
 a macro changes what a bare `$this->m()` in any resource publishes. It also holds each `$wrap` slot the booted app
 changed from its declared default (`ResourceWrapping::runtimeOverrides()`), since a provider's `withoutWrapping()` or
-`wrap()` reshapes every collection and page prop that wraps by it. An entry hits when the fingerprint of its recorded
-dependencies, plus the class's signature and the published-model signature, matches the stored one and every output
-file it wrote still exists.
+`wrap()` reshapes every collection and page prop that wraps by it, and the default auth guard and each guard's provider
+model, since they decide the model a read of the signed-in user types as. An entry hits when the fingerprint of its
+recorded dependencies, plus the class's signature and the published-model signature, matches the stored one and every
+output file it wrote still exists.
 
 A hit never renders, so the header also hashes the template each cached feature renders and every view it includes by
 a literal name: editing or deleting one rebuilds everything, publishing an unedited copy does not.
-`BaseRunner::resetRunState()` flushes Laravel's view lookups and compile checks, so a template edited between two runs
-in one process renders fresh.
+Each run renders through a `SourceCompilerEngine` (`BaseRunner::renderingViewsFromSource()`), which compiles every
+view from its source on its first render: a dist install keeps the release's file times, so an upgrade's templates
+can be older than the copies Blade compiled from the previous version, and the rebuild would cache their output.
 
 `GenerationManifest::fingerprint()` hashes each dependency file once per run, however many classes depend on it, and
 `save()` ends that run so the next one reads every file again.

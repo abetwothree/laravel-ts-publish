@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\InlineArrayHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\InlineArrayHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadLocalModelResource;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -47,10 +52,10 @@ function inlineArrayHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -78,10 +83,10 @@ final class InlineArrayHandlerReturnArrayStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -96,30 +101,98 @@ final class InlineArrayHandlerReturnArrayStubEngine implements ExpressionEngine
 
 it('resolves an inline array with a nested key and a model spread arm to an Omit<> intersection', function () {
     // Mirrors NestedResourceSpreadResource::$members_model_spread's shape — a sibling key plus
-    // ...$member->toArray() — proving the moved analyzeInlineArray()/collectInlineArraySpreadArms()
-    // pair still Omit<>'s the explicit key against the model arm without engine recursion.
+    // ...$member->toArray() — proving planArms() classifies the model arm without engine recursion, and the
+    // print Omit<>'s the explicit key against the arm the literal's fold hands it.
     $array = new Array_([
         new ArrayItem(new Variable('placeholder'), new String_('note')),
         new ArrayItem(new MethodCall(new Variable('member'), 'toArray'), null, unpack: true),
     ]);
 
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $scope->varModelBindings['member'] = User::class;
+
+    $plan = (new InlineArrayHandler)->planArms($array->items, $scope, inlineArrayHandlerThrowingEngine());
+
     $analysis = new ResourceAnalysis(properties: [
         ['name' => 'note', 'type' => 'string', 'optional' => false, 'description' => ''],
     ]);
-
-    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
-    $scope->varModelBindings['member'] = User::class;
+    $analysis->setSpreadArms(array_column($plan->printed, 'arm'));
 
     $engine = new InlineArrayHandlerReturnArrayStubEngine($array, $analysis);
 
     $result = (new InlineArrayHandler)->resolve($array, $scope, $engine);
 
+    expect($plan->printed)->toBe([1 => ['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null]]);
+
+    // The spread's keys are no string or int the literal writes, so the result marks them unnamed for array_keys().
     expect($result)->toBe([
         'type' => "Omit<User, 'note'> & { note: string }",
         'optional' => false,
         'embeddedModelFqcns' => [User::class],
+        'unnamedKeys' => true,
     ]);
 });
+
+/**
+ * An engine that types `$arm` as a resource, `$obj` and any literal as `{ a: number }`, `$map` as a string map, and
+ * `$maybe` and `$maybeObj` as a number map or `{ a: number }` beside `[]`.
+ */
+function inlineArrayHandlerArmEngine(): ExpressionEngine
+{
+    return new class implements ExpressionEngine
+    {
+        public function resolve(Expr $expr): array
+        {
+            return match (true) {
+                $expr instanceof Variable && $expr->name === 'arm' => ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class],
+                $expr instanceof Variable && $expr->name === 'map' => ['type' => 'Record<string, string>', 'optional' => false],
+                $expr instanceof Variable && $expr->name === 'maybe' => ['type' => 'Record<string, number> | never[]', 'optional' => false],
+                $expr instanceof Variable && $expr->name === 'maybeObj' => ['type' => '{ a: number } | never[]', 'optional' => false],
+                default => ['type' => '{ a: number }', 'optional' => false],
+            };
+        }
+
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
+        {
+            throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
+        {
+            return Reading::Encoded;
+        }
+
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+        {
+            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+        }
+    };
+}
+
+// A print places every arm before the keys, so a spread a later arm follows stays an arm, though written in place.
+it('plans the spreads a nested literal prints as arms, by item, with each map\'s value, checked after another item', function (string $php, int $items, array $printed) {
+    $array = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+    assert($array instanceof Array_);
+    $plan = (new InlineArrayHandler)->planArms($array->items, new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class)), inlineArrayHandlerArmEngine());
+
+    expect($plan->items)->toHaveCount($items)
+        ->and(array_map(static fn (array $arm): string => ($arm['arm']['type'] ?? $arm['arm']['fqcn'])
+            .($arm['map'] === null ? '' : ($arm['map']['checksKeys'] ? ' fits ' : ' holds ').$arm['map']['value']['type'])
+            .(($arm['map']['mayBeEmpty'] ?? false) ? ' or none' : ''), $plan->printed))
+        ->toBe($printed);
+})->with([
+    'a value an arm follows' => ['[...$obj, ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
+    'a value after the arm, written in place' => ['[...$arm, ...$obj]', 2, [0 => UserResource::class]],
+    'a literal an arm follows' => ['[...["a" => 1], ...$arm]', 2, [0 => '{ a: number }', 1 => UserResource::class]],
+    'a literal no arm follows, inlined' => ['[...["a" => 1], "b" => 2]', 2, []],
+    'a map after a key' => ['["b" => 2, ...$map]', 2, [1 => 'Record<string, string> fits string']],
+    'a map first' => ['[...$map, "b" => 2]', 2, [0 => 'Record<string, string> holds string']],
+    'a map after a map' => ['[...$map, ...$map]', 2, [0 => 'Record<string, string> holds string', 1 => 'Record<string, string> fits string']],
+    'a map or [] before a map, as the map' => ['[...$maybe, ...$map]', 2, [0 => 'Record<string, number> holds number or none', 1 => 'Record<string, string> fits string']],
+    'an object or [], no arm' => ['[...$maybeObj, "b" => 2]', 2, []],
+    'a helper the item loop flattens' => ['[...$this->helper(), ...$arm]', 2, [1 => UserResource::class]],
+]);
 
 it('declines a non-array expression', function () {
     $expr = new Variable('foo');
@@ -431,7 +504,8 @@ it('keeps a keyed literal\'s keys when no member the re-index could rewrite drop
     'scalars under named keys' => ['["a" => 1, "b" => $this->title]', true],
     'only numeric keys, which the filter lists' => ['[6 => collect([6 => $this->title])]', false],
     'an array member beside a collection' => ['["a" => collect([6 => 1]), "b" => [6 => 2]]', false],
-    'a spread' => ['[...["a" => 1], "b" => 2]', false],
+    'a spread of a literal, whose keys it names' => ['[...["a" => 1], "b" => 2]', true],
+    'a spread of a value, whose keys it does not' => ['[...$this->options, "b" => 2]', false],
 ]);
 
 it('keeps a missing when() element out of a list, which a resource re-indexes', function () {
@@ -520,3 +594,93 @@ it('spreads the model a variable no closure binds holds, never the relation\'s',
         ->and($sent['data']['fresh'])->toBe(['x' => 1])
         ->and($sent['data'])->not->toHaveKey('unbound');
 });
+
+/**
+ * An engine typing every value as $type, as a read in the gap mode may: gap arms beside an object, or its open marker.
+ */
+function inlineArrayHandlerGappedEngine(string $type): ExpressionEngine
+{
+    return new class($type) implements ExpressionEngine
+    {
+        /** Type every value alike. */
+        public function __construct(private readonly string $type) {}
+
+        /** Type every value as the engine's one type. */
+        public function resolve(Expr $expr): array
+        {
+            return ['type' => $this->type, 'optional' => false];
+        }
+
+        /** Fails the test: no method is spread in this case. */
+        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
+        {
+            throw new RuntimeException('spreadAnalysis() must not be called in this case');
+        }
+
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
+        {
+            return Reading::Encoded;
+        }
+
+        /** Fails the test: no array is analyzed in this case. */
+        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
+        {
+            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
+        }
+    };
+}
+
+it('reads a spread value past its gap arms and open marker: its named keys in place, a map\'s value, an object arm', function (string $type, string $arm) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $value = new Variable('held');
+    $result = ['type' => $type, 'optional' => false];
+    $keys = InlineArrayHandler::spreadKeys($value, $result, $scope);
+
+    expect(array_map(static fn (array $key): string => $key[0].($key[1]['optional'] ? '?' : '').': '.$key[1]['type'], $keys ?? []))
+        ->toBe(['by: string | $gap2'])
+        ->and(InlineArrayHandler::classifySpreadArm($value, $scope, inlineArrayHandlerGappedEngine($type))['type'] ?? null)
+        ->toBe($arm);
+})->with([
+    'a gap beside the object' => ['{ by: string | $gap2 } | $gap1', '{ by: string | $gap2 }'],
+    'the open marker' => ['{ by: string | $gap2; #$open: unknown }', '{ by: string | $gap2; #$open: unknown }'],
+    'both, beside null' => ['{ by: string | $gap2; #$open: unknown } | null | $gap1', '{ by: string | $gap2; #$open: unknown }'],
+]);
+
+it('reads a map spread\'s value past its gap arms and open marker', function (string $type) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+
+    expect(InlineArrayHandler::spreadSignature(new Variable('held'), ['type' => $type, 'optional' => false], $scope)['type'] ?? null)
+        ->toBe('string');
+})->with([
+    'a record beside a gap' => ['Record<string, string> | $gap1'],
+    'a signature beside the marker' => ['{ [key: string]: string; #$open: unknown }'],
+]);
+
+it('opens the host for a value its marker opens and not for a gap, counting only a value that reads open', function (array $result, bool $opens, int $counts) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $writes = new LiteralWrites;
+    $unread = UnreadSpreads::count();
+    $inPlace = InlineArrayHandler::recordSpread($writes, new Variable('held'), ['optional' => false, ...$result], $scope, 0);
+    $folded = new MethodAnalysis;
+    $writes->applyTo($folded, false);
+
+    expect($inPlace)->toBeTrue()
+        ->and(array_column($folded->properties, 'name'))->toBe(['by'])
+        ->and($folded->holdsUnnamedKeys)->toBe($opens)
+        ->and(UnreadSpreads::count() - $unread)->toBe($counts);
+})->with([
+    'the open marker' => [['type' => '{ by: string; #$open: unknown }'], true, 0],
+    'the marker beside a signature, which reads open' => [['type' => '{ by: string; [key: string]: number; #$open: unknown }'], true, 1],
+    'a gap arm' => [['type' => '{ by: string } | $gap1'], false, 0],
+]);
+
+it('keeps a gap in the gap mode where a union of objects spread leaves out a value no rule types (PJ11b)', function (bool $shows) {
+    $scope = new AnalysisScope(new ReflectionClass(NestedResourceSpreadResource::class));
+    $read = static fn (): ?array => InlineArrayHandler::spreadKeys(new Variable('held'), ['type' => '{ k: string } | { k: unknown }', 'optional' => false], $scope);
+    $keys = $shows ? resolve(AnalysisMemo::class)->showingGaps($read) : $read();
+    $type = $keys[0][1]['type'] ?? '';
+
+    expect(VisibleGaps::stripped($type)[0])->toBe('string')
+        ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
+})->with([false, true]);

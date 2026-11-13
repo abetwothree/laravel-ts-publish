@@ -12,7 +12,7 @@ use Workbench\App\Models\User;
 
 /**
  * Helpers read as values: a scalar, a passed argument, a list literal, list pipelines and returned variables, beside
- * five `whenHas()` callbacks, three of which need rules of their own.
+ * five `whenHas()` callbacks, one of which is a finder.
  *
  * @mixin Post
  */

@@ -5,14 +5,15 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Dispatch\ExpressionDispatcher;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ScalarHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\TernaryHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\VariableHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\TernaryHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ScalarHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\VariableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
@@ -65,10 +66,10 @@ function variableHandlersThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -119,10 +120,10 @@ final class VariableHandlersLoopEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -163,10 +164,10 @@ final class TernaryArmRecordingEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     /** Fails the test: no array is analyzed in this case. */
@@ -372,15 +373,15 @@ it('reads $variable->map(callback: …) by name', function () {
 it('resolves a nullsafe chain from a typed map-closure parameter', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(PostCommentAuthorsResource::class), Post::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['authors']['type'])->toBe('({ id: number; who: string | null; who_or: string | null })[]')
-        ->and($props['loaded']['type'])->toBe('({ who: string | null })[]')
+    expect($props['authors']['type'])->toBe('{ id: number; who: string | null; who_or: string | null }[]')
+        ->and($props['loaded']['type'])->toBe('{ who: string | null }[]')
         ->and($props['loaded']['optional'])->toBeTrue();
 });
 
 it('keeps a typed map over a relation the model does not declare through a trailing values()->all()', function () {
     $props = collect(new ResourceAstAnalyzer(new ReflectionClass(UserFeaturedPostsResource::class), User::class)->analyze()->properties)->keyBy('name');
 
-    expect($props['featured_posts']['type'])->toBe('({ id: number; title: string; file: string | null })[] | null')
+    expect($props['featured_posts']['type'])->toBe('{ id: number; title: string; file: string | null }[] | null')
         ->and($props['featured_posts']['optional'])->toBeTrue();
 });
 
@@ -617,10 +618,10 @@ final class TernaryClassBindingRecordingEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     /** Fails the test: no array is analyzed in this case. */

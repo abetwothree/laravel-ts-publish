@@ -6,11 +6,13 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\SameNamedKindsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumNamesController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapOrNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineEnumKindResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSameNamedKindsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumNamePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CastDisplacedSameNamedEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumNameMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumNamesMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
@@ -44,6 +46,15 @@ it('aliases two same-named enums\' Kind names as it aliases their Type names', f
         'StatusKind as CrmStatusKind', 'StatusKind as WorkbenchStatusKind',
         'StatusType as CrmStatusType', 'StatusType as WorkbenchStatusType',
     ]);
+});
+
+it('aliases two same-named enums a value object\'s public-property shape holds, each with its import', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => SameNamedKindsEvent::class]);
+
+    expect($transformer->properties['kinds']['type'])->toBe('{ status: AppStatusType; crmStatus: CrmStatusType; first: boolean }')
+        ->and(array_merge(...array_values($transformer->typeImports)))
+        ->toEqualCanonicalizing(['StatusType as AppStatusType', 'StatusType as CrmStatusType'])
+        ->and(json_encode(new SameNamedKindsEvent()->kinds))->toBe('{"status":0,"crmStatus":"lead","first":true}');
 });
 
 it('sends the values and names the same-named payload types admit', function () {
@@ -156,33 +167,52 @@ it('imports the Kind a model accessor reads beside the Type', function () {
         ->and([$post->status_name, $post->status_both])->toBe(['Draft', 'Draft']);
 });
 
-it('spells two same-named enums\' case names as literals in a route file, which aliases no import', function () {
+it('aliases two same-named enums\' Kind names in a route file, on one page and across two', function () {
     $router = app(Router::class);
     $router->get('/same-named/both', [SameNamedEnumNamesController::class, 'both']);
     $router->get('/same-named/app', [SameNamedEnumNamesController::class, 'app']);
     $router->get('/same-named/crm', [SameNamedEnumNamesController::class, 'crm']);
 
     $transformer = new RouteTransformer(SameNamedEnumNamesController::class);
-    $pageTypes = array_column($transformer->actions, 'pageType', 'methodName');
-    $crmNames = "'Lead' | 'Prospect' | 'Active' | 'Churned'";
+    $controller = new SameNamedEnumNamesController;
 
-    expect($pageTypes)->toBe([
-        'both' => "Inertia.SharedData & { app_name: 'Draft' | 'Published', crm_name: {$crmNames}, priority_name: PriorityKind }",
-        'app' => "Inertia.SharedData & { name: 'Draft' | 'Published' }",
-        'crm' => "Inertia.SharedData & { name: {$crmNames} }",
-    ])->and(array_merge(...array_values($transformer->typeImports)))->toBe(['PriorityKind']);
+    expect(array_column($transformer->actions, 'pageType', 'methodName'))->toBe([
+        'both' => 'Inertia.SharedData & { app_name: WorkbenchStatusKind, crm_name: CrmStatusKind, priority_name: PriorityKind }',
+        'app' => 'Inertia.SharedData & { name: WorkbenchStatusKind }',
+        'crm' => 'Inertia.SharedData & { name: CrmStatusKind }',
+    ])->and(array_merge(...array_values($transformer->typeImports)))->toEqualCanonicalizing([
+        'PriorityKind', 'StatusKind as CrmStatusKind', 'StatusKind as WorkbenchStatusKind',
+    ])->and([inertiaProps($controller->both()), inertiaProps($controller->app()), inertiaProps($controller->crm())])
+        ->toEqual([
+            (object) ['app_name' => 'Draft', 'crm_name' => 'Lead', 'priority_name' => 'Low'],
+            (object) ['name' => 'Draft'],
+            (object) ['name' => 'Lead'],
+        ]);
 });
 
-it('spells two same-named enums\' case names as literals in a metadata companion, which aliases no import', function () {
+it('aliases two same-named enums\' case-name kinds in a metadata companion', function () {
     config()->set('ts-publish.model_metadata.provider_class', SameNamedEnumNamesMetadataProvider::class);
 
     $data = (new ModelMetadataTransformer(User::class))->data();
 
     expect($data->properties)->toBe(['app_names' => ['Draft'], 'crm_name' => 'Lead', 'priority_name' => 'Low'])
         ->and($data->propertyTypes)->toBe([
-            'app_names' => "('Draft' | 'Published')[]",
-            'crm_name' => "'Lead' | 'Prospect' | 'Active' | 'Churned'",
+            'app_names' => 'WorkbenchStatusKind[]',
+            'crm_name' => 'CrmStatusKind',
             'priority_name' => 'PriorityKind',
         ])
-        ->and($data->typeImports)->toBe(['../enums' => ['PriorityKind']]);
+        ->and($data->typeImports)->toBe([
+            '../../crm/enums' => ['StatusKind as CrmStatusKind'],
+            '../enums' => ['PriorityKind', 'StatusKind as WorkbenchStatusKind'],
+        ]);
+});
+
+it('keeps a kind unaliased beside a same-named enum a cast replaces', function () {
+    config()->set('ts-publish.model_metadata.provider_class', CastDisplacedSameNamedEnumMetadataProvider::class);
+
+    $data = (new ModelMetadataTransformer(User::class))->data();
+
+    expect($data->properties)->toBe(['a' => 'Draft', 'b' => 'Lead', 'c' => 'Lead'])
+        ->and($data->propertyTypes)->toBe(['a' => 'StatusKind', 'b' => 'CrmLabel', 'c' => 'string'])
+        ->and($data->typeImports)->toBe(['../enums' => ['StatusKind'], '@/types/crm' => ['CrmLabel']]);
 });

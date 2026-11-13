@@ -2,12 +2,18 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\CoalesceHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators\CoalesceHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullableResourceEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayMapSourcesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\NullableResourceHolder;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp;
@@ -15,6 +21,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use Workbench\App\Models\Post;
 
 /**
  * A throwaway scope for tests that never inspect its contents.
@@ -42,10 +49,10 @@ function coalesceHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -63,7 +70,7 @@ function coalesceHandlerThrowingEngine(): ExpressionEngine
 final class CoalesceArmStubEngine implements ExpressionEngine
 {
     /** @param list<array{0: Expr, 1: array<string, mixed>}> $arms */
-    public function __construct(private array $arms) {}
+    public function __construct(private array $arms, private Reading $reading = Reading::Encoded) {}
 
     /** @return array<string, mixed> */
     public function resolve(Expr $expr): array
@@ -82,10 +89,10 @@ final class CoalesceArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as the test says, as `json_encode()` sends it unless told otherwise. */
+    public function reading(): Reading
     {
-        return false;
+        return $this->reading;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -285,7 +292,7 @@ it('answers a bare unknown when neither arm has a type, whatever the right arm c
 });
 
 it('strips a top-level `| null` arm from the left before deciding whether it is unknown', function () {
-    // `null ?? $x` — the left operand is exactly `null`, which stripNullArm() reduces to 'unknown',
+    // `null ?? $x` — the left operand is exactly `null`, which withoutNullArm() reduces to 'unknown',
     // so the right arm is returned alone, matching the runtime evaluation of `null ?? $x` as `$x`.
     $handler = new CoalesceHandler;
     $left = new ConstFetch(new Name('null'));
@@ -345,6 +352,99 @@ it('keeps the key optional by the rule for each operand of ??', function (string
     'an optional right past a left that can be null' => ['string | null', false, 'User', true, true],
     'an optional right past an untyped left' => ['unknown', false, 'User', true, true],
     'neither optional' => ['string | null', false, 'number', false, false],
+]);
+
+// An object is never null, so `??` returns a closure or prop whole, which Inertia calls; the right operand never runs.
+it('keeps a left holding an object on every path whole where Inertia reads it', function (array $left) {
+    $leftExpr = new Variable('f');
+    $engine = new CoalesceArmStubEngine([[$leftExpr, $left]], Reading::Inertia);
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, new Variable('b')), coalesceHandlerTestScope(), $engine))
+        ->toBe($left);
+})->with([
+    'a closure that may resolve to null' => [['type' => 'number | null', 'optional' => false, 'heldObject' => true]],
+    'an optional prop' => [['type' => 'number', 'optional' => true, 'heldObject' => true]],
+    'arms none of which is a plain null' => [[
+        'type' => 'number | null',
+        'optional' => false,
+        'mayHoldObject' => ['objectNull' => true, 'plainNull' => false],
+    ]],
+]);
+
+// Only a plain null is replaced, so an object arm's null stays, and what is left past `??` is never a plain null.
+it('replaces only the plain null of a left that may hold an object where Inertia reads it', function (bool $objectNull, string $type) {
+    $leftExpr = new Variable('f');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([
+        [$leftExpr, ['type' => 'number | null', 'optional' => false, 'mayHoldObject' => ['objectNull' => $objectNull, 'plainNull' => true]]],
+        [$rightExpr, ['type' => 'string', 'optional' => false]],
+    ], Reading::Inertia);
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), coalesceHandlerTestScope(), $engine))
+        ->toBe(['type' => $type, 'optional' => false, 'mayHoldObject' => ['objectNull' => $objectNull, 'plainNull' => false]]);
+})->with([
+    'an object arm that may resolve to null' => [true, 'number | string | null'],
+    'an object arm that never does' => [false, 'number | string'],
+]);
+
+// Inertia sends a callable a called closure returns as `{}`, so there `??` reads as it always has; a prop object it
+// resolves past that call, so its null stays.
+it('keeps only a held prop whole in what a called closure returns', function (array $left, string $type) {
+    $leftExpr = new Variable('f');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([[$leftExpr, $left], [$rightExpr, ['type' => 'string', 'optional' => false]]], Reading::Inertia);
+    $scope = coalesceHandlerTestScope();
+    $scope->readsCallableReturn = true;
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), $scope, $engine)['type'])->toBe($type);
+})->with([
+    'a held callable' => [['type' => 'number | null', 'optional' => false, 'heldObject' => true], 'number | string'],
+    'a held prop' => [['type' => 'number | null', 'optional' => false, 'heldObject' => true, 'heldProp' => true], 'number | null'],
+]);
+
+// json_encode() sends a closure as `{}`, which neither reading admits, so outside Inertia `??` reads as it always has.
+it('strips a held object\'s null where json_encode() sends it', function () {
+    $leftExpr = new Variable('f');
+    $rightExpr = new Variable('b');
+    $engine = new CoalesceArmStubEngine([
+        [$leftExpr, ['type' => 'number | null', 'optional' => false, 'heldObject' => true]],
+        [$rightExpr, ['type' => 'string', 'optional' => false]],
+    ]);
+
+    expect((new CoalesceHandler)->resolve(new BinaryOp\Coalesce($leftExpr, $rightExpr), coalesceHandlerTestScope(), $engine)['type'])
+        ->toBe('number | string');
+});
+
+// A collection read through no null object is never null, so `??` hands it back and never runs its right operand; a
+// relation of a to-one relation or of `first()` is null where that model is.
+it('returns a left holding a collection whole, and unions the right of a left that may be null', function (string $php, string $type) {
+    $expr = new AstParser()->parseSource('<?php '.$php.';')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(ArrayMapSourcesResource::class), Post::class)->resolve($expr)['type'])
+        ->toBe($type);
+})->with([
+    'a relation' => ['$this->comments ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation chain' => ['$this->comments->only([5, 7]) ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation chain beside a list of keys' => ['$this->comments->take(2) ?? collect($this->names())->keys()->all()', 'Comment[]'],
+    'a collect() value' => ['collect($this->names()) ?? $this->scores', 'string[]'],
+    'a nullable attribute' => ['$this->options ?? collect($this->scores)->all()', 'Record<string, string> | Record<string, number>'],
+    'a relation behind a ?->' => ['$this->resource?->comments ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+    'the subject\'s relation' => ['$this->resource->comments ?? collect($this->scores)->all()', 'Comment[]'],
+    'a relation of a to-one relation, which may be null' => ['$this->author->posts ?? collect($this->scores)->all()', 'Post[] | Record<string, number>'],
+    'a relation of first(), which may be null' => ['$this->comments->first()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+    'a relation of last(), which may be null' => ['$this->comments->last()->replies ?? collect($this->scores)->all()', 'Comment[] | Record<string, number>'],
+]);
+
+// Only an API resource's `$this->resource` is the proxy the engine reads as never null; elsewhere it is a member.
+it('unions the right of a relation read through a nullable member named resource, outside an API resource', function (string $class, string $method) {
+    expect(analyzedKeyTypes($class, $method))->toBe([
+        'scores' => 'Comment[] | Record<string, number>',
+        'literal' => 'Comment[] | { a: number }',
+    ])->and(json_encode($method === 'toArray' ? new NullableResourceHolder()->toArray() : new NullableResourceEvent()->broadcastWith()))
+        ->toBe('{"scores":{"x":1},"literal":{"a":1}}');
+})->with([
+    'a plain class' => [NullableResourceHolder::class, 'toArray'],
+    'a broadcast event' => [NullableResourceEvent::class, 'broadcastWith'],
 ]);
 
 it('declines a non-coalesce BinaryOp', function () {

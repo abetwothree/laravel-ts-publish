@@ -5,13 +5,16 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\ClosureHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values\ClosureHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedClosureParamResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedPostParamResource;
 use Illuminate\Http\Request;
+use PhpParser\Comment\Doc;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -19,12 +22,16 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\UnionType;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\PostStats;
 
 /**
  * A throwaway scope for tests that never inspect its own subject/model.
@@ -52,10 +59,10 @@ function closureHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -91,10 +98,10 @@ final class ClosureHandlerArmStubEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -130,10 +137,10 @@ final class ClosureHandlerScopeSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -167,10 +174,10 @@ final class ClosureHandlerNameTablesSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     /** Fails the test: no array is analyzed in this case. */
@@ -198,10 +205,10 @@ function closureHandlerBlowingUpEngine(): ExpressionEngine
             throw new RuntimeException('body resolution exploded');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -222,7 +229,7 @@ it('resolves an arrow function\'s body through the engine callback, ignoring any
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'string', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string', 'optional' => false, 'heldObject' => true]);
 });
 
 it('merges a multi-return closure body into a union via ValueResult::unionResults()', function () {
@@ -236,7 +243,7 @@ it('merges a multi-return closure body into a union via ValueResult::unionResult
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'string | number', 'optional' => false]);
+    expect($result)->toBe(['type' => 'string | number', 'optional' => false, 'heldObject' => true]);
 });
 
 it('reads each returned variable of a multi-return closure body through the walk over its writes', function () {
@@ -257,7 +264,7 @@ it('falls back to the native return-type annotation when the body resolves to un
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'number', 'optional' => false]);
+    expect($result)->toBe(['type' => 'number', 'optional' => false, 'heldObject' => true]);
 });
 
 it('returns the unknown body result when there is no usable return-type annotation either', function () {
@@ -269,8 +276,88 @@ it('returns the unknown body result when there is no usable return-type annotati
 
     $result = (new ClosureHandler)->resolve($expr, closureHandlerTestScope(), $engine);
 
-    expect($result)->toBe(['type' => 'unknown', 'optional' => false]);
+    expect($result)->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true]);
 });
+
+/**
+ * Resolve an arrow function carrying a doc comment through a stub engine that reads its body as $bodyType, in a scope
+ * whose file imports `Post`.
+ *
+ * @return array<string, mixed>
+ */
+function closureHandlerDocumentedResult(
+    string $docComment,
+    string $bodyType,
+    Identifier|Name|NullableType|UnionType|null $returnType = null,
+    string $scopeClass = DocumentedClosureResource::class,
+): array {
+    $bodyExpr = new Variable('x');
+    $expr = new ArrowFunction(['expr' => $bodyExpr, 'returnType' => $returnType], ['comments' => [new Doc($docComment)]]);
+    $engine = new ClosureHandlerArmStubEngine([[$bodyExpr, ['type' => $bodyType, 'optional' => false]]]);
+    $scope = new AnalysisScope(new ReflectionClass($scopeClass), Post::class);
+
+    return (new ClosureHandler)->resolve($expr, $scope, $engine) ?? [];
+}
+
+it('falls back to the docblock @return, in PHPStan\'s tag order, when the body and a native return type type nothing', function (string $docComment, array $expected) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown'))->toBe([...$expected, 'heldObject' => true]);
+})->with([
+    'a scalar' => ['/** @return int */', ['type' => 'number', 'optional' => false]],
+    'a model the file imports, or null' => [
+        '/** @return Post|null */',
+        ['type' => 'Post | null', 'optional' => false, 'modelFqcn' => Post::class],
+    ],
+    'a @phpstan-return over a vague @return' => [
+        "/**\n * @return array\n * @phpstan-return list<int>\n */",
+        ['type' => 'number[]', 'optional' => false, 'listKeys' => true],
+    ],
+]);
+
+it('reads the body, then a native return type, before the docblock @return', function () {
+    expect(closureHandlerDocumentedResult('/** @return int */', 'boolean')['type'])->toBe('boolean')
+        ->and(closureHandlerDocumentedResult('/** @return int */', 'unknown', new Identifier('string'))['type'])
+        ->toBe('string');
+});
+
+it('lets a precise @return replace a native array, union or mixed return, and keeps the native one over a vague @return', function (string $docComment, Identifier|UnionType $returnType, string $expected) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown', $returnType)['type'])->toBe($expected);
+})->with([
+    'a shape over array' => ['/** @return array{a: int} */', new Identifier('array'), '{ a: number }'],
+    'a shape over a union' => ['/** @return array{a: int} */', new UnionType([new Identifier('array'), new Identifier('string')]), '{ a: number }'],
+    'a scalar over mixed' => ['/** @return int */', new Identifier('mixed'), 'number'],
+    'a vague @return over array' => ['/** @return array */', new Identifier('array'), 'unknown[]'],
+]);
+
+// A closure's `self` and `static` name the class the scope binds them to, whether its native type or its docblock
+// spells them.
+it('reads a closure\'s self or static return, native or documented, as the class the scope binds it to', function (string $docComment, Name|NullableType|null $returnType, string $expected) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown', $returnType, PostStats::class)['type'])->toBe($expected);
+})->with([
+    'a native self' => ['/** */', new Name('self'), '{ views: number; shares: number }'],
+    'a native ?static' => ['/** */', new NullableType(new Name('static')), '{ views: number; shares: number } | null'],
+    'a @return static' => ['/** @return static */', null, '{ views: number; shares: number }'],
+    'a @return self or null' => ['/** @return self|null */', null, '{ views: number; shares: number } | null'],
+]);
+
+// A docblock that names a global class the file does not import still reads it, as it did before the relative spelling.
+it('reads a @return naming a global class the file does not import', function () {
+    expect(closureHandlerDocumentedResult('/** @return DateTimeImmutable */', 'unknown')['type'])
+        ->toBe('{ date: string; timezone_type: number; timezone: string }');
+});
+
+it('leaves the body\'s unknown for a vague @return, one that types nothing, or one naming an unpublished class', function (string $docComment) {
+    expect(closureHandlerDocumentedResult($docComment, 'unknown'))
+        ->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true]);
+})->with([
+    'mixed' => ['/** @return mixed */'],
+    'void' => ['/** @return void */'],
+    'never' => ['/** @return never */'],
+    'a mixed-valued array' => ['/** @return array<string, mixed> */'],
+    'a class that does not exist' => ['/** @return NoSuchClass */'],
+    'a list of a class that does not exist' => ['/** @return list<NoSuchClass> */'],
+    'a class that is not a model' => ['/** @return \\ArrayObject */'],
+    'the framework\'s base model' => ['/** @return \\Illuminate\\Database\\Eloquent\\Model */'],
+]);
 
 it('suppresses a closure param that shadows a populated localVarBindings entry, then restores it', function () {
     // This pins the ShadowedClosureParamResource invariant: a closure param that merely shares a
@@ -290,7 +377,7 @@ it('suppresses a closure param that shadows a populated localVarBindings entry, 
 
     expect($engine->wasCalled)->toBeTrue()
         ->and($engine->shadowedNameWasAbsent)->toBeTrue()
-        ->and($result)->toBe(['type' => 'unknown', 'optional' => false])
+        ->and($result)->toBe(['type' => 'unknown', 'optional' => false, 'heldObject' => true])
         ->and($scope->localVarBindings)->toBe(['slug' => $outerBoundExpr]);
 });
 
@@ -334,6 +421,8 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->keyBuiltLocals[$name] = [new Return_($outer)];
         $scope->passedValues[$name] = $outer;
         $scope->relativeParameters[$name] = true;
+        $scope->guardedParameters[$name] = 'guarded';
+        $scope->leftOutParameters[$name] = [['name' => 'outerSource', 'value' => $outer]];
     }
 
     $before = $scope->nameBindings();
@@ -382,10 +471,10 @@ final class ClosureHandlerBindingsSpyEngine implements ExpressionEngine
         throw new RuntimeException('spreadAnalysis() must not be called in this case');
     }
 
-    /** Calls no callable it reads. */
-    public function invokesCallables(): bool
+    /** Reads every value as `json_encode()` sends it. */
+    public function reading(): Reading
     {
-        return false;
+        return Reading::Encoded;
     }
 
     /** Fails the test: no array is analyzed in this case. */
@@ -512,12 +601,11 @@ it('reads a whenLoaded() parameter past its reassignment through what the body a
         'by_value_use_bare?' => 'User',
         'by_reference_use_write?' => 'unknown',
         'exiting_branch?' => 'string | null',
-        'falling_branch?' => 'unknown',
-        // Each branch a continue, a break or a caught throw leaves ends the binding, so the read past it is unknown and
-        // the closure's union leaves it out (known gap); it no longer reads the User's `name`.
-        'continued_branch?' => 'number',
-        'broken_branch?' => 'number',
-        'caught_branch?' => 'number',
+        // Past the write the read joins the User and the Profile, which has no `name`, so Laravel sends null for it.
+        'falling_branch?' => 'string | null',
+        'continued_branch?' => 'number | string | null',
+        'broken_branch?' => 'number | string | null',
+        'caught_branch?' => 'string | number | null',
         'nested_falling_branch?' => 'string | number | null',
         'concat_value?' => 'string',
         'branch_value?' => 'string',

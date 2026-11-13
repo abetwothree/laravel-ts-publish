@@ -30,7 +30,7 @@ export interface BulletinArchive
     is_pinned: boolean;
     // Mutators
     comment_lists: Comment[][];
-    author_rows: ({ author: Pick<User, 'id' | 'name'> })[];
+    author_rows: { author: Pick<User, 'id' | 'name'> }[];
     // Relations
     bulletins: Bulletin[];
     // Counts

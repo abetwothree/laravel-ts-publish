@@ -5,19 +5,42 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
 
 /**
- * Where a relation or an Eloquent builder forwards a call it does not declare: a class fact both receiver resolvers
- * read, the class resolver for what the call returns as a receiver and the method-return resolver for its type.
+ * Where a model, a relation or an Eloquent builder forwards a call it does not declare.
+ *
+ * A class fact both receiver resolvers read: the class resolver for what the call returns as a receiver, the
+ * method-return resolver for its type.
  *
  * @internal
  */
 final class QueryForwarding
 {
+    /** The calls SoftDeletingScope adds to each query of a soft-deleting model, each handing the query back. */
+    private const array SOFT_DELETE_QUERIES = ['withTrashed', 'withoutTrashed', 'onlyTrashed'];
+
+    /** @var array<class-string, class-string<Builder<Model>>> Each model's builder class, fixed by its declarations. */
+    private static array $builderClasses = [];
+
+    /** @var array<class-string, bool> Whether each model uses SoftDeletes. */
+    private static array $softDeleting = [];
+
+    /**
+     * Forget each model's builder class and soft deletes, so a run reads every model's declarations afresh.
+     */
+    public static function forget(): void
+    {
+        self::$builderClasses = [];
+        self::$softDeleting = [];
+    }
+
     /**
      * The class whose declaration answers a method a relation or an Eloquent builder does not declare, or null.
      *
@@ -44,10 +67,133 @@ final class QueryForwarding
             return null;
         }
 
+        return self::passesThrough($class, $methodName) && method_exists(QueryBuilder::class, $methodName) ? QueryBuilder::class : null;
+    }
+
+    /**
+     * The Eloquent builder class a model's queries are, as `Model::newEloquentBuilder()` picks it.
+     *
+     * @param  class-string<Model>  $model
+     * @return class-string<Builder<Model>>
+     */
+    public static function builderClass(string $model): string
+    {
+        return self::$builderClasses[$model] ??= self::readBuilderClass($model);
+    }
+
+    /**
+     * Whether a static call on a model runs on a new query of it, as `Model::query()->m()` would.
+     *
+     * `Model::__callStatic()` sends an attribute scope to `query()` and any other name to a new instance, whose
+     * `__call()` forwards a method the model lacks to a new query, unless the name is `through` and a relation's.
+     */
+    public static function queriesStatically(string $model, string $methodName): bool
+    {
+        if (! ReceiverType::isConcreteModel($model)) {
+            return false;
+        }
+
+        if (method_exists($model, $methodName)) {
+            return self::isAttributeScope($model, $methodName);
+        }
+
+        return ! str_starts_with($methodName, 'through') || ! method_exists($model, lcfirst(substr($methodName, 7)));
+    }
+
+    /**
+     * The method a model's named scope runs, found as `Model::hasNamedScope()` finds it, or null.
+     *
+     * @param  class-string<Model>  $model
+     */
+    public static function namedScope(string $model, string $methodName): ?ReflectionMethod
+    {
+        $prefixed = 'scope'.ucfirst($methodName);
+
+        return match (true) {
+            method_exists($model, $prefixed) => new ReflectionMethod($model, $prefixed),
+            self::isAttributeScope($model, $methodName) => new ReflectionMethod($model, $methodName),
+            default => null,
+        };
+    }
+
+    /**
+     * Whether `Builder::__call()` runs a call on the base query and hands the Eloquent builder back.
+     *
+     * A name the builder lacks, with no macro or model scope under it and not in its `$passthru`, that the base query
+     * runs as a public method, a macro or a dynamic `where{Column}()`.
+     *
+     * @param  class-string<Model>  $model  the model the builder queries
+     */
+    public static function forwardsToBaseQuery(string $class, string $methodName, string $model): bool
+    {
+        return is_a($class, Builder::class, true)
+            && ! method_exists($class, $methodName)
+            && ! Builder::hasGlobalMacro($methodName)
+            && ! self::isSoftDeleteQuery($model, $methodName)
+            && self::namedScope($model, $methodName) === null
+            && ! self::passesThrough($class, $methodName)
+            && (QueryBuilder::hasMacro($methodName)
+                || str_starts_with($methodName, 'where')
+                || (method_exists(QueryBuilder::class, $methodName) && new ReflectionMethod(QueryBuilder::class, $methodName)->isPublic()));
+    }
+
+    /**
+     * Whether a call is one SoftDeletingScope adds to each query of a soft-deleting model, which hands the query back.
+     *
+     * @param  class-string<Model>  $model
+     */
+    public static function isSoftDeleteQuery(string $model, string $methodName): bool
+    {
+        return in_array($methodName, self::SOFT_DELETE_QUERIES, true)
+            && (self::$softDeleting[$model] ??= in_array(SoftDeletes::class, class_uses_recursive($model), true));
+    }
+
+    /**
+     * The builder class an override of `newEloquentBuilder()` declares, a `#[UseEloquentBuilder]` names, or `$builder`.
+     *
+     * @param  class-string<Model>  $model
+     * @return class-string<Builder<Model>>
+     */
+    private static function readBuilderClass(string $model): string
+    {
+        if (new ReflectionMethod($model, 'newEloquentBuilder')->getDeclaringClass()->getName() !== Model::class) {
+            $declared = DeclaredClasses::returnClasses($model, 'newEloquentBuilder');
+
+            return $declared !== null && count($declared) === 1 && is_subclass_of($declared[0], Builder::class) ? $declared[0] : Builder::class;
+        }
+
+        // Laravel 12.19 to 13.0 read the attribute off the model alone and later releases walk its parents and traits,
+        // so the installed release's resolver answers, on an instance no constructor runs for.
+        $reflection = new ReflectionClass($model);
+        $named = $reflection->hasMethod('resolveCustomBuilderClass') && ! $reflection->isAbstract()
+            ? new ReflectionMethod($model, 'resolveCustomBuilderClass')->invoke($reflection->newInstanceWithoutConstructor())
+            : false;
+        $builder = is_string($named) && $named !== '' ? $named : new ReflectionProperty($model, 'builder')->getDefaultValue();
+
+        return is_string($builder) && is_subclass_of($builder, Builder::class) ? $builder : Builder::class;
+    }
+
+    /**
+     * Whether a model method carries the `#[Scope]` attribute, read by Laravel's own check where the release has one.
+     */
+    private static function isAttributeScope(string $model, string $methodName): bool
+    {
+        if (! method_exists($model, 'isScopeMethodWithAttribute')) {
+            return false;
+        }
+
+        return new ReflectionMethod($model, 'isScopeMethodWithAttribute')->invoke(null, $methodName) === true;
+    }
+
+    /**
+     * Whether an Eloquent builder's `$passthru` sends a name to the base query for the base query's result.
+     *
+     * @param  class-string<Builder<Model>>  $class
+     */
+    private static function passesThrough(string $class, string $methodName): bool
+    {
         $passthru = new ReflectionProperty($class, 'passthru')->getDefaultValue();
 
-        return is_array($passthru) && in_array(strtolower($methodName), $passthru, true) && method_exists(QueryBuilder::class, $methodName)
-            ? QueryBuilder::class
-            : null;
+        return is_array($passthru) && in_array(strtolower($methodName), $passthru, true);
     }
 }

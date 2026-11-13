@@ -111,6 +111,14 @@ _Avoid_: channel, FQCN channel
 A published key pattern, such as ``[key: `${string}_tag`]``, that types every runtime key it matches.
 _Avoid_: signature key, pattern key
 
+**Printed key**:
+An object key as a generated file spells it, quoted and escaped by `JsEmitter::validJsObjectKey()`.
+_Avoid_: escaped key
+
+**Type scanner**:
+The one reader of a TypeScript or PHPDoc type string's nesting and literals.
+_Avoid_: tokenizer, type parser
+
 **Subject**:
 The class or method being analyzed, such as an API resource or a controller action. A warning names the subject it came from.
 
@@ -126,8 +134,20 @@ _Avoid_: defining class, lexical class, scope class
 An API resource's `$this->resource`: the model or value the API resource wraps, which every member the API resource does not declare forwards to. No other subject has one, so elsewhere `$this->resource` is an ordinary property.
 _Avoid_: wrapper, resource property
 
+**Held class**:
+A class other than a model that a resource proxy is declared to hold, such as a value object named by an API resource's `@extends JsonResource<PostStats>`. An API resource declaring one has no model guessed for it, unless the guessed model is one of the classes it names.
+_Avoid_: wrapped class, backing class
+
 **Inference**:
 Working out a property's type from PHP code when no override or docblock states it.
+
+**Inertia profile**:
+The handlers that read a value Inertia sends, a page prop, a shared value or a body either reads, typing it as Inertia sends it: [AST engine § Inertia profile](docs/components/ast-engine.md#inertia-profile).
+_Avoid_: controller profile, page-prop profile
+
+**Reading**:
+How the values a body returns reach the client, which decides how inference types them: as `json_encode()` sends them, as Inertia sends them, or as Inertia sends them once an API resource's `filter()` ran: [AST engine § Inertia profile](docs/components/ast-engine.md#inertia-profile).
+_Avoid_: flag, read mode
 
 **Vague type**:
 A declared PHP type too broad to publish usefully, such as `mixed` or `array`, which sends inference to look further.
@@ -137,8 +157,16 @@ Proving a value's class for the reads a test covers, such as an `instanceof` che
 _Avoid_: type guard, refinement
 
 **Dropped arm**:
-A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left.
+A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left. Where the method's `@return` types the key, the arm is a visible gap instead.
 _Avoid_: lost arm, untyped branch
+
+**Visible gap**:
+A dropped arm, or the keys an object may hold that inference cannot name, kept in a key's type so the method's `@return` can type it where it stands. A gap the docblock leaves untyped is dropped before the type publishes.
+_Avoid_: mark, placeholder
+
+**Gap mode**:
+How inference reads the keys a method's own `@return` types, the analyzed method's or a spread helper's, keeping each visible gap for that docblock. Unlike a reading, it changes what a type keeps, not how values reach the client.
+_Avoid_: showing gaps, gap flag
 
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.

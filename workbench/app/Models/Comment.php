@@ -39,7 +39,7 @@ class Comment extends Model
         ];
     }
 
-    /** The relation_picks accessor read by a method body, which reads its getter without imports too. */
+    /** The relation_picks accessor read by a method body, which publishes what the accessor does. */
     public function picksSummary(): array
     {
         return [

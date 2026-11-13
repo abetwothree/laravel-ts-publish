@@ -123,6 +123,13 @@ it('reads a bare or quoted number key as its string', function () {
     expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['0' => false, '1' => true]);
 });
 
+it('reads a single-quoted or escaped key back as the key it names', function () {
+    $analysis = ObjectMembers::analysis(['type' => "{ 'a-b': number; \"a\\/b\"?: string; 'it\\'s': boolean }", 'optional' => false]);
+
+    expect(array_column($analysis->properties, 'optional', 'name'))->toBe(['a-b' => false, 'a/b' => true, "it's" => false])
+        ->and(new InlineObjectResult()->of($analysis)['type'])->toBe('{ "a-b": number; "a\\/b"?: string; "it\'s": boolean }');
+});
+
 it('carries the custom imports and the carried classes whole', function () {
     $analysis = ObjectMembers::analysis([
         'type' => '{ a: Money; b: string }',
@@ -141,7 +148,7 @@ it('declines what is not one object literal', function (string $type) {
 
 it('declines an object with no key or a key it cannot read back', function (string $type) {
     expect(ObjectMembers::analysis(['type' => $type, 'optional' => false]))->toBeNull();
-})->with(['{}', '{ a }', "{ 'a-b': number }", '{ [key: `${string}_tag`]: string | undefined }']);
+})->with(['{}', '{ a }', '{ -1: number }', '{ "\\x41": number }', '{ [key: `${string}_tag`]: string | undefined }']);
 
 it('declines a value carrying an EnumResource wrap', function () {
     expect(ObjectMembers::analysis(['type' => '{ s: AsEnum<typeof Status> }', 'optional' => false, 'enumFqcn' => Status::class]))
@@ -184,3 +191,125 @@ it('seeds nothing where a member would lose its text', function (array $value, b
         ['type' => '{ status: StatusType }', 'optional' => false, 'directEnumFqcn' => Status::class], false, [],
     ],
 ]);
+
+it('hands out each member as the value it holds, with the classes behind its own tokens', function () {
+    $value = new InlineObjectResult()->of(analysisOf([
+        'author' => ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class],
+        'note' => ['type' => 'string', 'optional' => true],
+    ]));
+
+    expect(ObjectMembers::members($value))->toBe([
+        ['author', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]],
+        ['note', ['type' => 'string', 'optional' => true]],
+    ])->and(ObjectMembers::members(['type' => '{ [key: string]: string }', 'optional' => false]))->toBeNull();
+});
+
+// A printed `?` cannot tell an unset key from a removed value, so it keeps the removable reading the old map gave it.
+it('reads a printed ? back as a value that may be removed', function () {
+    $analysis = ObjectMembers::analysis(['type' => '{ a: number; b?: string }', 'optional' => false]);
+
+    expect(array_map(
+        static fn (array $property): array => array_intersect_key($property, ['optional' => true, 'absent' => true, 'removed' => true]),
+        $analysis?->properties ?? [],
+    ))->toBe([['optional' => false], ['optional' => true, 'removed' => true]]);
+});
+
+// A writer that may leave a key unset keeps the value held before it there, unlike a removed value.
+it('marks each key one its writer may leave unset, a value that may be removed staying so', function () {
+    expect(ObjectMembers::eachOptional([
+        ['a', ['type' => 'number', 'optional' => false]],
+        ['b', ['type' => 'number', 'optional' => true]],
+        ['c', ['type' => 'number', 'optional' => true, 'absent' => true]],
+    ]))->toBe([
+        ['a', ['type' => 'number', 'optional' => true, 'absent' => true]],
+        ['b', ['type' => 'number', 'optional' => true, 'absent' => true, 'removed' => true]],
+        ['c', ['type' => 'number', 'optional' => true, 'absent' => true]],
+    ]);
+});
+
+it('hands out the members a seed would start with, and none where a member would lose its text', function () {
+    $value = ['type' => '{ a: User }', 'optional' => false, 'modelFqcn' => User::class];
+
+    expect(ObjectMembers::seededMembers($value, carriesImports: true))->toBe([['a', ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class]]])
+        ->and(ObjectMembers::seededMembers($value, carriesImports: false))->toBeNull()
+        ->and(ObjectMembers::seededMembers(['type' => '{ a: string }', 'optional' => false], carriesImports: false))
+        ->toBe([['a', ['type' => 'string', 'optional' => false]]]);
+});
+
+it('reads a value as open where it may hold a key its type does not name', function (array $value, bool $open) {
+    expect(ObjectMembers::isOpen($value))->toBe($open);
+})->with([
+    'a closed object' => [['type' => '{ a: string }', 'optional' => false], false],
+    'a literal holding a key no name names' => [['type' => '{ a: string }', 'optional' => false, 'unnamedKeys' => true], true],
+    'a signature beside a named key' => [['type' => '{ [key: string]: string; a: string }', 'optional' => false], true],
+    'a lone signature, which is a map' => [['type' => '{ [key: string]: string }', 'optional' => false], false],
+    'a Record' => [['type' => 'Record<string, string>', 'optional' => false], false],
+]);
+
+// A printed `?` cannot say whether its key may be unset or its value removed, which a spread over a held key must.
+it('reads a `?` member as InlineObjectResult::of() recorded it, else as either, for a spread', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('unset', ['type' => 'string', 'optional' => false], optional: true);
+    $analysis->addProperty('removed', ['type' => 'string', 'optional' => true]);
+    $analysis->addProperty('kept', ['type' => 'string', 'optional' => false]);
+    $printed = new InlineObjectResult()->of($analysis);
+    $bare = ['type' => '{ unset?: string; removed?: string; open?: string }', 'optional' => false];
+    $facts = static fn (?array $members): array => array_map(
+        static fn (array $member): string => $member[0].':'.(($member[1]['optional'] ? 'o' : '').(($member[1]['absent'] ?? false) ? 'a' : '').(($member[1]['removed'] ?? false) ? 'r' : '')),
+        $members ?? [],
+    );
+
+    expect($printed['keyPresence'] ?? null)->toBe([$printed['type'] => ['unset' => ['absent' => true], 'removed' => ['removed' => true]]])
+        ->and($facts(ObjectMembers::writtenMembers($printed)))->toBe(['unset:oa', 'removed:o', 'kept:'])
+        ->and($facts(ObjectMembers::writtenMembers($bare)))->toBe(['unset:oar', 'removed:oar', 'open:oar'])
+        ->and($facts(ObjectMembers::writtenMembers([...$bare, 'absentKeys' => true])))->toBe(['unset:oa', 'removed:oa', 'open:oa'])
+        ->and($facts(ObjectMembers::members($bare)))->toBe(['unset:o', 'removed:o', 'open:o']);
+});
+
+it('marks every `?` member of the keys resolve() returns, or a declared shape holds, as one it may leave unset', function () {
+    $value = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a: string; b?: number } | null', 'optional' => false]);
+    $union = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a?: string } | { b?: number } | never[]', 'optional' => false]);
+
+    expect($value['keyPresence'] ?? null)->toBe(['{ a: string; b?: number }' => ['b' => ['absent' => true]]])
+        ->and($union['keyPresence'] ?? null)->toBe([
+            '{ a?: string }' => ['a' => ['absent' => true]],
+            '{ b?: number }' => ['b' => ['absent' => true]],
+        ]);
+});
+
+it('reads an object past its open marker and its gap arms, as with both stripped', function () {
+    $marked = ['type' => '{ a: string; b: number | $gap1; #$open: unknown } | $gap2', 'optional' => false];
+    $names = static fn (?array $members): ?array => $members === null ? null : array_map(
+        static fn (array $member): string => $member[0].': '.$member[1]['type'],
+        $members,
+    );
+
+    expect($names(ObjectMembers::members($marked)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and($names(ObjectMembers::seededMembers($marked, true)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and($names(ObjectMembers::writtenMembers($marked)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and($names(ObjectMembers::seededWrittenMembers($marked, true)))->toBe(['a: string', 'b: number | $gap1'])
+        ->and(array_column(ObjectMembers::seed($marked, true)->properties ?? [], 'name'))->toBe(['a', 'b']);
+});
+
+it('reads a value as open on its marker-free text, so the marker beside a signature opens nothing', function () {
+    expect(ObjectMembers::isOpen(['type' => '{ [key: string]: number; #$open: unknown }', 'optional' => false]))->toBeFalse()
+        ->and(ObjectMembers::isOpen(['type' => '{ a: string; [key: string]: number; #$open: unknown } | $gap1', 'optional' => false]))
+        ->toBeTrue();
+});
+
+it('reads a `?` member back across a gap and the marker, its facts recorded on the gap-free text', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('unset', ['type' => 'string | $gap1', 'optional' => false], optional: true);
+    $analysis->addProperty('removed', ['type' => 'string', 'optional' => true]);
+    $printed = new InlineObjectResult()->of($analysis);
+    $marked = [...$printed, 'type' => '{ unset?: string | $gap1; removed?: string; #$open: unknown }'];
+    $facts = static fn (?array $members): array => array_map(
+        static fn (array $member): string => $member[0].':'.(($member[1]['absent'] ?? false) ? 'a' : '').(($member[1]['removed'] ?? false) ? 'r' : ''),
+        $members ?? [],
+    );
+    $declared = ObjectMembers::withOptionalKeysAbsent(['type' => '{ a?: string | $gap1; #$open: unknown } | null', 'optional' => false]);
+
+    expect(array_keys($printed['keyPresence'] ?? []))->toBe(['{ unset?: string; removed?: string }'])
+        ->and($facts(ObjectMembers::writtenMembers($marked)))->toBe(['unset:a', 'removed:'])
+        ->and($declared['keyPresence'] ?? null)->toBe(['{ a?: string }' => ['a' => ['absent' => true]]]);
+});

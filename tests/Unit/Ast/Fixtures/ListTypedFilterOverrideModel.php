@@ -10,7 +10,7 @@ use Workbench\App\Models\User;
 
 /**
  * A model whose only() override returns a list of models and whose except() override returns a shape holding a model,
- * so the first names a model inside a list and the second one nested in a key.
+ * so the first names a model inside a list and the second one nested in a key, and again one shape deeper.
  */
 final class ListTypedFilterOverrideModel extends Model
 {
@@ -27,10 +27,10 @@ final class ListTypedFilterOverrideModel extends Model
 
     /**
      * @param  array<int, string>|string  $attributes
-     * @return array{owner: User, id: int}
+     * @return array{owner: User, meta: array{author: User, n: int}, id: int}
      */
     public function except($attributes): array
     {
-        return ['owner' => new User, 'id' => 0];
+        return ['owner' => new User, 'meta' => ['author' => new User, 'n' => 1], 'id' => 0];
     }
 }

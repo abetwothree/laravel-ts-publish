@@ -12,9 +12,9 @@ export interface OrderClosureResource
     status_arrow?: OrderStatusType;
     user_arrow?: UserResource;
     items_arrow?: OrderItemResource[];
-    notes_closure?: string | null;
+    notes_closure?: string;
     shipped_at?: string | null;
-    tracking?: string | null;
+    tracking?: string;
     currency_label: CurrencyType;
     total_display: string;
 }

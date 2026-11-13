@@ -15,3 +15,5 @@ export const Grade = defineEnum({
 export type GradeType = 'pass' | 'fail';
 
 export type GradeKind = 'Pass' | 'Fail';
+
+export type Grade = GradeType;

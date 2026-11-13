@@ -390,6 +390,11 @@ describe('extractImportableTypes', function () {
         expect($this->service->extractImportableTypes('string | number | boolean | null'))
             ->toBeEmpty();
     });
+
+    test('extractImportableTypes never reads a gap arm as a name', function () {
+        expect($this->service->extractImportableTypes('string | $gap1'))->toBe([])
+            ->and($this->service->extractImportableTypes('User | $gap1 | null'))->toBe(['User']);
+    });
 });
 
 describe('TS_PRIMITIVES', function () {
@@ -524,14 +529,13 @@ describe('qualifyGlobalType', function () {
         'a nested index signature\'s key' => ['{ [key: `${string}Post`]: Post | undefined }', '{ [key: `${string}Post`]: app.models.Post | undefined }'],
     ]);
 
-    test('reads a template literal as before: its text is qualified, and a quote inside opens no string', function () {
-        $result = $this->service->qualifyGlobalType(
-            "`User's-\${string}` | 'Post'",
-            ['app.models' => ['Post', 'User']],
-        );
-
-        expect($result)->toBe("`app.models.User's-\${string}` | 'Post'");
-    });
+    test('reads a template literal\'s text as a value and its placeholders as types, and a quote inside opens no string', function (string $type, string $qualified) {
+        expect($this->service->qualifyGlobalType($type, ['app.models' => ['Post', 'User']]))->toBe($qualified);
+    })->with([
+        'a quote in template text' => ["`User's-\${string}` | 'Post'", "`User's-\${string}` | 'Post'"],
+        'a quoted backtick in a placeholder' => ["`\${'`'}` | 'Post' | User", "`\${'`'}` | 'Post' | app.models.User"],
+        'a name in a placeholder' => ['`${User}-x` | Post', '`${app.models.User}-x` | app.models.Post'],
+    ]);
 
     test('reads a name spelled with non-ASCII letters whole, as a type name and as an alias', function (string $type, string $qualified) {
         $result = $this->service->qualifyGlobalType(
@@ -589,6 +593,30 @@ describe('qualifyGlobalType', function () {
         expect($service->qualifyGlobalType('User', $types))->toBe('app.models.User')
             ->and($service->qualifications)->toBe(2);
     });
+});
+
+describe('substituteEnumType', function () {
+    test('replaces a bare enum token with its AsEnum wrap and keeps every other arm', function () {
+        expect($this->service->substituteEnumType('Role | null', 'Role', 'AsEnum<typeof RoleEnum>'))
+            ->toBe('AsEnum<typeof RoleEnum> | null');
+    });
+
+    test('leaves a qualified or a longer name alone', function () {
+        expect($this->service->substituteEnumType('foo.Role | RoleExtra', 'Role', 'AsEnum<typeof RoleEnum>'))
+            ->toBe('foo.Role | RoleExtra');
+    });
+});
+
+describe('literalSpans', function () {
+    test('spans each string literal, each template text segment and each generated index signature key', function (string $type, array $spans) {
+        expect($this->service->literalSpans($type))->toBe($spans);
+    })->with([
+        'a string with an escaped quote' => ["'it\\'s' | User", [[0, 7]]],
+        'template text around a placeholder' => ['`a${User}b`', [[0, 4], [8, 11]]],
+        'an index signature key, whole' => ['{ [key: `${string}_tag`]: User }', [[2, 24]]],
+        'a key spelled inside a string' => ["'[key: string]' | User", [[0, 15]]],
+        'no literal' => ['User | null', []],
+    ]);
 });
 
 describe('rewriteAsEnumToType', function () {
@@ -739,6 +767,21 @@ describe('hoistNull', function () {
         'null arm only' => [['{ a: string | null }', 'null'], '{ a: string | null } | null'],
         'no null' => [['string', 'number'], 'string | number'],
         'duplicate member across arms' => [['A | null', 'A'], 'A | null'],
+        'a null in template text' => [['`a | null | b`'], '`a | null | b`'],
+        'a null in a string with an escaped quote' => [["'it\\'s | null' | null"], "'it\\'s | null' | null"],
+        'an arrow function beside null' => [['() => void', 'null'], '(() => void) | null'],
+        'an arrow function beside another arm' => [['() => A', 'B'], '(() => A) | B'],
+        'a lone arrow function whose return type holds the null' => [['() => A | null'], '() => A | null'],
+    ]);
+});
+
+describe('union', function () {
+    test('joins its members into one union, and is never when it has none', function (array $members, string $expected) {
+        expect($this->service->union($members))->toBe($expected);
+    })->with([
+        'two members' => [['1', '2'], '1 | 2'],
+        'an int-backed enum\'s values' => [[0, 1], '0 | 1'],
+        'no member' => [[], 'never'],
     ]);
 });
 
@@ -1110,6 +1153,26 @@ describe('typeNameOccursIn', function () {
 });
 
 describe('shapeValueHasUnimportableToken', function () {
+    test('a token an import already brings in needs no other', function () {
+        expect($this->service->shapeValueHasUnimportableToken('{ owner: User }', ['User']))->toBeFalse()
+            ->and($this->service->shapeValueHasUnimportableToken('{ owner: User }'))->toBeTrue();
+    });
+
+    test('a literal\'s text needs no import, and a template literal\'s placeholder may', function (string $type, bool $expected) {
+        expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
+    })->with([
+        'a name in template text' => ['`User-${string}`', false],
+        'a name in a placeholder' => ['`${User}-x`', true],
+        'a name in a string with an escaped quote' => ["'it\\'s User'", false],
+        'a shape member of template text' => ['{ slug: `User-${string}`; n: number }', false],
+        'a key holding an escaped quote, before a class' => ['{ "a\\"b": User }', true],
+        'a key holding an escaped quote, before a primitive' => ['{ "a\\"b": number }', false],
+        'a quoted key holding a colon' => ['{ "a:b"?: number }', false],
+        'a single-quoted key, before a primitive' => ["{ 'a-b': number }", false],
+        'a single-quoted key holding an escaped quote, before a class' => ["{ 'it\\'s': User }", true],
+        'a string literal value beside a class' => ["{ a: 'x' | User }", true],
+    ]);
+
     // A nested shape prints its signature bare, so the template text must read as a key rather than as a value token.
     test('a generated index signature is a key, and only its value can need an import', function (string $type, bool $expected) {
         expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
@@ -1118,6 +1181,17 @@ describe('shapeValueHasUnimportableToken', function () {
         'one whose text holds a backslash' => ['{ [key: `${string}\\\\unit`]: string | undefined }', false],
         'a number signature' => ['{ [key: number]: string }', false],
         'a class as the signature\'s value' => ['{ [key: `${string}_tag`]: User | undefined }', true],
+    ]);
+
+    test('a gap arm and the open marker need no import, and a class beside them does', function (string $type, bool $expected) {
+        expect($this->service->shapeValueHasUnimportableToken($type))->toBe($expected);
+    })->with([
+        'a gap arm and the marker' => ['{ a: string | $gap1; #$open: unknown }', false],
+        'a nested marker' => ['{ a: { b: number; #$open: unknown }[] }', false],
+        'a class beside a gap arm' => ['User | $gap1', true],
+        'a class beside the marker' => ['{ a: User; #$open: unknown }', true],
+        // The key pattern leaves a `$`-led key's `$` behind as a token, so this reads true whatever its value is (F28).
+        'a key spelled `$gap1`' => ['{ $gap1: User }', true],
     ]);
 });
 
@@ -1147,6 +1221,94 @@ describe('orUndefined', function () {
         'naming it only inside a Record' => ['Record<string, number | undefined>', 'Record<string, number | undefined> | undefined'],
         'naming it only in a string literal' => ["'undefined'", "'undefined' | undefined"],
         'a name that differs by case' => ['UndefinedThing', 'UndefinedThing | undefined'],
+        'naming it only in template text' => ['`a | undefined | b`', '`a | undefined | b` | undefined'],
+        'an arrow function' => ['() => void', '(() => void) | undefined'],
+        'an arrow function whose return type names it' => ['() => A | undefined', '(() => A | undefined) | undefined'],
+        'an arrow after another arm' => ['B | () => C', 'B | (() => C) | undefined'],
+    ]);
+});
+
+describe('hasNullArm', function () {
+    test('reads only a top-level null arm', function (string $type, bool $expected) {
+        expect($this->service->hasNullArm($type))->toBe($expected);
+    })->with([
+        'a trailing null arm' => ['string | null', true],
+        'a leading null arm' => ['null | string', true],
+        'null alone' => ['null', true],
+        'a name holding null' => ['Unnullable | null', true],
+        'null spelled inside a string literal' => ["'nullify' | string", false],
+        'a quoted null' => ["'null'", false],
+        'null in template text' => ['`a | null | b`', false],
+        'null inside a shape' => ['{ a: string | null }', false],
+        'null inside a Record' => ['Record<string, number | null>', false],
+        'null inside an element type' => ['(X | null)[]', false],
+        'null in an arrow\'s return type' => ['() => A | null', false],
+        'a name that differs by case' => ['Null', false],
+        'two classes spelled alike' => ['User | User', false],
+        'unknown, which admits null without an arm' => ['unknown', false],
+    ]);
+});
+
+describe('withNullArm', function () {
+    // Two classes can share a name, so the arm is appended to the text, never merged into it.
+    test('appends a null arm only when the type has no top-level one, and leaves unknown alone', function (string $type, string $expected) {
+        expect($this->service->withNullArm($type))->toBe($expected);
+    })->with([
+        'unknown, which already admits null' => ['unknown', 'unknown'],
+        'a list of unknown' => ['unknown[]', 'unknown[] | null'],
+        'a bare type' => ['string', 'string | null'],
+        'already carrying it' => ['string | null', 'string | null'],
+        'carrying it first' => ['null | string', 'null | string'],
+        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null'],
+        'naming it only inside a shape' => ['{ a: string | null }', '{ a: string | null } | null'],
+        'naming it only inside an element type' => ['(X | null)[]', '(X | null)[] | null'],
+        'naming it only in template text' => ['`a | null | b`', '`a | null | b` | null'],
+        'an arrow function' => ['() => void', '(() => void) | null'],
+        'an arrow function whose return type names it' => ['() => A | null', '(() => A | null) | null'],
+        'an arrow after another arm' => ['B | () => C', 'B | (() => C) | null'],
+    ]);
+});
+
+describe('withNullArmOf', function () {
+    test('gives a type the null arm another type has at its top level', function (string $from, string $to, string $expected) {
+        expect($this->service->withNullArmOf($from, $to))->toBe($expected);
+    })->with([
+        'a top-level null arm' => ['string | null', 'number', 'number | null'],
+        'none' => ['string', 'number', 'number'],
+        'a null only inside a shape' => ['{ a: string | null }', 'number', 'number'],
+        'onto unknown, which already admits null' => ['string | null', 'unknown', 'unknown'],
+        'onto an arrow function' => ['string | null', '() => void', '(() => void) | null'],
+    ]);
+});
+
+describe('orNull', function () {
+    test('appends a null arm only when the type has no top-level one, unknown included', function (string $type, string $expected) {
+        expect($this->service->orNull($type))->toBe($expected);
+    })->with([
+        'unknown, as a nullable PHP type prints it' => ['unknown', 'unknown | null'],
+        'a bare type' => ['string', 'string | null'],
+        'already carrying it' => ['unknown | null', 'unknown | null'],
+        'two classes spelled alike, never de-duplicated' => ['User | User', 'User | User | null'],
+        'naming it only inside a shape' => ['{ a: string | null }', '{ a: string | null } | null'],
+        'an arrow function' => ['() => void', '(() => void) | null'],
+    ]);
+});
+
+describe('withoutNullArm', function () {
+    test('drops every top-level null arm and keeps a nested one', function (string $type, string $expected) {
+        expect($this->service->withoutNullArm($type))->toBe($expected);
+    })->with([
+        'a middle null arm' => ['A | null | B', 'A | B'],
+        'a trailing null arm' => ['string | null', 'string'],
+        'a leading null arm' => ['null | string', 'string'],
+        'null alone, which leaves nothing known' => ['null', 'unknown'],
+        'two classes spelled alike, never de-duplicated' => ['User | User | null', 'User | User'],
+        'null inside a shape' => ['{ a: string | null } | null', '{ a: string | null }'],
+        'null in template text' => ['`a | null` | null', '`a | null`'],
+        'no null arm' => ['string', 'string'],
+        'null beside a gap, which leaves nothing known' => ['null | $gap1', 'unknown'],
+        'only gaps' => ['$gap1 | $gap2', 'unknown'],
+        'a gap beside a type' => ['string | null | $gap1', 'string | $gap1'],
     ]);
 });
 
@@ -1162,6 +1324,27 @@ describe('isUnknownOnly', function () {
         'unknown beside a real arm' => ['unknown | string', false],
         'an unknown inside a shape' => ['{ a: unknown }', false],
         'an unknown element type' => ['unknown[]', false],
+    ]);
+});
+
+describe('isVagueOnly', function () {
+    test('only a type whose non-null arms all say nothing of the value is vague-only', function (string $type, bool $expected) {
+        expect($this->service->isVagueOnly($type))->toBe($expected);
+    })->with([
+        'bare unknown' => ['unknown', true],
+        'unknown with a null arm' => ['unknown | null', true],
+        'an unknown list' => ['unknown[]', true],
+        'an empty list' => ['never[]', true],
+        'an unknown record' => ['Record<string, unknown>', true],
+        'a nullable list before its null' => ['null | unknown[]', true],
+        'two vague arms' => ['unknown[] | Record<string, unknown> | null', true],
+        'a lone null' => ['null', false],
+        'a real type' => ['string', false],
+        'a vague arm beside a real one' => ['unknown[] | string', false],
+        'a list of a real type' => ['string[]', false],
+        'a record of a real type' => ['Record<string, number>', false],
+        'a record keyed by number' => ['Record<number, unknown>', false],
+        'an unknown inside a shape' => ['{ a: unknown }', false],
     ]);
 });
 
@@ -1212,6 +1395,18 @@ describe('isVagueTsType', function () {
             ->and($this->service->isVagueTsType('User[] | null'))->toBeFalse()
             ->and($this->service->isVagueTsType('Record<string, string>'))->toBeFalse();
     });
+});
+
+describe('documentedWins', function () {
+    test('lets a docblock replace a declaration only where that is unknown or vague and the docblock says more', function (string $declared, string $documented, bool $wins) {
+        expect($this->service->documentedWins($declared, $documented))->toBe($wins);
+    })->with([
+        'a precise declaration' => ['string', '{ a: number }', false],
+        'a vague declaration, a precise docblock' => ['unknown[]', '{ a: number }', true],
+        'no declaration, a precise docblock' => ['unknown', 'string', true],
+        'both vague' => ['unknown[]', 'unknown', false],
+        'a list the docblock spells as a record' => ['unknown[]', 'Record<string, unknown>', true],
+    ]);
 });
 
 describe('spellsListAsRecord', function () {

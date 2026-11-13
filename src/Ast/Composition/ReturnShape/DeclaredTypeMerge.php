@@ -1,0 +1,812 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+
+/**
+ * Merges the body's reading of a position with the type a method's `@return` docblock declares there, giving every
+ * position an answer: a reading left `unknown` takes the declaration, a shape keeps the members the body sends, a list
+ * or record merges its element or value, and a declaration within the reading refines it arm by arm, else it stays.
+ *
+ * Each side is a type beside the class behind each token of the names in play, in print order, so classes compare by
+ * identity, never by spelling, and an enum the body wraps in an `EnumResource` is never that enum.
+ *
+ * A gap the body kept (VisibleGaps) stands for an arm no rule typed, so it takes each declared arm the other arms leave
+ * out; a shape with the open marker may hold keys the body cannot name, so it keeps a member only declared.
+ *
+ * @phpstan-import-type Slots from TokenSlots
+ * @phpstan-import-type TupleElement from TsTypeShape
+ *
+ * @phpstan-type Typed = array{string, Slots}
+ * @phpstan-type Verdict = 'body'|'declared'|'unknown'
+ * @phpstan-type Relisting = array{list<int>, bool}
+ *
+ * @internal
+ */
+final readonly class DeclaredTypeMerge
+{
+    /** The arms that tell nothing of a value but its container: read as `unknown`, as the top of a key reads them. */
+    private const array VAGUE = ['unknown', 'unknown[]', 'Record<string, unknown>', 'Record<number, unknown>', 'Record<string | number, unknown>'];
+
+    /** The declared container kind a body list or record of the other kind pairs with, merging its contents with it. */
+    private const array PAIRS_ACROSS = ['list' => 'record', 'record' => 'list'];
+
+    /**
+     * @param  list<string>  $names  the names whose every token a side's slots give a class, or null
+     * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
+     * @param  bool  $relists  whether the client gets an array keyed only by ints as the list of its values in the
+     *                         order it holds them, as `filter()` re-lists one in a resource that keeps no keys
+     */
+    public function __construct(
+        private array $names,
+        private array $bodyWraps = [],
+        private bool $relists = false,
+    ) {}
+
+    /**
+     * Whether one class-less arm is a subtype of another: the same type, or a literal of the other's scalar. `null` is
+     * within only `null`, and only `unknown` is within `unknown`, which merge() answers arm by arm instead.
+     */
+    public static function armWithin(string $arm, string $of): bool
+    {
+        return $arm === $of || match ($of) {
+            'string' => strlen($arm) >= 2 && in_array($arm[0], ['"', "'", '`'], true) && $arm[-1] === $arm[0],
+            'number' => is_numeric($arm),
+            'boolean' => in_array($arm, ['true', 'false'], true),
+            default => false,
+        };
+    }
+
+    /**
+     * How much a type tells of its value, its `null` aside: 0 for `unknown` or `mixed`, 1 for no more than its
+     * container, as `unknown[]` or a `Record` of `unknown` does, and 2 for any other type.
+     *
+     * @return 0|1|2
+     */
+    public static function tells(string $type): int
+    {
+        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+
+        return match (true) {
+            $type === 'mixed' || $arms === ['unknown'] => 0,
+            $arms !== [] && array_all($arms, static fn (string $arm): bool => in_array($arm, self::VAGUE, true)) => 1,
+            default => 2,
+        };
+    }
+
+    /**
+     * The type to publish at a position: the body's reading merged with the declared type there. Each gap at its top
+     * takes the declared arms its other arms leave out, after them; one the declaration tells nothing of stays.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared
+     * @return Typed
+     */
+    public function merge(array $body, array $declared): array
+    {
+        [$rest, $gaps] = VisibleGaps::aside($body[0]);
+
+        if ($gaps === [] || self::tells($declared[0]) === 0) {
+            return $this->mergeReading($body, $declared);
+        }
+
+        // A gap spells no class, so the rest keeps the body's slots; beside only `null` it is the base's whole fill.
+        if ($rest === 'null' || $rest === 'unknown') {
+            return $this->mergeReading([$rest === 'null' ? 'unknown | null' : 'unknown', $body[1]], $declared);
+        }
+
+        $merged = $this->arms($this->mergeReading([$rest, $body[1]], $declared));
+        $arms = [...$merged, ...array_filter(
+            $this->arms($declared),
+            fn (array $arm): bool => self::kindOf($arm[0]) !== null || ! $this->within([$arm], self::atoms($merged), false),
+        )];
+
+        // The rest prints a lone arrow bare, whose return type would take in every arm joined after it.
+        $grouped = count($arms) > 1 ? array_map(static fn (array $arm): array => [TsTypeShape::unionArm($arm[0]), $arm[1]], $arms) : $arms;
+
+        return $this->joined($grouped, $body);
+    }
+
+    /**
+     * Whether one arm is an object literal, a Record or a `T[]` list, which merge member by member, by value or by
+     * element; null for every other arm, which compares whole.
+     *
+     * @return 'object'|'record'|'list'|null
+     */
+    private static function kindOf(string $arm): ?string
+    {
+        return match (true) {
+            TsTypeShape::members($arm) !== null => 'object',
+            TsTypeShape::recordArguments($arm) !== null => 'record',
+            $arm !== '[]' && str_ends_with($arm, '[]') && TsTypeShape::elementType($arm) !== null => 'list',
+            default => null,
+        };
+    }
+
+    /**
+     * The arms of a union that compare whole, as no container merges them.
+     *
+     * @param  list<Typed>  $arms
+     * @return list<Typed>
+     */
+    private static function atoms(array $arms): array
+    {
+        return array_values(array_filter($arms, static fn (array $arm): bool => self::kindOf($arm[0]) === null));
+    }
+
+    /**
+     * The key a printed member key names, so `0`, `"0"` and `'0'` are one key; an index signature as printed.
+     */
+    private static function keyName(string $key): string
+    {
+        return PrintedKey::decode($key) ?? rtrim($key, '?');
+    }
+
+    /**
+     * How well two arms' members match: the literals both spell alike under one key, then the keys both hold, read
+     * through a list's element or a record's value; nothing for an arm holding no object.
+     *
+     * @return array{int, int}
+     */
+    private static function matchOf(string $body, string $declared): array
+    {
+        $inner = static fn (string $arm): string => TsTypeShape::recordArguments($arm)[1] ?? (self::kindOf($arm) === 'list' ? (string) TsTypeShape::elementType($arm) : $arm);
+        $members = static function (string $object): array {
+            $byKey = [];
+
+            foreach (TsTypeShape::members($object) ?? [] as [$key, $value]) {
+                $byKey[self::keyName($key)] = $value;
+            }
+
+            return $byKey;
+        };
+        $bodyMembers = $members($inner($body));
+        $declaredMembers = $members($inner($declared));
+        $shared = array_intersect_key($bodyMembers, $declaredMembers);
+        $literal = static fn (string $value): bool => TsTypeShape::isScalar($value) && ! in_array($value, ['string', 'number', 'boolean'], true);
+        $alike = array_filter($shared, static fn (string $value, string $key): bool => $literal($value) && $value === $declaredMembers[$key], ARRAY_FILTER_USE_BOTH);
+
+        return [count($alike), count($shared)];
+    }
+
+    /**
+     * How a shape's members are re-listed, in its key order, the open marker aside: null unless its keys are 0 to n-1,
+     * every value holds nothing a rule typed, and no key but the last may be left out.
+     *
+     * @param  list<array{string, string}>  $members
+     * @return Relisting|null the declared element each key takes, and whether the last key may be left out
+     */
+    private static function relisting(array $members): ?array
+    {
+        $order = [];
+        $lastOptional = false;
+        $members = array_values(array_filter($members, static fn (array $member): bool => ! VisibleGaps::isMarker($member[0])));
+
+        foreach ($members as $position => [$key, $value]) {
+            $index = PhpArrayKey::listIndex(self::keyName($key));
+            $lastOptional = str_ends_with($key, '?');
+
+            // Past a key left out, array_values() moves each later value up a place, so only the last may be left out.
+            if ($index === null || ! self::typesNothing($value) || ($lastOptional && $position !== count($members) - 1)) {
+                return null;
+            }
+
+            $order[] = $index;
+        }
+
+        return $order !== [] && count(array_unique($order)) === count($order) && max($order) === count($order) - 1 ? [$order, $lastOptional] : null;
+    }
+
+    /**
+     * Whether a value holds nothing a rule typed: `unknown`, or only gaps, beside a `null` the union kept or not.
+     */
+    private static function typesNothing(string $value): bool
+    {
+        [$rest, $gaps] = VisibleGaps::aside($value);
+
+        return $rest === 'unknown' || ($rest === 'null' && $gaps !== []);
+    }
+
+    /**
+     * The elements of a declared type that is one tuple, beside a `null` or not, with no rest element; null for any
+     * other type.
+     *
+     * @return list<TupleElement>|null
+     */
+    private static function tupleElementsOf(string $declared): ?array
+    {
+        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']));
+        $elements = count($tuples) === 1 && TsTypeShape::isWrapped($tuples[0], '[', ']') ? TsTypeShape::tupleElements($tuples[0]) : [];
+
+        return $elements === [] || array_any($elements, static fn (array $element): bool => str_starts_with($element[0], '...')) ? null : $elements;
+    }
+
+    /**
+     * merge() of a reading no gap at its top is set aside from: each container arm merged with its declared pair,
+     * merge() filling each position inside it in turn.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared
+     * @return Typed
+     */
+    private function mergeReading(array $body, array $declared): array
+    {
+        $relisted = $this->relistedTuple($body, $declared);
+
+        if ($relisted !== null) {
+            return $relisted;
+        }
+
+        $told = [self::tells($body[0]), self::tells($declared[0])];
+
+        // A body reading only `null` tells less than a container.
+        if ($body[0] === 'null' && $told[1] === 1) {
+            return [TsTypeString::withNullArm($declared[0]), $declared[1]];
+        }
+
+        // Where either side tells no more than its container, the side telling more is taken whole.
+        if (min($told) < 2) {
+            // `withNullArm()` appends a `null`, which spells no class, so the declared slots still line up.
+            return $told[1] > $told[0] ? [TsTypeString::withNullArmOf($body[0], $declared[0]), $declared[1]] : $body;
+        }
+
+        $printedArms = $this->arms($body);
+        // An intersection of objects, as a spread beside keys prints, merges as the one object it sends.
+        $bodyArms = array_map(fn (array $arm): array => $this->flattened($arm) ?? $arm, $printedArms);
+        $declaredArms = $this->arms($declared);
+        $pairs = $this->pairs($bodyArms, $declaredArms);
+        $verdict = $this->verdict($bodyArms, $declaredArms, $pairs);
+
+        $merged = [];
+        $declaredAtoms = self::atoms($declaredArms);
+
+        foreach ($bodyArms as $index => $arm) {
+            if (self::kindOf($arm[0]) !== null) {
+                // A body arm several declared arms match alike merges with each, every result an arm of its own.
+                array_push($merged, ...array_merge([], ...array_map(
+                    fn (int $paired): array => $this->containerMerged($arm, $declaredArms[$paired]),
+                    $pairs[$index] ?? [],
+                )), ...(isset($pairs[$index]) ? [] : [$printedArms[$index]]));
+            } elseif ($verdict === 'declared') {
+                // A body arm the declaration refines none of stays, so it never stops admitting what the body sends.
+                $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm], false)));
+                array_push($merged, ...($refined === [] ? [$arm] : $refined));
+            } else {
+                array_push($merged, ...($verdict === 'unknown' && $arm[0] === 'unknown' ? $this->uncovered($bodyArms, $declaredArms, $pairs) : [$arm]));
+            }
+        }
+
+        // The arm a declaration adds, its `null` beside a body that reads none, as verdict() only takes such a one.
+        if ($verdict === 'declared') {
+            array_push($merged, ...array_filter($declaredAtoms, fn (array $declared): bool => ! $this->within([$declared], self::atoms($bodyArms), false)));
+        }
+
+        return $this->joined($merged, $body);
+    }
+
+    /**
+     * Where $relists, a body shape keyed 0 to n-1 with every value `unknown` as the list it is re-listed into, typed by
+     * a declared n-tuple: each key's element in the shape's key order, the last optional where the last key is, and
+     * the body's `null` kept; null for any other pair.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared
+     * @return Typed|null
+     */
+    private function relistedTuple(array $body, array $declared): ?array
+    {
+        // Most declared types hold no tuple, and testing that costs far less than parsing the body's shape.
+        $elements = $this->relists && str_contains($declared[0], '[') ? self::tupleElementsOf($declared[0]) : null;
+
+        if ($elements === null) {
+            return null;
+        }
+
+        $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body[0]), ['null']));
+        $relisting = self::relisting(count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : []);
+
+        if ($relisting === null || count($elements) !== count($relisting[0])) {
+            return null;
+        }
+
+        [$order, $lastOptional] = $relisting;
+        $slots = $this->elementSlots($elements, $declared[1]);
+        $printed = [];
+
+        foreach ($order as $position => $index) {
+            $element = $elements[$index][0];
+            $printed[] = $lastOptional && $position === count($order) - 1 ? TsTypeShape::postfixOperand($element).'?' : $element;
+        }
+
+        return [
+            TsTypeString::withNullArmOf($body[0], '['.implode(', ', $printed).']'),
+            array_merge([], ...array_map(static fn (int $index): array => $slots[$index], $order)),
+        ];
+    }
+
+    /**
+     * Each declared tuple element's share of the slots, in the tuple's order.
+     *
+     * @param  list<TupleElement>  $elements
+     * @param  Slots  $slots
+     * @return list<Slots>
+     */
+    private function elementSlots(array $elements, array $slots): array
+    {
+        $shares = [];
+        $from = 0;
+
+        foreach ($elements as [$element]) {
+            $shares[] = array_slice($slots, $from, $this->count($element));
+            $from += $this->count($element);
+        }
+
+        return $shares;
+    }
+
+    /**
+     * Which side decides the arms no container pairs: the declared ones, arm by arm, where they are within the body's,
+     * with or without a `null` beside them; else the body's, an `unknown` arm of which takes the declared arms no other
+     * body arm covers.
+     *
+     * @param  list<Typed>  $bodyArms
+     * @param  list<Typed>  $declaredArms
+     * @param  array<int, list<int>>  $pairs
+     * @return Verdict
+     */
+    private function verdict(array $bodyArms, array $declaredArms, array $pairs): string
+    {
+        $bodyAtoms = self::atoms($bodyArms);
+        $declaredAtoms = self::atoms($declaredArms);
+        $leftUnknown = in_array('unknown', array_column($bodyAtoms, 0), true);
+        $declaredBesideNull = array_values(array_filter($declaredAtoms, static fn (array $arm): bool => $arm[0] !== 'null'));
+
+        return match (true) {
+            $bodyAtoms === [] || $declaredAtoms === [] => $leftUnknown && $this->uncovered($bodyArms, $declaredArms, $pairs) !== [] ? 'unknown' : 'body',
+            $this->within($declaredAtoms, $bodyAtoms, false) => 'declared',
+            $this->within($bodyAtoms, $declaredAtoms, true) => 'body',
+            ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms, false) => 'declared',
+            $leftUnknown => 'unknown',
+            default => 'body',
+        };
+    }
+
+    /**
+     * Whether every arm of one side is within some arm of the other.
+     *
+     * @param  list<Typed>  $arms
+     * @param  list<Typed>  $of
+     * @param  bool  $armsAreBody  whether $arms is the body's side and $of the declared one
+     */
+    private function within(array $arms, array $of, bool $armsAreBody): bool
+    {
+        return array_all($arms, fn (array $arm): bool => array_any(
+            $of,
+            fn (array $other): bool => self::armWithin($this->identity($arm, $armsAreBody), $this->identity($other, ! $armsAreBody)),
+        ));
+    }
+
+    /**
+     * The declared arms no body arm but an `unknown` one covers: a container no body arm pairs, or an arm within no
+     * other body arm.
+     *
+     * @param  list<Typed>  $bodyArms
+     * @param  list<Typed>  $declaredArms
+     * @param  array<int, list<int>>  $pairs
+     * @return list<Typed>
+     */
+    private function uncovered(array $bodyArms, array $declaredArms, array $pairs): array
+    {
+        $typed = array_values(array_filter($bodyArms, static fn (array $arm): bool => $arm[0] !== 'unknown' && self::kindOf($arm[0]) === null));
+
+        return array_values(array_filter(
+            $declaredArms,
+            fn (array $arm, int $index): bool => self::kindOf($arm[0]) === null
+                ? ! $this->within([$arm], $typed, false)
+                : ! in_array($index, array_merge([], ...array_values($pairs)), true),
+            ARRAY_FILTER_USE_BOTH,
+        ));
+    }
+
+    /**
+     * Each body container arm's index beside the indexes of the declared arms it merges with: the one of its kind, or
+     * of several those whose members match it best; else, for a shape, acrossFromShape(), and for a list or record,
+     * those of the kind PAIRS_ACROSS names, matched alike.
+     *
+     * @param  list<Typed>  $bodyArms
+     * @param  list<Typed>  $declaredArms
+     * @return array<int, list<int>>
+     */
+    private function pairs(array $bodyArms, array $declaredArms): array
+    {
+        $pairs = [];
+
+        foreach ($bodyArms as $index => $arm) {
+            $kind = self::kindOf($arm[0]);
+
+            if ($kind === null) {
+                continue;
+            }
+
+            $ofKind = static fn (string $wanted): array => array_keys(array_filter($declaredArms, static fn (array $declared): bool => self::kindOf($declared[0]) === $wanted));
+            $same = $ofKind($kind);
+            $across = $kind === 'object' ? [] : $ofKind(self::PAIRS_ACROSS[$kind]);
+            $match = match (true) {
+                $same !== [] => $this->bestMatches($arm, $declaredArms, $same),
+                $kind === 'object' => $this->acrossFromShape($arm, $declaredArms, $ofKind('list'), $ofKind('record')),
+                $across !== [] => $this->bestMatches($arm, $declaredArms, $across),
+                default => [],
+            };
+
+            if ($match !== []) {
+                $pairs[$index] = $match;
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
+     * The declared lists or records a body shape with no declared shape beside it merges with, the best fit first: a
+     * list whose element holds a shape sharing a key with it, else a record, else any list.
+     *
+     * @param  Typed  $arm
+     * @param  list<Typed>  $declaredArms
+     * @param  list<int>  $lists
+     * @param  list<int>  $records
+     * @return list<int>
+     */
+    private function acrossFromShape(array $arm, array $declaredArms, array $lists, array $records): array
+    {
+        $shapeScore = fn (int $list): array => max([[0, 0], ...array_map(
+            static fn (string $part): array => self::kindOf($part) === 'object' ? self::matchOf($arm[0], $part) : [0, 0],
+            TsTypeString::splitTopLevelUnion((string) TsTypeShape::elementType($declaredArms[$list][0])),
+        )]);
+        $scores = array_map($shapeScore, $lists);
+        $best = $scores === [] ? [0, 0] : max($scores);
+
+        return match (true) {
+            $best[1] > 0 => array_map(static fn (int $at): int => $lists[$at], array_keys($scores, $best, true)),
+            $records !== [] => $records,
+            default => $lists,
+        };
+    }
+
+    /**
+     * The declared arms among $candidates whose members best match the body arm's: the most discriminant literals both
+     * spell alike, then the most keys both hold; every one of them where several match it alike.
+     *
+     * @param  Typed  $arm
+     * @param  list<Typed>  $declaredArms
+     * @param  non-empty-list<int>  $candidates
+     * @return list<int>
+     */
+    private function bestMatches(array $arm, array $declaredArms, array $candidates): array
+    {
+        $scores = array_map(fn (int $index): array => self::matchOf($arm[0], $declaredArms[$index][0]), $candidates);
+        $best = max($scores);
+
+        return array_map(static fn (int $at): int => $candidates[$at], array_keys($scores, $best, true));
+    }
+
+    /**
+     * A body container arm merged with the declared arm it pairs with: an object member by member with a declared
+     * object or each best matched shape of a declared list's element, else each member with a declared record's value
+     * or list's element; a list by element and a record by value, either with a declared list's or record's.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared
+     * @return list<Typed>
+     */
+    private function containerMerged(array $body, array $declared): array
+    {
+        $kind = self::kindOf($declared[0]);
+
+        if (self::kindOf($body[0]) !== 'object') {
+            return [self::kindOf($body[0]) === 'record'
+                ? $this->valueMerged($body, $this->contents($declared))
+                : $this->elementMerged($body, $this->contents($declared))];
+        }
+
+        if ($kind === 'object') {
+            return [$this->membersMerged($body, $declared, true)];
+        }
+
+        // A shape under a declared list merges with the shapes its element holds, the best matched, else each member
+        // with the whole element, as with a record's value.
+        $contents = $this->contents($declared);
+        $parts = $kind === 'list' ? $this->arms($contents) : [];
+        $shapes = array_keys(array_filter($parts, static fn (array $part): bool => self::kindOf($part[0]) === 'object'));
+
+        return $shapes === []
+            ? [$this->membersMerged($body, $contents, false)]
+            : array_map(fn (int $shape): array => $this->membersMerged($body, $parts[$shape], true), $this->bestMatches($body, $parts, $shapes));
+    }
+
+    /**
+     * A body arm that is an intersection of objects as the one object it sends, a later part's key replacing an
+     * earlier one's as PHP's spread does; null for any other arm.
+     *
+     * @param  Typed  $arm
+     * @return Typed|null
+     */
+    private function flattened(array $arm): ?array
+    {
+        $parts = TsTypeShape::intersectedObjects($arm[0]);
+
+        if ($parts === null) {
+            return null;
+        }
+
+        /** @var array<array-key, array{string, Typed}> $members each member's key and value, by its name */
+        $members = [];
+        $from = 0;
+
+        foreach ($parts as [$object, $dropped, $part]) {
+            // An `Omit<>`'s object leads it, so its tokens lead the part's.
+            foreach ($this->memberSlots([$object, $arm[1]], $from) as [$key, $value, $keySlots, $valueSlots]) {
+                $name = self::keyName($key);
+
+                if (! in_array($name, $dropped, true)) {
+                    unset($members[$name]);
+                    $members[$name] = [$key, [$value, [...$keySlots, ...$valueSlots]]];
+                }
+            }
+
+            $from += $this->count($part);
+        }
+
+        return [
+            '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1][0], $members)).' }',
+            array_merge([], ...array_map(static fn (array $member): array => $member[1][1], array_values($members))),
+        ];
+    }
+
+    /**
+     * Each member of an object type beside its key's and its value's share of the slots, which start at $from.
+     *
+     * @param  Typed  $object
+     * @return list<array{string, string, Slots, Slots}> each member's printed key, value, key slots and value slots
+     */
+    private function memberSlots(array $object, int $from = 0): array
+    {
+        $members = [];
+
+        foreach (TsTypeShape::members($object[0]) ?? [] as [$key, $value]) {
+            $keySlots = array_slice($object[1], $from, $this->count($key));
+            $from += $this->count($key);
+            $members[] = [$key, $value, $keySlots, array_slice($object[1], $from, $this->count($value))];
+            $from += $this->count($value);
+        }
+
+        return $members;
+    }
+
+    /**
+     * A declared list's element or record's value, beside its share of the slots.
+     *
+     * @param  Typed  $declared
+     * @return Typed
+     */
+    private function contents(array $declared): array
+    {
+        $record = TsTypeShape::recordArguments($declared[0]);
+
+        return $record === null
+            ? [(string) TsTypeShape::elementType($declared[0]), $declared[1]]
+            : [$record[1], array_slice($declared[1], $this->count($record[0]))];
+    }
+
+    /**
+     * An object type with each member the body sends merged, $byKey, with the declared object's member of the key it
+     * names, else with the declared value, keeping the body's keys, order and optional flags. A member only the
+     * declaration has follows where it is optional or the body holds the open marker, and goes where it is never sent.
+     *
+     * One a body index signature's pattern covers merges with that signature's value, which widens to admit it.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $declared  the declared object, or the value every member merges with
+     * @return Typed
+     */
+    private function membersMerged(array $body, array $declared, bool $byKey): array
+    {
+        $open = (VisibleGaps::members($body[0]) ?? [[], false])[1];
+        $declaredMembers = [];
+
+        foreach ($byKey ? $this->memberSlots($declared) : [] as [$key, $value, $keySlots, $valueSlots]) {
+            $declaredMembers[self::keyName($key)] = [$key, [$value, $valueSlots], $keySlots];
+        }
+
+        $value = $byKey ? null : $declared;
+
+        /** @var list<array{string, Typed, Slots}> $members each member's printed key, value and key slots */
+        $members = [];
+
+        foreach ($this->memberSlots($body) as [$key, $text, $keySlots, $valueSlots]) {
+            // The marker names no key, and the merged shape keeps a member only declared in its place.
+            if (VisibleGaps::isMarker($key)) {
+                continue;
+            }
+
+            $read = [$text, $valueSlots];
+            $name = self::keyName($key);
+            $paired = $declaredMembers[$name] ?? null;
+            $fill = $value ?? $paired[1] ?? null;
+            unset($declaredMembers[$name]);
+            // A numeric key prints as the declaration spells it, `0` where the body quotes `"0"`.
+            $printed = $paired !== null && is_numeric($name) ? rtrim($paired[0], '?').(str_ends_with($key, '?') ? '?' : '') : $key;
+            $members[] = [$printed, $fill === null ? $read : $this->merge($read, $fill), $keySlots];
+        }
+
+        /** @var array<int, Typed> $signatures each index signature member's value, by its position */
+        $signatures = [];
+
+        foreach ($members as $position => [$key, $read]) {
+            if (IndexSignatureKey::is($key)) {
+                $signatures[$position] = $read;
+            }
+        }
+
+        foreach ($declaredMembers as $name => [$key, $text, $keySlots]) {
+            $covering = array_filter(
+                array_keys($signatures),
+                static fn (int $position): bool => IndexSignatureKey::covers($members[$position][0], (string) $name),
+            );
+
+            if ($covering !== []) {
+                // A key several signatures cover may be sent under any, so it reads as the union of their values.
+                $values = array_map(static fn (int $position): array => $signatures[$position], array_values($covering));
+                $read = [implode(' | ', array_column($values, 0)), array_merge([], ...array_column($values, 1))];
+                $merged = $this->merge($this->joined($this->arms($read), $read), $text);
+                $members[] = [$key, $merged, $keySlots];
+
+                foreach ($covering as $position) {
+                    $signatures[$position] = $this->admitting($signatures[$position], $merged);
+                }
+            } elseif (str_ends_with($key, '?') || $open) {
+                $members[] = [$key, $text, $keySlots];
+            }
+        }
+
+        $printed = array_map(
+            static fn (array $member, int $position): array => [$member[0], $signatures[$position] ?? $member[1], $member[2]],
+            $members,
+            array_keys($members),
+        );
+
+        return [
+            '{ '.implode('; ', array_map(static fn (array $member): string => $member[0].': '.$member[1][0], $printed)).' }',
+            array_merge([], ...array_map(static fn (array $member): array => [...$member[2], ...$member[1][1]], $printed)),
+        ];
+    }
+
+    /**
+     * An index signature's value with each arm of a member it covers that none of its arms admits, so TypeScript
+     * finds the member assignable to it.
+     *
+     * @param  Typed  $signature
+     * @param  Typed  $member
+     * @return Typed
+     */
+    private function admitting(array $signature, array $member): array
+    {
+        $arms = $this->arms($signature);
+        $added = array_values(array_filter($this->arms($member), fn (array $arm): bool => ! $this->within([$arm], $arms, false)));
+
+        return $added === [] ? $signature : [
+            implode(' | ', array_column([...$arms, ...$added], 0)),
+            array_merge([], ...array_column([...$arms, ...$added], 1)),
+        ];
+    }
+
+    /**
+     * A `Record<K, V>`, its key kept, with V merged with a declared record's value or list's element.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $contents
+     * @return Typed
+     */
+    private function valueMerged(array $body, array $contents): array
+    {
+        [$key, $value] = TsTypeShape::recordArguments($body[0]) ?? ['', ''];
+        $keySlots = array_slice($body[1], 0, $this->count($key));
+        [$text, $slots] = $this->merge([$value, array_slice($body[1], count($keySlots))], $contents);
+
+        return ['Record<'.$key.', '.$text.'>', [...$keySlots, ...$slots]];
+    }
+
+    /**
+     * A `T[]` list with T merged with a declared list's element or record's value.
+     *
+     * @param  Typed  $body
+     * @param  Typed  $contents
+     * @return Typed
+     */
+    private function elementMerged(array $body, array $contents): array
+    {
+        [$text, $slots] = $this->merge([(string) TsTypeShape::elementType($body[0]), $body[1]], $contents);
+
+        return [TsTypeShape::postfixOperand($text).'[]', $slots];
+    }
+
+    /**
+     * Arms joined as one union, each once, or the body's own type where they are its arms unchanged.
+     *
+     * @param  list<Typed>  $arms
+     * @param  Typed  $body
+     * @return Typed
+     */
+    private function joined(array $arms, array $body): array
+    {
+        $unique = [];
+
+        foreach ($arms as $arm) {
+            $unique[serialize($arm)] ??= $arm;
+        }
+
+        $texts = array_column($unique, 0);
+        $text = implode(' | ', $texts);
+
+        return $text === $body[0] ? $body : [$text, array_merge([], ...array_column($unique, 1))];
+    }
+
+    /**
+     * Each top-level arm of a type beside its share of the slots.
+     *
+     * @param  Typed  $typed
+     * @return list<Typed>
+     */
+    private function arms(array $typed): array
+    {
+        $arms = [];
+        $at = 0;
+
+        foreach (TsTypeString::splitTopLevelUnion($typed[0]) as $arm) {
+            $arms[] = [$arm, array_slice($typed[1], $at, $this->count($arm))];
+            $at += $this->count($arm);
+        }
+
+        return $arms;
+    }
+
+    /**
+     * An arm with each read token a class stands behind spelled as that class, so arms compare by identity: a class
+     * the body wraps in an `EnumResource` apart from the enum itself.
+     *
+     * @param  Typed  $arm
+     */
+    private function identity(array $arm, bool $isBody): string
+    {
+        $text = '';
+        $from = 0;
+
+        foreach ($this->names === [] ? [] : TokenSlots::tokens('classes', $this->names, $arm[0]) as $index => [$token, $offset, $read]) {
+            $class = $arm[1][$index] ?? null;
+
+            if ($read && $class !== null) {
+                $wrapped = $isBody && in_array($class, $this->bodyWraps, true);
+                $text .= substr($arm[0], $from, $offset - $from).'\\'.($wrapped ? 'EnumResource<'.$class.'>' : $class);
+                $from = $offset + strlen($token);
+            }
+        }
+
+        return $text.substr($arm[0], $from);
+    }
+
+    /**
+     * How many tokens of the names in play a part of a type spells, each of which takes one slot.
+     */
+    private function count(string $text): int
+    {
+        return $this->names === [] ? 0 : count(TokenSlots::tokens('classes', $this->names, $text));
+    }
+}

@@ -3,26 +3,36 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PageItemCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StaticSyntaxResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DraftPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReceiverProbeResource;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use PhpParser\Node;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeFinder;
+use PhpParser\PrettyPrinter\Standard;
 use Workbench\App\Http\Resources\BareFuncCallResource;
 use Workbench\App\Http\Resources\Concerns\IncludesMorphValue;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\StatsSummaryResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
@@ -30,6 +40,7 @@ use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\BasePanelPayload;
 use Workbench\App\ValueObjects\PanelPayload;
+use Workbench\App\ValueObjects\PostStats;
 
 it('constructs with the given subject reflection and model class', function () {
     $reflection = new ReflectionClass(stdClass::class);
@@ -73,6 +84,20 @@ it('derives no forwarding target without both a proxying subject and a backing m
         ->and($resourceWithoutModel->forwardsUndeclaredMembersTo)->toBeNull();
 });
 
+// The held class is a separate field, so a scope built with no model still forwards nowhere.
+it('derives the classes other than a model a subject declares it holds, and no forwarding target from them', function () {
+    $held = new AnalysisScope(new ReflectionClass(StatsSummaryResource::class));
+    $model = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    expect($held->declaredHeld)->toBe([PostStats::class])
+        ->and($held->forwardsUndeclaredMembersTo)->toBeNull()
+        ->and($model->declaredHeld)->toBeNull();
+
+    $held->rebase(new ReflectionClass(PostResource::class), Post::class);
+
+    expect($held->declaredHeld)->toBeNull();
+});
+
 it('rebases a model scope onto an API resource over the model, which forwards to it, and keeps the body\'s file and declaring class', function () {
     $model = new ReflectionClass(Post::class);
     $resource = new ReflectionClass(PostResource::class);
@@ -108,7 +133,7 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
     foreach (['item', 'key', 'kept'] as $name) {
         $scope->closureParamExprBindings[$name] = $expr;
         $scope->varClassBindings[$name] = [User::class];
-        $scope->varGuardBindings[$name] = [['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]];
+        $scope->varGuardBindings[$name] = [AnalysisScope::armProof([User::class])];
         $scope->varDocBindings[$name] = [['type' => 'User', 'context' => $scope->declaringFileClass, 'after' => 0, 'before' => null, 'expr' => new Variable('outer')]];
         $scope->varModelBindings[$name] = User::class;
         $scope->varDeclaredBindings[$name] = [User::class];
@@ -123,6 +148,8 @@ function analysisScopeWithEveryTableBound(): AnalysisScope
         $scope->keyBuiltLocals[$name] = [new Return_(new Variable('outer'))];
         $scope->passedValues[$name] = $expr;
         $scope->relativeParameters[$name] = true;
+        $scope->guardedParameters[$name] = 'guarded';
+        $scope->leftOutParameters[$name] = [['name' => 'outer', 'value' => $expr]];
     }
 
     return $scope;
@@ -256,6 +283,25 @@ it('finds the guard a read falls in, the one that starts latest, or the one boun
     expect($scope->guardAt($at('post', 25)))->toBe($sameStart);
 });
 
+// One key per subject: a `$this` chain's key spells its property names whatever arrows it reads them through.
+it('keys an instanceof proof by the variable or the chain of property reads on $this it tests', function (string $subject, ?string $key) {
+    $stmts = new AstParser()->parseSource('<?php '.$subject.';');
+    $expr = $stmts[0] instanceof Stmt\Expression ? $stmts[0]->expr : null;
+
+    expect($expr)->not->toBeNull()
+        ->and(AnalysisScope::proofKey($expr))->toBe($key);
+})->with([
+    'a variable' => ['$post', 'post'],
+    '$this' => ['$this', 'this'],
+    '$this->resource' => ['$this->resource', AnalysisScope::PROXY_GUARDS],
+    'a chain of property reads on $this' => ['$this->owner?->team', '$this->owner->team'],
+    'a chain through $this->resource' => ['$this->resource->imageable', '$this->resource->imageable'],
+    'a member of a variable' => ['$post->author', null],
+    'a chain through a method call' => ['$this->owner()->team', null],
+    'a property named at runtime' => ['$this->{$name}', null],
+    'a variable named at runtime' => ['${$name}', null],
+]);
+
 // The parameter holds the value the call passed, so the guard in force at the call holds for each of its reads.
 it('passes a parameter the guard in force where its variable is passed, for every read of the parameter', function () {
     $captured = analysisScopeWithEveryTableBound()->nameBindings();
@@ -271,8 +317,8 @@ it('passes a parameter the guard in force where its variable is passed, for ever
     };
 
     expect($passedAt(5))->toBe([])
-        ->and($passedAt(25))->toBe(['param' => [['classes' => [SubscribedTeam::class], 'after' => PHP_INT_MIN, 'before' => null]]])
-        ->and($passedAt(35))->toBe(['param' => [['classes' => [Post::class], 'after' => PHP_INT_MIN, 'before' => null]]]);
+        ->and($passedAt(25))->toBe(['param' => [AnalysisScope::armProof([SubscribedTeam::class])]])
+        ->and($passedAt(35))->toBe(['param' => [AnalysisScope::armProof([Post::class])]]);
 });
 
 // The proofs on `$this->resource` sit under a key no variable spells, and their offsets are the body's that set them.
@@ -293,6 +339,21 @@ it('keeps the proofs on $this->resource from every parameter, and sets them asid
     expect($claimed)->toBe([AnalysisScope::PROXY_GUARDS, 'param'])
         ->and($inside)->toBe([])
         ->and($scope->varGuardBindings[AnalysisScope::PROXY_GUARDS])->toBe($proof);
+});
+
+// A closure binds `$this` as its caller does, so a proof on a `$this` chain reaches its body; a variable's needs a use.
+it('keeps the proofs on a $this chain for a closure\'s body, and sets the others aside', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $proof = [['classes' => [SubscribedTeam::class], 'after' => PHP_INT_MIN, 'before' => null]];
+    $scope->varGuardBindings = [AnalysisScope::PROXY_GUARDS => $proof, '$this->author' => $proof, 'item' => $proof];
+
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterClosureBody(new Expr\Closure),
+        fn (): array => $scope->varGuardBindings,
+    );
+
+    expect($inside)->toBe(['$this->author' => $proof])
+        ->and(array_keys($scope->varGuardBindings))->toBe([AnalysisScope::PROXY_GUARDS, '$this->author', 'item']);
 });
 
 it('lifts one gap for a read, and puts it back', function () {
@@ -405,7 +466,7 @@ it('ends a name\'s binding in exactly the tables a variable passed past its end 
     }
 });
 
-it('captures every public array table but the re-entrancy guards and the narrowed `$this` reads as a name binding', function () {
+it('captures every public array table but the re-entrancy guards as a name binding', function () {
     $tables = array_map(
         fn (ReflectionProperty $property): string => $property->getName(),
         array_filter(
@@ -413,7 +474,7 @@ it('captures every public array table but the re-entrancy guards and the narrowe
             fn (ReflectionProperty $property): bool => ! $property->isStatic() && (string) $property->getType() === 'array',
         ),
     );
-    $notNameKeyed = ['resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods', 'narrowedReads'];
+    $notNameKeyed = ['resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods'];
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
 
     expect(array_values(array_diff($tables, $notNameKeyed)))->toEqualCanonicalizing(array_keys($scope->nameBindings()))
@@ -428,7 +489,8 @@ it('captures every public array table but the re-entrancy guards and the narrowe
 function analysisScopeSetOnceFields(): array
 {
     return [
-        'subjectReflection', 'instanceOfWrappedClass', 'carriesImports', 'reindexesNumericKeys',
+        'subjectReflection', 'declaredHeld', 'instanceOfWrappedClass', 'carriesImports', 'casesAsLiterals',
+        'reindexesNumericKeys',
     ];
 }
 
@@ -460,7 +522,7 @@ function analysisScopeFieldValue(ReflectionProperty $field, string $phase, strin
     $name = $field->getName();
 
     return match ((string) $field->getType()) {
-        'array', '?array' => [$name.$phase => true],
+        'array', '?array', 'array|true' => [$name.$phase => true],
         '?string' => "{$name}:{$phase}",
         'bool' => ($phase === 'before') === ($name === $odd),
         'ReflectionClass' => new ReflectionClass($phase === 'before' ? User::class : Post::class),
@@ -476,7 +538,7 @@ it('within() restores every name table and ambient field after a read, a throw i
     $ambient = [
         'provenProxy', 'modelClass', 'forwardsUndeclaredMembersTo', 'declaringFileClass', 'declaringClass',
         'runtime', 'collectedElement', 'resolvingLocalVars', 'readingLocals', 'visitedSpreadMethods',
-        'narrowedReads', 'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed',
+        'appliedProxyProof', 'filtersNestedResources', 'mapResultArrayed', 'readsCallableReturn', 'typedKeys',
     ];
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $fields = array_values(array_filter(
@@ -661,41 +723,109 @@ it('assumes a callee\'s runtime class unless the call runs on this runtime insta
         ->and($assumes($scope->calleeRuntime($base, true)))->toBe([$assumed]);
 })->with(['a known scope' => [false], 'an assumed scope' => [true]]);
 
+// The mark names a proof no position bounds, so a proof at the same offsets that armProof() did not make is not one.
+it('reads a proof as an arm\'s only where armProof() made it', function () {
+    expect(AnalysisScope::isArmProof(AnalysisScope::armProof([User::class])))->toBeTrue()
+        ->and(AnalysisScope::isArmProof(['classes' => [User::class], 'after' => PHP_INT_MIN, 'before' => null]))->toBeFalse()
+        ->and(AnalysisScope::isArmProof(['classes' => [User::class], 'after' => 10, 'before' => 90]))->toBeFalse();
+});
+
+// An `if` proof's offsets are the caller's, so only one a ternary's arm binds, at no offsets, reaches the callee.
+it('keeps a caller\'s proof on a $this chain for a subject method\'s body only where it holds at every offset', function () {
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $arm = AnalysisScope::armProof([User::class]);
+    $block = ['classes' => [Team::class], 'after' => 10, 'before' => 90];
+    $scope->varGuardBindings = ['$this->author' => [$arm], '$this->editor' => [$block], '$this->owner' => [$block, $arm]];
+
+    $inside = $scope->within(
+        fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(PostResource::class, 'toArray'), []),
+        fn (): array => $scope->varGuardBindings,
+    );
+
+    expect($inside)->toBe(['$this->author' => [$arm], '$this->owner' => [$arm]]);
+});
+
 // A write replaces what the caller's test saw on that path and every path through it, and only those.
 it('keeps the caller\'s instanceof proofs on $this for a subject method\'s body but on a path the body writes whole', function (array $rewritten, bool $keepsProxy, array $kept) {
     $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
     $scope->provenProxy = [SubscribedTeam::class];
-    $scope->narrowedReads = [[['author'], ReceiverType::of(User::class)], [['author', 'team'], ReceiverType::of(Team::class)]];
-    $before = $scope->narrowedReads;
+    $scope->varGuardBindings = [
+        '$this->author' => [AnalysisScope::armProof([User::class])],
+        '$this->author->team' => [AnalysisScope::armProof([Team::class])],
+        'item' => [AnalysisScope::armProof([Post::class])],
+    ];
+    $before = $scope->varGuardBindings;
 
     $inside = $scope->within(
         fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(PostResource::class, 'toArray'), [], $rewritten),
-        fn (): array => [$scope->provenProxy, array_column($scope->narrowedReads, 0)],
+        fn (): array => [$scope->provenProxy, array_keys($scope->varGuardBindings)],
     );
 
     expect($inside)->toBe([$keepsProxy ? [SubscribedTeam::class] : null, $kept])
         ->and($scope->provenProxy)->toBe([SubscribedTeam::class])
-        ->and($scope->narrowedReads)->toBe($before);
+        ->and($scope->varGuardBindings)->toBe($before);
 })->with([
-    'a body that writes nothing' => [[], true, [['author'], ['author', 'team']]],
-    'an unrelated $this->marker' => [[['marker']], true, [['author'], ['author', 'team']]],
-    'a member of $this->resource' => [[['resource', 'title']], true, [['author'], ['author', 'team']]],
-    'the inner path' => [[['author', 'team']], true, [['author']]],
+    'a body that writes nothing' => [[], true, ['$this->author', '$this->author->team']],
+    'an unrelated $this->marker' => [[['marker']], true, ['$this->author', '$this->author->team']],
+    'a member of $this->resource' => [[['resource', 'title']], true, ['$this->author', '$this->author->team']],
+    'the inner path' => [[['author', 'team']], true, ['$this->author']],
     'the outer path, and every path through it' => [[['author']], true, []],
     '$this->resource, which every undeclared $this->prop reads through' => [[['resource']], false, []],
 ]);
 
-it('takes one local by its syntax as the whole list does, leaving out one a by-reference call keeps in some form', function () {
-    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
-    $bound = new Int_(1);
-    $scope->localVarBindings = ['kept' => $bound, 'sorted' => new Int_(2)];
-    $scope->byReferenceForms['sorted'] = [['effect' => ByReferenceEffect::KeepsList, 'values' => [], 'path' => [], 'callback' => null, 'after' => PHP_INT_MIN, 'before' => null, 'sole' => false]];
+/**
+ * What writesSeenBy() answers for a body's last `$x` read, the body seeded as a Post-backed resource's, each write
+ * printed; null where it declines.
+ *
+ * @param  array<string, class-string<Model>>  $parameters  each parameter's model, bound before the body is seeded
+ * @return list<string>|null
+ */
+function writesSeenByLastRead(string $body, array $parameters = []): ?array
+{
+    $scope = new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+    $scope->varModelBindings = $parameters;
+    /** @var list<Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php '.$body);
 
-    expect($scope->literalLocalBinding('kept'))->toBe($bound)
-        ->and($scope->literalLocalBinding('sorted'))->toBeNull()
-        ->and($scope->literalLocalBinding('missing'))->toBeNull()
-        ->and($scope->literalLocalBindings())->toBe(['kept' => $bound]);
-});
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the scope from the body, as every body reader does.
+         *
+         * @param  list<Stmt>  $stmts
+         */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+
+    $host->run($stmts, $scope);
+    $reads = new NodeFinder()->find($stmts, fn (Node $node): bool => $node instanceof Variable && $node->name === 'x');
+    $read = $reads[array_key_last($reads)];
+    $writes = $read instanceof Variable ? $scope->writesSeenBy($read) : null;
+
+    return $writes === null ? null : array_map(fn (Expr $write): string => new Standard()->prettyPrintExpr($write), $writes);
+}
+
+it('answers which writes a read of a local sees, and declines where a parameter\'s binding holds', function (string $body, array $parameters, ?array $writes) {
+    expect(writesSeenByLastRead($body, $parameters))->toBe($writes);
+})->with([
+    'a single write' => ['$x = 1; return $x;', [], ['1']],
+    'a block write, read in its block' => ['if ($c) { $x = 1; return $x; }', [], ['1']],
+    'a two-arm join' => ['if ($c) { $x = 1; } else { $x = 2; } return $x;', [], ['1', '2']],
+    'a join over an earlier write' => ['$x = 1; if ($c) { $x = 2; } return $x;', [], ['1', '2']],
+    'a branch that throws' => ['if ($c) { $x = 1; } else { throw new \\RuntimeException(); } return $x;', [], ['1']],
+    'a block write, read past a block that may not run' => ['if ($c) { $x = 1; } return $x;', [], null],
+    'a write in a condition every branch replaces' => ['if ($x = $c) { $x = 1; } else { $x = 2; } return $x;', [], ['1', '2']],
+    'a branch holding a closure, which a join leaves unbound' => ['if ($c) { $x = fn () => 1; } else { $x = 2; } return $x;', [], null],
+    'a branch copying a variable the seed cannot follow, which may hold a closure' => ['if ($c) { $x = $f; } else { $x = 2; } return $x;', [], null],
+    'a branch copying a model parameter, which holds none' => ['if ($c) { $x = $post; } else { $x = 2; } return $x;', ['post' => Post::class], ['$post', '2']],
+    'a parameter whose binding holds' => ['return $x;', ['x' => Post::class], null],
+    'a parameter whose binding a branch may keep' => ['if ($c) { $x = 1; } return $x;', ['x' => Post::class], null],
+]);
 
 it('binds any name only while a parameter table holds one', function () {
     $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
@@ -746,3 +876,112 @@ it('binds a default to the value PHP evaluates it to, and one the evaluator cann
         'date' => 'string',
     ]);
 });
+
+// No PHP variable can be named `@…`, so a read of the alias reaches only the keys the walk binds to it.
+it('names a walked variable\'s alias with a name no PHP variable has', function () {
+    expect(AnalysisScope::walkAlias('data'))->toBe('@data')
+        ->and(AnalysisScope::walkAlias('row'))->not->toBe(AnalysisScope::walkAlias('data'));
+});
+
+it('tells the walk\'s alias from a variable PHP reads', function (Expr $value, bool $alias) {
+    expect(AnalysisScope::isWalkAlias($value))->toBe($alias);
+})->with([
+    'the alias' => [fn (): Expr => new Variable(AnalysisScope::walkAlias('data')), true],
+    'the variable it stands for' => [fn (): Expr => new Variable('data'), false],
+    'a variable variable' => [fn (): Expr => new Variable(new Variable('name')), false],
+    'a read of the alias\'s key' => [fn (): Expr => new ArrayDimFetch(new Variable(AnalysisScope::walkAlias('data'))), false],
+]);
+
+/**
+ * A scope over a resource, its frame typing $typed.
+ *
+ * @param  list<string>|true  $typed
+ */
+function scopeTyping(array|bool $typed): AnalysisScope
+{
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->typedKeys = $typed;
+
+    return $scope;
+}
+
+it('reads a key in the gap mode only where the frame types it, never an index signature', function (array|bool $typed, string $name, bool $shows) {
+    $memo = resolve(AnalysisMemo::class);
+
+    expect(scopeTyping($typed)->readingKey($name, fn (): bool => $memo->showsGaps()))->toBe($shows)
+        ->and($memo->showsGaps())->toBeFalse();
+})->with([
+    'a typed key' => [['title', 'body'], 'body', true],
+    'an int key' => [['0'], '0', true],
+    'every key' => [true, 'body', true],
+    'an untyped key' => [['title'], 'body', false],
+    'no typed key' => [[], 'body', false],
+    'an index signature the set names' => [['[key: string]'], '[key: string]', false],
+    'an index signature under every key' => [true, '[key: `${string}_tag`]', false],
+])->group('gap-mode');
+
+it('reads a level in the gap mode where the set given, else the frame\'s own, types a key', function (array|bool $typed, array|bool|null $given, bool $shows) {
+    $memo = resolve(AnalysisMemo::class);
+
+    expect(scopeTyping($typed)->readingLevel(fn (): bool => $memo->showsGaps(), $given))->toBe($shows)
+        ->and($memo->showsGaps())->toBeFalse();
+})->with([
+    'the frame types a key' => [['title'], null, true],
+    'the frame types every key' => [true, null, true],
+    'the frame types none' => [[], null, false],
+    'a set given types a key' => [[], ['title'], true],
+    'a set given types every key' => [[], true, true],
+    'a set given types none' => [['title'], [], false],
+])->group('gap-mode');
+
+it('never turns off a gap mode a key or level read is already in', function () {
+    $memo = resolve(AnalysisMemo::class);
+    $scope = scopeTyping([]);
+
+    $reads = $memo->showingGaps(fn (): array => [
+        $scope->readingKey('body', fn (): bool => $memo->showsGaps()),
+        $scope->readingKey('[key: string]', fn (): bool => $memo->showsGaps()),
+        $scope->readingLevel(fn (): bool => $memo->showsGaps()),
+        $scope->readingLevel(fn (): bool => $memo->showsGaps(), []),
+    ]);
+
+    expect($reads)->toBe([true, true, true, true]);
+})->group('gap-mode');
+
+it('reads with the typed keys given and puts the frame\'s own back, a throw included', function () {
+    $scope = scopeTyping(['title']);
+    $inside = [];
+
+    try {
+        $scope->typingKeys(true, function () use ($scope, &$inside): never {
+            $inside[] = $scope->typedKeys;
+
+            throw new RuntimeException('The read failed.');
+        });
+    } catch (RuntimeException) {
+    }
+
+    $inside[] = $scope->typingKeys([], fn (): array|bool => $scope->typedKeys);
+
+    expect([...$inside, $scope->typedKeys])->toBe([true, [], ['title']]);
+})->group('gap-mode');
+
+it('puts the typed keys back after a read within() runs, a throw included, and enters a method with none', function () {
+    $scope = scopeTyping(['title']);
+    $inside = null;
+
+    try {
+        $scope->within(
+            fn (AnalysisScope $entered) => $entered->enterMethod(new ReflectionMethod(Post::class, 'publishable'), []),
+            function () use ($scope, &$inside): never {
+                $inside = $scope->typedKeys;
+
+                throw new RuntimeException('The read failed.');
+            },
+        );
+    } catch (RuntimeException) {
+    }
+
+    expect($inside)->toBe([])
+        ->and($scope->typedKeys)->toBe(['title']);
+})->group('gap-mode');

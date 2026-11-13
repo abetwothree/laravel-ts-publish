@@ -5,10 +5,11 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownFunctionCallHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\KnownMethodRuleHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Handlers\StaticCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownFunctionCallHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\KnownMethodRuleHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AbstractKeyTypeOverrideMo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ComputedIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ConfiguredIdentifierUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EmailIdentifierUser;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OfflineKeyUser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Analyzers\FormRequest\BrandedFormRequestRulesAnalyzer;
@@ -25,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsGuardRequest;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TsCastsOverrideRequest;
 use AbeTwoThree\LaravelTsPublish\Transformers\FormRequestTransformer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -62,10 +65,10 @@ function requestRuleEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Calls no callable it reads. */
-        public function invokesCallables(): bool
+        /** Reads every value as `json_encode()` sends it. */
+        public function reading(): Reading
         {
-            return false;
+            return Reading::Encoded;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -438,6 +441,65 @@ it('types Auth::user() and Auth::id()', function () {
         ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class])
         ->and((new StaticCallHandler)->resolve($call('id'), requestRuleScope(), requestRuleEngine()))
         ->toBe(['type' => 'number | null', 'optional' => false]);
+});
+
+it('types user() and id() on the default guard guard() names, and request()->user() naming no guard', function () {
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+    $guards = [new StaticCall(new Name(Auth::class), 'guard'), new MethodCall(new FuncCall(new Name('auth')), 'guard')];
+    $user = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];
+
+    expect(array_map(fn (Expr $guard): ?array => $resolve(new MethodCall($guard, 'user')), $guards))->toBe([$user, $user])
+        ->and(array_map(fn (Expr $guard): ?array => $resolve(new MethodCall($guard, 'id')), $guards))
+        ->toBe(array_fill(0, 2, ['type' => 'number | null', 'optional' => false]))
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user')))->toBe($user);
+});
+
+it('declines a guard() or request()->user() naming a guard, and guard() on a class other than the Auth facade', function () {
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+    $admin = [new Arg(new String_('admin'))];
+
+    expect($resolve(new MethodCall(new StaticCall(new Name(Auth::class), 'guard', $admin), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new MethodCall(new FuncCall(new Name('auth')), 'guard', $admin), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user', $admin)))->toBeNull()
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request'), [new Arg(new String_('key'))]), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new StaticCall(new Name('Foo\\Auth'), 'guard'), 'user')))->toBeNull();
+});
+
+// A route's guard middleware may make a guard over another model the default, so only the spellings base read keep it.
+it('keeps base\'s auth()->user(), Auth::user() and $request->user() where another guard names another model', function () {
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'members']);
+    config()->set('auth.providers.members', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+    $user = ['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class];
+
+    expect($resolve(new MethodCall(new FuncCall(new Name('auth')), 'user')))->toBe($user)
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'user'), requestRuleScope(), requestRuleEngine()))->toBe($user)
+        ->and((new KnownMethodRuleHandler)->resolve(new MethodCall(new Variable('request'), 'user'), requestRuleScope(), requestRuleEngine()))
+        ->toBe($user)
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'id'), requestRuleScope(), requestRuleEngine()))
+        ->toBe(['type' => 'number | null', 'optional' => false])
+        ->and($resolve(new MethodCall(new FuncCall(new Name('request')), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new StaticCall(new Name(Auth::class), 'guard'), 'user')))->toBeNull()
+        ->and($resolve(new MethodCall(new MethodCall(new FuncCall(new Name('auth')), 'guard'), 'id')))->toBeNull();
+});
+
+// A name in another case is a spelling the rules never typed, so it reads the model only while no guard names another.
+it('declines auth()->ID() and Auth::User() where another guard names another model', function () {
+    config()->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'members']);
+    config()->set('auth.providers.members', ['driver' => 'eloquent', 'model' => NameLengthMember::class]);
+
+    expect((new KnownFunctionCallHandler)->resolve(new MethodCall(new FuncCall(new Name('auth')), 'ID'), requestRuleScope(), requestRuleEngine()))
+        ->toBeNull()
+        ->and((new StaticCallHandler)->resolve(new StaticCall(new Name('Auth'), 'User'), requestRuleScope(), requestRuleEngine())['type'] ?? null)
+        ->toBe('unknown');
+});
+
+it('reads the auth methods by name in any case, as PHP calls them', function () {
+    $resolve = fn (Expr $expr): ?array => (new KnownFunctionCallHandler)->resolve($expr, requestRuleScope(), requestRuleEngine());
+
+    expect($resolve(new MethodCall(new FuncCall(new Name('auth')), 'User')))
+        ->toBe(['type' => 'User | null', 'optional' => false, 'modelFqcn' => User::class])
+        ->and($resolve(new MethodCall(new FuncCall(new Name('auth')), 'ID')))->toBe(['type' => 'number | null', 'optional' => false]);
 });
 
 it('types config() with a literal key from the live configuration value', function (string $key, mixed $value, string $type) {

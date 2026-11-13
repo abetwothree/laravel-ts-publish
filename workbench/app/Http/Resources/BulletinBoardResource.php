@@ -11,7 +11,7 @@ use Workbench\App\Models\BulletinBoard;
 
 /**
  * Reads Bulletin's accessors through a typed closure parameter and a nullsafe relation chain, beside a model method
- * body that reads them without imports. Keys differ from BulletinBoard's own accessors, so no name lookup imports them.
+ * body making the same reads. Keys differ from BulletinBoard's own accessors, so no name lookup imports them.
  *
  * @mixin BulletinBoard
  */
