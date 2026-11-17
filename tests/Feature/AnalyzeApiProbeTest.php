@@ -20,9 +20,11 @@ use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
 use Workbench\App\ValueObjects\PanelPayload;
+use Workbench\App\ValueObjects\RedundantArmsPayload;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
 use Workbench\App\ValueObjects\TraitPanelPayload;
+use Workbench\App\ValueObjects\WidgetProps;
 
 /**
  * Renders `AstEngine::analyze()`'s three fields into real `.ts` modules, mechanically — no
@@ -80,6 +82,10 @@ function analysisProbeCases(): array
         'PanelPayload' => [PanelPayload::class, 'toArray', null],
         // A trait-supplied toArray() whose `self` and `parent` name the class that uses the trait and its parent.
         'TraitPanelPayload' => [TraitPanelPayload::class, 'toArray', null],
+        // Case values beside the enum alias that admits them, and an empty list beside a list, at every join (GH-166).
+        'RedundantArmsPayload' => [RedundantArmsPayload::class, 'toArray', null],
+        // GH-166's own report: a branch rewrites an enum key with case values and empties a list property.
+        'WidgetProps' => [WidgetProps::class, 'props', null],
     ];
 }
 

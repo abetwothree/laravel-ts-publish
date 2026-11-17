@@ -4321,6 +4321,10 @@
                     "type": "string | null"
                 },
                 {
+                    "name": "status_or_pending",
+                    "type": "'pending' | PaymentStatusType"
+                },
+                {
                     "name": "due_notice",
                     "type": "DueAtNoticeType"
                 },
@@ -19409,6 +19413,46 @@
                 {
                     "name": "recipients",
                     "type": "{ name: string | null; settings: { digest: boolean } | null }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\RedundantArmsDocblockResource": {
+            "name": "RedundantArmsDocblockResource",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "0 | StatusType | number",
+                    "optional": false
+                },
+                {
+                    "name": "media",
+                    "type": "'image' | MediaTypeType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\RedundantArmsResource": {
+            "name": "RedundantArmsResource",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "StatusType | 0 | 1",
+                    "optional": false
+                },
+                {
+                    "name": "priorities",
+                    "type": "(PriorityType | null)[] | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "status_or_draft",
+                    "type": "0 | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "priority_name",
+                    "type": "'Low' | PriorityKind",
                     "optional": false
                 }
             ]

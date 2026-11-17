@@ -40,6 +40,9 @@ return [
     // Deliberate (GH-154): each arm has no type and leaves an empty list or a null the `@return` member types.
     ['subject' => 'Workbench\\App\\Http\\Resources\\PlaceholderReadingsResource', 'line' => 27, 'expression' => 'cache(\'k\')', 'site' => 'ternary-narrowed'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\PlaceholderReadingsResource', 'line' => 28, 'expression' => '$r->hint', 'site' => 'ternary-narrowed'],
+    // Deliberate (GH-166): each arm has no type, and the `@return` types it beside a case value its alias admits.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\RedundantArmsDocblockResource', 'line' => 26, 'expression' => 'cache(\'status\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\RedundantArmsDocblockResource', 'line' => 27, 'expression' => 'cache(\'media\')', 'site' => 'closure-union'],
     // Deliberate: moneyValue() returns OpaqueHandle, which the acceptor rejects because no published
     // file exists to import it from — the sibling key `money_value` publishes unknown for that reason.
     ['subject' => 'Workbench\\App\\Http\\Resources\\StaticCallResource', 'line' => 67, 'expression' => '\\Workbench\\App\\Services\\UrlService::moneyValue()', 'site' => 'coalesce-left'],
