@@ -357,10 +357,12 @@ final readonly class ArrayArm
 
         // Only a set adds a key no member names: an append under a number index, any key under a string one.
         $index = match (true) {
+            // @phpstan-ignore booleanOr.rightAlwaysFalse (false positive: a named key's write has a value)
             $value === null || is_string($key) || $key === ElementKey::Every => $this->index,
             $key === ElementKey::Next => $this->index ?? 'number',
             default => 'string',
         };
+        // @phpstan-ignore booleanOr.rightAlwaysFalse (the same false positive)
         $rest = $value === null || $index === null || is_string($key) ? $this->rest : self::merged($this->rest, $value);
         $listable = $this->listable
             || ($value === null && new self(false, $members, $rest, $index)->canList($reindexes));
