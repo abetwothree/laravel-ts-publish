@@ -4696,7 +4696,7 @@ declare global {
         }
         /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
         export interface PlaceholderReadingsResource {
-            fills: { f: never[] | number[] }[];
+            fills: { f: number[] }[];
             pairs: [string | null, number][];
         }
         /**
@@ -5211,15 +5211,15 @@ declare global {
         }
         /** A `@return` that types an arm the body cannot, beside a case value its enum's alias admits (GH-166). */
         export interface RedundantArmsDocblockResource {
-            status: 0 | app.enums.StatusType | number;
-            media: 'image' | app.enums.MediaTypeType;
+            status: app.enums.StatusType | number;
+            media: app.enums.MediaTypeType;
         }
         /** Case values a branch writes over the enum's alias, and an empty list over a list (GH-166). */
         export interface RedundantArmsResource {
-            status: app.enums.StatusType | 0 | 1;
-            priorities: (app.enums.PriorityType | null)[] | never[];
-            status_or_draft: 0 | app.enums.StatusType;
-            priority_name: 'Low' | app.enums.PriorityKind;
+            status: app.enums.StatusType;
+            priorities: (app.enums.PriorityType | null)[];
+            status_or_draft: app.enums.StatusType;
+            priority_name: app.enums.PriorityKind;
         }
         /**
          * Regression fixture: analyzeThisMethodCall() spread a reflected TypeScriptTypeInfo straight into its

@@ -2,7 +2,7 @@ import { defineRoute, annotatePageProps } from '@tolki/ts';
 
 import type { PriorityType, StatusType } from '../../enums';
 
-export type ShowPageProps = Inertia.SharedData & { priorities: never[] | (PriorityType | null)[], status: 0 | StatusType, status_or_draft?: 0 | StatusType };
+export type ShowPageProps = Inertia.SharedData & { priorities: (PriorityType | null)[], status: StatusType, status_or_draft?: StatusType };
 
 export const show = annotatePageProps<ShowPageProps>()(defineRoute({
     name: 'posts.redundant-arms',

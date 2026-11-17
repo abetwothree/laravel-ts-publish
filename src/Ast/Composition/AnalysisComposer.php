@@ -104,6 +104,7 @@ final class AnalysisComposer
         // the cast's text, as each publisher's reconcile counts it, before fit() settles its import channels.
         resolve(IndexSignatureReconciler::class)
             ->reconcile($analysis, array_map(fn (array $cast): string => $cast['type'], $analysis->casts));
+        $analysis->absorbRedundantArms();
         resolve(CastChannels::class)->fit($analysis, $analysis->casts);
         $this->collectProperties($analysis);
         $this->collectNameMaps($analysis);

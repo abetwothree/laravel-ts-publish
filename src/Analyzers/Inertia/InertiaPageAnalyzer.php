@@ -412,6 +412,7 @@ class InertiaPageAnalyzer
 
             // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
+            $analysis->absorbRedundantArms();
             resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);

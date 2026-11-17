@@ -70,6 +70,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\Middlewar
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithWrappedEnumBesideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\NestedParentShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\OptionalCastChildMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\RedundantArmsShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ShareCastInheritingMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\SpreadShareMiddleware;
@@ -959,4 +960,14 @@ test('a share middleware publishes no key a merge() in a shared resource\'s with
         ->and($sent['withMerge'])->toBe([
             'data' => ['id' => $post->id], 'a' => 1, 0 => [], 1 => ['data' => ['m' => 3]], 'listed' => [['data' => ['n' => 4]]],
         ]);
+});
+
+// A wrapped enum admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
+test('shared data publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
+    $result = analyzeSharedDataFor(RedundantArmsShareMiddleware::class);
+
+    expect($result['sharedPageProps'] ?? null)
+        ->toBe('{ status: StatusType, tags: (PriorityType | null)[], kept: AsEnum<typeof Status> | 0 }')
+        ->and($result['typeImports'] ?? null)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']])
+        ->and($result['valueImports'] ?? null)->toBe(['./workbench/app/enums' => ['Status']]);
 });

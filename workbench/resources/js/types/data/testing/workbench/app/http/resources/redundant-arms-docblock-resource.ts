@@ -7,6 +7,6 @@ import type { MediaTypeType, StatusType } from '../../enums';
  */
 export interface RedundantArmsDocblockResource
 {
-    status: 0 | StatusType | number;
-    media: 'image' | MediaTypeType;
+    status: StatusType | number;
+    media: MediaTypeType;
 }

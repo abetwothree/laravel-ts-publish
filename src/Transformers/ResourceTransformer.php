@@ -440,6 +440,7 @@ class ResourceTransformer extends CoreTransformer
             $this->tsExtends !== [],
             $this->findable,
         );
+        $analysis->absorbRedundantArms();
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
         $this->declaredTokenFqcns = $analysis->declaredTokenFqcns;

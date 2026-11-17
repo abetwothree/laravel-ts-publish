@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchedItemsPost
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchRowsOfSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastablePostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastRedundantArmsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeMergeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClosureReturnBeforeSpreadResource;
@@ -235,6 +236,7 @@ use Workbench\App\Http\Resources\MixedEnumReturnBranchesResource;
 use Workbench\App\Http\Resources\NamedArgsConditionalResource;
 use Workbench\App\Http\Resources\NestedResourceSpreadResource;
 use Workbench\App\Http\Resources\OrderResource;
+use Workbench\App\Http\Resources\PlaceholderReadingsResource;
 use Workbench\App\Http\Resources\PostEnumCaseResource;
 use Workbench\App\Http\Resources\PostEnumTrioResource;
 use Workbench\App\Http\Resources\PostFlatCollection;
@@ -249,6 +251,8 @@ use Workbench\App\Http\Resources\ProductResource;
 use Workbench\App\Http\Resources\ProductSalesResource;
 use Workbench\App\Http\Resources\ProfileResource;
 use Workbench\App\Http\Resources\ProfileSummaryResource;
+use Workbench\App\Http\Resources\RedundantArmsDocblockResource;
+use Workbench\App\Http\Resources\RedundantArmsResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
@@ -5115,4 +5119,26 @@ it('reads a helper\'s declared interface over $this->collection, and the paginat
     ])
         ->and($sent['helper_ids'])->toBeIn([1, 2])
         ->and($sent['side'])->toMatchArray(['current_page' => 1, 'total' => 2]);
+});
+
+// A case value its enum's alias admits and an empty list beside a list go, whether a write, a ternary or a `@return`
+// adds them (GH-166).
+it('publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
+    expect(resourceProps(RedundantArmsResource::class))->toBe([
+        'status' => 'StatusType',
+        'priorities' => '(PriorityType | null)[]',
+        'status_or_draft' => 'StatusType',
+        'priority_name' => 'PriorityKind',
+    ])
+        ->and(resourceProps(RedundantArmsDocblockResource::class))->toBe(['status' => 'StatusType | number', 'media' => 'MediaTypeType'])
+        ->and(resourceProps(PlaceholderReadingsResource::class)['fills'])->toBe('{ f: number[] }[]');
+});
+
+// A cast's text is published as written, the class's and toArray()'s alike, though the same body uncast loses an arm.
+it('keeps a cast\'s case value beside its enum\'s alias', function () {
+    expect(resourceProps(CastRedundantArmsResource::class))->toBe([
+        'k' => "'image' | MediaTypeType",
+        'm' => "'image' | MediaTypeType",
+        'free' => 'MediaTypeType',
+    ]);
 });

@@ -93,6 +93,7 @@ use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
+use Workbench\App\Http\Controllers\InertiaRedundantArmsController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
@@ -2836,4 +2837,10 @@ it('reads a paginator\'s kind from a declared class only where the class decides
         .'either: AnonymousResourceCollection<PostResource> | JsonResourcePaginator<PostResource>, fragment: unknown }')
         ->and([$sent->contract, $sent->abstract, $sent->either])->each->toHaveProperties(['data', 'links', 'meta'])
         ->and($sent->fragment)->toBeNull();
+});
+
+// Each render's page type leaves out a case value its enum's alias admits and an empty list beside a list (GH-166).
+it('publishes no case value beside its enum\'s alias and no empty list beside a list on a page', function () {
+    expect(pageData(InertiaRedundantArmsController::class.'@show')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'priorities: (PriorityType | null)[], status: StatusType, status_or_draft?: StatusType }');
 });
