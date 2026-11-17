@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\LiteralArm;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
@@ -66,6 +65,17 @@ function redundantArmsDropped(array $arms, array $left): ?array
 }
 
 /**
+ * Whether an arm admits `never[]`, read apart from the rule: the empty tuple, or one `X[]`, `Array<X>` or
+ * `ReadonlyArray<X>` with no top-level `&`.
+ */
+function redundantArmsAdmitsEmptyList(string $by): bool
+{
+    return $by === '[]' || ($by !== 'never[]'
+        && count(TsTypeShape::splitTopLevel($by, ['&'])) === 1
+        && preg_match('/\[\]$|^(?:Readonly)?Array<.+>$/D', $by) === 1);
+}
+
+/**
  * Every identifier outside literal text, `never` left out, sorted.
  *
  * @return list<string>
@@ -80,7 +90,7 @@ function redundantArmsIdentifiers(string $type): array
 }
 
 describe('never[]', function () {
-    test('is absorbed by a lone list beside it, at every depth', function (string $type, string $expected) {
+    test('is absorbed by a lone list or the empty tuple beside it, at every depth', function (string $type, string $expected) {
         expect(RedundantArms::absorbed($type, redundantArmsAliases()))->toBe($expected);
     })->with([
         'beside a list of an alias' => ['PriorityType[] | never[]', 'PriorityType[]'],
@@ -96,15 +106,15 @@ describe('never[]', function () {
         'in a Record\'s value' => ['Record<string, never[] | number[]>', 'Record<string, number[]>'],
         'in a list\'s element' => ['(never[] | number[])[]', 'number[][]'],
         'in a tuple element' => ['[never[] | number[], string]', '[number[], string]'],
+        'beside the empty tuple' => ['[] | never[]', '[]'],
     ]);
 
-    test('stays beside anything but a lone list', function (string $type) {
+    test('stays beside anything but a lone list or the empty tuple', function (string $type) {
         expect(RedundantArms::absorbed($type, redundantArmsAliases()))->toBe($type);
     })->with([
         'beside a Record' => ['Record<string, PriorityType> | never[]'],
         'beside an object' => ['{ a: number } | never[]'],
         'beside a tuple' => ['[number, string] | never[]'],
-        'beside the empty tuple' => ['[] | never[]'],
         'beside an AsEnum' => ['AsEnum<typeof Role> | never[]'],
         'beside a named collection' => ['UserCollection | never[]'],
         'beside an intersection holding a list' => ['(A & B[]) | never[]'],
@@ -190,7 +200,7 @@ describe('admits', function () {
         'an intersection ending in a list, never[]' => ['A & B[]', 'never[]', false],
         'a Record, never[]' => ['Record<string, number>', 'never[]', false],
         'an object of optional keys, never[]' => ['{ a?: number }', 'never[]', false],
-        'the empty tuple, never[]' => ['[]', 'never[]', false],
+        'the empty tuple, never[]' => ['[]', 'never[]', true],
         'an alias, never[]' => ['PriorityType', 'never[]', false],
         'an alias, its case literal' => ['MediaTypeType', "'video'", true],
         'an alias, another alias\'s literal' => ['PriorityType', "'video'", false],
@@ -212,7 +222,7 @@ test('keeps a subset of the arms, every token, and its own answer, each dropped 
     $unadmitted = array_filter((array) $dropped, static fn (string $arm): bool => ! array_any(
         $left,
         static fn (string $by): bool => match (true) {
-            $arm === 'never[]' => ArrayArms::listElement($by) !== null,
+            $arm === 'never[]' => redundantArmsAdmitsEmptyList($by),
             LiteralArm::isLiteral($arm) => in_array(LiteralArm::value($arm), $aliases[$by] ?? [], true),
             default => false,
         },

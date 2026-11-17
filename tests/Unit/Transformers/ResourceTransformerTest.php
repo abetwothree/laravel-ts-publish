@@ -45,6 +45,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocShapeUnalikeBr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DraftPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EagerColumnsPostResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EmptyTupleBesideEmptyListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionNullableVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionVarResource;
@@ -115,6 +116,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SchedulePostSprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ScopedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SearchedPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpacedGenericVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadNestedEmptyListResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverHeldEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadOverTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusCodesDefaultResource;
@@ -5140,5 +5142,19 @@ it('keeps a cast\'s case value beside its enum\'s alias', function () {
         'k' => "'image' | MediaTypeType",
         'm' => "'image' | MediaTypeType",
         'free' => 'MediaTypeType',
+    ]);
+});
+
+// The spread writes `a` again in every branch; absorbing inside an arm would rename the shape its facts are kept by.
+it('keeps a spread key\'s facts where a shape it spreads holds an empty list beside a list', function () {
+    expect(resourceProps(SpreadNestedEmptyListResource::class))->toBe(['a?' => 'string', 'k' => 'number[]']);
+});
+
+// `[]` and `never[]` both spell only the empty array PHP sends, so the tuple alone stands for it.
+it('publishes the empty tuple a `list{}` method sends alone beside the empty list', function () {
+    expect(resourceProps(EmptyTupleBesideEmptyListResource::class))->toBe([
+        'value' => '[]',
+        'default' => '[]',
+        'ternary' => '[]',
     ]);
 });

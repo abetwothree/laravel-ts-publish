@@ -467,8 +467,8 @@ final class ValueResult
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list, at any depth, is no member of its own, since the list already admits it. Its held-object flag
-     * is the arms', and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
+     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
+     * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -513,7 +513,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        $union = [...$result, 'type' => RedundantArms::absorbed($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => self::withoutAdmittedArms($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
         $presence = self::armsKeyPresence($results);
 
@@ -800,6 +800,24 @@ final class ValueResult
         return array_all($arms, fn (array $arm): bool => $arm['heldObject'] ?? false)
             ? [...$union, 'heldObject' => true, ...$kinds]
             : [...$union, 'mayHoldObject' => $nulls, ...$kinds];
+    }
+
+    /**
+     * A union's type without each top-level arm a sibling admits, as RedundantArms reads it: `never[]` beside a list
+     * or the empty tuple.
+     *
+     * An arm's inside is left to the publisher's pass, as armsKeyPresence() keys each arm's facts by its object's text.
+     */
+    private static function withoutAdmittedArms(string $type): string
+    {
+        if (! str_contains($type, 'never[]')) {
+            return $type;
+        }
+
+        $arms = TsTypeString::splitTopLevelUnion($type);
+        $kept = RedundantArms::kept($arms);
+
+        return $kept === $arms ? $type : implode(' | ', $kept);
     }
 
     /**

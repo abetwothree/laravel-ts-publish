@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
 /**
- * Leave out a union arm a sibling arm admits: `never[]` beside a single list arm, and a case literal beside an enum
- * alias whose cases include it. Only `never[]` and literal arms are ever dropped, so no class token leaves the type.
+ * Leave out a union arm a sibling arm admits: `never[]` beside a single list arm or `[]`, and a case literal beside
+ * an enum alias whose cases include it. Only `never[]` and literal arms are ever dropped, so no class token leaves
+ * the type.
  *
  * @phpstan-type AliasLiterals = array<string, list<int|string>>
  *
@@ -15,6 +16,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 final class RedundantArms
 {
     private const string EMPTY_LIST = 'never[]';
+
+    private const string EMPTY_TUPLE = '[]';
 
     /**
      * The type with every arm a sibling admits left out, at every depth.
@@ -63,9 +66,10 @@ final class RedundantArms
      */
     public static function admits(string $by, string $arm, array $aliasLiterals = []): bool
     {
-        // tsc rejects `never[]` against a tuple, `[]`, a Record and an all-optional object, so only a list admits it.
+        // tsc rejects `never[]` against a tuple, a Record and an all-optional object. `[]` admits it, as both spell
+        // only the empty array PHP sends.
         if ($arm === self::EMPTY_LIST) {
-            return $by !== self::EMPTY_LIST && ArrayArms::listElement($by) !== null;
+            return $by === self::EMPTY_TUPLE || ($by !== self::EMPTY_LIST && ArrayArms::listElement($by) !== null);
         }
 
         $literals = $aliasLiterals[$by] ?? [];
