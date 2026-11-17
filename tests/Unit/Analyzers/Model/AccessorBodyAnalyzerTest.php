@@ -320,25 +320,29 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
     ]);
 });
 
-describe('AccessorBodyAnalyzer settles the body it publishes', function () {
-    test('a getter sending its enum\'s value or name publishes the alias as a scalar, a case value beside it folded in', function (string $model, string $attribute, string $type) {
+describe('AccessorBodyAnalyzer hands its readers the body unsettled', function () {
+    // Each reader folds a case value into the alias at its own publisher's pass, where the key's channels are final.
+    test('a getter sending its enum\'s value or name says so, a case value beside it kept', function (string $model, string $attribute, string $type) {
         $info = resolve(AccessorBodyAnalyzer::class)->analyze($model, $attribute);
 
         expect($info['type'] ?? null)->toBe($type)
-            ->and($info['readsEnumScalar'] ?? false)->toBeTrue();
+            ->and($info['sendsEnumScalar'] ?? false)->toBeTrue();
     })->with([
         'the value' => [EnumValueAccessorPost::class, 'status_value', 'StatusType'],
         'the name' => [EnumValueAccessorPost::class, 'status_name', 'StatusKind'],
-        'the value or a case\'s value' => [EnumValueAccessorPost::class, 'status_or_draft', 'StatusType'],
-        'the value or a string case value' => [Payment::class, 'status_or_pending', 'PaymentStatusType'],
+        'the value or a case\'s value' => [EnumValueAccessorPost::class, 'status_or_draft', 'StatusType | 0'],
+        'the value or a string case value' => [Payment::class, 'status_or_pending', "'pending' | PaymentStatusType"],
     ]);
 
-    test('a getter returning the enum itself is not read as its scalar', function () {
-        $info = resolve(AccessorBodyAnalyzer::class)->analyze(EnumShapePost::class, 'plain_state');
+    test('a getter returning the enum itself, or it beside a case value, does not say it sends the enum\'s scalar', function (string $attribute, string $type) {
+        $info = resolve(AccessorBodyAnalyzer::class)->analyze(EnumValueAccessorPost::class, $attribute);
 
-        expect($info['type'] ?? null)->toBe('StatusType')
-            ->and($info)->not->toHaveKey('readsEnumScalar');
-    });
+        expect($info['type'] ?? null)->toBe($type)
+            ->and($info)->not->toHaveKey('sendsEnumScalar');
+    })->with([
+        'the enum itself' => ['status_case_or_value', 'StatusType'],
+        'the enum itself or a case\'s value' => ['status_case_or_draft', 'StatusType | 0'],
+    ]);
 });
 
 // filter() sends a wrap an accessor builds as null where a resource's value reaches it, though the model's own JSON,

@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\LinkingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NestedNullShapeModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullProofProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NullReturningGetProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PaymentStatusInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\PhpstanRelationPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializeBodyWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SerializedCastNullWarehouse;
@@ -782,7 +783,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         expect(array_keys($data->enumMutators))->toBe(['plain_state']);
     });
 
-    test('a getter sending its enum\'s value or name publishes the scalar alias, and only the enum itself its AsEnum wrap', function (string $attribute, string $type, bool $wrapped) {
+    test('a getter sending its enum\'s value or name publishes the scalar alias, and one that may send the enum itself its AsEnum wrap', function (string $attribute, string $type, bool $wrapped) {
         $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();
 
         expect($data->mutators[$attribute]['type'])->toBe($type)
@@ -793,18 +794,31 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself' => ['status_enum', 'StatusType', true],
         'the value or a case\'s value' => ['status_or_draft', 'StatusType', false],
         'the enum itself or a case\'s value' => ['status_case_or_draft', 'StatusType', false],
+        'the value or the enum itself' => ['status_value_or_case', 'StatusType', true],
+        'the enum itself or the value' => ['status_case_or_value', 'StatusType', true],
+        'a read of the value-or-case-value getter' => ['status_or_draft_read', 'StatusType', false],
+        'a read of the value-or-case-value getter, or a case' => ['status_or_draft_or_published', 'StatusType', false],
     ]);
 
-    test('prints only the getter returning the enum itself as its AsEnum wrap in the Resource interface', function () {
+    test('prints only the getters that may return the enum itself as its AsEnum wrap in the Resource interface', function () {
         config()->set('ts-publish.output_to_files', false);
 
         $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(EnumValueAccessorPost::class));
 
         expect($content)->toContain(
-            "export interface EnumValueAccessorPostMutatorsResource extends Omit<EnumValueAccessorPostMutators, 'status_enum'>\n"
-            ."{\n    status_enum: AsEnum<typeof Status>;\n}\n",
+            'export interface EnumValueAccessorPostMutatorsResource extends Omit<EnumValueAccessorPostMutators, '
+            ."'status_enum' | 'status_value_or_case' | 'status_case_or_value'>\n"
+            ."{\n    status_enum: AsEnum<typeof Status>;\n    status_value_or_case: AsEnum<typeof Status>;\n"
+            ."    status_case_or_value: AsEnum<typeof Status>;\n}\n",
         );
     });
+
+    test('a getter reading another model\'s value-or-case-value accessor publishes the alias with no AsEnum wrap', function (string $attribute) {
+        $data = (new ModelTransformer(PaymentStatusInvoice::class))->data();
+
+        expect($data->mutators[$attribute]['type'])->toBe('PaymentStatusType | null')
+            ->and($data->enumMutators)->not->toHaveKey($attribute);
+    })->with(['latest_status', 'first_status']);
 
     test('a getter sending its enum\'s value or a case\'s value publishes the enum\'s alias alone, with no AsEnum wrap', function () {
         config()->set('ts-publish.output_to_files', false);

@@ -96,18 +96,18 @@ it('keeps an enum alias only while #[TsCase] leaves the case scalars it is built
 
 it('keeps an overridden enum\'s value and name reads by the enum\'s own names', function () {
     expect(EnumValueTypes::value(UiTone::class, true))
-        ->toBe(['type' => 'UiToneType', 'optional' => false, 'directEnumFqcn' => UiTone::class, 'readsEnumScalar' => true])
+        ->toBe(['type' => 'UiToneType', 'optional' => false, 'directEnumFqcn' => UiTone::class, 'sendsEnumScalar' => true])
         ->and(EnumValueTypes::name(UiTone::class, true))
-        ->toBe(['type' => 'UiToneKind', 'optional' => false, 'directEnumFqcn' => UiTone::class, 'readsEnumScalar' => true]);
+        ->toBe(['type' => 'UiToneKind', 'optional' => false, 'directEnumFqcn' => UiTone::class, 'sendsEnumScalar' => true]);
 });
 
 it('spells an overridden enum\'s value and name by the names its own file exports', function () {
     $this->mock(EnumsCollector::class)->shouldReceive('collect')->andReturn(collect([RenamedTone::class]));
 
     expect(EnumValueTypes::value(RenamedTone::class, true))
-        ->toBe(['type' => 'ShadeType', 'optional' => false, 'directEnumFqcn' => RenamedTone::class, 'readsEnumScalar' => true])
+        ->toBe(['type' => 'ShadeType', 'optional' => false, 'directEnumFqcn' => RenamedTone::class, 'sendsEnumScalar' => true])
         ->and(EnumValueTypes::name(RenamedTone::class, true))
-        ->toBe(['type' => 'ShadeKind', 'optional' => false, 'directEnumFqcn' => RenamedTone::class, 'readsEnumScalar' => true]);
+        ->toBe(['type' => 'ShadeKind', 'optional' => false, 'directEnumFqcn' => RenamedTone::class, 'sendsEnumScalar' => true]);
 });
 
 it('reads an enum value in a helper read as a value by the enum\'s aliases, as in place', function () {

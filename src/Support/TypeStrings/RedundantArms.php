@@ -26,12 +26,35 @@ final class RedundantArms
      */
     public static function absorbed(string $type, array $aliasLiterals = []): string
     {
+        return self::absorbedReporting($type, $aliasLiterals)[0];
+    }
+
+    /**
+     * The type absorbed() gives, and whether a case literal was among the arms it left out.
+     *
+     * @param  AliasLiterals  $aliasLiterals  Each alias token with the case scalars it admits.
+     * @return array{string, bool}
+     */
+    public static function absorbedReporting(string $type, array $aliasLiterals = []): array
+    {
         $mayAbsorb = str_contains($type, self::EMPTY_LIST)
             || array_any(array_keys($aliasLiterals), static fn (string $alias): bool => str_contains($type, $alias));
 
-        return $mayAbsorb
-            ? TypeRewriter::rewrite($type, union: static fn (array $arms): array => self::kept($arms, $aliasLiterals))
-            : $type;
+        if (! $mayAbsorb) {
+            return [$type, false];
+        }
+
+        $tookLiteral = false;
+        $absorbed = TypeRewriter::rewrite($type, union: static function (array $arms) use ($aliasLiterals, &$tookLiteral): array {
+            $kept = self::kept($arms, $aliasLiterals);
+            // Only never[] and literal arms are ever left out, and an admitted literal never has a kept twin.
+            $tookLiteral = $tookLiteral
+                || array_any(array_diff($arms, $kept), static fn (string $arm): bool => $arm !== self::EMPTY_LIST);
+
+            return $kept;
+        });
+
+        return [$absorbed, $tookLiteral];
     }
 
     /**

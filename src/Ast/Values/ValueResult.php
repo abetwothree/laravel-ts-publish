@@ -661,33 +661,6 @@ final class ValueResult
     }
 
     /**
-     * The result with each union arm a sibling admits left out of its type: `never[]` beside a list, and a case literal
-     * beside an alias of an enum it reads, and does not wrap, that admits the literal. An alias that took a literal in
-     * stands for the scalar the literal sends, so the result reads its enum's scalar.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return ValueExpressionResult
-     */
-    public static function withRedundantArmsAbsorbed(array $result): array
-    {
-        $aliasLiterals = EnumValueTypes::channelAliasLiterals(
-            self::directEnumChannelFqcns($result),
-            [
-                ...(isset($result['enumFqcn']) ? [$result['enumFqcn']] : []),
-                ...($result['multiEnumResourceFqcns'] ?? []),
-                ...($result['embeddedEnumResourceFqcns'] ?? []),
-            ],
-            self::modelChannelFqcns($result),
-            self::resourceChannelFqcns($result),
-        );
-
-        $type = RedundantArms::absorbed($result['type'], $aliasLiterals);
-        $tookLiteral = $aliasLiterals !== [] && $type !== RedundantArms::absorbed($result['type']);
-
-        return [...$result, 'type' => $type, ...($tookLiteral ? ['readsEnumScalar' => true] : [])];
-    }
-
-    /**
      * The classes behind a result's tokens, one queue per kind: its models, its resources and its enums read directly.
      *
      * @param  ValueExpressionResult  $result
@@ -899,10 +872,8 @@ final class ValueResult
      */
     private static function carriesAnEnum(array $result): bool
     {
-        return isset($result['directEnumFqcn'])
-            || isset($result['enumFqcn'])
-            || ($result['embeddedEnumFqcns'] ?? []) !== []
-            || ($result['multiEnumResourceFqcns'] ?? []) !== []
+        return self::directEnumChannelFqcns($result) !== []
+            || self::wrapsAnEnum([$result])
             || ($result['embeddedEnumResourceFqcns'] ?? []) !== [];
     }
 
@@ -1079,8 +1050,8 @@ final class ValueResult
         // A literal beside an enum's scalar carries no enum, so only the arms that carry one decide.
         $enumArms = array_filter($branchResults, self::carriesAnEnum(...));
 
-        if ($enumArms !== [] && array_all($enumArms, fn (array $inner): bool => $inner['readsEnumScalar'] ?? false)) {
-            $result['readsEnumScalar'] = true;
+        if ($enumArms !== [] && array_all($enumArms, fn (array $inner): bool => $inner['sendsEnumScalar'] ?? false)) {
+            $result['sendsEnumScalar'] = true;
         }
 
         // Every list arm keeps its int keys only where each branch spelling one says so.

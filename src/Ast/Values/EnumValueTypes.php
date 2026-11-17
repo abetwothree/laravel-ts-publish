@@ -366,7 +366,7 @@ final class EnumValueTypes
         return [
             ...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)),
             'directEnumFqcn' => $enum,
-            'readsEnumScalar' => true,
+            'sendsEnumScalar' => true,
         ];
     }
 

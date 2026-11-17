@@ -108,8 +108,7 @@ final class AccessorBodyAnalyzer
     }
 
     /**
-     * The type a getter body publishes, with each arm a sibling admits left out; null where it does not stand or spells
-     * a class the model file cannot name.
+     * The type a getter body publishes; null where it does not stand or spells a class the model file cannot name.
      *
      * @param  class-string<Model>  $modelFqcn
      * @return TypeScriptTypeInfo|null
@@ -128,8 +127,6 @@ final class AccessorBodyAnalyzer
             return null;
         }
 
-        // The published value is final here, as a publisher's last key pass is, so its literals may fold into an alias.
-        $result = ValueResult::withRedundantArmsAbsorbed($result);
         $info = resolve(ResultTypeInfoBridge::class)->toTypeInfo($result);
 
         return $this->namesEveryClass($result, $info) ? $info : null;

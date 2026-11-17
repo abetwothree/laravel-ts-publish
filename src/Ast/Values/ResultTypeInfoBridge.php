@@ -53,8 +53,8 @@ final class ResultTypeInfoBridge
             $info['classTokenFqcns'] = $models;
         }
 
-        if ($result['readsEnumScalar'] ?? false) {
-            $info['readsEnumScalar'] = true;
+        if ($result['sendsEnumScalar'] ?? false) {
+            $info['sendsEnumScalar'] = true;
         }
 
         // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result

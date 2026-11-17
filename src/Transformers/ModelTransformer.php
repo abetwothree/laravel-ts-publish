@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -21,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -493,7 +495,7 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
-            $resolved = $this->exportedTypeInfo($resolved);
+            $resolved = $this->withRedundantArmsFolded($this->exportedTypeInfo($resolved));
 
             if ($isAppended) {
                 $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
@@ -684,6 +686,23 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * The accessor's type info with each union arm a sibling admits left out, flagged as sending its enum's scalar
+     * where an alias took a case literal in.
+     *
+     * The model file is where the accessor publishes; each reader of the attribute folds at its own publisher's pass.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return TypeScriptTypeInfo
+     */
+    protected function withRedundantArmsFolded(array $info): array
+    {
+        $aliasLiterals = EnumValueTypes::channelAliasLiterals($info['enumFqcns'], [], $info['classFqcns'], []);
+        [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals);
+
+        return [...$info, 'type' => $type, ...($tookLiteral ? ['sendsEnumScalar' => true] : [])];
+    }
+
+    /**
      * Each relation's key with the given suffix, unless an attribute or a relation already publishes it.
      *
      * @return list<string>
@@ -789,7 +808,7 @@ class ModelTransformer extends CoreTransformer
      */
     protected function soleEnumFqcn(array $info, string $type): ?string
     {
-        if (count($info['enumFqcns']) !== 1 || ($info['readsEnumScalar'] ?? false)) {
+        if (count($info['enumFqcns']) !== 1 || ($info['sendsEnumScalar'] ?? false)) {
             return null;
         }
 

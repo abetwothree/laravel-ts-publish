@@ -188,6 +188,20 @@ describe('kept', function () {
     });
 });
 
+describe('absorbedReporting', function () {
+    test('gives the type absorbed() gives, and whether a literal was among the arms it left out', function (string $type, string $expected, bool $tookLiteral) {
+        expect(RedundantArms::absorbedReporting($type, redundantArmsAliases()))->toBe([$expected, $tookLiteral])
+            ->and(RedundantArms::absorbed($type, redundantArmsAliases()))->toBe($expected);
+    })->with([
+        'a literal beside its alias' => ["'image' | MediaTypeType", 'MediaTypeType', true],
+        'a literal inside a member' => ['{ k: 0 | PriorityType }', '{ k: PriorityType }', true],
+        'never[] and a literal' => ['never[] | PriorityType[] | 1 | PriorityType', 'PriorityType[] | PriorityType', true],
+        'never[] alone' => ['never[] | PriorityType[]', 'PriorityType[]', false],
+        'a literal no alias admits' => ["'other' | MediaTypeType", "'other' | MediaTypeType", false],
+        'nothing to absorb' => ['string', 'string', false],
+    ]);
+});
+
 describe('admits', function () {
     test('answers whether one arm admits every value of another', function (string $by, string $arm, bool $admits) {
         expect(RedundantArms::admits($by, $arm, redundantArmsAliases()))->toBe($admits);
@@ -229,6 +243,7 @@ test('keeps a subset of the arms, every token, and its own answer, each dropped 
     ));
 
     expect(RedundantArms::absorbed($absorbed, $aliases))->toBe($absorbed)
+        ->and(RedundantArms::absorbedReporting($type, $aliases))->toBe([$absorbed, $absorbed !== RedundantArms::absorbed($type)])
         ->and($dropped)->not->toBeNull()
         ->and($unadmitted)->toBe([])
         ->and($left)->not->toBeEmpty()
