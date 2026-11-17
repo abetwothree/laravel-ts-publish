@@ -697,16 +697,19 @@ class ModelTransformer extends CoreTransformer
      */
     protected function withRedundantArmsAbsorbed(array $info): array
     {
-        $wrapped = $info['wrappedEnumFqcns'] ?? [];
-        $aliasLiterals = EnumValueTypes::aliasLiterals($info['enumFqcns'], $wrapped, $info['classes']);
         $classes = [];
 
         foreach ($info['classFqcns'] as $i => $fqcn) {
             $classes[] = [$fqcn, $info['classes'][$i] ?? class_basename($fqcn)];
         }
 
-        $dedupesAlike = ($info['classTokenFqcns'] ?? []) === []
-            && ! EnumValueTypes::namesTwoClasses([...$info['enumFqcns'], ...$wrapped], $classes);
+        [$aliasLiterals, $dedupesAlike] = EnumValueTypes::absorbRules(
+            read: $info['enumFqcns'],
+            wrapped: $info['wrappedEnumFqcns'] ?? [],
+            takenNames: $info['classes'],
+            classes: $classes,
+            keepsTokens: ($info['classTokenFqcns'] ?? []) !== [],
+        );
         [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals, $dedupesAlike);
 
         return [...$info, 'type' => $type, ...($tookLiteral ? ['sendsEnumScalar' => true] : [])];

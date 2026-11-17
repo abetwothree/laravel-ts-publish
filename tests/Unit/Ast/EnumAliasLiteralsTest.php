@@ -18,6 +18,8 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 beforeEach(function () {
@@ -137,4 +139,66 @@ it('admits nothing under a name an enum also wrapped spells too', function () {
 it('admits nothing for no enum', function () {
     expect(EnumValueTypes::aliasLiterals([]))->toBe([])
         ->and(EnumValueTypes::aliasLiterals([], [MediaType::class]))->toBe([]);
+});
+
+it('builds a key\'s alias literals from the enums it reads and wraps and the names its other classes print', function (
+    array $read,
+    array $wrapped,
+    array $takenNames,
+    array $literals,
+) {
+    expect(EnumValueTypes::absorbRules($read, $wrapped, $takenNames, [], false)[0])->toBe($literals);
+})->with([
+    'a read enum' => [[Priority::class], [], [], [
+        'PriorityType' => [0, 1, 2, 3],
+        'PriorityKind' => ['Low', 'Medium', 'High', 'Critical'],
+    ]],
+    'an enum the key also wraps' => [[MediaType::class], [MediaType::class], [], []],
+    'a name another class prints' => [[MediaType::class], [], ['MediaTypeType'], [
+        'MediaTypeKind' => ['Image', 'Video', 'Audio', 'Document', 'Archive'],
+    ]],
+]);
+
+it('reads two arms spelled alike as one only where nothing keeps them apart', function (
+    array $read,
+    array $classes,
+    bool $keepsTokens,
+    bool $queued,
+    bool $dedupes,
+) {
+    $rules = EnumValueTypes::absorbRules($read, [], [], $classes, $keepsTokens, static fn (): bool => $queued);
+
+    expect($rules[1])->toBe($dedupes);
+})->with([
+    'nothing' => [[Priority::class], [], false, false, true],
+    'a token queue the key keeps' => [[Priority::class], [], true, false, false],
+    'a name two of its classes print' => [[], [[User::class, 'User'], [Post::class, 'User']], false, false, false],
+    'a name two of its enums print' => [[Status::class, CrmStatus::class], [], false, false, false],
+    'a class queued on it later' => [[Priority::class], [], false, true, false],
+]);
+
+it('keeps two arms spelled alike apart where an enum the key wraps prints a name an enum it reads does', function () {
+    $this->mock(EnumsCollector::class)->shouldReceive('collect')
+        ->andReturn(collect([BillingStage::class, ShippingStage::class]));
+
+    expect(EnumValueTypes::absorbRules([BillingStage::class], [ShippingStage::class], [], [], false))->toBe([
+        ['StageType' => [], 'StageKind' => []],
+        false,
+    ]);
+});
+
+it('asks whether a class is queued later only once nothing else keeps alike arms apart', function () {
+    $asked = 0;
+    $queuesLater = function () use (&$asked): bool {
+        $asked++;
+
+        return false;
+    };
+
+    EnumValueTypes::absorbRules([Priority::class], [], [], [], true, $queuesLater);
+    EnumValueTypes::absorbRules([Status::class, CrmStatus::class], [], [], [], false, $queuesLater);
+    expect($asked)->toBe(0);
+
+    EnumValueTypes::absorbRules([Priority::class], [], [], [], false, $queuesLater);
+    expect($asked)->toBe(1);
 });

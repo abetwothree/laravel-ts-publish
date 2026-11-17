@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use BackedEnum;
+use Closure;
 use JsonSerializable;
 use ReflectionEnum;
 use ReflectionEnumUnitCase;
@@ -36,6 +37,7 @@ use UnitEnum;
  *     renamed: bool,
  *     revalued: bool,
  * }
+ * @phpstan-type AbsorbRules = array{AliasLiterals, bool}
  *
  * @internal
  */
@@ -203,6 +205,33 @@ final class EnumValueTypes
         }
 
         return array_diff_key(array_intersect_key($admitted, $usable), array_flip($takenNames));
+    }
+
+    /**
+     * A key's rules for leaving out redundant arms: aliasLiterals() over its enums, and whether two arms spelled alike
+     * are one, which holds while it keeps no token queue, no name spells two of its classes and none is queued later.
+     *
+     * @param  list<class-string>  $read  the enums it reads directly
+     * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`
+     * @param  list<string>  $takenNames  the names its models and resources print
+     * @param  list<TokenSpelling>  $classes  its models and resources, beside the names they print
+     * @param  (Closure(): bool)|null  $queuesLater  whether a class is queued on it after this pass
+     * @return AbsorbRules
+     */
+    public static function absorbRules(
+        array $read,
+        array $wrapped,
+        array $takenNames,
+        array $classes,
+        bool $keepsTokens,
+        ?Closure $queuesLater = null,
+    ): array {
+        return [
+            self::aliasLiterals($read, $wrapped, $takenNames),
+            ! $keepsTokens
+                && ! self::namesTwoClasses([...$read, ...$wrapped], $classes)
+                && ! ($queuesLater !== null && $queuesLater()),
+        ];
     }
 
     /**

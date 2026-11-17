@@ -34,7 +34,7 @@ use LogicException;
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
- * @phpstan-import-type AliasLiterals from RedundantArms
+ * @phpstan-import-type AbsorbRules from EnumValueTypes
  * @phpstan-import-type TokenSpelling from ClassTokenQueue
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
@@ -947,16 +947,13 @@ class MethodAnalysis
      */
     public function absorbRedundantArms(?Closure $queuesLater = null): void
     {
-        /** @var array<array-key, array{AliasLiterals, bool}> $rulesByKey key => its alias literals and dedupe flag */
+        /** @var array<array-key, AbsorbRules> $rulesByKey */
         $rulesByKey = [];
 
         $this->rewriteTypes(
             function (string $type, array $property) use (&$rulesByKey, $queuesLater): string {
                 $name = $property['name'];
-                [$admitted, $dedupesAlike] = $rulesByKey[$name] ??= [
-                    $this->keyAliasLiterals($name),
-                    $this->readsAlikeArmsAsOne($name) && ! ($queuesLater !== null && $queuesLater($name)),
-                ];
+                [$admitted, $dedupesAlike] = $rulesByKey[$name] ??= $this->absorbRules($name, $queuesLater);
 
                 return RedundantArms::absorbed($type, $admitted, $dedupesAlike);
             },
@@ -1045,34 +1042,24 @@ class MethodAnalysis
     }
 
     /**
-     * Each usable alias of the enums a property reads and does not wrap, beside the case scalars it admits; a name its
-     * models or resources print is left out.
+     * A property's rules for leaving out redundant arms, read off its enum, model and resource channels; a declaration
+     * slotting its tokens, an override's among them, keeps its token queue.
      *
-     * @return AliasLiterals
+     * @param  (Closure(string): bool)|null  $queuesLater  whether the caller still queues classes on a key, by its name
+     * @return AbsorbRules
      */
-    private function keyAliasLiterals(string $name): array
+    private function absorbRules(string $name, ?Closure $queuesLater): array
     {
-        return EnumValueTypes::aliasLiterals(
-            $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
-            $this->wrappedEnumFqcns($name),
-            array_column($this->classSpellings($name), 1),
-        );
-    }
+        $classes = $this->classSpellings($name);
 
-    /**
-     * Whether two arms of a property spelled alike are one type: no name its classes print spells two of them, and no
-     * declaration slots its tokens, an override's among them.
-     */
-    private function readsAlikeArmsAsOne(string $name): bool
-    {
-        return ($this->declaredTokenFqcns[$name] ?? []) === []
-            && ! EnumValueTypes::namesTwoClasses(
-                [
-                    ...$this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
-                    ...$this->wrappedEnumFqcns($name),
-                ],
-                $this->classSpellings($name),
-            );
+        return EnumValueTypes::absorbRules(
+            read: $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            wrapped: $this->wrappedEnumFqcns($name),
+            takenNames: array_column($classes, 1),
+            classes: $classes,
+            keepsTokens: ($this->declaredTokenFqcns[$name] ?? []) !== [],
+            queuesLater: $queuesLater === null ? null : static fn (): bool => $queuesLater($name),
+        );
     }
 
     /**
