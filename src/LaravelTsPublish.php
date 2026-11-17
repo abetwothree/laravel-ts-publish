@@ -94,6 +94,7 @@ use UnitEnum;
  *    keepsKeys?: bool,
  *    closedToDottedKeys?: bool,
  *    listKeys?: bool,
+ *    readsEnumScalar?: bool,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeTypeInfo = array{
@@ -121,6 +122,9 @@ use UnitEnum;
  *
  * `listKeys`, when true, says each list arm of `type` is keyed by ints, as `list<T>` and `array<int, T>` are; PHPDoc's
  * `T[]` and `array<T>` take any key.
+ *
+ * `readsEnumScalar`, when true, says the enum alias `type` spells stands for a scalar the value sends, not only for
+ * its cases, so a model's Resource interface keeps it rather than print `AsEnum<typeof X>`.
  *
  * A docblock's `tokenFqcns` holds, for each token of a name a class in `type` is spelled with, the class a generated
  * file exports behind it, or null where an override spells that name, in a nested shape or a container too: a reader

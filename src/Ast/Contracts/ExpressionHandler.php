@@ -27,6 +27,7 @@ use PhpParser\Node\Expr;
  *      keyPresence?: array<string, array<string, PresenceFacts>>,
  *      enumFqcn?: class-string,
  *      directEnumFqcn?: class-string,
+ *      readsEnumScalar?: true,
  *      resourceFqcn?: class-string,
  *      modelFqcn?: class-string,
  *      embeddedEnumFqcns?: list<class-string>,
@@ -54,6 +55,10 @@ use PhpParser\Node\Expr;
  * `directEnumFqcn` says the value holds this enum, and its type may spell the enum's override instead of its
  * `…Type`, so test ValueResult::readsEnumType() before treating the enum's name as spelled. `resolvedFqcn` says the
  * value is the keys that resource's `resolve()` returns, typed as Inertia sends them, so a spread takes its keys.
+ *
+ * `readsEnumScalar` says the value's enum alias stands for a scalar it sends: every arm carrying an enum sends its
+ * `->value` or `->name`, or the alias took a case's literal in. A model's Resource interface then keeps the alias
+ * rather than print `AsEnum<typeof X>`, which only a case is.
  *
  * `heldObject` says PHP holds the value as an object, a closure or an Inertia prop, never null until the caller
  * resolves it to the type, so a `??=` of it never runs (KeepsHeldObjects); `mayHoldObject` says only some arms do, and

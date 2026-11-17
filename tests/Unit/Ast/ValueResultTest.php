@@ -375,10 +375,11 @@ describe('ValueResult::enumTypeName()', function () {
 });
 
 describe('ValueResult::withRedundantArmsAbsorbed()', function () {
-    test('leaves out a case literal beside the alias of the enum the result reads', function () {
+    test('leaves out a case literal beside the alias of the enum the result reads, which then sends a scalar', function () {
         $result = ['type' => "'image' | MediaTypeType", 'optional' => false, 'directEnumFqcn' => MediaType::class];
 
-        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe([...$result, 'type' => 'MediaTypeType']);
+        expect(ValueResult::withRedundantArmsAbsorbed($result))
+            ->toBe([...$result, 'type' => 'MediaTypeType', 'readsEnumScalar' => true]);
     });
 
     test('keeps a case literal of an enum the result also wraps in an EnumResource', function () {
@@ -421,6 +422,12 @@ describe('ValueResult::withRedundantArmsAbsorbed()', function () {
     test('leaves out an empty list beside a list, with no enum on the result', function () {
         expect(ValueResult::withRedundantArmsAbsorbed(['type' => 'never[] | PriorityType[]', 'optional' => false])['type'])
             ->toBe('PriorityType[]');
+    });
+
+    test('leaves out an empty list beside a list of the enum the result reads, which still sends its cases', function () {
+        $result = ['type' => 'never[] | MediaTypeType[]', 'optional' => false, 'directEnumFqcn' => MediaType::class];
+
+        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe([...$result, 'type' => 'MediaTypeType[]']);
     });
 });
 

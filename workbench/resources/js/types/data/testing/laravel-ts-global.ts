@@ -90,7 +90,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             /** The status, or Pending's value until the payment is paid (GH-166). */
-            status_or_pending: 'pending' | workbench.accounting.enums.PaymentStatusType;
+            status_or_pending: workbench.accounting.enums.PaymentStatusType;
             due_notice: workbench.accounting.enums.DueAtNoticeType;
             // Relations
             invoice: Invoice;

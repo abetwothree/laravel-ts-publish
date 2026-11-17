@@ -783,13 +783,13 @@ class ModelTransformer extends CoreTransformer
      * The one enum a property's type is, bare, as a list or as both, optionally nullable, else null.
      *
      * The model's Resource interface prints `AsEnum<typeof X>` in place of the whole type, so a shape, a list of shapes
-     * or a union with any other arm keeps its own type.
+     * or a union with any other arm keeps its own type, as does an alias standing for a scalar the value sends.
      *
      * @param  TypeScriptTypeInfo  $info
      */
     protected function soleEnumFqcn(array $info, string $type): ?string
     {
-        if (count($info['enumFqcns']) !== 1) {
+        if (count($info['enumFqcns']) !== 1 || ($info['readsEnumScalar'] ?? false)) {
             return null;
         }
 

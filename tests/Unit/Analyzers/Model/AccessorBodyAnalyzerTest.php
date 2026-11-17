@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumValueAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
@@ -22,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Workbench\Accounting\Models\Payment;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\BulletinArchive;
 use Workbench\App\Models\BulletinBoard;
@@ -315,6 +318,27 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         'a union with another arm' => ['state_or_none', 'StatusType | string'],
         'the enum alone' => ['plain_state', 'StatusType'],
     ]);
+});
+
+describe('AccessorBodyAnalyzer settles the body it publishes', function () {
+    test('a getter sending its enum\'s value or name publishes the alias as a scalar, a case value beside it folded in', function (string $model, string $attribute, string $type) {
+        $info = resolve(AccessorBodyAnalyzer::class)->analyze($model, $attribute);
+
+        expect($info['type'] ?? null)->toBe($type)
+            ->and($info['readsEnumScalar'] ?? false)->toBeTrue();
+    })->with([
+        'the value' => [EnumValueAccessorPost::class, 'status_value', 'StatusType'],
+        'the name' => [EnumValueAccessorPost::class, 'status_name', 'StatusKind'],
+        'the value or a case\'s value' => [EnumValueAccessorPost::class, 'status_or_draft', 'StatusType'],
+        'the value or a string case value' => [Payment::class, 'status_or_pending', 'PaymentStatusType'],
+    ]);
+
+    test('a getter returning the enum itself is not read as its scalar', function () {
+        $info = resolve(AccessorBodyAnalyzer::class)->analyze(EnumShapePost::class, 'plain_state');
+
+        expect($info['type'] ?? null)->toBe('StatusType')
+            ->and($info)->not->toHaveKey('readsEnumScalar');
+    });
 });
 
 // filter() sends a wrap an accessor builds as null where a resource's value reaches it, though the model's own JSON,

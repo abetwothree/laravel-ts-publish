@@ -355,14 +355,19 @@ final class EnumValueTypes
     }
 
     /**
-     * The enum's published `…Type` alias, or with `$kind` its `…Kind`, carrying the enum so its file imports it.
+     * The enum's published `…Type` alias, or with `$kind` its `…Kind`, carrying the enum so its file imports it, and
+     * marked as the scalar a read sends rather than the case.
      *
      * @param  class-string  $enum
      * @return ValueExpressionResult
      */
     private static function alias(string $enum, bool $kind): array
     {
-        return [...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)), 'directEnumFqcn' => $enum];
+        return [
+            ...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)),
+            'directEnumFqcn' => $enum,
+            'readsEnumScalar' => true,
+        ];
     }
 
     /**

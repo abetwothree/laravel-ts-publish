@@ -142,8 +142,8 @@ it('resolves $this->resource->name / ->value on an enum-wrapped resource', funct
     $name = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'name'), $scope, chainHandlersThrowingEngine());
     $value = $handler->resolve(new PropertyFetch(chainThisProp('resource'), 'value'), $scope, chainHandlersThrowingEngine());
 
-    expect($name)->toBe(['type' => 'MediaTypeKind', 'optional' => false, 'directEnumFqcn' => MediaType::class])
-        ->and($value)->toBe(['type' => 'MediaTypeType', 'optional' => false, 'directEnumFqcn' => MediaType::class]);
+    expect($name)->toBe(['type' => 'MediaTypeKind', 'optional' => false, 'directEnumFqcn' => MediaType::class, 'readsEnumScalar' => true])
+        ->and($value)->toBe(['type' => 'MediaTypeType', 'optional' => false, 'directEnumFqcn' => MediaType::class, 'readsEnumScalar' => true]);
 });
 
 // Guard-order pin: the wrapped-ENUM branch must run before the wrapped-MODEL branch, and BOTH must

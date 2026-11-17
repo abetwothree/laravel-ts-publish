@@ -31,7 +31,7 @@ export interface PaymentResource extends Omit<Payment, 'status' | 'method' | 'cu
 export interface PaymentMutators
 {
     /** The status, or Pending's value until the payment is paid (GH-166). */
-    status_or_pending: 'pending' | PaymentStatusType;
+    status_or_pending: PaymentStatusType;
     due_notice: DueAtNoticeType;
 }
 

@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CustomImportBadge;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumListUnionModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumValueAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Grade as FixtureGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\HandoverCrew;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\InheritingChildModel;
@@ -45,6 +46,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Schema;
 use Workbench\Accounting\Models\Invoice;
+use Workbench\Accounting\Models\Payment;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Address;
 use Workbench\App\Models\Attachment;
@@ -778,6 +780,44 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         $data = (new ModelTransformer(EnumShapePost::class))->data();
 
         expect(array_keys($data->enumMutators))->toBe(['plain_state']);
+    });
+
+    test('a getter sending its enum\'s value or name publishes the scalar alias, and only the enum itself its AsEnum wrap', function (string $attribute, string $type, bool $wrapped) {
+        $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();
+
+        expect($data->mutators[$attribute]['type'])->toBe($type)
+            ->and(array_key_exists($attribute, $data->enumMutators))->toBe($wrapped);
+    })->with([
+        'the value' => ['status_value', 'StatusType', false],
+        'the name' => ['status_name', 'StatusKind', false],
+        'the enum itself' => ['status_enum', 'StatusType', true],
+        'the value or a case\'s value' => ['status_or_draft', 'StatusType', false],
+        'the enum itself or a case\'s value' => ['status_case_or_draft', 'StatusType', false],
+    ]);
+
+    test('prints only the getter returning the enum itself as its AsEnum wrap in the Resource interface', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(EnumValueAccessorPost::class));
+
+        expect($content)->toContain(
+            "export interface EnumValueAccessorPostMutatorsResource extends Omit<EnumValueAccessorPostMutators, 'status_enum'>\n"
+            ."{\n    status_enum: AsEnum<typeof Status>;\n}\n",
+        );
+    });
+
+    test('a getter sending its enum\'s value or a case\'s value publishes the enum\'s alias alone, with no AsEnum wrap', function () {
+        config()->set('ts-publish.output_to_files', false);
+
+        $data = (new ModelTransformer(Payment::class))->data();
+        $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(Payment::class));
+
+        expect($data->mutators['status_or_pending']['type'])->toBe('PaymentStatusType')
+            ->and($data->enumMutators)->not->toHaveKey('status_or_pending')
+            ->and($content)->toContain(
+                "export interface PaymentMutatorsResource extends Omit<PaymentMutators, 'due_notice'>\n"
+                ."{\n    due_notice: AsEnum<typeof DueAtNotice>;\n}\n",
+            );
     });
 
     test('a mutator typed with another arm beside its enum keeps that arm in the Resource interface', function () {

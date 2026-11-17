@@ -4322,7 +4322,7 @@
                 },
                 {
                     "name": "status_or_pending",
-                    "type": "'pending' | PaymentStatusType"
+                    "type": "PaymentStatusType"
                 },
                 {
                     "name": "due_notice",

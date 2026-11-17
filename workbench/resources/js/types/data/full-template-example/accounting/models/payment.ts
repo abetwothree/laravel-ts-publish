@@ -22,7 +22,7 @@ export interface Payment
     updated_at: string | null;
     // Mutators
     /** The status, or Pending's value until the payment is paid (GH-166). */
-    status_or_pending: 'pending' | PaymentStatusType;
+    status_or_pending: PaymentStatusType;
     due_notice: DueAtNoticeType;
     // Relations
     invoice: Invoice;
