@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
@@ -34,6 +35,7 @@ use LogicException;
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
  * @phpstan-import-type AliasLiterals from RedundantArms
+ * @phpstan-import-type TokenSpelling from ClassTokenQueue
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -608,7 +610,7 @@ class MethodAnalysis
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
-        $names = $this->classNames($name);
+        $names = array_column($this->classSpellings($name), 1);
 
         foreach ([...$held, ...$this->wrappedEnumFqcns($name)] as $enum) {
             array_push($names, ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum));
@@ -938,18 +940,25 @@ class MethodAnalysis
 
     /**
      * Leave out of each key's type, body type and fill every union arm a sibling admits, except a key a cast types:
-     * `never[]` beside a list, and a case literal beside an alias of an enum the key reads and does not wrap.
+     * `never[]` beside a list, and a case literal beside an alias of an enum the key reads and does not wrap. Where no
+     * name on the key spells two classes and the caller queues none on it later, an arm alike an earlier one goes too.
+     *
+     * @param  (Closure(string): bool)|null  $queuesLater  whether the caller still queues classes on a key, by its name
      */
-    public function absorbRedundantArms(): void
+    public function absorbRedundantArms(?Closure $queuesLater = null): void
     {
-        /** @var array<array-key, AliasLiterals> $admitted key name => what its aliases admit, read once */
-        $admitted = [];
+        /** @var array<array-key, array{AliasLiterals, bool}> $read key name => its alias literals and alike-arm rule */
+        $read = [];
 
         $this->rewriteTypes(
-            function (string $type, array $property) use (&$admitted): string {
+            function (string $type, array $property) use (&$read, $queuesLater): string {
                 $name = $property['name'];
+                [$admitted, $dedupesAlike] = $read[$name] ??= [
+                    $this->keyAliasLiterals($name),
+                    $this->readsAlikeArmsAsOne($name) && ! ($queuesLater !== null && $queuesLater($name)),
+                ];
 
-                return RedundantArms::absorbed($type, $admitted[$name] ??= $this->keyAliasLiterals($name));
+                return RedundantArms::absorbed($type, $admitted, $dedupesAlike);
             },
             fn (array $property): bool => ! isset($this->casts[$property['name']]),
         );
@@ -1046,21 +1055,40 @@ class MethodAnalysis
         return EnumValueTypes::aliasLiterals(
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             $this->wrappedEnumFqcns($name),
-            $this->classNames($name),
+            array_column($this->classSpellings($name), 1),
         );
     }
 
     /**
-     * The names a property's models and resources print, each model's name and then each resource's type.
-     *
-     * @return list<string>
+     * Whether two arms of a property spelled alike are one type: no name its classes print spells two of them, and no
+     * declaration slots its tokens, an override's among them.
      */
-    private function classNames(string $name): array
+    private function readsAlikeArmsAsOne(string $name): bool
+    {
+        return ($this->declaredTokenFqcns[$name] ?? []) === []
+            && ! EnumValueTypes::namesTwoClasses(
+                [
+                    ...$this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+                    ...$this->wrappedEnumFqcns($name),
+                ],
+                $this->classSpellings($name),
+            );
+    }
+
+    /**
+     * Each model and then each resource on a property's channels, beside the name it prints.
+     *
+     * @return list<TokenSpelling>
+     */
+    private function classSpellings(string $name): array
     {
         return [
-            ...array_map(class_basename(...), $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns)),
             ...array_map(
-                static fn (string $resource): string => TsNaming::resourceTypeName($resource),
+                static fn (string $model): array => [$model, class_basename($model)],
+                $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
+            ),
+            ...array_map(
+                static fn (string $resource): array => [$resource, TsNaming::resourceTypeName($resource)],
                 $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
             ),
         ];

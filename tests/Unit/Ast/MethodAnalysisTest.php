@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
 use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 it('is the base class ResourceAnalysis now extends, as an empty subclass', function () {
@@ -814,6 +816,75 @@ it('leaves out each arm a sibling admits in a key no cast types, by the enums on
         "'image' | MediaTypeType",
     ],
 ]);
+
+it('keeps one of two arms absorbing made alike, unless a name on the key spells two classes or a declaration slots it', function (
+    string $type,
+    array $channels,
+    string $absorbed,
+) {
+    $analysis = new MethodAnalysis(...[
+        'properties' => [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']],
+        ...array_diff_key($channels, ['declaredTokenFqcns' => true]),
+    ]);
+    $analysis->declaredTokenFqcns = $channels['declaredTokenFqcns'] ?? [];
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0]['type'])->toBe($absorbed);
+})->with([
+    'objects, one class per name' => [
+        '{ s: 0 | StatusType } | { s: StatusType }',
+        ['inlineEnumFqcns' => ['k' => [Status::class, Status::class]]],
+        '{ s: StatusType }',
+    ],
+    'lists, one class per name' => [
+        '(0 | StatusType)[] | StatusType[]', ['directEnumFqcns' => ['k' => Status::class]], 'StatusType[]',
+    ],
+    'objects of a model and an enum, one class per name' => [
+        '{ u: User; s: 0 | StatusType } | { u: User; s: StatusType }',
+        ['inlineEnumFqcns' => ['k' => [Status::class, Status::class]], 'inlineModelFqcns' => ['k' => [User::class, User::class]]],
+        '{ u: User; s: StatusType }',
+    ],
+    'two same-named enums on the inline enum queue' => [
+        '{ s: never[] | StatusType[] } | { s: StatusType[] }',
+        ['inlineEnumFqcns' => ['k' => [Status::class, CrmStatus::class]]],
+        '{ s: StatusType[] } | { s: StatusType[] }',
+    ],
+    'an enum read and a same-named enum wrapped' => [
+        '{ s: never[] | StatusType[] } | { s: StatusType[] }',
+        ['inlineEnumFqcns' => ['k' => [Status::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]]],
+        '{ s: StatusType[] } | { s: StatusType[] }',
+    ],
+    'a model printing an enum\'s alias' => [
+        '{ s: never[] | StatusType[] } | { s: StatusType[] }',
+        ['directEnumFqcns' => ['k' => Status::class], 'inlineModelFqcns' => ['k' => ['Some\\Models\\StatusType']]],
+        '{ s: StatusType[] } | { s: StatusType[] }',
+    ],
+    'two same-named models' => [
+        '{ u: never[] | User[] } | { u: User[] }',
+        ['inlineModelFqcns' => ['k' => [User::class, 'Some\\Models\\User']]],
+        '{ u: User[] } | { u: User[] }',
+    ],
+    'two same-named resources' => [
+        '{ r: never[] | PostResource[] } | { r: PostResource[] }',
+        ['inlineResourceFqcns' => ['k' => [PostResource::class, 'Some\\Http\\Resources\\PostResource']]],
+        '{ r: PostResource[] } | { r: PostResource[] }',
+    ],
+    'a declaration slotting the key\'s tokens' => [
+        '{ s: 0 | StatusType } | { s: StatusType }',
+        ['directEnumFqcns' => ['k' => Status::class], 'declaredTokenFqcns' => ['k' => [Status::class, null]]],
+        '{ s: StatusType } | { s: StatusType }',
+    ],
+]);
+
+it('keeps both alike arms of a key its publisher still queues classes on', function () {
+    $row = ['type' => '{ u: never[] | User[] } | { u: User[] }', 'optional' => false, 'description' => ''];
+    $analysis = new MethodAnalysis(properties: [['name' => 'later', ...$row], ['name' => 'done', ...$row]]);
+
+    $analysis->absorbRedundantArms(static fn (string $name): bool => $name === 'later');
+
+    expect(array_column($analysis->properties, 'type'))->toBe(['{ u: User[] } | { u: User[] }', '{ u: User[] }']);
+});
 
 it('keeps the text of a key a cast types', function () {
     $type = "'image' | MediaTypeType | null";

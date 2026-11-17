@@ -97,6 +97,7 @@ use Workbench\App\Packages\Ui\Panel;
 use Workbench\App\Packages\Ui\Plain;
 use Workbench\App\Packages\Ui\Spark;
 use Workbench\App\Relations\CompositeMorphTo;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\Deal;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -830,6 +831,49 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->and($transformer->absorbed([...$info, 'classes' => ['Report'], 'classFqcns' => ['Some\\Models\\StatusType']])['type'])
             ->toBe('StatusType');
     });
+
+    test('the model\'s absorbing keeps one of two arms it made alike, unless a name spells two classes or a token queue is kept', function () {
+        $transformer = new AbsorbingModelTransformer(Post::class);
+        $info = [
+            ...LaravelTsPublish::emptyTypeScriptInfo(),
+            'type' => '(0 | StatusType)[] | StatusType[]',
+            'enums' => ['Status'],
+            'enumTypes' => ['StatusType'],
+            'enumFqcns' => [Status::class],
+        ];
+        $users = [...$info, 'type' => '{ u: never[] | User[] } | { u: User[] }', 'classes' => ['User'], 'classFqcns' => [User::class]];
+        $statuses = '{ s: never[] | StatusType[] } | { s: StatusType[] }';
+
+        expect($transformer->absorbed($info)['type'])->toBe('StatusType[]')
+            ->and($transformer->absorbed($users)['type'])->toBe('{ u: User[] }')
+            ->and($transformer->absorbed([...$info, 'type' => $statuses, 'enumFqcns' => [Status::class, CrmStatus::class]])['type'])
+            ->toBe('{ s: StatusType[] } | { s: StatusType[] }')
+            ->and($transformer->absorbed([...$info, 'type' => $statuses, 'wrappedEnumFqcns' => [CrmStatus::class]])['type'])
+            ->toBe('{ s: StatusType[] } | { s: StatusType[] }')
+            ->and($transformer->absorbed([...$users, 'classes' => ['User', 'User'], 'classFqcns' => [User::class, CrmUser::class]])['type'])
+            ->toBe('{ u: User[] } | { u: User[] }')
+            ->and($transformer->absorbed([...$users, 'classTokenFqcns' => [User::class, User::class]])['type'])
+            ->toBe('{ u: User[] } | { u: User[] }');
+    });
+
+    test('a getter returning one key alike from two branches, a case value in one, publishes the arm once', function (string $attribute, string $type) {
+        $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();
+
+        expect($data->mutators[$attribute]['type'])->toBe($type)
+            ->and($data->enumMutators)->not->toHaveKey($attribute);
+    })->with([
+        'lists' => ['status_list_or_draft_list', 'StatusType[]'],
+        'objects' => ['status_shape_or_draft_shape', '{ s: StatusType }'],
+    ]);
+
+    test('a getter sending a list of its enum\'s values, maybe empty, publishes the alias\'s list with no AsEnum wrap', function (string $attribute) {
+        $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();
+        $published = $data->mutators[$attribute] ?? $data->appends[$attribute];
+
+        expect($published['type'])->toBe('StatusType[]')
+            ->and($data->enumMutators)->not->toHaveKey($attribute)
+            ->and($data->enumAppends)->not->toHaveKey($attribute);
+    })->with(['status_values', 'status_values_or_none', 'appended_status_values', 'appended_status_values_or_none']);
 
     test('an appended getter absorbs a case value into its enum\'s alias, with no AsEnum wrap', function () {
         $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();

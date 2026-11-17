@@ -15,7 +15,7 @@ class EnumValueAccessorPost extends Post
 {
     protected $table = 'posts';
 
-    protected $appends = ['appended_status_or_draft'];
+    protected $appends = ['appended_status_or_draft', 'appended_status_values', 'appended_status_values_or_none'];
 
     /** The status's value. */
     protected function statusValue(): Attribute
@@ -97,6 +97,46 @@ class EnumValueAccessorPost extends Post
     protected function appendedStatusOrDraft(): Attribute
     {
         return Attribute::get(fn () => $this->exists ? $this->status->value : Status::Draft->value);
+    }
+
+    /** The status's value in a list, Draft's in its place when a saved post is pinned. */
+    protected function statusListOrDraftList(): Attribute
+    {
+        return Attribute::get(fn () => $this->exists
+            ? [$this->is_pinned ? Status::Draft->value : $this->status->value]
+            : [$this->status->value]);
+    }
+
+    /** The status's value under `s`, Draft's in its place when a saved post is pinned. */
+    protected function statusShapeOrDraftShape(): Attribute
+    {
+        return Attribute::get(fn () => $this->exists
+            ? ['s' => $this->is_pinned ? Status::Draft->value : $this->status->value]
+            : ['s' => $this->status->value]);
+    }
+
+    /** The status's value in a list. */
+    protected function statusValues(): Attribute
+    {
+        return Attribute::get(fn () => [$this->status->value]);
+    }
+
+    /** No status while pinned, else the status's value in a list. */
+    protected function statusValuesOrNone(): Attribute
+    {
+        return Attribute::get(fn () => $this->is_pinned ? [] : [$this->status->value]);
+    }
+
+    /** The status's value in a list, appended to the model's array. */
+    protected function appendedStatusValues(): Attribute
+    {
+        return Attribute::get(fn () => [$this->status->value]);
+    }
+
+    /** No status while pinned, else the status's value in a list, appended to the model's array. */
+    protected function appendedStatusValuesOrNone(): Attribute
+    {
+        return Attribute::get(fn () => $this->is_pinned ? [] : [$this->status->value]);
     }
 
     /** The featured image column, read as the status's value, or Draft's until the post is saved. */

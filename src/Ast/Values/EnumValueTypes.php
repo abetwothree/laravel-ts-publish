@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use BackedEnum;
 use JsonSerializable;
@@ -25,6 +26,7 @@ use UnitEnum;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type AliasLiterals from RedundantArms
+ * @phpstan-import-type TokenSpelling from ClassTokenQueue
  *
  * @phpstan-type EnumCases = array{
  *     enum: class-string,
@@ -202,6 +204,35 @@ final class EnumValueTypes
         }
 
         return array_diff_key(array_intersect_key($admitted, $usable), array_flip($takenNames));
+    }
+
+    /**
+     * Whether one name spells two different classes among these enums, each by its const and every alias name, and the
+     * other classes beside the names they print: two arms of a key spelled alike may then hold two classes.
+     *
+     * @param  list<class-string>  $enums
+     * @param  list<TokenSpelling>  $classes
+     */
+    public static function namesTwoClasses(array $enums, array $classes): bool
+    {
+        $spellings = $classes;
+
+        foreach (array_unique($enums) as $enum) {
+            foreach ([ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum)] as $name) {
+                $spellings[] = [$enum, $name];
+            }
+        }
+
+        /** @var array<string, class-string> $firstOf name => the first class seen under it */
+        $firstOf = [];
+
+        foreach ($spellings as [$fqcn, $name]) {
+            if (($firstOf[$name] ??= $fqcn) !== $fqcn) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

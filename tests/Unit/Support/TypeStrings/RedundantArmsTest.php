@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\LiteralArm;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
@@ -127,12 +128,39 @@ describe('never[]', function () {
 
 describe('alike arms', function () {
     test('all stay, as two classes spelled alike may be', function (string $type, string $expected) {
-        expect(RedundantArms::absorbed($type, redundantArmsAliases()))->toBe($expected);
+        expect(RedundantArms::absorbed($type, [...redundantArmsAliases(), 'StatusType' => [0, 1]]))->toBe($expected);
     })->with([
         'in a list printed again' => ['(PriorityType[] | PriorityType[] | never[])[]', '(PriorityType[] | PriorityType[])[]'],
         'beside a literal left out' => ["(StatusType | StatusType | 'image' | MediaTypeType)[]", '(StatusType | StatusType | MediaTypeType)[]'],
         'objects made alike' => ['{ k: never[] | PriorityType[] } | { k: PriorityType[] }', '{ k: PriorityType[] } | { k: PriorityType[] }'],
+        'objects a case value made alike' => ['{ s: 0 | StatusType } | { s: StatusType }', '{ s: StatusType } | { s: StatusType }'],
+        'lists a case value made alike' => ['(0 | StatusType)[] | StatusType[]', 'StatusType[] | StatusType[]'],
     ]);
+
+    test('go but the first, at every depth, where the caller knows each name spells one class', function (string $type, string $expected) {
+        $aliases = [...redundantArmsAliases(), 'StatusType' => [0, 1]];
+
+        expect(RedundantArms::absorbed($type, $aliases, dedupesAlike: true))->toBe($expected)
+            ->and(RedundantArms::absorbedReporting($type, $aliases, dedupesAlike: true)[0])->toBe($expected);
+    })->with([
+        'objects a case value made alike' => ['{ s: 0 | StatusType } | { s: StatusType }', '{ s: StatusType }'],
+        'lists a case value made alike' => ['(0 | StatusType)[] | StatusType[]', 'StatusType[]'],
+        'lists made alike beside another element' => ['(0 | StatusType | number)[] | (StatusType | number)[]', '(StatusType | number)[]'],
+        'objects made alike beside null' => ['{ s: 0 | StatusType } | null | { s: StatusType }', '{ s: StatusType } | null'],
+        'in a list printed again' => ['(PriorityType[] | PriorityType[] | never[])[]', 'PriorityType[][]'],
+        'beside a literal left out' => ["(StatusType | StatusType | 'image' | MediaTypeType)[]", '(StatusType | MediaTypeType)[]'],
+        'objects never[] made alike' => ['{ k: never[] | PriorityType[] } | { k: PriorityType[] }', '{ k: PriorityType[] }'],
+        'in a member' => ['{ k: { s: 0 | StatusType } | { s: StatusType } }', '{ k: { s: StatusType } }'],
+    ]);
+
+    test('reports a literal taken in, and no literal for an alike arm alone', function () {
+        $aliases = [...redundantArmsAliases(), 'StatusType' => [0, 1]];
+
+        expect(RedundantArms::absorbedReporting('{ s: 0 | StatusType } | { s: StatusType }', $aliases, dedupesAlike: true))
+            ->toBe(['{ s: StatusType }', true])
+            ->and(RedundantArms::absorbedReporting('{ k: never[] | PriorityType[] } | { k: PriorityType[] }', $aliases, dedupesAlike: true))
+            ->toBe(['{ k: PriorityType[] }', false]);
+    });
 });
 
 describe('literals', function () {
@@ -261,9 +289,30 @@ test('keeps a subset of the arms, every token, and its own answer, each dropped 
         ->and(redundantArmsIdentifiers($absorbed))->toBe(redundantArmsIdentifiers($type));
 })->with(fn (): array => redundantArmsCases(166, 400));
 
+test('with alike arms dropped, leaves no union two alike arms and every name, as the rule then a dedupe would', function (string $type) {
+    $aliases = redundantArmsAliases();
+    $deduped = RedundantArms::absorbed($type, $aliases, dedupesAlike: true);
+    $repeats = false;
+    TypeRewriter::rewrite($deduped, union: static function (array $arms) use (&$repeats): array {
+        $repeats = $repeats || count(array_unique($arms)) < count($arms);
+
+        return $arms;
+    });
+    $thenDeduped = TypeRewriter::rewrite(
+        RedundantArms::absorbed($type, $aliases),
+        union: static fn (array $arms): array => array_values(array_unique($arms)),
+    );
+
+    expect($repeats)->toBeFalse()
+        ->and($deduped)->toBe($thenDeduped)
+        ->and(RedundantArms::absorbed($deduped, $aliases, dedupesAlike: true))->toBe($deduped)
+        ->and(array_values(array_unique(redundantArmsIdentifiers($deduped))))
+        ->toBe(array_values(array_unique(redundantArmsIdentifiers($type))));
+})->with(fn (): array => redundantArmsCases(166, 400));
+
 test('the seeded unions leave out never[] and literals at the top level and inside', function () {
     $aliases = redundantArmsAliases();
-    $tally = ['never[]' => 0, 'literal' => 0, 'inside' => 0];
+    $tally = ['never[]' => 0, 'literal' => 0, 'inside' => 0, 'alike' => 0];
 
     foreach (redundantArmsCases(166, 400) as $type) {
         $absorbed = RedundantArms::absorbed($type, $aliases);
@@ -273,9 +322,11 @@ test('the seeded unions leave out never[] and literals at the top level and insi
             TsTypeShape::splitTopLevel($type, ['|']),
             static fn (string $arm): bool => RedundantArms::absorbed($arm, $aliases) !== $arm,
         );
+        $tally['alike'] += (int) (RedundantArms::absorbed($type, $aliases, dedupesAlike: true) !== $absorbed);
     }
 
     expect($tally['never[]'])->toBeGreaterThan(50)
         ->and($tally['literal'])->toBeGreaterThan(50)
-        ->and($tally['inside'])->toBeGreaterThan(50);
+        ->and($tally['inside'])->toBeGreaterThan(50)
+        ->and($tally['alike'])->toBeGreaterThan(50);
 });

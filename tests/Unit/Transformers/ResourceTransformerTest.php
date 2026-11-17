@@ -6,6 +6,8 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AlikeArmsOfSameNamedEnumsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AlikeArmsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArchivingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ArrayCastShapeResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BlockAssignedEnumLocalResource;
@@ -5134,6 +5136,23 @@ it('publishes no case value beside its enum\'s alias and no empty list beside a 
     ])
         ->and(resourceProps(RedundantArmsDocblockResource::class))->toBe(['status' => 'StatusType | number', 'media' => 'MediaTypeType'])
         ->and(resourceProps(PlaceholderReadingsResource::class)['fills'])->toBe('{ f: number[] }[]');
+});
+
+// Two returns writing a key alike but for a case value one writes publish one arm once the case value goes.
+it('publishes once an arm a case value\'s absorbing made alike another', function () {
+    expect(resourceProps(AlikeArmsResource::class))->toBe([
+        'obj' => '{ s: StatusType }',
+        'lst' => 'StatusType[]',
+        'pair' => '(StatusType | number)[]',
+    ]);
+});
+
+// Text alone cannot tell the two enums apart, so both arms stay until each is printed under its own name.
+it('keeps both arms two same-named enums print alike', function () {
+    expect(resourceProps(AlikeArmsOfSameNamedEnumsResource::class))->toBe([
+        'row' => '{ s: CrmStatusType[] } | { s: WorkbenchStatusType[] }',
+        'list' => 'CrmStatusType[] | WorkbenchStatusType[]',
+    ]);
 });
 
 // A cast's text is published as written, the class's and toArray()'s alike, though the same body uncast loses an arm.

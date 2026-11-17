@@ -440,7 +440,7 @@ class ResourceTransformer extends CoreTransformer
             $this->tsExtends !== [],
             $this->findable,
         );
-        $analysis->absorbRedundantArms();
+        $analysis->absorbRedundantArms($this->queuesAccessorClasses(...));
         resolve(CastChannels::class)->fit($analysis, $this->castsInForce);
         $this->carried = $analysis->carried;
         $this->declaredTokenFqcns = $analysis->declaredTokenFqcns;
@@ -1188,6 +1188,21 @@ class ResourceTransformer extends CoreTransformer
         }
 
         return $this;
+    }
+
+    /**
+     * Whether resolveMultiClassAccessorFqcns() or resolveMultiEnumAccessorFqcns() may queue classes on a key once its
+     * analysis is done: the classes, or two enums, of the model attribute it is named after.
+     */
+    protected function queuesAccessorClasses(string $key): bool
+    {
+        if ($this->modelClass === null) {
+            return false;
+        }
+
+        $info = resolve(ModelAttributeResolver::class)->resolveAttribute($this->modelClass, $key);
+
+        return $info['classFqcns'] !== [] || count($info['enumFqcns']) > 1;
     }
 
     /**

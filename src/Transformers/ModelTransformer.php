@@ -687,7 +687,8 @@ class ModelTransformer extends CoreTransformer
 
     /**
      * The attribute's type info with each union arm a sibling admits left out, flagged as sending its enum's scalar
-     * where an alias took a case literal in.
+     * where an alias took a case literal in. Where no name in it spells two classes and no token queue is kept, an arm
+     * alike an earlier one goes too.
      *
      * The model file is where an accessor publishes; each reader of the attribute absorbs at its own publisher's pass.
      *
@@ -696,12 +697,17 @@ class ModelTransformer extends CoreTransformer
      */
     protected function withRedundantArmsAbsorbed(array $info): array
     {
-        $aliasLiterals = EnumValueTypes::aliasLiterals(
-            $info['enumFqcns'],
-            $info['wrappedEnumFqcns'] ?? [],
-            $info['classes'],
-        );
-        [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals);
+        $wrapped = $info['wrappedEnumFqcns'] ?? [];
+        $aliasLiterals = EnumValueTypes::aliasLiterals($info['enumFqcns'], $wrapped, $info['classes']);
+        $classes = [];
+
+        foreach ($info['classFqcns'] as $i => $fqcn) {
+            $classes[] = [$fqcn, $info['classes'][$i] ?? class_basename($fqcn)];
+        }
+
+        $dedupesAlike = ($info['classTokenFqcns'] ?? []) === []
+            && ! EnumValueTypes::namesTwoClasses([...$info['enumFqcns'], ...$wrapped], $classes);
+        [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals, $dedupesAlike);
 
         return [...$info, 'type' => $type, ...($tookLiteral ? ['sendsEnumScalar' => true] : [])];
     }

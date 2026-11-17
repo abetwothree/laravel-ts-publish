@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
 /**
  * Leave out a union arm a sibling arm admits: `never[]` beside a single list arm or `[]`, and a case literal beside
- * an enum alias whose cases include it. Only `never[]` and literal arms are ever dropped, so no class token leaves
- * the type.
+ * an enum alias whose cases include it. Only `never[]` and literal arms are ever dropped, and an arm alike an earlier
+ * one where the caller asks, so no class token leaves the type.
  *
  * @phpstan-type AliasLiterals = array<string, list<int|string>>
  *
@@ -22,11 +22,14 @@ final class RedundantArms
     /**
      * The type with every arm a sibling admits left out, at every depth.
      *
+     * Two arms spelled alike stay, as two classes printed under one name may be, unless `$dedupesAlike` says the
+     * caller knows each name spells one class: each union then keeps the first of its alike arms only.
+     *
      * @param  AliasLiterals  $aliasLiterals  Each alias token with the case scalars it admits.
      */
-    public static function absorbed(string $type, array $aliasLiterals = []): string
+    public static function absorbed(string $type, array $aliasLiterals = [], bool $dedupesAlike = false): string
     {
-        return self::absorbedReporting($type, $aliasLiterals)[0];
+        return self::absorbedReporting($type, $aliasLiterals, $dedupesAlike)[0];
     }
 
     /**
@@ -35,9 +38,10 @@ final class RedundantArms
      * @param  AliasLiterals  $aliasLiterals  Each alias token with the case scalars it admits.
      * @return array{string, bool}
      */
-    public static function absorbedReporting(string $type, array $aliasLiterals = []): array
+    public static function absorbedReporting(string $type, array $aliasLiterals = [], bool $dedupesAlike = false): array
     {
         $mayAbsorb = str_contains($type, self::EMPTY_LIST)
+            || ($dedupesAlike && str_contains($type, '|'))
             || array_any(array_keys($aliasLiterals), static fn (string $alias): bool => str_contains($type, $alias));
 
         if (! $mayAbsorb) {
@@ -45,13 +49,13 @@ final class RedundantArms
         }
 
         $tookLiteral = false;
-        $absorbed = TypeRewriter::rewrite($type, union: static function (array $arms) use ($aliasLiterals, &$tookLiteral): array {
+        $absorbed = TypeRewriter::rewrite($type, union: static function (array $arms) use ($aliasLiterals, $dedupesAlike, &$tookLiteral): array {
             $kept = self::kept($arms, $aliasLiterals);
             // Only never[] and literal arms are ever left out, and an admitted literal never has a kept twin.
             $tookLiteral = $tookLiteral
                 || array_any(array_diff($arms, $kept), static fn (string $arm): bool => $arm !== self::EMPTY_LIST);
 
-            return $kept;
+            return $dedupesAlike ? array_values(array_unique($kept)) : $kept;
         });
 
         return [$absorbed, $tookLiteral];
