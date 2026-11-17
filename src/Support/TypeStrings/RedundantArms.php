@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
-use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-
 /**
  * Leave out a union arm a sibling arm admits: `never[]` beside a single list arm, and a case literal beside an enum
  * alias whose cases include it. Only `never[]` and literal arms are ever dropped, so no class token leaves the type.
@@ -59,7 +57,7 @@ final class RedundantArms
     }
 
     /**
-     * Whether an arm admits every value another arm spells, as this rule reads it.
+     * Whether $by admits every value $arm spells.
      *
      * @param  AliasLiterals  $aliasLiterals
      */
@@ -67,9 +65,7 @@ final class RedundantArms
     {
         // tsc rejects `never[]` against a tuple, `[]`, a Record and an all-optional object, so only a list admits it.
         if ($arm === self::EMPTY_LIST) {
-            return $by !== self::EMPTY_LIST
-                && count(TsTypeShape::splitTopLevel($by, ['|', '&'])) === 1
-                && TsTypeShape::elementType($by) !== null;
+            return $by !== self::EMPTY_LIST && ArrayArms::listElement($by) !== null;
         }
 
         $literals = $aliasLiterals[$by] ?? [];

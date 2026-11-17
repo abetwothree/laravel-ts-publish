@@ -15,14 +15,22 @@ final class RedundantArmsShareMiddleware extends Middleware
 {
     public function __construct(private readonly Post $post = new Post) {}
 
-    /** Shares each ternary, whose arms the `c` query flag picks. */
+    /** Shares `status` and `kept` ternaries the `c` query flag picks, and `tags` empty in one return only. */
     public function share(Request $request): array
     {
         $c = $request->boolean('c');
 
+        if ($this->post->exists) {
+            return [
+                'status' => $c ? Status::Draft->value : $this->post->status->value,
+                'tags' => [],
+                'kept' => $c ? EnumResource::make($this->post->status) : Status::Draft->value,
+            ];
+        }
+
         return [
             'status' => $c ? Status::Draft->value : $this->post->status->value,
-            'tags' => $c ? [] : [$this->post->priority],
+            'tags' => [$this->post->priority],
             'kept' => $c ? EnumResource::make($this->post->status) : Status::Draft->value,
         ];
     }

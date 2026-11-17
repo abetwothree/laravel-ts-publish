@@ -312,7 +312,8 @@ test('keeps a numeric provide() cast key on its own key', function () {
         ->toBe(['label' => 'string', 42 => 'boolean']);
 });
 
-// A wrapped enum admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
+// `tags` is empty in one return only, so the publisher's own pass is what leaves its `never[]` out. A wrapped enum
+// admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
 test('publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
     $analysis = analyzeMetadataTypesFor(RedundantArmsMetadataProvider::class, ['status', 'tags', 'kept']);
 

@@ -844,7 +844,8 @@ test('an object holding two same-named models publishes each under its own alias
         ->and(json_encode(new PostOwnJsonEvent(new Post)->broadcastWith()['roster']))->toBe('{"members":[]}');
 });
 
-// A wrapped enum admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
+// `tags` is empty in one return only, so the publisher's own pass is what leaves its `never[]` out. A wrapped enum
+// admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
 test('an event publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
     $transformer = app(BroadcastEventTransformer::class, ['findable' => RedundantArmsEvent::class]);
 

@@ -22,15 +22,23 @@ final class RedundantArmsEvent implements ShouldBroadcast
     }
 
     /**
-     * The payload, each key a ternary whose arms the flag picks.
+     * The payload: `status` and `kept` ternaries the flag picks, and `tags` empty in one return only.
      *
      * @return array<string, mixed>
      */
     public function broadcastWith(): array
     {
+        if ($this->post->exists) {
+            return [
+                'status' => $this->c ? Status::Draft->value : $this->post->status->value,
+                'tags' => [],
+                'kept' => $this->c ? EnumResource::make($this->post->status) : Status::Draft->value,
+            ];
+        }
+
         return [
             'status' => $this->c ? Status::Draft->value : $this->post->status->value,
-            'tags' => $this->c ? [] : [$this->post->priority],
+            'tags' => [$this->post->priority],
             'kept' => $this->c ? EnumResource::make($this->post->status) : Status::Draft->value,
         ];
     }

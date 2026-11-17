@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\LiteralArm;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
@@ -199,19 +200,28 @@ describe('admits', function () {
     ]);
 });
 
-test('keeps a subset of the arms, every token, and its own answer', function (string $type) {
+test('keeps a subset of the arms, every token, and its own answer, each dropped arm admitted by a kept one', function (string $type) {
     $aliases = redundantArmsAliases();
     $absorbed = RedundantArms::absorbed($type, $aliases);
     $insides = array_map(
         static fn (string $arm): string => RedundantArms::absorbed($arm, $aliases),
         TsTypeShape::splitTopLevel($type, ['|']),
     );
-    $dropped = redundantArmsDropped($insides, TsTypeShape::splitTopLevel($absorbed, ['|']));
+    $left = TsTypeShape::splitTopLevel($absorbed, ['|']);
+    $dropped = redundantArmsDropped($insides, $left);
+    $unadmitted = array_filter((array) $dropped, static fn (string $arm): bool => ! array_any(
+        $left,
+        static fn (string $by): bool => match (true) {
+            $arm === 'never[]' => ArrayArms::listElement($by) !== null,
+            LiteralArm::isLiteral($arm) => in_array(LiteralArm::value($arm), $aliases[$by] ?? [], true),
+            default => false,
+        },
+    ));
 
     expect(RedundantArms::absorbed($absorbed, $aliases))->toBe($absorbed)
         ->and($dropped)->not->toBeNull()
-        ->and(array_filter((array) $dropped, static fn (string $arm): bool => $arm !== 'never[]' && ! LiteralArm::isLiteral($arm)))->toBe([])
-        ->and(TsTypeShape::splitTopLevel($absorbed, ['|']))->not->toBeEmpty()
+        ->and($unadmitted)->toBe([])
+        ->and($left)->not->toBeEmpty()
         ->and(redundantArmsIdentifiers($absorbed))->toBe(redundantArmsIdentifiers($type));
 })->with(fn (): array => redundantArmsCases(166, 400));
 

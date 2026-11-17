@@ -962,7 +962,8 @@ test('a share middleware publishes no key a merge() in a shared resource\'s with
         ]);
 });
 
-// A wrapped enum admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
+// `tags` is empty in one return only, so the publisher's own pass is what leaves its `never[]` out. A wrapped enum
+// admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
 test('shared data publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
     $result = analyzeSharedDataFor(RedundantArmsShareMiddleware::class);
 
