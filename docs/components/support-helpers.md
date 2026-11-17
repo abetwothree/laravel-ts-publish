@@ -198,14 +198,14 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
-`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`, `TsTypeShape::unionArm()`,
-`TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`, `VisibleGaps` (`MARKER_KEY`,
-`isGap()`, `holds()`) and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`,
-`VisibleGaps`' are `TypeRewriter` and `TsTypeShape`, and `RedundantArms`' are `TypeRewriter`, `ArrayArms` and
-`LiteralArm`. That one-way dependency is what made the class safe to lift out. A gap arm is no importable name and no
-unimportable token to it, and `withoutNullArm()` reads gap arms alone as `unknown`, so no lone gap reaches its callers.
-A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the [docblock
-sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
+`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
+`TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
+`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`) and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`,
+`PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and `TsTypeShape`. That one-way dependency is
+what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and
+`withoutNullArm()` reads gap arms alone as `unknown`, so no lone gap reaches its callers. A new member that wants
+`toTsType()` is not a type-string helper, and would be in the same bind as the
+[docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
 a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and

@@ -335,7 +335,7 @@ its own.
 
 ### A case value beside its enum's alias stays in a key that wraps that enum in an `EnumResource`
 
-A case's value beside a read of its enum folds into the enum's alias, except in a key that wraps the same enum in an
+The enum's alias absorbs a case's value beside a read of that enum, except in a key that wraps the same enum in an
 `EnumResource` anywhere. There every literal of that enum stays, so
 `'k' => ['w' => EnumResource::make($this->kind), 'v' => $c ? MediaType::Image->value : $this->kind->value]` publishes
 `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }`. The type admits what PHP sends, but `'image'` adds
@@ -346,7 +346,7 @@ The literal stays because a wrap's join can still drop the alias arm beside it (
 literal is needed: `$c ? EnumResource::make($this->kind) : MediaType::Image->value` publishes
 `AsEnum<typeof MediaType> | 'image'`. The nested ternary
 `$c ? EnumResource::make($this->kind) : ($d ? MediaType::Image->value : $this->kind->value)` publishes the same,
-missing the other values the read sends, and folding the literal first would lose `'image'` too. To drop the literal,
+missing the other values the read sends, and absorbing the literal first would lose `'image'` too. To drop the literal,
 wrap the enum and read it under separate keys, where the read's key publishes `MediaTypeType`, or type the key with an
 import-aware `#[TsCasts]`.
 
@@ -357,9 +357,9 @@ spells one class. With the workbench's two `User` models on one key, a return wr
 `'row' => ['u' => $this->author, 'v' => $this->crmAuthor, 's' => $d ? Status::Draft->value : $this->status->value]`
 beside one writing `'s' => $this->status->value` publishes `{ u: WorkbenchUser; v: CrmUser; s: StatusType }` twice.
 Until the imports alias the two models apart, the text cannot tell which arm names which, so both copies stay. A
-resource key named after a model attribute whose type names a class keeps both copies too. `X | X` means `X`, so `tsc`
-passes, and the cost is a line that looks like a bug. No workbench fixture has the shape, so the redundant-arm gate,
-which fails on two arms spelled alike, does not see it.
+resource key named after a model attribute whose type names a class or two enums keeps both copies too. `X | X` means
+`X`, so `tsc` passes, and the cost is a line that looks like a bug. No workbench fixture has the shape, so the
+redundant-arm gate, which fails on two arms spelled alike, does not see it.
 
 ### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
 

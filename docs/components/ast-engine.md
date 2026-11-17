@@ -1009,9 +1009,10 @@ Forcing every key into the mode moves no published byte, as
 A union arm that a sibling arm admits adds no value PHP can send, so it is left out. [`RedundantArms::admits()`] is the
 rule, and it admits only two kinds of arm. Neither spells a class, so leaving one out shifts no token queue:
 
-- **`never[]`** beside a single list arm, `X[]`, `Array<X>` or `ReadonlyArray<X>`, or beside the empty tuple `[]`. Both
-  describe the one empty array PHP sends. A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection and
-  an intersection keep the `never[]` beside them, since `tsc` rejects it against each.
+- **`never[]`** beside a single list arm, `X[]`, `Array<X>` or `ReadonlyArray<X>`, or beside the empty tuple `[]`.
+  `never[]` and `[]` both describe only the empty array PHP sends. A `Record`, an object, a non-empty tuple,
+  `AsEnum<…>`, a named collection and an intersection keep the `never[]` beside them, since `tsc` rejects it against
+  each.
 - **A case literal** beside an enum alias whose literals hold it. [`EnumValueTypes::aliasLiterals()`] maps each alias of
   the enums a key reads directly to the literals it admits. An alias admits none when the key wraps its enum in an
   `EnumResource` anywhere, when a model or resource on the key prints its name, or when `EnumValueTypes::aliasUsable()`
@@ -1032,15 +1033,17 @@ same enum, whose join drops the alias arm (#160). In
   a resource or getter reading the attribute absorbs at its own publisher's pass. `ResultTypeInfoBridge` copies the
   result's wrap channels onto `wrappedEnumFqcns`, so the wrap rule holds at the model too.
 - `ValueResult::unionResults()` and `RedundantArms::joined()`, which the `(array)` cast, `array_values()` and
-  `ResourceReindexing::reindexedType()` call, drop only a top-level `never[]`, with no alias map. They never rewrite an
-  arm's inside, because `armsKeyPresence()` keys each arm's facts by its object's text.
+  `ResourceReindexing::reindexedType()` call, drop only a top-level `never[]`, with no alias map. `joined()` also merges
+  arms spelled alike, as those joins did before. Neither rewrites an arm's inside, because `armsKeyPresence()` keys each
+  arm's facts by its object's text.
 
 Absorbing can leave two arms alike: two returns writing `{ s: 0 | StatusType }` and `{ s: StatusType }` leave
 `{ s: StatusType }` twice. The publisher pass and the model keep only the first where all three of these hold:
 
 - No printed name on the key spells two classes. `EnumValueTypes::namesTwoClasses()` decides it over the key's enum,
   model and resource channels.
-- No declaration slots the key's tokens: no `declaredTokenFqcns` entry, or no `classTokenFqcns` at the model.
+- The key keeps no list of the class behind each token: no `declaredTokenFqcns` entry at a publisher, and no
+  `classTokenFqcns` token queue at the model.
 - The publisher queues no class on the key after the pass. `ResourceTransformer::queuesAccessorClasses()` answers it
   for a key named after a model attribute.
 
@@ -1050,8 +1053,9 @@ Elsewhere both stay, since the text cannot tell two same-named classes apart bef
 A model's `…Resource` interfaces print `AsEnum<typeof X>` for a property typed as one enum, which fits only a value that
 sends the case. `sendsEnumScalar` marks a value whose every enum arm sends a scalar instead: a `->value` or `->name`
 read, or, at the model, an alias that took a case literal in. `ModelTransformer::soleEnumFqcn()` then keeps the alias in
-`…MutatorsResource`. A union keeps the flag only when every arm carrying an enum has it. `mergeTypeScriptInfos()` drops
-it, which is safe while nothing merges an accessor's info before the model absorbs it.
+the model's `…Resource` and `…MutatorsResource` interfaces, for a column as for a mutator. A union keeps the flag only
+when every arm carrying an enum has it. `mergeTypeScriptInfos()` drops it, which is safe while nothing merges an
+accessor's info before the model absorbs it.
 
 The [redundant-arm gate](../testing/type-inference-gates.md#redundant-arm-gatepy) fails on a published union holding
 either kind of arm, or two arms spelled alike.
