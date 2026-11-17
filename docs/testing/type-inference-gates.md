@@ -303,12 +303,14 @@ generic arguments, tuple elements, parenthesized groups and arrow returns), and 
   A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection, an intersection and a conditional type
   do not admit `never[]`, so it stays beside them.
 - **A literal beside its enum alias**: a string or number literal the alias's `export type X = …` lists. `'image'`
-  and `"image"` match, and `1` and `'1'` do not.
+  and `"image"` match, and `1` and `'1'` do not. A property that also wraps that enum in `AsEnum<typeof X>` keeps the
+  literal, as the package does, so `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }` passes. A property is
+  an interface's key, or a member of an inline type alias such as a page's props.
 - **Two arms spelled alike**.
 
-An alias resolves through the file's relative `import` to the enum files, the files that call `defineEnum(`, in that
-directory. In `laravel-ts-global.ts`, a qualified name such as `app.enums.StatusType` resolves through the namespace
-that mirrors the enum directory.
+A name, an alias or an enum's const, resolves through the file's relative `import` to the one enum file in that
+directory that exports it. An enum file is one that calls `defineEnum(`. In `laravel-ts-global.ts`, a qualified name
+such as `app.enums.StatusType` resolves through the namespace that mirrors the enum directory.
 
 ```bash
 python3 .github/scripts/redundant-arm-gate.py               # gate HEAD's committed trees
@@ -327,11 +329,16 @@ the script is broken. Run both self-tests after changing it.
 
 ### The baseline
 
-`laravel-ts-global.ts` spells an enum resource by the enum's value type (#109), so
-`EnumCollectionResource.wrapped_history_or_array` and `TeamStatusAuditResource.audit.status` print one arm twice in
-each tree. `BASELINE` lists each excused finding by scope, key and kind, for that file only, so an entry excuses only
-its own kind there: a `never[]` or a literal on either key still fails. A scope leaves out the tree's root namespace,
-`workbench.` in the testing tree. Remove an entry once #109 is fixed.
+`BASELINE` excuses the findings the package publishes on purpose. Each entry names a file path suffix, a scope, a key
+and a kind, beside its reason, and excuses only that kind on that key, in a file whose path ends with the suffix. A
+scope may leave out its outer namespaces, such as `workbench.` in the testing tree.
+
+- `laravel-ts-global.ts` spells an enum resource by the enum's value type (#109), so
+  `EnumCollectionResource.wrapped_history_or_array` and `TeamStatusAuditResource.audit.status` print one arm twice in
+  each tree. Their entries excuse only that duplicate, so a `never[]` or a literal on either key still fails. Remove
+  them once #109 is fixed.
+- A module file takes an entry for another arm the package keeps by rule, such as a literal it keeps because another
+  enum of the same name is on the key, with a suffix such as `analysis-probe/same-named-kinds-payload.ts`.
 
 ### What the redundant-arm gate does not cover
 
@@ -339,10 +346,10 @@ its own kind there: a `never[]` or a literal on either key still fails. A scope 
   export, one imported from a bare specifier or from a file that does not call `defineEnum(`, and an alias of an
   alias (`Status = StatusType`) admit nothing, so a literal beside one passes.
 - **A property spread over several lines**: the parser reads one line per property, as the regression gate does.
-- **A literal kept beside an enum resource**: a key that wraps an enum in an `EnumResource` keeps its literals, as in
-  `'image' | AsEnum<typeof MediaType>`. Through #109 the globals file would print that as `'image' | …MediaTypeType`,
-  which this gate fails. No fixture publishes such a key to the globals file today. One that does needs a `literal`
-  entry in `BASELINE` citing #109, not a wider rule.
+- **A wrap in the globals file**: through #109, `laravel-ts-global.ts` prints `AsEnum<typeof MediaType>` as
+  `…MediaTypeType`, so the gate cannot see that a key wraps the enum, and it fails a literal the key keeps beside the
+  alias. No fixture publishes such a key to the globals file today. One that does needs a `literal` entry in
+  `BASELINE` citing #109, not a wider rule.
 
 ## `gap-gate.sh`
 

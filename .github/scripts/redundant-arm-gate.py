@@ -5,13 +5,14 @@ Reads every `.ts` file in the committed workbench type trees, splits each proper
 parser of unknown-regression-gate.py, and walks every union at every depth for three findings:
 
   never     `never[]` beside a single list arm (`X[]`, `Array<X>`, `ReadonlyArray<X>`) or `[]`
-  literal   a string or number literal beside an enum alias whose `export type X = ...` lists it
+  literal   a string or number literal beside an enum alias whose `export type X = ...` lists it,
+            unless the property also wraps that enum in `AsEnum<typeof X>`, as the package keeps it
   duplicate two arms of one union spelled exactly alike
 
-An alias resolves through the file's `import ... from './dir'` lines to the enum files of that
-directory, or, spelled qualified in laravel-ts-global.ts, through its namespace. A name that two enum
-files in one directory export, or that resolves nowhere, admits nothing. See
-docs/testing/type-inference-gates.md.
+A name, an alias or an enum's const, resolves through the file's `import ... from './dir'` lines to
+the enum file of that directory that exports it, or, spelled qualified in laravel-ts-global.ts,
+through its namespace. A name that two enum files in one directory export, or that resolves nowhere,
+admits nothing. See docs/testing/type-inference-gates.md.
 
 Usage: redundant-arm-gate.py              gate HEAD's committed trees, exit 1 on any finding
        redundant-arm-gate.py --parsetest  synthetic cases for each finding and each control
@@ -29,7 +30,7 @@ import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 
 def _regression_gate():
@@ -43,7 +44,7 @@ def _regression_gate():
 
 _gate = _regression_gate()
 ROOT, git, parse_source = _gate.ROOT, _gate.git, _gate.parse_source
-OPENERS, CLOSERS = _gate.OPENERS, _gate.CLOSERS
+OPENERS, CLOSERS, TYPE_ALIAS = _gate.OPENERS, _gate.CLOSERS, _gate.ALIAS
 PAIRS = dict(zip(OPENERS, CLOSERS))
 QUOTES = "'\"`"
 EMPTY_LIST, EMPTY_TUPLE = "never[]", "[]"
@@ -52,6 +53,8 @@ NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 NAME_PATH = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*")
 IMPORT = re.compile(r"^\s*import\s+(?:type\s+)?\{(?P<names>[^}]*)\}\s*from\s*['\"](?P<spec>[^'\"]+)['\"]", re.M)
 ENUM_ALIAS = re.compile(r"^export\s+type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<value>.+?);\s*$", re.M)
+ENUM_CONST = re.compile(r"^export\s+const\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*defineEnum\(", re.M)
+WRAP = re.compile(rf"AsEnum<\s*typeof\s+(?P<name>{NAME_PATH.pattern})\s*>")
 ESCAPE = re.compile(r"\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])")
 SIMPLE_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
 CAMEL = re.compile(r"-(\w)")
@@ -59,11 +62,14 @@ CAMEL = re.compile(r"-(\w)")
 # develop's probe commit for #166: its goldens hold the redundant arms the fix removes.
 PROBE_REV = "ec7876ad239217e05a0b1ebbb177cf5c78c62894"
 
-# (scope, key, kind) findings laravel-ts-global.ts publishes, as it spells an enum resource by its value type (#109).
-# A scope leaves out the tree's root namespace, such as testing's `workbench.`, and an entry excuses only its own kind.
+GLOBAL_109 = "#109: laravel-ts-global.ts spells an enum resource by its value type"
+
+# (path suffix, scope, key, kind) findings the package publishes on purpose, each with its reason. A scope may leave out
+# its outer namespaces, such as testing's `workbench.`, and an entry excuses only its own kind.
 BASELINE = {
-    ("app.http.resources.EnumCollectionResource", "wrapped_history_or_array", "duplicate"),
-    ("app.http.resources.TeamStatusAuditResource", "audit.status", "duplicate"),
+    ("laravel-ts-global.ts", "app.http.resources.EnumCollectionResource", "wrapped_history_or_array", "duplicate"):
+        GLOBAL_109,
+    ("laravel-ts-global.ts", "app.http.resources.TeamStatusAuditResource", "audit.status", "duplicate"): GLOBAL_109,
 }
 
 KINDS = {
@@ -73,11 +79,12 @@ KINDS = {
 }
 
 
-class EnumAliases(NamedTuple):
-    """The literals enum aliases list, per enum file and per directory, and the directory each namespace mirrors."""
+class EnumFiles(NamedTuple):
+    """Each enum file's aliases with the literals they list, the enum files exporting each alias or const name of a
+    directory, and the directory each namespace mirrors."""
 
-    by_file: dict[str, dict[str, frozenset]]
-    by_dir: dict[str, dict[str, list[frozenset]]]
+    aliases: dict[str, dict[str, frozenset]]
+    by_dir: dict[str, dict[str, list[str]]]
     namespaces: dict[tuple[str, str], str]
 
 
@@ -90,6 +97,10 @@ class Finding(NamedTuple):
     kind: str
     arm: str
     union: str
+
+
+# A name read in a file at a scope, to the one enum file exporting it beside its exported name.
+Resolve = Callable[[str, str], Optional[tuple[str, str]]]
 
 
 def char_depths(text: str) -> list[int]:
@@ -214,9 +225,9 @@ def unescape(match: re.Match) -> str:
     return SIMPLE_ESCAPES.get(escape, escape)
 
 
-def sole_exporter_literals(sets: list[frozenset] | None) -> frozenset:
-    """The literals an alias admits, or none when no enum file or two export it."""
-    return sets[0] if sets and len(sets) == 1 else frozenset()
+def sole_exporter(paths: list[str] | None, name: str) -> tuple[str, str] | None:
+    """The enum file exporting a name beside that name, or none when no enum file or two export it."""
+    return (paths[0], name) if paths and len(paths) == 1 else None
 
 
 def tree_of(path: str) -> str:
@@ -224,28 +235,37 @@ def tree_of(path: str) -> str:
     return path[len(ROOT) + 1:].split("/", 1)[0]
 
 
-def enum_aliases(files: dict[str, str]) -> EnumAliases:
-    """The literals each enum file's aliases list, by file, by directory and by the namespace that mirrors one."""
-    by_file = {
-        path: {m["name"]: literals(m["value"]) for m in ENUM_ALIAS.finditer(body)}
-        for path, body in files.items() if "defineEnum(" in body
+def enum_files(files: dict[str, str]) -> EnumFiles:
+    """What each enum file exports, by file, by directory and by the namespace that mirrors a directory."""
+    enums = {path: body for path, body in files.items() if "defineEnum(" in body}
+    aliases = {
+        path: {m["name"]: literals(m["value"]) for m in ENUM_ALIAS.finditer(body)} for path, body in enums.items()
     }
-    by_dir: dict[str, dict[str, list[frozenset]]] = defaultdict(lambda: defaultdict(list))
-    for path, aliases in by_file.items():
-        for name, values in aliases.items():
-            by_dir[posixpath.dirname(path)][name].append(values)
-    return EnumAliases(by_file, by_dir, {(tree_of(d), namespace_of(d)): d for d in by_dir})
+    by_dir: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for path, body in enums.items():
+        for name in {*aliases[path], *(m["name"] for m in ENUM_CONST.finditer(body))}:
+            by_dir[posixpath.dirname(path)][name].append(path)
+    return EnumFiles(aliases, by_dir, {(tree_of(d), namespace_of(d)): d for d in by_dir})
 
 
 def find_redundant(files: dict[str, str]) -> list[Finding]:
     """Every redundant arm in the files, once each, on the deepest key whose value holds it."""
-    aliases = enum_aliases(files)
+    enums = enum_files(files)
     found: list[Finding] = []
     for path, body in files.items():
-        admitted = resolver(path, body, aliases)
-        for (scope, key), value in parse_source(body).items():
+        resolve = resolver(path, body, enums)
+        props = parse_source(body)
+        keys: dict[str, set[str]] = defaultdict(set)
+        for scope, key in props:
+            keys[scope].add(key)
+        type_aliases = {m["name"] for m in map(TYPE_ALIAS.match, body.splitlines()) if m}
+        wraps: dict[tuple[str, str], frozenset] = {}
+        for (scope, key), value in props.items():
+            published = (scope, property_of(key, keys[scope], type_aliases))
+            if published not in wraps:
+                wraps[published] = wrapped_enums(props[published], scope, resolve)
             for arms in unions(value):
-                values = frozenset().union(*(admitted(arm, scope) for arm in arms))
+                values = frozenset().union(*(admits(resolve(arm, scope), wraps[published], enums) for arm in arms))
                 for kind, arm in redundant(arms, values):
                     found.append(Finding(path, scope, key, kind, arm, " | ".join(arms)))
 
@@ -269,8 +289,29 @@ def literals(value: str) -> frozenset:
     return frozenset(v for v in map(literal, split_top(value, "|")) if v is not None)
 
 
-def resolver(path: str, body: str, aliases: EnumAliases) -> Callable[[str, str], frozenset]:
-    """A function giving the literals an arm admits as an enum alias, read in this file at a scope."""
+def property_of(key: str, keys: set[str], type_aliases: set[str]) -> str:
+    """The published key a parsed key sits under: its shortest parsed prefix, or the next one under a type alias."""
+    parsed = [prefix for prefix in (key[:i] for i, ch in enumerate(key) if ch in ".[") if prefix in keys] + [key]
+    return parsed[1] if parsed[0] in type_aliases and len(parsed) > 1 else parsed[0]
+
+
+def wrapped_enums(value: str, scope: str, resolve: Resolve) -> frozenset:
+    """The enum files whose const a property's value wraps in `AsEnum<typeof X>`, outside a string literal."""
+    depths = char_depths(value)
+    return frozenset(
+        enum[0] for m in WRAP.finditer(value) if depths[m.start()] != -1 and (enum := resolve(m["name"], scope))
+    )
+
+
+def admits(enum: tuple[str, str] | None, wrapped: frozenset, enums: EnumFiles) -> frozenset:
+    """The literals an arm admits as the enum alias it resolves to; an enum its property wraps admits none (R4)."""
+    if enum is None or enum[0] in wrapped:
+        return frozenset()
+    return enums.aliases[enum[0]].get(enum[1], frozenset())
+
+
+def resolver(path: str, body: str, enums: EnumFiles) -> Resolve:
+    """A function giving the enum file a name read in this file at a scope resolves to, beside its exported name."""
     imports: dict[str, tuple[str, str]] = {}
     for match in IMPORT.finditer(body):
         for name in match["names"].split(","):
@@ -279,29 +320,29 @@ def resolver(path: str, body: str, aliases: EnumAliases) -> Callable[[str, str],
                 imports[(local or exported).strip()] = (exported.strip(), match["spec"])
     tree = tree_of(path)
 
-    def admitted(arm: str, scope: str) -> frozenset:
-        """The literals the arm's enum alias lists; a qualified name resolves from the innermost namespace out."""
-        if not NAME_PATH.fullmatch(arm):
-            return frozenset()
-        if "." in arm:
-            namespace, name = arm.rsplit(".", 1)
+    def resolve(name: str, scope: str) -> tuple[str, str] | None:
+        """The one enum file exporting the name; a qualified name resolves from the innermost namespace out."""
+        if not NAME_PATH.fullmatch(name):
+            return None
+        if "." in name:
+            namespace, exported = name.rsplit(".", 1)
             outer = [] if scope == "<root>" else scope.split(".")
             for depth in range(len(outer), -1, -1):
-                directory = aliases.namespaces.get((tree, ".".join([*outer[:depth], namespace])))
+                directory = enums.namespaces.get((tree, ".".join([*outer[:depth], namespace])))
                 if directory:
-                    return sole_exporter_literals(aliases.by_dir[directory].get(name))
-            return frozenset()
-        if arm in imports:
-            exported, spec = imports[arm]
+                    return sole_exporter(enums.by_dir[directory].get(exported), exported)
+            return None
+        if name in imports:
+            exported, spec = imports[name]
             if not spec.startswith("."):
-                return frozenset()
+                return None
             target = posixpath.normpath(posixpath.join(posixpath.dirname(path), spec))
-            if target in aliases.by_dir:
-                return sole_exporter_literals(aliases.by_dir[target].get(exported))
-            return aliases.by_file.get(f"{target}.ts", {}).get(exported, frozenset())
-        return aliases.by_file.get(path, {}).get(arm, frozenset())
+            if target in enums.by_dir:
+                return sole_exporter(enums.by_dir[target].get(exported), exported)
+            return (f"{target}.ts", exported) if f"{target}.ts" in enums.aliases else None
+        return (path, name) if path in enums.aliases else None
 
-    return admitted
+    return resolve
 
 
 def redundant(arms: list[str], admitted: frozenset) -> list[tuple[str, str]]:
@@ -315,17 +356,22 @@ def redundant(arms: list[str], admitted: frozenset) -> list[tuple[str, str]]:
     return found
 
 
-def failing(findings: list[Finding]) -> list[Finding]:
-    """The findings the #109 baseline does not cover."""
-    return [f for f in findings if not baselined(f)]
+def failing(findings: list[Finding], baseline: dict[tuple[str, str, str, str], str] = BASELINE) -> list[Finding]:
+    """The findings the baseline does not cover."""
+    return [f for f in findings if not baselined(f, baseline)]
 
 
-def baselined(f: Finding) -> bool:
-    """Whether a baseline entry names the finding's scope, key and kind in a laravel-ts-global.ts."""
-    return f.path.endswith("/laravel-ts-global.ts") and any(
-        (f.scope == scope or f.scope.endswith(f".{scope}")) and (f.key, f.kind) == (key, kind)
-        for scope, key, kind in BASELINE
+def baselined(f: Finding, baseline: dict[tuple[str, str, str, str], str]) -> bool:
+    """Whether a baseline entry names the finding's file and scope, each by a suffix, and its key and kind."""
+    return any(
+        ends_with(f.path, path, "/") and ends_with(f.scope, scope, ".") and (f.key, f.kind) == (key, kind)
+        for path, scope, key, kind in baseline
     )
+
+
+def ends_with(text: str, suffix: str, separator: str) -> bool:
+    """Whether the text is the suffix, or ends with it right after a separator."""
+    return text == suffix or text.endswith(separator + suffix)
 
 
 def read_tree(rev: str) -> dict[str, str]:
@@ -380,7 +426,7 @@ MODULE_HEAD = (
     "import { type AsEnum } from '@tolki/ts';\n"
     "import type { MediaTypeType, MediaTypeType as Media, PlainType, StatusType, TwinType } from '../../enums';\n"
     "import type { ExternalType } from 'external';\n"
-    "import { MediaType } from '../../enums';\n\n"
+    "import { MediaType, MediaType as Kind, Status } from '../../enums';\n\n"
 )
 
 # (label, property line in a module's interface, expected (key, kind, arm) findings)
@@ -408,7 +454,28 @@ MODULE_CASES = [
      [("a.inner", "literal", "'image'")]),
     ("literal in an inline type alias", "export type PageProps = Inertia.SharedData & { p: never[] | number[], "
      "q: 0 | StatusType };", [("PageProps.p", "never", "never[]"), ("PageProps.q", "literal", "0")]),
-    ("two arms spelled alike", "a: string[] | string[];", [("a", "duplicate", "string[]")]),
+    # R4: an enum a property wraps admits no literal anywhere in that property.
+    ("control: literal beside the alias of an enum its property wraps",
+     "a: { w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType };", []),
+    ("control: a wrap and an alias each imported under another name", "a: AsEnum<typeof Kind> | 'image' | Media;", []),
+    ("control: a wrap of an enum whose file exports no type of its const's name",
+     "a: AsEnum<typeof Status> | 0 | StatusType;", []),
+    ("control: literal in an inline type alias's member that wraps its enum", "export type PageProps = "
+     "Inertia.SharedData & { v: { w: AsEnum<typeof MediaType>; x: 'image' | MediaTypeType } };", []),
+    ("literal beside its alias where the property wraps no enum",
+     "a: { w: MediaTypeType; v: 'image' | MediaTypeType };", [("a.v", "literal", "'image'")]),
+    ("literal beside its alias where a string spells a wrap",
+     "a: { w: 'AsEnum<typeof MediaType>'; v: 'image' | MediaTypeType };", [("a.v", "literal", "'image'")]),
+    ("literal beside its alias where the property wraps another enum",
+     "a: { w: AsEnum<typeof Status>; v: 'image' | MediaTypeType };", [("a.v", "literal", "'image'")]),
+    ("literal beside its alias where a sibling property wraps the enum",
+     "w: AsEnum<typeof MediaType>;\n    v: 'image' | MediaTypeType;", [("v", "literal", "'image'")]),
+    ("literal beside its alias where another member of an inline type alias wraps the enum", "export type PageProps = "
+     "Inertia.SharedData & { w: AsEnum<typeof MediaType>, v: 'image' | MediaTypeType };",
+     [("PageProps.v", "literal", "'image'")]),
+    ("never[] in a property that wraps an enum", "a: { w: AsEnum<typeof MediaType>; v: never[] | MediaTypeType[] };",
+     [("a.v", "never", "never[]")]),
+    ("two arms spelled alike","a: string[] | string[];", [("a", "duplicate", "string[]")]),
     ("two arms spelled alike in a member", "a: { s: StatusType | StatusType };", [("a.s", "duplicate", "StatusType")]),
     # R7: none of these admits never[].
     ("control: Record beside never[]", "a: never[] | Record<string, number>;", []),
@@ -463,12 +530,26 @@ GLOBAL_CASES = [
      [("audit.status", "literal", "0")], 1),
 ]
 
-# The baseline excuses a key only in laravel-ts-global.ts, so the same namespaces under another file name fail.
+# An entry excuses a key only in a file its path suffix names, so the same namespaces under another file name fail.
 ELSEWHERE = f"{PROBE}/app/global-probe.d.ts"
 ELSEWHERE_CASES = [
     ("baselined key outside laravel-ts-global.ts", "EnumCollectionResource",
      "wrapped_history_or_array: app.enums.StatusType[] | app.enums.StatusType[];",
      [("wrapped_history_or_array", "duplicate", "app.enums.StatusType[]")], 1),
+]
+
+# A module-file entry, such as a literal the same-named-enum rule (R5) keeps would need, in the parsetest's baseline.
+PROBE_BASELINE = {
+    **BASELINE,
+    ("probe-resource.ts", "ProbeResource", "kept", "literal"): "R5: a module-file entry for the parsetest",
+}
+# (label, path, property line in a module's interface, expected findings, how many of them fail under PROBE_BASELINE)
+BASELINE_CASES = [
+    ("baselined literal in a module file", MODULE, "kept: 0 | StatusType;", [("kept", "literal", "0")], 0),
+    ("module-file entry on another key", MODULE, "other: 0 | StatusType;", [("other", "literal", "0")], 1),
+    ("module-file entry for another kind", MODULE, "kept: never[] | number[];", [("kept", "never", "never[]")], 1),
+    ("module-file entry in a file whose name only ends like it", f"{PROBE}/app/http/resources/not-probe-resource.ts",
+     "kept: 0 | StatusType;", [("kept", "literal", "0")], 1),
 ]
 
 
@@ -477,21 +558,31 @@ def run_parsetest() -> int:
     failed = 0
     total = 0
 
-    def check(label: str, path: str, body: str, want: list[tuple[str, str, str]], fails: int) -> None:
+    def check(
+        label: str, path: str, body: str, want: list[tuple[str, str, str]], fails: int,
+        baseline: dict[tuple[str, str, str, str], str] = BASELINE,
+    ) -> None:
         """Compare one file's findings, and how many of them fail, with the case's."""
         nonlocal failed, total
         total += 1
         found = [f for f in find_redundant({**ENUM_FILES, path: body}) if f.path == path]
         got = sorted((f.key, f.kind, f.arm) for f in found)
-        if got == sorted(want) and len(failing(found)) == fails:
+        if got == sorted(want) and len(failing(found, baseline)) == fails:
             print(f"PASS - {label}")
         else:
             failed += 1
             print(f"FAIL - {label}\n  want: {sorted(want)} ({fails} failing)")
-            print(f"  got:  {got} ({len(failing(found))} failing)")
+            print(f"  got:  {got} ({len(failing(found, baseline))} failing)")
+
+    def module_body(line: str) -> str:
+        """A module declaring one interface, with one property line."""
+        return f"{MODULE_HEAD}export interface ProbeResource\n{{\n    {line}\n}}\n"
 
     for label, line, want in MODULE_CASES:
-        check(label, MODULE, f"{MODULE_HEAD}export interface ProbeResource\n{{\n    {line}\n}}\n", want, len(want))
+        check(label, MODULE, module_body(line), want, len(want))
+
+    for label, path, line, want, fails in BASELINE_CASES:
+        check(label, path, module_body(line), want, fails, PROBE_BASELINE)
 
     def global_body(scope: str, line: str) -> str:
         """A globals file declaring one interface at the scope, with one property line."""
@@ -586,7 +677,7 @@ def main() -> int:
         return 1
     findings = find_redundant(files)
     bad = failing(findings)
-    print(f"files: {len(files)}   findings: {len(findings)}   baselined (#109): {len(findings) - len(bad)}")
+    print(f"files: {len(files)}   findings: {len(findings)}   baselined: {len(findings) - len(bad)}")
     if bad:
         print(f"FAIL - {len(bad)} redundant union arm{'' if len(bad) == 1 else 's'}:")
         report(bad)

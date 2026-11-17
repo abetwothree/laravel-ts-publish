@@ -14,7 +14,7 @@ use Workbench\App\Enums\Visibility;
 
 /**
  * Fixture (GH-166): case literals beside the alias that admits them, and `never[]` beside a list, at every join; the
- * `*_kept` keys hold arms no sibling admits.
+ * `*_kept` keys hold arms no sibling admits, or a case value beside the alias of an enum the key also wraps.
  */
 final class RedundantArmsPayload
 {
@@ -70,6 +70,10 @@ final class RedundantArmsPayload
             'other_enum_case_kept' => $this->c ? Season::Spring->value : $this->kind->value,
             'cases_without_alias_kept' => $this->c ? MediaType::Image->value : MediaType::Video->value,
             'wrap_beside_case_kept' => $this->c ? EnumResource::make($this->kind) : MediaType::Image->value,
+            'wrap_and_read_kept' => [
+                'w' => EnumResource::make($this->kind),
+                'v' => $this->c ? MediaType::Image->value : $this->kind->value,
+            ],
             'emptied_list' => $this->modes,
             'filled_list' => [],
             'nullable_list' => $this->c ? null : $this->modes,
