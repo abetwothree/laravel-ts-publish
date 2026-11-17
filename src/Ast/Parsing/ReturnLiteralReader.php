@@ -51,7 +51,7 @@ use ReflectionNamedType;
 /**
  * Reads the literal every return of a method spells: a string, as `broadcastAs()` or `getAuthIdentifierName()` names
  * one, or a list of strings, as a `uniqueIds()` override names its columns. It also says whether the method itself
- * returns a literal `null`, as a caster's get() may.
+ * returns a literal `null`, as a caster's get() may, and lists the expressions it returns.
  *
  * Whole literal or nothing: a concatenation folded to its literal prefix ships a wrong Echo key.
  *
@@ -101,18 +101,34 @@ final class ReturnLiteralReader
             return false;
         }
 
-        $bare = fn (Node $node): bool => $node instanceof Return_ && $node->expr === null;
         // `self::` and a private method resolve against the class whose body this is, a parent's or a trait user's.
         $declaring = new ReflectionMethod($class, $method)->getDeclaringClass()->getName();
 
         // A declared return type throws where the body would end without a value.
         if ($function->returnType === null
-            && ($this->canFinish($function->stmts, $class, $declaring) || $this->bodyHas($function->stmts, $bare))
+            && ($this->canFinish($function->stmts, $class, $declaring) || $this->hasBareReturn($function->stmts))
         ) {
             return true;
         }
 
         return array_any($this->collectReturnExpressions($function->stmts), $this->holdsNull(...));
+    }
+
+    /**
+     * Every expression a method's own body returns; null where it yields, has no body, or has a return with no value.
+     *
+     * @param  class-string  $class
+     * @return list<Expr>|null
+     */
+    public function returnedExpressions(string $class, string $method): ?array
+    {
+        // MethodLocator memoizes its parse, which is what records the file, so a warm read would record nothing.
+        DependencyRecorder::recordClass($class);
+        $stmts = resolve(MethodLocator::class)->locate($class, $method)?->method->stmts;
+
+        return $stmts === null || $this->yields($stmts) || $this->hasBareReturn($stmts)
+            ? null
+            : $this->collectReturnExpressions($stmts);
     }
 
     /**
@@ -164,6 +180,16 @@ final class ReturnLiteralReader
         }
 
         return $items;
+    }
+
+    /**
+     * Whether a body has a `return;`, which no expression spells.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    private function hasBareReturn(array $stmts): bool
+    {
+        return $this->bodyHas($stmts, fn (Node $node): bool => $node instanceof Return_ && $node->expr === null);
     }
 
     /**

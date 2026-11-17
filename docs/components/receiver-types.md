@@ -581,7 +581,10 @@ wrapped-enum arm asks the same class (`EnumValueTypes::member()`).
 
 A read off a case itself, `Status::Draft->value`, publishes the literal that case sends
 (`EnumValueTypes::caseMember()`), `0` here, and so does each case arm of a ternary or `match` receiver, with `| null`
-for `?->`. A `match` is a receiver too: each arm but a `throw` resolves as a ternary's do.
+for `?->`. A `match` is a receiver too: each arm but a `throw` resolves as a ternary's do. Where `ReceiverClassResolver`
+names no class for a `$this->m()`, `self::m()`, `static::m()` or `parent::m()` receiver, each expression the helper
+returns (`ReturnLiteralReader::returnedExpressions()`) is such an arm, its cases read in the class declaring the helper,
+so a `draft(): mixed` returning `Status::Draft` reads `0`; a helper declared `: Status` keeps `StatusType`.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read, but on a `joined`

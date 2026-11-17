@@ -16,8 +16,8 @@ export interface RedundantArmsPayloadProbe
     nested: { inner: MediaTypeType };
     listed: MediaTypeType[];
     helper_case_beside_alias: StatusType;
-    helper_case_value: unknown;
-    helper_case_name: unknown;
+    helper_case_value: 0;
+    helper_case_name: 'Draft';
     values_of_keyed: string[];
     name_beside_value_alias_kept: 'Image' | MediaTypeType;
     other_enum_case_kept: 'spring' | MediaTypeType;

@@ -92,6 +92,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ForwardedMethodResource
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardWritePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HeldReceiversCommentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HelperCaseProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MagicPost;
@@ -129,6 +130,7 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
@@ -856,6 +858,25 @@ describe('ReceiverPropertyFetchHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$post->kind'), $scope, chainHandlersThrowingEngine()))->toBeNull()
             ->and($handler->resolve(receiverHandlerExpr('(new '.Fluent::class.')->attributes'), $scope, chainHandlersThrowingEngine()))->toBeNull();
     });
+
+    // GH-127: only a helper whose declaration names no class is read by the cases its body returns.
+    test('reads a member off the enum cases a helper returns where its declaration names no class', function (string $key, string $type) {
+        expect(array_column(resolve(AstEngine::class)->analyze(HelperCaseProbe::class)->properties, 'type', 'name')[$key] ?? null)
+            ->toBe($type)
+            ->and(array_slice(new HelperCaseProbe()->toArray(), 0, 2))
+            ->toBe(['mixed_value' => Status::Draft->value, 'mixed_name' => Status::Draft->name]);
+    })->with([
+        'a mixed helper\'s ->value' => ['mixed_value', '0'],
+        'a mixed helper\'s ->name' => ['mixed_name', "'Draft'"],
+        'an untyped helper\'s ->value' => ['untyped_value', '0'],
+        'a helper returning a ternary of cases' => ['either_value', '0 | 1'],
+        'a ?-> off a helper returning a case or null' => ['nullsafe_value', '0 | null'],
+        'static::' => ['static_value', '0'],
+        'self::' => ['self_value', '0'],
+        'parent::, past the override' => ['parent_value', '1'],
+        'a helper returning a property stays unknown' => ['property_value', 'unknown'],
+        'a helper declaring the enum keeps its alias' => ['typed_value', 'StatusType'],
+    ]);
 });
 
 describe('a property the subject declares wins over the model', function () {

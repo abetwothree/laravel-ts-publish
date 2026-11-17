@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HelperCaseProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralNullReturns;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnLiteralProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\StoppingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SubjectProps;
+use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
 use Workbench\App\Events\ServerCreated;
 
 it('reads a method that returns one whole string literal', function () {
@@ -151,4 +154,21 @@ it('reads a stop a child redeclares as never by the class the call resolves to',
     'self::stop(), the parent\'s, which returns' => ['endsInSelfStop', true],
     'static::stop(), the child\'s, which never returns' => ['endsInStaticStop', false],
     'a private halt(), the parent\'s, which returns' => ['endsInPrivateHalt', true],
+]);
+
+it('lists every expression a method returns, each branch of an if included', function () {
+    $returned = resolve(ReturnLiteralReader::class)->returnedExpressions(HelperCaseProbe::class, 'maybeDraft');
+
+    expect($returned)->toHaveCount(2)
+        ->and($returned[0] ?? null)->toBeInstanceOf(ClassConstFetch::class)
+        ->and($returned[1] ?? null)->toBeInstanceOf(ConstFetch::class);
+});
+
+// A generator's call returns the Generator, a bare return a value no expression spells, and a missing method nothing.
+it('lists no returned expressions where the method\'s returns spell no value its caller gets', function (string $class, string $method) {
+    expect(resolve(ReturnLiteralReader::class)->returnedExpressions($class, $method))->toBeNull();
+})->with([
+    'a generator' => [ReturnLiteralProbe::class, 'generatedName'],
+    'a bare return' => [LiteralNullReturns::class, 'returnsNothing'],
+    'a method that does not exist' => [ReturnLiteralProbe::class, 'notAMethod'],
 ]);
