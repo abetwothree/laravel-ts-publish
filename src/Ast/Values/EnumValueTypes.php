@@ -170,10 +170,9 @@ final class EnumValueTypes
     }
 
     /**
-     * Each usable alias of the enums a key or value reads beside the case scalars it admits. Enums spelling one alias
-     * name admit under it only what all of them admit; an enum in `$wrapped`, which the key wraps in an `EnumResource`,
-     * admits nothing under the names it spells, and a name in `$takenNames`, which another class on the key prints, is
-     * left out.
+     * Each usable alias of the enums a key or value reads beside the case scalars it admits. Enums sharing an alias
+     * name admit under it only what all of them admit; an enum in `$wrapped` admits nothing under its names, and a
+     * name in `$takenNames`, which another class on the key prints, is left out.
      *
      * @param  list<class-string>  $read  the enums it reads directly
      * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`

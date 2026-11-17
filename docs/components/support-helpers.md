@@ -64,7 +64,8 @@ The helpers and the test that pins them live in these files:
   on its line is plain text, as PHPStan's lexer reads it. `@internal`.
 - [`Support\TypeStrings\PrintedKey`](../../src/Support/TypeStrings/PrintedKey.php): the key a printed object key
   names, the inverse of every key printer: `validJsObjectKey()`, `shapeKey()` and `toJsLiteral()`. A reader that
-  matches a printed key against a PHP key decodes it here rather than unquoting it. Static and `@internal`.
+  matches a printed key against a PHP key decodes it here rather than unquoting it. `decodeQuoted()` reads one whole
+  string literal, as a union arm spells it. Static and `@internal`.
 - [`Support\TypeStrings\IndexSignatureKey`](../../src/Support/TypeStrings/IndexSignatureKey.php): the
   template-literal index-signature key grammar: encode from parts, recognize, literal segments, cast spellings and the
   keys a signature covers. Static and `@internal`.
@@ -78,10 +79,20 @@ The helpers and the test that pins them live in these files:
   arm and member by member at every depth, through unions, intersections, parentheses, lists, tuples, objects and
   generic arguments, with literal text and arrows read whole. Text no callback changes comes back byte for byte: an
   object or an intersection keeps the parts a callback left alone, its separators and its padding, and a part emptied
-  to `{}` leaves its intersection. A changed list prints through `TsTypeShape::listType()`. Static and `@internal`.
+  to `{}` leaves its intersection. A changed list prints through `TsTypeShape::listType()`. A `$union` callback instead
+  decides alone which arms of each union stay: no arm spelled like an earlier one is merged away, and a changed list
+  prints without `listType()`'s `array_unique()`, since two arms spelled alike may name two classes. Static and
+  `@internal`.
 - [`Support\TypeStrings\VisibleGaps`](../../src/Support/TypeStrings/VisibleGaps.php): the spelling of a visible gap,
   a `$gapN` union arm and the open marker `#$open: unknown`, and the readers that set gaps aside, carry them over a
   read, read an object without its marker, and strip both at any depth through `TypeRewriter`. Static and `@internal`.
+- [`Support\TypeStrings\RedundantArms`](../../src/Support/TypeStrings/RedundantArms.php): whether one union arm admits
+  another, and a type with each admitted arm left out at every depth through `TypeRewriter`'s `$union` callback:
+  `never[]` beside a list or `[]`, and a case literal beside an enum alias the caller's map says holds it. It drops no
+  other arm, except one spelled like an earlier arm where the caller asks. Static and `@internal`;
+  [AST engine § Redundant arms](ast-engine.md#redundant-arms) says who calls it and with which map.
+- [`Support\TypeStrings\LiteralArm`](../../src/Support/TypeStrings/LiteralArm.php): the scalar a literal union arm
+  spells, a quoted string, a JSON number, `true` or `false`, or null for any other arm. Static and `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -112,6 +123,8 @@ Ask what the helper's input domain is, not what calls it:
 | Which arm of an array's type is an array or keyed, what do `array_values()`, `values()`, `array_keys()`, `array_filter()` and `array_map()` make of it, how is a list whose keys left `0..n-1` spelled, what does each element of it hold, and what is a one-armed list's element? | `ArrayArms` |
 | How do I rewrite a type string arm by arm and member by member? | `TypeRewriter` |
 | Which arm of this type is a gap, where does the open marker go, and what does the type read with them set aside or stripped? | `VisibleGaps` |
+| Does one union arm admit another, and what is a type without each arm a sibling admits? | `RedundantArms` |
+| Which scalar does this literal union arm spell? | `LiteralArm::value()` |
 | Which separator do this object literal's members print with? | `TsTypeShape::memberSeparator()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | How does an arm stand alone once the arms beside it are gone? | `TsTypeShape::loneArm()` |
@@ -125,6 +138,7 @@ Ask what the helper's input domain is, not what calls it:
 | Does this type hold an object literal or a `Record<number, …>` anywhere? | `TsTypeShape::holdsKeyedObject()` |
 | Does this object key, printed or written, pass `is_numeric()`? | `TsTypeShape::isNumericKey()` |
 | Which key does this printed object key name, and is it this one? | `PrintedKey::decode()`, `names()` |
+| What text does this one whole quoted string spell? | `PrintedKey::decodeQuoted()` |
 | Which list index does this array key name? | `PhpArrayKey::listIndex()` |
 | How deep does each byte of this type string sit, and which bytes are literal text? | `TypeScanner` |
 | Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
@@ -184,14 +198,14 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 ### `TsTypeString`
 
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
-`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
-`TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
-`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`) and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`,
-`PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and `TsTypeShape`. That one-way dependency is
-what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and
-`withoutNullArm()` reads gap arms alone as `unknown`, so no lone gap reaches its callers. A new member that wants
-`toTsType()` is not a type-string helper, and would be in the same bind as the
-[docblock sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
+`TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`, `TsTypeShape::unionArm()`,
+`TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`, `VisibleGaps` (`MARKER_KEY`,
+`isGap()`, `holds()`) and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`,
+`VisibleGaps`' are `TypeRewriter` and `TsTypeShape`, and `RedundantArms`' are `TypeRewriter`, `ArrayArms` and
+`LiteralArm`. That one-way dependency is what made the class safe to lift out. A gap arm is no importable name and no
+unimportable token to it, and `withoutNullArm()` reads gap arms alone as `unknown`, so no lone gap reaches its callers.
+A new member that wants `toTsType()` is not a type-string helper, and would be in the same bind as the [docblock
+sub-engine](#what-stayed-on-laraveltspublish-and-why-the-docblock-engine-could-not-follow).
 
 Every reader of a type string's literals goes through the scanner: a string literal's and a template literal's text is
 a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave it as written, and

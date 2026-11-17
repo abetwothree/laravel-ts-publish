@@ -333,6 +333,34 @@ looks like a bug. Keep the fold's `(?![A-Za-z0-9_$\[])` lookahead when you fix i
 `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` from folding, and add the both-array case as a shape of
 its own.
 
+### A case value beside its enum's alias stays in a key that wraps that enum in an `EnumResource`
+
+A case's value beside a read of its enum folds into the enum's alias, except in a key that wraps the same enum in an
+`EnumResource` anywhere. There every literal of that enum stays, so
+`'k' => ['w' => EnumResource::make($this->kind), 'v' => $c ? MediaType::Image->value : $this->kind->value]` publishes
+`{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }`. The type admits what PHP sends, but `'image'` adds
+nothing beside `MediaTypeType`. In a key holding two enums that print one alias name, such as `App\Enums\Status` and
+`Crm\Enums\Status`, a literal stays too unless both enums hold it.
+
+The literal stays because a wrap's join can still drop the alias arm beside it (#160). Beside the wrap alone the
+literal is needed: `$c ? EnumResource::make($this->kind) : MediaType::Image->value` publishes
+`AsEnum<typeof MediaType> | 'image'`. The nested ternary
+`$c ? EnumResource::make($this->kind) : ($d ? MediaType::Image->value : $this->kind->value)` publishes the same,
+missing the other values the read sends, and folding the literal first would lose `'image'` too. To drop the literal,
+wrap the enum and read it under separate keys, where the read's key publishes `MediaTypeType`, or type the key with an
+import-aware `#[TsCasts]`.
+
+### A key holding two classes of one name can publish one union arm twice
+
+Leaving out a redundant arm can make two arms alike, and the package keeps one copy only where each name on the key
+spells one class. With the workbench's two `User` models on one key, a return writing
+`'row' => ['u' => $this->author, 'v' => $this->crmAuthor, 's' => $d ? Status::Draft->value : $this->status->value]`
+beside one writing `'s' => $this->status->value` publishes `{ u: WorkbenchUser; v: CrmUser; s: StatusType }` twice.
+Until the imports alias the two models apart, the text cannot tell which arm names which, so both copies stay. A
+resource key named after a model attribute whose type names a class keeps both copies too. `X | X` means `X`, so `tsc`
+passes, and the cost is a line that looks like a bug. No workbench fixture has the shape, so the redundant-arm gate,
+which fails on two arms spelled alike, does not see it.
+
 ### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
 
 `$this->resource->value` in a resource wrapping a pure enum, such as `UnitEnumResource.value`, publishes

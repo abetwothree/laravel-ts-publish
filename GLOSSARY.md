@@ -160,6 +160,10 @@ _Avoid_: type guard, refinement
 A union arm inference cannot type, left out of the union rather than widening it to `unknown`, so the property publishes the arms that are left. Where the method's `@return` types the key, the arm is a visible gap instead.
 _Avoid_: lost arm, untyped branch
 
+**Redundant arm**:
+A typed union arm that a sibling arm already admits, such as an empty list beside a list or an enum case's value beside the enum's alias, left out because it adds no value the property can send.
+_Avoid_: folded arm, subsumed arm
+
 **Visible gap**:
 A dropped arm, or the keys an object may hold that inference cannot name, kept in a key's type so the method's `@return` can type it where it stands. A gap the docblock leaves untyped is dropped before the type publishes.
 _Avoid_: mark, placeholder

@@ -939,21 +939,21 @@ class MethodAnalysis
     }
 
     /**
-     * Leave out of each key's type, body type and fill every union arm a sibling admits, except a key a cast types:
-     * `never[]` beside a list, and a case literal beside an alias of an enum the key reads and does not wrap. Where no
-     * name on the key spells two classes and the caller queues none on it later, an arm alike an earlier one goes too.
+     * Leave out every union arm a sibling admits from each key's type, body type and fill, a cast's aside: `never[]`
+     * beside a list or `[]`, and a case literal beside the alias of an enum read but not wrapped. An arm alike an
+     * earlier one goes too, unless a name on the key spells two classes, a slot is declared or `$queuesLater` holds.
      *
      * @param  (Closure(string): bool)|null  $queuesLater  whether the caller still queues classes on a key, by its name
      */
     public function absorbRedundantArms(?Closure $queuesLater = null): void
     {
-        /** @var array<array-key, array{AliasLiterals, bool}> $read key name => its alias literals and alike-arm rule */
-        $read = [];
+        /** @var array<array-key, array{AliasLiterals, bool}> $rulesByKey key => its alias literals and dedupe flag */
+        $rulesByKey = [];
 
         $this->rewriteTypes(
-            function (string $type, array $property) use (&$read, $queuesLater): string {
+            function (string $type, array $property) use (&$rulesByKey, $queuesLater): string {
                 $name = $property['name'];
-                [$admitted, $dedupesAlike] = $read[$name] ??= [
+                [$admitted, $dedupesAlike] = $rulesByKey[$name] ??= [
                     $this->keyAliasLiterals($name),
                     $this->readsAlikeArmsAsOne($name) && ! ($queuesLater !== null && $queuesLater($name)),
                 ];

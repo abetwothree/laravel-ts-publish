@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
 
 /**
  * Leave out a union arm a sibling arm admits: `never[]` beside a single list arm or `[]`, and a case literal beside
- * an enum alias whose cases include it. Only `never[]` and literal arms are ever dropped, and an arm alike an earlier
- * one where the caller asks, so no class token leaves the type.
+ * an enum alias whose cases include it. Only those leave, and an arm alike an earlier one where the caller asks: its
+ * class tokens go, but every name they spell stays in the earlier arm.
  *
  * @phpstan-type AliasLiterals = array<string, list<int|string>>
  *

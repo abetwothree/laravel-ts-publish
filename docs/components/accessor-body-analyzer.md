@@ -51,6 +51,10 @@ a closure.
   publishes `User | User`, a member per class, and both aliases. Two same-named enums in one union still fold into one
   token and decline. A resource token declines too, because `ResultTypeInfoBridge` has no resource channel.
 
+Every reader gets the body's type with its redundant arms still in. `ModelTransformer` leaves them out where the model
+publishes the attribute, and a resource or getter reading it does so at its own publisher's pass, as
+[AST engine § Redundant arms](ast-engine.md#redundant-arms) explains.
+
 ## The model is the subject
 
 `AstEngine::analyzeModelClosure()` seeds the scope with `bindingsFor()`, which binds the enclosing method's parameters

@@ -8,10 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 
 /**
- * Carry a ValueExpressionResult's type and FQCN channels into a TypeScriptTypeInfo: the inverse of
- * `ReflectedTypeAcceptor::accept()`, reading only the five channels it writes, so no resource channel. See the Import
- * dispatch rules table in docs/components/resource-ast-analyzer.md. The enums it wraps in an `EnumResource` go on
- * `wrappedEnumFqcns`, which a model's absorbing reads and no import does.
+ * Carry a ValueExpressionResult into a TypeScriptTypeInfo, the inverse of `ReflectedTypeAcceptor::accept()`: it imports
+ * only through the five channels the acceptor writes, never a resource, and copies the wrap channels and
+ * `sendsEnumScalar`, which only the model reads. See docs/components/resource-ast-analyzer.md.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypeScriptTypeInfo from \AbeTwoThree\LaravelTsPublish\LaravelTsPublish

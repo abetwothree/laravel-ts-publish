@@ -44,7 +44,7 @@ These are the classes a change to the engine usually touches:
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
 | [`AnalysisMemo`] | The cycle guards and the per-run memo of analyses |
 | [`DroppedUnionArms`] | The record of union arms the engine left out |
-| [`ReturnLiteralReader`] | The string, or list of strings, every return of a method spells, for `broadcastAs()`, `getAuthIdentifierName()` and `uniqueIds()`; and whether a method returns a literal `null` itself, or can run to its end, for a caster's `get()` |
+| [`ReturnLiteralReader`] | The string, or list of strings, every return of a method spells, for `broadcastAs()`, `getAuthIdentifierName()` and `uniqueIds()`; whether a method returns a literal `null` itself, or can run to its end, for a caster's `get()`; and the expressions a helper returns, for a case read off a helper that names no class |
 
 [Receiver types](receiver-types.md) covers `ReceiverClassResolver` and the handlers that type `$x->m()` and `$x->prop`.
 
@@ -902,9 +902,10 @@ see. The exception is a key the method's own `@return` types: there the arm stay
 Return-branch merges outside a spread helper or a merge call keep the strict rule, where one `unknown` branch makes the
 key `unknown`, as [ResourceAstAnalyzer § A spread helper drops an untypable branch][spread-branches] explains.
 A list element is not a union arm, since every response carries it: an element no rule types makes the list `unknown[]`.
-An arm left out still makes the union optional when it can be a `MissingValue`. `ValueResult::unionResults()` folds an
-empty `[]`'s `never[]` into a list member beside it, which already admits the empty array: `$rows ?? []` over a list
-publishes the list.
+An arm left out still makes the union optional when it can be a `MissingValue`. `ValueResult::unionResults()` leaves out
+an empty `[]`'s `never[]` beside a list or the empty tuple `[]`, since both already admit the empty array: `$rows ?? []`
+over a list publishes the list. Beside a `Record`, an object or a non-empty tuple the `never[]` stays, as
+[§ Redundant arms](#redundant-arms) explains.
 
 [`DroppedUnionArms`] records the drops made at a fixed set of sites, and each entry names its site, so a site that goes
 silent shows. The sites are `ValueResult::analyzeClosureUnion()`, `TernaryHandler`'s narrowed arm,
@@ -1003,6 +1004,58 @@ records nothing out of the mode, so the audit baseline is the same in both.
 Forcing every key into the mode moves no published byte, as
 [Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.
 
+## Redundant arms
+
+A union arm that a sibling arm admits adds no value PHP can send, so it is left out. [`RedundantArms::admits()`] is the
+rule, and it admits only two kinds of arm. Neither spells a class, so leaving one out shifts no token queue:
+
+- **`never[]`** beside a single list arm, `X[]`, `Array<X>` or `ReadonlyArray<X>`, or beside the empty tuple `[]`. Both
+  describe the one empty array PHP sends. A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection and
+  an intersection keep the `never[]` beside them, since `tsc` rejects it against each.
+- **A case literal** beside an enum alias whose literals hold it. [`EnumValueTypes::aliasLiterals()`] maps each alias of
+  the enums a key reads directly to the literals it admits. An alias admits none when the key wraps its enum in an
+  `EnumResource` anywhere, when a model or resource on the key prints its name, or when `EnumValueTypes::aliasUsable()`
+  rules that it does not spell what PHP sends. Two enums printing one alias name admit only the literals both hold, so
+  `App\Status` beside `Crm\Status` admits none.
+
+A literal leaves only where the key's channels are final. An inner union can still meet an `EnumResource` wrap of the
+same enum, whose join drops the alias arm (#160). In
+`$c ? EnumResource::make($this->kind) : ($d ? MediaType::Image->value : $this->kind->value)`, the key keeps its
+`'image'` only because the inner ternary left the literal in. The rule runs at three points:
+
+- Each publisher's last key pass calls `MethodAnalysis::absorbRedundantArms()`: [`AnalysisComposer`],
+  `ResourceTransformer`, `BroadcastEventTransformer`, `InertiaPageAnalyzer`, `InertiaSharedDataAnalyzer` and
+  `ModelMetadataAnalyzer`. It runs after the index-signature reconcile and before `CastChannels::fit()`. It skips a key
+  a method cast types, and a publisher's own cast replaces the key's text after it.
+- `ModelTransformer::withRedundantArmsAbsorbed()` absorbs an accessor's type where the model publishes it, as a column,
+  a mutator or an append. [AccessorBodyAnalyzer](accessor-body-analyzer.md) hands every reader the body unabsorbed, so
+  a resource or getter reading the attribute absorbs at its own publisher's pass. `ResultTypeInfoBridge` copies the
+  result's wrap channels onto `wrappedEnumFqcns`, so the wrap rule holds at the model too.
+- `ValueResult::unionResults()` and `RedundantArms::joined()`, which the `(array)` cast, `array_values()` and
+  `ResourceReindexing::reindexedType()` call, drop only a top-level `never[]`, with no alias map. They never rewrite an
+  arm's inside, because `armsKeyPresence()` keys each arm's facts by its object's text.
+
+Absorbing can leave two arms alike: two returns writing `{ s: 0 | StatusType }` and `{ s: StatusType }` leave
+`{ s: StatusType }` twice. The publisher pass and the model keep only the first where all three of these hold:
+
+- No printed name on the key spells two classes. `EnumValueTypes::namesTwoClasses()` decides it over the key's enum,
+  model and resource channels.
+- No declaration slots the key's tokens: no `declaredTokenFqcns` entry, or no `classTokenFqcns` at the model.
+- The publisher queues no class on the key after the pass. `ResourceTransformer::queuesAccessorClasses()` answers it
+  for a key named after a model attribute.
+
+Elsewhere both stay, since the text cannot tell two same-named classes apart before aliasing.
+[Known gaps][gap-alike-arms] records what users see.
+
+A model's `…Resource` interfaces print `AsEnum<typeof X>` for a property typed as one enum, which fits only a value that
+sends the case. `sendsEnumScalar` marks a value whose every enum arm sends a scalar instead: a `->value` or `->name`
+read, or, at the model, an alias that took a case literal in. `ModelTransformer::soleEnumFqcn()` then keeps the alias in
+`…MutatorsResource`. A union keeps the flag only when every arm carrying an enum has it. `mergeTypeScriptInfos()` drops
+it, which is safe while nothing merges an accessor's info before the model absorbs it.
+
+The [redundant-arm gate](../testing/type-inference-gates.md#redundant-arm-gatepy) fails on a published union holding
+either kind of arm, or two arms spelled alike.
+
 ## Public API
 
 `AstEngine::analyze()` and the [`AnalysisResult`] it returns are the engine's whole public surface. The
@@ -1091,6 +1144,7 @@ These pages cover the engine's neighbors:
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
+[`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Values/EnumValueTypes.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
@@ -1102,6 +1156,7 @@ These pages cover the engine's neighbors:
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php
+[`RedundantArms::admits()`]: ../../src/Support/TypeStrings/RedundantArms.php
 [`ResolvedResourceBody`]: ../../src/Ast/Resources/ResolvedResourceBody.php
 [`ResourceAstAnalyzer`]: ../../src/Analyzers/ResourceAstAnalyzer.php
 [`ResourceExpressionHandlers`]: ../../src/Ast/Dispatch/ResourceExpressionHandlers.php
@@ -1118,6 +1173,7 @@ These pages cover the engine's neighbors:
 [built-payload]: resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload
 [collection-pipelines]: resource-ast-analyzer.md#collection-pipelines
 [gap-narrowing]: ../known-gaps.md#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways
+[gap-alike-arms]: ../known-gaps.md#a-key-holding-two-classes-of-one-name-can-publish-one-union-arm-twice
 [gap-non-goals]: ../known-gaps.md#deliberate-non-goals
 [gap-ordering]: ../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded
 [gap-spelled-name]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import

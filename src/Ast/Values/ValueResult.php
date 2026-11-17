@@ -466,9 +466,9 @@ final class ValueResult
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
-     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
-     * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
+     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. A
+     * `never[]` beside a list or the empty tuple `[]` is no member of its own, as either admits it. Its held-object
+     * flag is the arms', and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult

@@ -385,7 +385,9 @@ decides:
 
 `resolveAttribute()` returns the type with the column's null decided, so `ModelTransformer` adds it only to a fallback
 type of its own; an override of `resolveAttribute()` decides it alone. `ModelAttributeResolver::sendsNullAsIs()` no
-longer decides the test, and is deprecated.
+longer decides the test, and is deprecated. `resolveAttribute()` keeps the type's redundant arms, which
+`ModelTransformer` leaves out only where it publishes the column, mutator or append
+([AST engine § Redundant arms](ast-engine.md#redundant-arms)).
 
 ## Relation discovery
 
