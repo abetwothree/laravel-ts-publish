@@ -417,6 +417,7 @@ class ModelTransformer extends CoreTransformer
             $cast = $attribute['cast'];
 
             // Resolves through the accessor → cast → DB type waterfall, which adds the column's null.
+            // Absorbed before the export check so `$typings === $resolved` below tells it from the cast fallback.
             $resolved = $this->withRedundantArmsAbsorbed($resolver->resolveAttribute($this->findable, $name));
 
             // Fall back to the raw cast so enum and class metadata still propagates.
@@ -495,7 +496,7 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
-            $resolved = $this->withRedundantArmsAbsorbed($this->exportedTypeInfo($resolved));
+            $resolved = $this->exportedTypeInfo($this->withRedundantArmsAbsorbed($resolved));
 
             if ($isAppended) {
                 $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
