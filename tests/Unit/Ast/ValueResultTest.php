@@ -714,6 +714,7 @@ describe('ValueResult::unionResults() over an empty array beside a list', functi
         'a record' => [['Record<string, string>', 'never[]'], 'Record<string, string> | never[]'],
         'a named type' => [['UserCollection', 'never[]'], 'UserCollection | never[]'],
         'an empty array nested in a shape' => [['{ a: never[] }', 'string[]'], '{ a: never[] } | string[]'],
+        'an empty array beside a list in a shape' => [['{ k: never[] | number[] }', 'null'], '{ k: number[] } | null'],
     ]);
 });
 

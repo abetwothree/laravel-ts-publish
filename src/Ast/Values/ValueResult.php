@@ -467,8 +467,8 @@ final class ValueResult
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
-     * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
+     * `[]` beside a list, at any depth, is no member of its own, since the list already admits it. Its held-object flag
+     * is the arms', and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -513,7 +513,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => RedundantArms::absorbed($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
         $presence = self::armsKeyPresence($results);
 
@@ -800,26 +800,6 @@ final class ValueResult
         return array_all($arms, fn (array $arm): bool => $arm['heldObject'] ?? false)
             ? [...$union, 'heldObject' => true, ...$kinds]
             : [...$union, 'mayHoldObject' => $nulls, ...$kinds];
-    }
-
-    /**
-     * A union's type without the `never[]` of an empty `[]` beside a list member, which already admits an empty array.
-     */
-    private static function withoutEmptyListBesideList(string $type): string
-    {
-        if (! str_contains($type, 'never[]')) {
-            return $type;
-        }
-
-        $members = TsTypeString::splitTopLevelUnion($type);
-        $lists = array_filter(
-            $members,
-            fn (string $member): bool => $member !== 'never[]' && TsTypeShape::elementType($member) !== null,
-        );
-
-        return $lists === [] || ! in_array('never[]', $members, true)
-            ? $type
-            : implode(' | ', array_diff($members, ['never[]']));
     }
 
     /**

@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\Cast;
@@ -130,11 +131,8 @@ final class CastHandler implements ExpressionHandler
                 }
 
                 unset($result['keepsKeys']);
-                $filled = array_values(array_diff($arms, ['never[]']));
-                // A list arm already admits the empty array.
-                $kept = $filled !== [] && ArrayArms::holdsList(implode(' | ', $filled)) ? $filled : $arms;
 
-                return [...$result, 'type' => implode(' | ', array_values(array_unique($kept)))];
+                return [...$result, 'type' => implode(' | ', RedundantArms::kept(array_values(array_unique($arms))))];
             },
         );
 
