@@ -1022,7 +1022,8 @@ rule, and it admits only two kinds of arm. Neither spells a class, so leaving on
 A literal leaves only where the key's channels are final. An inner union can still meet an `EnumResource` wrap of the
 same enum, whose join drops the alias arm (#160). In
 `$c ? EnumResource::make($this->kind) : ($d ? MediaType::Image->value : $this->kind->value)`, the key keeps its
-`'image'` only because the inner ternary left the literal in. The rule runs at three points:
+`'image'` only because the inner ternary left the literal in. [Known gaps][gap-wrapped-case] records the literal a key
+keeps beside the alias of an enum it wraps. The rule runs at three points:
 
 - Each publisher's last key pass calls `MethodAnalysis::absorbRedundantArms()`: [`AnalysisComposer`],
   `ResourceTransformer`, `BroadcastEventTransformer`, `InertiaPageAnalyzer`, `InertiaSharedDataAnalyzer` and
@@ -1182,6 +1183,7 @@ These pages cover the engine's neighbors:
 [gap-ordering]: ../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded
 [gap-spelled-name]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
+[gap-wrapped-case]: ../known-gaps.md#a-case-value-beside-its-enums-alias-stays-in-a-key-that-wraps-that-enum-in-an-enumresource
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
 [published-models]: model-attribute-resolver.md#models-a-run-publishes

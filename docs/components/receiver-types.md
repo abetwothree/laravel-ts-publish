@@ -585,7 +585,9 @@ for `?->`. A `match` is a receiver too: each arm but a `throw` resolves as a ter
 names no class for a `$this->m()`, `$this::m()`, `self::m()`, `static::m()` or `parent::m()` receiver, each expression
 the helper returns (`ReturnLiteralReader::returnedExpressions()`) is such an arm, its cases read in the class declaring
 the helper, so a `draft(): mixed` returning `Status::Draft` reads `0`; a helper declared `: Status` keeps `StatusType`.
-An untyped helper that can run to its end, sending a `null` no return spells, is not read.
+A `null` the helper returns is left out, as `->` leaves out any receiver's `null` arm, so `$c ? Status::Draft : null`
+reads `0`. An untyped helper that can run to its end, sending a `null` no return spells, is not read, and the read
+stays `unknown`.
 
 The answers of several classes merge through `ValueResult::unionResults()`, which follows the
 [registry's rule][queue-contract] for same-named classes. One declining arm declines the read, but on a `joined`
