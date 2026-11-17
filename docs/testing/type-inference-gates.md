@@ -300,8 +300,8 @@ the regression gate's property parser, walks every union at every depth (top lev
 generic arguments, tuple elements, parenthesized groups and arrow returns), and reports three findings:
 
 - **`never[]` beside a list arm**: a single list, `X[]`, `Array<X>` or `ReadonlyArray<X>`, or the empty tuple `[]`.
-  A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection and an intersection do not admit
-  `never[]`, so it stays beside them.
+  A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection, an intersection and a conditional type
+  do not admit `never[]`, so it stays beside them.
 - **A literal beside its enum alias**: a string or number literal the alias's `export type X = …` lists. `'image'`
   and `"image"` match, and `1` and `'1'` do not.
 - **Two arms spelled alike**.
@@ -321,26 +321,28 @@ with the file, the interface or namespace path, the property, the arm and its un
 enum file, since it would then check no literal. CI runs all three modes.
 
 `--selftest` runs over `ec7876ad2`, `develop`'s probe commit from before the fix, and inverts the exit code. It must
-fail there, report 13 named findings that cover each kind, each depth and both alias spellings, and report nothing on
-the probe's `_kept` keys. A `PASS` on that commit means the script is broken. Run both self-tests after changing it.
+fail there, report 13 named findings that cover each kind, top-level and nested-member keys, and both alias spellings,
+and report nothing on the probe's `_kept` keys. `--parsetest` covers the other depths. A `PASS` on that commit means
+the script is broken. Run both self-tests after changing it.
 
-### The duplicate baseline
+### The baseline
 
 `laravel-ts-global.ts` spells an enum resource by the enum's value type (#109), so
 `EnumCollectionResource.wrapped_history_or_array` and `TeamStatusAuditResource.audit.status` print one arm twice in
-each tree. `DUPLICATE_BASELINE` lists those two keys, for that file only, and any other duplicate fails. Remove an
-entry once #109 is fixed.
+each tree. `BASELINE` lists each excused finding by scope, key and kind, for that file only, so an entry excuses only
+its own kind there: a `never[]` or a literal on either key still fails. A scope leaves out the tree's root namespace,
+`workbench.` in the testing tree. Remove an entry once #109 is fixed.
 
 ### What the redundant-arm gate does not cover
 
 - **An alias it cannot resolve**: a name no relative import or namespace reaches, one two enum files in a directory
-  export, one imported from a bare specifier, and an alias of an alias (`Status = StatusType`) admit nothing, so a
-  literal beside one passes.
+  export, one imported from a bare specifier or from a file that does not call `defineEnum(`, and an alias of an
+  alias (`Status = StatusType`) admit nothing, so a literal beside one passes.
 - **A property spread over several lines**: the parser reads one line per property, as the regression gate does.
 - **A literal kept beside an enum resource**: a key that wraps an enum in an `EnumResource` keeps its literals, as in
   `'image' | AsEnum<typeof MediaType>`. Through #109 the globals file would print that as `'image' | …MediaTypeType`,
-  which this gate fails. No fixture publishes such a key to the globals file today. One that does needs a baseline
-  entry citing #109, not a wider rule.
+  which this gate fails. No fixture publishes such a key to the globals file today. One that does needs a `literal`
+  entry in `BASELINE` citing #109, not a wider rule.
 
 ## `gap-gate.sh`
 
