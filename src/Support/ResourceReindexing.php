@@ -35,9 +35,7 @@ final class ResourceReindexing
             $rewritten = array_map(self::reindexedType(...), $arms);
 
             // Two arrays a resource lists alike are one arm once re-indexed, and a list admits the `never[]` beside it.
-            return $rewritten === $arms
-                ? $type
-                : implode(' | ', RedundantArms::kept(array_values(array_unique($rewritten))));
+            return $rewritten === $arms ? $type : RedundantArms::joined($rewritten);
         }
 
         $parts = TsTypeShape::splitTopLevel($type, ['&']);

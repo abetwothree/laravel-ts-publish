@@ -608,16 +608,9 @@ class MethodAnalysis
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
-        $wrapped = $this->wrappedEnumFqcns($name);
-        $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
-        $resources = $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns);
+        $names = $this->classNames($name);
 
-        $names = [
-            ...array_map(class_basename(...), $models),
-            ...array_map(static fn (string $resource): string => TsNaming::resourceTypeName($resource), $resources),
-        ];
-
-        foreach ([...$held, ...$wrapped] as $enum) {
+        foreach ([...$held, ...$this->wrappedEnumFqcns($name)] as $enum) {
             array_push($names, ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum));
         }
 
@@ -949,14 +942,14 @@ class MethodAnalysis
      */
     public function absorbRedundantArms(): void
     {
-        /** @var array<array-key, AliasLiterals> $aliasLiterals key name => what its aliases admit, read once */
-        $aliasLiterals = [];
+        /** @var array<array-key, AliasLiterals> $admitted key name => what its aliases admit, read once */
+        $admitted = [];
 
         $this->rewriteTypes(
-            function (string $type, array $property) use (&$aliasLiterals): string {
+            function (string $type, array $property) use (&$admitted): string {
                 $name = $property['name'];
 
-                return RedundantArms::absorbed($type, $aliasLiterals[$name] ??= $this->aliasLiterals($name));
+                return RedundantArms::absorbed($type, $admitted[$name] ??= $this->keyAliasLiterals($name));
             },
             fn (array $property): bool => ! isset($this->casts[$property['name']]),
         );
@@ -1043,18 +1036,34 @@ class MethodAnalysis
     }
 
     /**
-     * Each usable alias of the enums a property reads and does not wrap, beside the case scalars it admits.
+     * Each usable alias of the enums a property reads and does not wrap, beside the case scalars it admits; a name its
+     * models or resources print is left out.
      *
      * @return AliasLiterals
      */
-    private function aliasLiterals(string $name): array
+    private function keyAliasLiterals(string $name): array
     {
-        return EnumValueTypes::channelAliasLiterals(
+        return EnumValueTypes::aliasLiterals(
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             $this->wrappedEnumFqcns($name),
-            $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
-            $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
+            $this->classNames($name),
         );
+    }
+
+    /**
+     * The names a property's models and resources print, each model's name and then each resource's type.
+     *
+     * @return list<string>
+     */
+    private function classNames(string $name): array
+    {
+        return [
+            ...array_map(class_basename(...), $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns)),
+            ...array_map(
+                static fn (string $resource): string => TsNaming::resourceTypeName($resource),
+                $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
+            ),
+        ];
     }
 
     /**

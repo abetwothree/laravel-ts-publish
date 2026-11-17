@@ -132,7 +132,7 @@ final class CastHandler implements ExpressionHandler
 
                 unset($result['keepsKeys']);
 
-                return [...$result, 'type' => implode(' | ', RedundantArms::kept(array_values(array_unique($arms))))];
+                return [...$result, 'type' => RedundantArms::joined($arms)];
             },
         );
 

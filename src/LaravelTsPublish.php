@@ -94,7 +94,7 @@ use UnitEnum;
  *    keepsKeys?: bool,
  *    closedToDottedKeys?: bool,
  *    listKeys?: bool,
- *    sendsEnumScalar?: bool,
+ *    sendsEnumScalar?: true,
  *    wrappedEnumFqcns?: list<class-string>,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
@@ -124,7 +124,7 @@ use UnitEnum;
  * `listKeys`, when true, says each list arm of `type` is keyed by ints, as `list<T>` and `array<int, T>` are; PHPDoc's
  * `T[]` and `array<T>` take any key.
  *
- * `sendsEnumScalar`, when true, says the enum alias `type` spells stands for a scalar the value sends, a `->value` or
+ * `sendsEnumScalar` says the enum alias `type` spells stands for a scalar the value sends, a `->value` or
  * `->name` read or a case literal the alias took in, so a model's Resource interface keeps it rather than print
  * `AsEnum<typeof X>`. `wrappedEnumFqcns` lists each enum the value wraps in an `EnumResource`, whose alias takes in no
  * case literal there.

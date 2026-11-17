@@ -320,9 +320,8 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             }
 
             unset($result['keepsKeys'], $result['unnamedKeys']);
-            $type = implode(' | ', RedundantArms::kept(array_values(array_unique($arms))));
 
-            return [...$result, 'type' => $type, 'optional' => false, 'listKeys' => true];
+            return [...$result, 'type' => RedundantArms::joined($arms), 'optional' => false, 'listKeys' => true];
         });
     }
 

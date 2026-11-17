@@ -513,7 +513,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        $union = [...$result, 'type' => self::withoutAdmittedArms($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => self::withTopLevelArmsAbsorbed($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
         $presence = self::armsKeyPresence($results);
 
@@ -785,7 +785,7 @@ final class ValueResult
      *
      * An arm's inside is left to the publisher's pass, as armsKeyPresence() keys each arm's facts by its object's text.
      */
-    private static function withoutAdmittedArms(string $type): string
+    private static function withTopLevelArmsAbsorbed(string $type): string
     {
         if (! str_contains($type, 'never[]')) {
             return $type;

@@ -29,14 +29,6 @@ final class LiteralArm
     }
 
     /**
-     * Whether an arm is a literal that spells a scalar.
-     */
-    public static function isLiteral(string $arm): bool
-    {
-        return self::value($arm) !== null;
-    }
-
-    /**
      * The int or float a JSON number spells; one past PHP_INT_MAX reads as a float, as JSON reads it.
      */
     private static function number(string $arm): int|float|null

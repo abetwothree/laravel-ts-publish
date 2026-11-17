@@ -321,7 +321,7 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
 });
 
 describe('AccessorBodyAnalyzer hands its readers the body unsettled', function () {
-    // Each reader folds a case value into the alias at its own publisher's pass, where the key's channels are final.
+    // Each reader absorbs a case value into the alias at its own publisher's pass, where the key's channels are final.
     test('a getter sending its enum\'s value or name says so, a case value beside it kept', function (string $model, string $attribute, string $type) {
         $info = resolve(AccessorBodyAnalyzer::class)->analyze($model, $attribute);
 

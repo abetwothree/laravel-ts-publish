@@ -5,8 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\LiteralArm;
 
 test('reads the scalar a literal arm spells', function (string $arm, string|int|float|bool $value) {
-    expect(LiteralArm::value($arm))->toBe($value)
-        ->and(LiteralArm::isLiteral($arm))->toBeTrue();
+    expect(LiteralArm::value($arm))->toBe($value);
 })->with([
     'a single-quoted string' => ["'image'", 'image'],
     'a double-quoted string' => ['"image"', 'image'],
@@ -21,8 +20,7 @@ test('reads the scalar a literal arm spells', function (string $arm, string|int|
 ]);
 
 test('reads no scalar from any other arm', function (string $arm) {
-    expect(LiteralArm::value($arm))->toBeNull()
-        ->and(LiteralArm::isLiteral($arm))->toBeFalse();
+    expect(LiteralArm::value($arm))->toBeNull();
 })->with([
     'a keyword' => ['string'],
     'an alias' => ['MediaTypeType'],

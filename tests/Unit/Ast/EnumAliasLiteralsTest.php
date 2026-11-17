@@ -115,47 +115,26 @@ it('admits nothing under an alias the enum\'s own override is spelled like', fun
 });
 
 it('leaves out an alias a model or resource on the same key publishes under', function () {
-    expect(EnumValueTypes::aliasLiterals([MediaType::class], ['MediaTypeType']))->toBe([
+    expect(EnumValueTypes::aliasLiterals([MediaType::class], [], ['MediaTypeType']))->toBe([
         'MediaTypeKind' => ['Image', 'Video', 'Audio', 'Document', 'Archive'],
     ]);
 });
 
 it('admits nothing under the names of an enum also wrapped in an EnumResource', function () {
-    expect(EnumValueTypes::aliasLiterals([MediaType::class], [], [MediaType::class]))->toBe([]);
+    expect(EnumValueTypes::aliasLiterals([MediaType::class], [MediaType::class]))->toBe([]);
+});
+
+it('admits nothing under a name an enum also wrapped spells too', function () {
+    $this->mock(EnumsCollector::class)->shouldReceive('collect')
+        ->andReturn(collect([BillingStage::class, ShippingStage::class]));
+
+    expect(EnumValueTypes::aliasLiterals([BillingStage::class], [ShippingStage::class]))->toBe([
+        'StageType' => [],
+        'StageKind' => [],
+    ]);
 });
 
 it('admits nothing for no enum', function () {
-    expect(EnumValueTypes::aliasLiterals([]))->toBe([]);
-});
-
-describe('EnumValueTypes::channelAliasLiterals()', function () {
-    beforeEach(function () {
-        $this->mock(EnumsCollector::class)->shouldReceive('collect')
-            ->andReturn(collect([BillingStage::class, ShippingStage::class, MediaType::class]));
-    });
-
-    test('reads the enums read directly as aliasLiterals() does', function () {
-        expect(EnumValueTypes::channelAliasLiterals([BillingStage::class, ShippingStage::class], [], [], []))
-            ->toBe(EnumValueTypes::aliasLiterals([BillingStage::class, ShippingStage::class]));
-    });
-
-    test('admits nothing for an enum also wrapped in an EnumResource', function () {
-        expect(EnumValueTypes::channelAliasLiterals([MediaType::class], [MediaType::class], [], []))->toBe([]);
-    });
-
-    test('admits nothing under a name a wrapped enum spells too', function () {
-        expect(EnumValueTypes::channelAliasLiterals([BillingStage::class], [ShippingStage::class], [], []))->toBe([
-            'StageType' => [],
-            'StageKind' => [],
-        ]);
-    });
-
-    test('leaves out a name a model or resource publishes under', function () {
-        expect(EnumValueTypes::channelAliasLiterals(
-            [MediaType::class],
-            [],
-            ['Some\\Models\\MediaTypeType'],
-            ['Some\\Http\\Resources\\MediaTypeKind'],
-        ))->toBe([]);
-    });
+    expect(EnumValueTypes::aliasLiterals([]))->toBe([])
+        ->and(EnumValueTypes::aliasLiterals([], [MediaType::class]))->toBe([]);
 });

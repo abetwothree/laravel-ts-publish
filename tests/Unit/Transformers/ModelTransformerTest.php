@@ -36,8 +36,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\AbsorbingModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\FoldingModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelWriter;
@@ -803,7 +803,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'PriorityType | 0', false],
     ]);
 
-    test('a column\'s getter folds a case value into its enum\'s alias, with no AsEnum wrap', function (string $column, string $type) {
+    test('a column\'s getter absorbs a case value into its enum\'s alias, with no AsEnum wrap', function (string $column, string $type) {
         $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();
 
         expect($data->columns[$column]['type'])->toBe($type)
@@ -813,8 +813,8 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself or a case\'s value' => ['category', 'StatusType'],
     ]);
 
-    test('the model fold keeps a case literal of an enum the key wraps, or beside a name a class on the key prints', function () {
-        $transformer = new FoldingModelTransformer(Post::class);
+    test('the model\'s absorbing keeps a case literal of an enum the key wraps, or beside a name a class on the key prints', function () {
+        $transformer = new AbsorbingModelTransformer(Post::class);
         $info = [
             ...LaravelTsPublish::emptyTypeScriptInfo(),
             'type' => '0 | StatusType',
@@ -823,15 +823,15 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             'enumFqcns' => [Status::class],
         ];
 
-        expect($transformer->folded($info))->toBe([...$info, 'type' => 'StatusType', 'sendsEnumScalar' => true])
-            ->and($transformer->folded([...$info, 'wrappedEnumFqcns' => [Status::class]])['type'])->toBe('0 | StatusType')
-            ->and($transformer->folded([...$info, 'classes' => ['StatusType'], 'classFqcns' => [User::class]])['type'])
+        expect($transformer->absorbed($info))->toBe([...$info, 'type' => 'StatusType', 'sendsEnumScalar' => true])
+            ->and($transformer->absorbed([...$info, 'wrappedEnumFqcns' => [Status::class]])['type'])->toBe('0 | StatusType')
+            ->and($transformer->absorbed([...$info, 'classes' => ['StatusType'], 'classFqcns' => [User::class]])['type'])
             ->toBe('0 | StatusType')
-            ->and($transformer->folded([...$info, 'classes' => ['Report'], 'classFqcns' => ['Some\\Models\\StatusType']])['type'])
+            ->and($transformer->absorbed([...$info, 'classes' => ['Report'], 'classFqcns' => ['Some\\Models\\StatusType']])['type'])
             ->toBe('StatusType');
     });
 
-    test('an appended getter folds a case value into its enum\'s alias, with no AsEnum wrap', function () {
+    test('an appended getter absorbs a case value into its enum\'s alias, with no AsEnum wrap', function () {
         $data = (new ModelTransformer(EnumValueAccessorPost::class))->data();
 
         expect($data->appends['appended_status_or_draft']['type'])->toBe('StatusType')

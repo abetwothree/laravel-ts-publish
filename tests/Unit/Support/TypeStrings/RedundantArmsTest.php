@@ -188,6 +188,17 @@ describe('kept', function () {
     });
 });
 
+describe('joined', function () {
+    test('joins the arms as one union, each once and without each a sibling admits', function (array $arms, string $joined) {
+        expect(RedundantArms::joined($arms))->toBe($joined);
+    })->with([
+        'a repeated arm' => [['string[]', 'number', 'string[]'], 'string[] | number'],
+        'never[] beside a list' => [['never[]', 'PriorityType[]', 'never[]'], 'PriorityType[]'],
+        'never[] alone, twice' => [['never[]', 'never[]'], 'never[]'],
+        'one arm' => [['string'], 'string'],
+    ]);
+});
+
 describe('absorbedReporting', function () {
     test('gives the type absorbed() gives, and whether a literal was among the arms it left out', function (string $type, string $expected, bool $tookLiteral) {
         expect(RedundantArms::absorbedReporting($type, redundantArmsAliases()))->toBe([$expected, $tookLiteral])
@@ -237,7 +248,7 @@ test('keeps a subset of the arms, every token, and its own answer, each dropped 
         $left,
         static fn (string $by): bool => match (true) {
             $arm === 'never[]' => redundantArmsAdmitsEmptyList($by),
-            LiteralArm::isLiteral($arm) => in_array(LiteralArm::value($arm), $aliases[$by] ?? [], true),
+            LiteralArm::value($arm) !== null => in_array(LiteralArm::value($arm), $aliases[$by] ?? [], true),
             default => false,
         },
     ));

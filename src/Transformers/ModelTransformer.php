@@ -417,7 +417,7 @@ class ModelTransformer extends CoreTransformer
             $cast = $attribute['cast'];
 
             // Resolves through the accessor → cast → DB type waterfall, which adds the column's null.
-            $resolved = $this->withRedundantArmsFolded($resolver->resolveAttribute($this->findable, $name));
+            $resolved = $this->withRedundantArmsAbsorbed($resolver->resolveAttribute($this->findable, $name));
 
             // Fall back to the raw cast so enum and class metadata still propagates.
             $typings = $this->exportedTypeInfo($resolved['type'] !== 'unknown' ? $resolved : match ($cast) {
@@ -495,7 +495,7 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
-            $resolved = $this->withRedundantArmsFolded($this->exportedTypeInfo($resolved));
+            $resolved = $this->withRedundantArmsAbsorbed($this->exportedTypeInfo($resolved));
 
             if ($isAppended) {
                 $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
@@ -689,17 +689,17 @@ class ModelTransformer extends CoreTransformer
      * The attribute's type info with each union arm a sibling admits left out, flagged as sending its enum's scalar
      * where an alias took a case literal in.
      *
-     * The model file is where an accessor publishes; each reader of the attribute folds at its own publisher's pass.
+     * The model file is where an accessor publishes; each reader of the attribute absorbs at its own publisher's pass.
      *
      * @param  TypeScriptTypeInfo  $info
      * @return TypeScriptTypeInfo
      */
-    protected function withRedundantArmsFolded(array $info): array
+    protected function withRedundantArmsAbsorbed(array $info): array
     {
         $aliasLiterals = EnumValueTypes::aliasLiterals(
             $info['enumFqcns'],
-            $info['classes'],
             $info['wrappedEnumFqcns'] ?? [],
+            $info['classes'],
         );
         [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals);
 

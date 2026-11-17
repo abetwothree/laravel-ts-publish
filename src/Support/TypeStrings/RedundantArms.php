@@ -83,6 +83,16 @@ final class RedundantArms
     }
 
     /**
+     * The arms joined as one union, each once, without each a sibling admits.
+     *
+     * @param  list<string>  $arms
+     */
+    public static function joined(array $arms): string
+    {
+        return implode(' | ', self::kept(array_values(array_unique($arms))));
+    }
+
+    /**
      * Whether $by admits every value $arm spells.
      *
      * @param  AliasLiterals  $aliasLiterals

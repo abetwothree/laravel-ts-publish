@@ -10,7 +10,6 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use BackedEnum;
@@ -169,41 +168,40 @@ final class EnumValueTypes
     }
 
     /**
-     * Each usable alias of these enums beside the case scalars it admits. Enums spelling one alias name admit under it
-     * only what all of them admit; a name in `$takenNames`, which another class on the same key prints, is left out,
-     * and an enum in `$wrapped`, which the key wraps in an `EnumResource`, admits nothing under the names it spells.
-     *
-     * @param  list<class-string>  $enums
-     * @param  list<string>  $takenNames
-     * @param  list<class-string>  $wrapped
-     * @return AliasLiterals
-     */
-    public static function aliasLiterals(array $enums, array $takenNames = [], array $wrapped = []): array
-    {
-        return self::admittedLiterals($enums, $wrapped, $takenNames);
-    }
-
-    /**
-     * Each usable alias of the enums a key or value reads, as aliasLiterals() reads them. An enum it wraps in an
-     * `EnumResource` admits nothing under the names it spells, and a name its models or resources publish under is left
-     * out.
+     * Each usable alias of the enums a key or value reads beside the case scalars it admits. Enums spelling one alias
+     * name admit under it only what all of them admit; an enum in `$wrapped`, which the key wraps in an `EnumResource`,
+     * admits nothing under the names it spells, and a name in `$takenNames`, which another class on the key prints, is
+     * left out.
      *
      * @param  list<class-string>  $read  the enums it reads directly
      * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`
-     * @param  list<class-string>  $models
-     * @param  list<class-string>  $resources
+     * @param  list<string>  $takenNames
      * @return AliasLiterals
      */
-    public static function channelAliasLiterals(array $read, array $wrapped, array $models, array $resources): array
+    public static function aliasLiterals(array $read, array $wrapped = [], array $takenNames = []): array
     {
         if ($read === []) {
             return [];
         }
 
-        return self::admittedLiterals($read, $wrapped, [
-            ...array_map(class_basename(...), $models),
-            ...array_map(static fn (string $resource): string => TsNaming::resourceTypeName($resource), $resources),
-        ]);
+        $admitted = [];
+        $usable = [];
+
+        foreach (array_unique([...$read, ...$wrapped]) as $enum) {
+            $own = in_array($enum, $wrapped, true) ? [] : self::ownAliasLiterals($enum);
+
+            // A name this enum spells but cannot use admits nothing, since a token of that name may be this enum's.
+            foreach (ValueResult::enumNames($enum) as $alias) {
+                $scalars = $own[$alias] ?? [];
+                $admitted[$alias] = array_key_exists($alias, $admitted)
+                    ? self::sharedScalars($admitted[$alias], $scalars)
+                    : $scalars;
+            }
+
+            $usable += array_fill_keys(array_keys($own), true);
+        }
+
+        return array_diff_key(array_intersect_key($admitted, $usable), array_flip($takenNames));
     }
 
     /**
@@ -275,37 +273,6 @@ final class EnumValueTypes
         return $carriesImports
             && PublishedEnums::includes($cases['enum'])
             && ! ($fromNames ? $cases['renamed'] : $cases['revalued']);
-    }
-
-    /**
-     * Each alias the enums spell beside the scalars all of them admit under it, a wrapped enum admitting none; an alias
-     * none of them can use, and a taken name, are left out.
-     *
-     * @param  list<class-string>  $read
-     * @param  list<class-string>  $wrapped
-     * @param  list<string>  $takenNames
-     * @return AliasLiterals
-     */
-    private static function admittedLiterals(array $read, array $wrapped, array $takenNames): array
-    {
-        $admitted = [];
-        $usable = [];
-
-        foreach (array_unique([...$read, ...$wrapped]) as $enum) {
-            $own = in_array($enum, $wrapped, true) ? [] : self::ownAliasLiterals($enum);
-
-            // A name this enum spells but cannot use admits nothing, since a token of that name may be this enum's.
-            foreach (ValueResult::enumNames($enum) as $alias) {
-                $scalars = $own[$alias] ?? [];
-                $admitted[$alias] = array_key_exists($alias, $admitted)
-                    ? self::sharedScalars($admitted[$alias], $scalars)
-                    : $scalars;
-            }
-
-            $usable += array_fill_keys(array_keys($own), true);
-        }
-
-        return array_diff_key(array_intersect_key($admitted, $usable), array_flip($takenNames));
     }
 
     /**
