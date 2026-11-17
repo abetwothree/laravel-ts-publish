@@ -417,7 +417,7 @@ class ModelTransformer extends CoreTransformer
             $cast = $attribute['cast'];
 
             // Resolves through the accessor → cast → DB type waterfall, which adds the column's null.
-            $resolved = $resolver->resolveAttribute($this->findable, $name);
+            $resolved = $this->withRedundantArmsFolded($resolver->resolveAttribute($this->findable, $name));
 
             // Fall back to the raw cast so enum and class metadata still propagates.
             $typings = $this->exportedTypeInfo($resolved['type'] !== 'unknown' ? $resolved : match ($cast) {
@@ -686,17 +686,21 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * The accessor's type info with each union arm a sibling admits left out, flagged as sending its enum's scalar
+     * The attribute's type info with each union arm a sibling admits left out, flagged as sending its enum's scalar
      * where an alias took a case literal in.
      *
-     * The model file is where the accessor publishes; each reader of the attribute folds at its own publisher's pass.
+     * The model file is where an accessor publishes; each reader of the attribute folds at its own publisher's pass.
      *
      * @param  TypeScriptTypeInfo  $info
      * @return TypeScriptTypeInfo
      */
     protected function withRedundantArmsFolded(array $info): array
     {
-        $aliasLiterals = EnumValueTypes::channelAliasLiterals($info['enumFqcns'], [], $info['classFqcns'], []);
+        $aliasLiterals = EnumValueTypes::aliasLiterals(
+            $info['enumFqcns'],
+            $info['classes'],
+            $info['wrappedEnumFqcns'] ?? [],
+        );
         [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals);
 
         return [...$info, 'type' => $type, ...($tookLiteral ? ['sendsEnumScalar' => true] : [])];

@@ -170,15 +170,17 @@ final class EnumValueTypes
 
     /**
      * Each usable alias of these enums beside the case scalars it admits. Enums spelling one alias name admit under it
-     * only what all of them admit; a name in `$takenNames`, which another class on the same key prints, is left out.
+     * only what all of them admit; a name in `$takenNames`, which another class on the same key prints, is left out,
+     * and an enum in `$wrapped`, which the key wraps in an `EnumResource`, admits nothing under the names it spells.
      *
      * @param  list<class-string>  $enums
      * @param  list<string>  $takenNames
+     * @param  list<class-string>  $wrapped
      * @return AliasLiterals
      */
-    public static function aliasLiterals(array $enums, array $takenNames = []): array
+    public static function aliasLiterals(array $enums, array $takenNames = [], array $wrapped = []): array
     {
-        return self::admittedLiterals($enums, [], $takenNames);
+        return self::admittedLiterals($enums, $wrapped, $takenNames);
     }
 
     /**

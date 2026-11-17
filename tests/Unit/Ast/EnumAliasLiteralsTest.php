@@ -120,6 +120,10 @@ it('leaves out an alias a model or resource on the same key publishes under', fu
     ]);
 });
 
+it('admits nothing under the names of an enum also wrapped in an EnumResource', function () {
+    expect(EnumValueTypes::aliasLiterals([MediaType::class], [], [MediaType::class]))->toBe([]);
+});
+
 it('admits nothing for no enum', function () {
     expect(EnumValueTypes::aliasLiterals([]))->toBe([]);
 });

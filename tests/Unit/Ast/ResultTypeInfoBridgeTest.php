@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
+use Workbench\App\Enums\MediaType;
+use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
@@ -52,4 +55,23 @@ it('reads the first class from modelFqcn when the result carries it there, ahead
 
     expect($info['classFqcns'])->toBe([User::class, CrmUser::class])
         ->and($info['classTokenFqcns'])->toBe([User::class, CrmUser::class]);
+});
+
+it('carries each enum the result wraps in an EnumResource, once', function () {
+    $info = (new ResultTypeInfoBridge)->toTypeInfo([
+        'type' => 'PriorityType | { s: AsEnum<typeof Status> } | AsEnum<typeof MediaType>',
+        'optional' => false,
+        'directEnumFqcn' => Priority::class,
+        'enumFqcn' => Priority::class,
+        'embeddedEnumResourceFqcns' => [Status::class],
+        'multiEnumResourceFqcns' => [MediaType::class, Priority::class],
+    ]);
+
+    expect($info['wrappedEnumFqcns'] ?? null)->toBe([Priority::class, MediaType::class, Status::class]);
+});
+
+it('carries no wrapped enum for a result that wraps none', function () {
+    $info = (new ResultTypeInfoBridge)->toTypeInfo(['type' => 'PriorityType', 'optional' => false, 'directEnumFqcn' => Priority::class]);
+
+    expect($info)->not->toHaveKey('wrappedEnumFqcns');
 });

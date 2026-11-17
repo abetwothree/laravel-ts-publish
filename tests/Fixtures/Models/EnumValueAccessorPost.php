@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models;
 
+use AbeTwoThree\LaravelTsPublish\EnumResource;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 
@@ -12,6 +14,8 @@ use Workbench\App\Models\Post;
 class EnumValueAccessorPost extends Post
 {
     protected $table = 'posts';
+
+    protected $appends = ['appended_status_or_draft'];
 
     /** The status's value. */
     protected function statusValue(): Attribute
@@ -67,5 +71,43 @@ class EnumValueAccessorPost extends Post
     protected function statusOrDraftOrPublished(): Attribute
     {
         return Attribute::get(fn () => $this->exists ? $this->status_or_draft : Status::Published);
+    }
+
+    /** The priority wrapped once saved, its value when pinned, else Low's value. */
+    protected function priorityWrapValueOrLow(): Attribute
+    {
+        return Attribute::get(fn () => match (true) {
+            $this->exists => EnumResource::make($this->priority),
+            $this->is_pinned => $this->priority->value,
+            default => Priority::Low->value,
+        });
+    }
+
+    /** High wrapped once saved, Medium's value when pinned, else Low's value. */
+    protected function priorityHighWrapValueOrLow(): Attribute
+    {
+        return Attribute::get(fn () => match (true) {
+            $this->exists => EnumResource::make(Priority::High),
+            $this->is_pinned => Priority::from(1)->value,
+            default => Priority::Low->value,
+        });
+    }
+
+    /** The status's value, or Draft's until the post is saved, appended to the model's array. */
+    protected function appendedStatusOrDraft(): Attribute
+    {
+        return Attribute::get(fn () => $this->exists ? $this->status->value : Status::Draft->value);
+    }
+
+    /** The featured image column, read as the status's value, or Draft's until the post is saved. */
+    protected function featuredImageUrl(): Attribute
+    {
+        return Attribute::get(fn () => $this->exists ? $this->status->value : Status::Draft->value);
+    }
+
+    /** The category column, read as the status itself, or Draft's value until the post is saved. */
+    protected function category(): Attribute
+    {
+        return Attribute::get(fn () => $this->exists ? $this->status : Status::Draft->value);
     }
 }

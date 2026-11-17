@@ -95,6 +95,7 @@ use UnitEnum;
  *    closedToDottedKeys?: bool,
  *    listKeys?: bool,
  *    sendsEnumScalar?: bool,
+ *    wrappedEnumFqcns?: list<class-string>,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
  * @phpstan-type ShapeTypeInfo = array{
@@ -125,7 +126,8 @@ use UnitEnum;
  *
  * `sendsEnumScalar`, when true, says the enum alias `type` spells stands for a scalar the value sends, a `->value` or
  * `->name` read or a case literal the alias took in, so a model's Resource interface keeps it rather than print
- * `AsEnum<typeof X>`.
+ * `AsEnum<typeof X>`. `wrappedEnumFqcns` lists each enum the value wraps in an `EnumResource`, whose alias takes in no
+ * case literal there.
  *
  * A docblock's `tokenFqcns` holds, for each token of a name a class in `type` is spelled with, the class a generated
  * file exports behind it, or null where an override spells that name, in a nested shape or a container too: a reader
@@ -1586,6 +1588,15 @@ class LaravelTsPublish
 
         if ($lists !== [] && array_all($lists, fn (array $info): bool => $info['listKeys'] ?? false)) {
             $result['listKeys'] = true;
+        }
+
+        $wrapped = array_values(array_unique(array_merge(...array_map(
+            fn (array $info): array => $info['wrappedEnumFqcns'] ?? [],
+            $infos,
+        ))));
+
+        if ($wrapped !== []) {
+            $result['wrappedEnumFqcns'] = $wrapped;
         }
 
         return $result;

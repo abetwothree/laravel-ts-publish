@@ -334,14 +334,15 @@ describe('AccessorBodyAnalyzer hands its readers the body unsettled', function (
         'the value or a string case value' => [Payment::class, 'status_or_pending', "'pending' | PaymentStatusType"],
     ]);
 
-    test('a getter returning the enum itself, or it beside a case value, does not say it sends the enum\'s scalar', function (string $attribute, string $type) {
-        $info = resolve(AccessorBodyAnalyzer::class)->analyze(EnumValueAccessorPost::class, $attribute);
+    test('a getter that may return the enum itself does not say it sends the enum\'s scalar', function (string $model, string $attribute, string $type) {
+        $info = resolve(AccessorBodyAnalyzer::class)->analyze($model, $attribute);
 
         expect($info['type'] ?? null)->toBe($type)
             ->and($info)->not->toHaveKey('sendsEnumScalar');
     })->with([
-        'the enum itself' => ['status_case_or_value', 'StatusType'],
-        'the enum itself or a case\'s value' => ['status_case_or_draft', 'StatusType | 0'],
+        'the enum itself' => [EnumShapePost::class, 'plain_state', 'StatusType'],
+        'the enum itself or the value' => [EnumValueAccessorPost::class, 'status_case_or_value', 'StatusType'],
+        'the enum itself or a case\'s value' => [EnumValueAccessorPost::class, 'status_case_or_draft', 'StatusType | 0'],
     ]);
 });
 
