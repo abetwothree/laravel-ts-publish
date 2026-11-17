@@ -59,6 +59,8 @@ class HelperCaseProbe extends HelperCaseProbeBase
             'falls_off_value' => $this->fallsOff()->value,
             'property_value' => $this->heldStatus()->value,
             'typed_value' => $this->typedDraft()->value,
+            'null_arm_value' => $this->draftOrNull()->value,
+            'doc_typed_value' => $this->docTypedDraft()->value,
         ];
     }
 
@@ -134,6 +136,22 @@ class HelperCaseProbe extends HelperCaseProbeBase
 
     /** A case behind the enum's own declaration. */
     public function typedDraft(): Status
+    {
+        return Status::Draft;
+    }
+
+    /** A case, or a `null` a plain `->` read assumes away. */
+    public function draftOrNull(): mixed
+    {
+        return $this->c ? null : Status::Draft;
+    }
+
+    /**
+     * A case behind a docblock naming the enum.
+     *
+     * @return Status
+     */
+    public function docTypedDraft()
     {
         return Status::Draft;
     }

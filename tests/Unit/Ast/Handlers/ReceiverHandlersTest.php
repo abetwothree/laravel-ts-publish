@@ -883,6 +883,8 @@ describe('ReceiverPropertyFetchHandler', function () {
         'an untyped helper that can run off its end stays unknown' => ['falls_off_value', 'unknown'],
         'a helper returning a property stays unknown' => ['property_value', 'unknown'],
         'a helper declaring the enum keeps its alias' => ['typed_value', 'StatusType'],
+        'a -> off a helper returning a case or null leaves the null out' => ['null_arm_value', '0'],
+        'a helper whose @return tag names the enum keeps its alias' => ['doc_typed_value', 'StatusType'],
     ]);
 
     // PHP's own answer for the rows above, in each state the probe's flags reach.
@@ -911,6 +913,8 @@ describe('ReceiverPropertyFetchHandler', function () {
             'falls_off_value' => Status::Draft->value,
             'property_value' => Status::Draft->value,
             'typed_value' => Status::Draft->value,
+            'null_arm_value' => Status::Draft->value,
+            'doc_typed_value' => Status::Draft->value,
         ])
             ->and([$flipped->either()->value, $flipped->maybeDraft()?->value, $flipped->matched()->name, $flipped->fallsOff()])
             ->toBe([Status::Draft->value, Status::Draft->value, Status::Published->name, null]);
