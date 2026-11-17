@@ -63,22 +63,19 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
 
         $name = $expr->name->toString();
         $caseMember = $this->caseMember($expr->var, $name, $scope);
-        $receivers = resolve(ReceiverClassResolver::class);
-        $receiver = $caseMember === null ? $receivers->resolve($expr->var, $scope) : null;
-
-        // A helper declared to return a class keeps that class's member; only one naming none is read by its body.
-        if ($caseMember === null && $receiver === null) {
-            $caseMember = $this->helperCaseMember($expr->var, $name, $scope);
-        }
 
         if ($caseMember !== null) {
-            return $expr instanceof NullsafePropertyFetch
-                ? [...$caseMember, 'type' => TsTypeString::withNullArm($caseMember['type'])]
-                : $caseMember;
+            return $this->withOwnNullArm($expr, $caseMember);
         }
 
+        $receivers = resolve(ReceiverClassResolver::class);
+        $receiver = $receivers->resolve($expr->var, $scope);
+
         if ($receiver === null) {
-            return null;
+            // A helper declared to return a class keeps that class's member; only one naming none is read by its body.
+            $helperMember = $this->helperCaseMember($expr->var, $name, $scope);
+
+            return $helperMember === null ? null : $this->withOwnNullArm($expr, $helperMember);
         }
 
         $merged = ReceiverMemberReader::value($receiver, $name, $scope);
@@ -116,9 +113,9 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
     }
 
     /**
-     * A member read off what a `$this->m()`, `self::m()`, `static::m()` or `parent::m()` helper returns, each returned
-     * expression an arm whose cases resolve in the class declaring the helper; null for any other receiver or an
-     * unlisted body.
+     * A member read off what a `$this->m()`, `$this::m()`, `self::m()`, `static::m()` or `parent::m()` helper returns,
+     * each returned expression an arm whose cases resolve in the class declaring the helper; null for any other
+     * receiver or an unlisted body.
      *
      * @return ValueExpressionResult|null
      */
@@ -200,5 +197,18 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         }
 
         return $case instanceof UnitEnum ? EnumValueTypes::caseMember($case, $name) : null;
+    }
+
+    /**
+     * A case member as the read sends it, with `| null` for its own `?->`.
+     *
+     * @param  ValueExpressionResult  $member
+     * @return ValueExpressionResult
+     */
+    private function withOwnNullArm(PropertyFetch|NullsafePropertyFetch $expr, array $member): array
+    {
+        return $expr instanceof NullsafePropertyFetch
+            ? [...$member, 'type' => TsTypeString::withNullArm($member['type'])]
+            : $member;
     }
 }

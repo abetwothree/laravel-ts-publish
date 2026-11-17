@@ -164,11 +164,13 @@ it('lists every expression a method returns, each branch of an if included', fun
         ->and($returned[1] ?? null)->toBeInstanceOf(ConstFetch::class);
 });
 
-// A generator's call returns the Generator, a bare return a value no expression spells, and a missing method nothing.
+// A generator's call returns the Generator, a bare return or an untyped body's end a null no expression spells, and a
+// missing method nothing.
 it('lists no returned expressions where the method\'s returns spell no value its caller gets', function (string $class, string $method) {
     expect(resolve(ReturnLiteralReader::class)->returnedExpressions($class, $method))->toBeNull();
 })->with([
     'a generator' => [ReturnLiteralProbe::class, 'generatedName'],
     'a bare return' => [LiteralNullReturns::class, 'returnsNothing'],
+    'an untyped body that can run to its end' => [LiteralNullReturns::class, 'fallsOff'],
     'a method that does not exist' => [ReturnLiteralProbe::class, 'notAMethod'],
 ]);

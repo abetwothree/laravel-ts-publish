@@ -32,6 +32,7 @@ use PhpParser\Node\Stmt\Break_;
 use PhpParser\Node\Stmt\Case_;
 use PhpParser\Node\Stmt\Catch_;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Continue_;
 use PhpParser\Node\Stmt\Do_;
 use PhpParser\Node\Stmt\ElseIf_;
@@ -101,21 +102,13 @@ final class ReturnLiteralReader
             return false;
         }
 
-        // `self::` and a private method resolve against the class whose body this is, a parent's or a trait user's.
-        $declaring = new ReflectionMethod($class, $method)->getDeclaringClass()->getName();
-
-        // A declared return type throws where the body would end without a value.
-        if ($function->returnType === null
-            && ($this->canFinish($function->stmts, $class, $declaring) || $this->hasBareReturn($function->stmts))
-        ) {
-            return true;
-        }
-
-        return array_any($this->collectReturnExpressions($function->stmts), $this->holdsNull(...));
+        return $this->untypedEndsWithoutValue($function, $class, $method)
+            || array_any($this->collectReturnExpressions($function->stmts), $this->holdsNull(...));
     }
 
     /**
-     * Every expression a method's own body returns; null where it yields, has no body, or has a return with no value.
+     * Every expression a method's own body returns; null where it yields, has no body, has a return with no value, or
+     * has no return type and can run to its end.
      *
      * @param  class-string  $class
      * @return list<Expr>|null
@@ -124,11 +117,15 @@ final class ReturnLiteralReader
     {
         // MethodLocator memoizes its parse, which is what records the file, so a warm read would record nothing.
         DependencyRecorder::recordClass($class);
-        $stmts = resolve(MethodLocator::class)->locate($class, $method)?->method->stmts;
+        $function = resolve(MethodLocator::class)->locate($class, $method)?->method;
 
-        return $stmts === null || $this->yields($stmts) || $this->hasBareReturn($stmts)
-            ? null
-            : $this->collectReturnExpressions($stmts);
+        if ($function?->stmts === null || $this->yields($function->stmts) || $this->hasBareReturn($function->stmts)
+            || $this->untypedEndsWithoutValue($function, $class, $method)
+        ) {
+            return null;
+        }
+
+        return $this->collectReturnExpressions($function->stmts);
     }
 
     /**
@@ -180,6 +177,25 @@ final class ReturnLiteralReader
         }
 
         return $items;
+    }
+
+    /**
+     * Whether a method with no return type can end without a value, through a `return;` or by running to its end; a
+     * declared return type throws there instead.
+     *
+     * @param  class-string  $class
+     */
+    private function untypedEndsWithoutValue(ClassMethod $function, string $class, string $method): bool
+    {
+        if ($function->returnType !== null) {
+            return false;
+        }
+
+        $stmts = $function->stmts ?? [];
+        // `self::` and a private method resolve against the class whose body this is, a parent's or a trait user's.
+        $declaring = new ReflectionMethod($class, $method)->getDeclaringClass()->getName();
+
+        return $this->canFinish($stmts, $class, $declaring) || $this->hasBareReturn($stmts);
     }
 
     /**

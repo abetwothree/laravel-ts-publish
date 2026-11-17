@@ -4,16 +4,25 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\Concerns\PicksHelperCases;
+use LogicException;
 use Workbench\App\Enums\Status;
+use Workbench\App\Enums\Status as Level;
 
 /**
  * Members read off the enum cases a helper returns: helpers whose declaration names no class, reached through `$this->`,
- * `static::`, `self::` and `parent::`, beside one returning a property and one declaring the enum. Not final, so Pint
+ * `$this::`, `static::`, `self::`, `parent::` and a trait, beside ones PHP may send no case from. Not final, so Pint
  * keeps `static::` as written.
  */
 class HelperCaseProbe extends HelperCaseProbeBase
 {
+    use PicksHelperCases;
+
+    public const FALLBACK = Level::Published;
+
     public bool $c = false;
+
+    public int $n = 1;
 
     public Status $status = Status::Draft;
 
@@ -39,6 +48,15 @@ class HelperCaseProbe extends HelperCaseProbeBase
             'static_value' => static::staticDraft()->value,
             'self_value' => self::staticDraft()->value,
             'parent_value' => parent::published()->value,
+            'this_static_value' => $this::published()->value,
+            'trait_value' => $this->traitHigh()->value,
+            'trait_name' => $this->traitHigh()->name,
+            'trait_self_constant' => $this->traitFallback()->value,
+            'private_parent' => $this->baseArray(),
+            'matched_value' => $this->matched()->value,
+            'matched_name' => $this->matched()->name,
+            'constant_value' => $this->constant()->value,
+            'falls_off_value' => $this->fallsOff()->value,
             'property_value' => $this->heldStatus()->value,
             'typed_value' => $this->typedDraft()->value,
         ];
@@ -76,6 +94,36 @@ class HelperCaseProbe extends HelperCaseProbeBase
     public function published(): mixed
     {
         return Status::Draft;
+    }
+
+    /** A case the parent's private `pick()` does not return. */
+    public function pick(): mixed
+    {
+        return Status::Published;
+    }
+
+    /** A `match` of cases with a `throw` default. */
+    public function matched(): mixed
+    {
+        return match ($this->n) {
+            1 => Status::Draft,
+            2 => Status::Published,
+            default => throw new LogicException('No status'),
+        };
+    }
+
+    /** A class constant holding a case. */
+    public function constant(): mixed
+    {
+        return self::FALLBACK;
+    }
+
+    /** A case, or a `null` PHP sends by running off the end, which no return spells. */
+    public function fallsOff()
+    {
+        if (! $this->c) {
+            return Status::Draft;
+        }
     }
 
     /** A property, which no case spells. */
