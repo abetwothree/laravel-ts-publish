@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use BackedEnum;
 use Closure;
@@ -657,6 +658,29 @@ final class ValueResult
     public static function enumNames(string $fqcn): array
     {
         return [self::enumTypeName($fqcn), ...self::enumSiblingNames($fqcn)];
+    }
+
+    /**
+     * The result with each union arm a sibling admits left out of its type: `never[]` beside a list, and a case literal
+     * beside an alias of an enum it reads, and does not wrap, that admits the literal.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function withRedundantArmsAbsorbed(array $result): array
+    {
+        $aliasLiterals = EnumValueTypes::channelAliasLiterals(
+            self::directEnumChannelFqcns($result),
+            [
+                ...(isset($result['enumFqcn']) ? [$result['enumFqcn']] : []),
+                ...($result['multiEnumResourceFqcns'] ?? []),
+                ...($result['embeddedEnumResourceFqcns'] ?? []),
+            ],
+            self::modelChannelFqcns($result),
+            self::resourceChannelFqcns($result),
+        );
+
+        return [...$result, 'type' => RedundantArms::absorbed($result['type'], $aliasLiterals)];
     }
 
     /**

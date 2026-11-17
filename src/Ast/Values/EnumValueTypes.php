@@ -9,6 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use BackedEnum;
 use JsonSerializable;
 use ReflectionEnum;
@@ -21,6 +25,7 @@ use UnitEnum;
  * docs/components/receiver-types.md.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type AliasLiterals from RedundantArms
  *
  * @phpstan-type EnumCases = array{
  *     enum: class-string,
@@ -80,7 +85,7 @@ final class EnumValueTypes
             return null;
         }
 
-        if (array_any($cases['values'], fn (int|string $value): bool => is_int($value) && abs($value) > self::MAX_SAFE_INTEGER)) {
+        if (array_any($cases['values'], self::unsafeInteger(...))) {
             return self::typed('number');
         }
 
@@ -164,6 +169,42 @@ final class EnumValueTypes
     }
 
     /**
+     * Each usable alias of these enums beside the case scalars it admits. Enums spelling one alias name admit under it
+     * only what all of them admit; a name in `$takenNames`, which another class on the same key prints, is left out.
+     *
+     * @param  list<class-string>  $enums
+     * @param  list<string>  $takenNames
+     * @return AliasLiterals
+     */
+    public static function aliasLiterals(array $enums, array $takenNames = []): array
+    {
+        return self::admittedLiterals($enums, [], $takenNames);
+    }
+
+    /**
+     * Each usable alias of the enums a key or value reads, as aliasLiterals() reads them. An enum it wraps in an
+     * `EnumResource` admits nothing under the names it spells, and a name its models or resources publish under is left
+     * out.
+     *
+     * @param  list<class-string>  $read  the enums it reads directly
+     * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`
+     * @param  list<class-string>  $models
+     * @param  list<class-string>  $resources
+     * @return AliasLiterals
+     */
+    public static function channelAliasLiterals(array $read, array $wrapped, array $models, array $resources): array
+    {
+        if ($read === []) {
+            return [];
+        }
+
+        return self::admittedLiterals($read, $wrapped, [
+            ...array_map(class_basename(...), $models),
+            ...array_map(static fn (string $resource): string => TsNaming::resourceTypeName($resource), $resources),
+        ]);
+    }
+
+    /**
      * What the enum's cases spell, read once per process: a class's cases never change while it runs. Null when the
      * class is no enum or declares no case.
      *
@@ -235,6 +276,85 @@ final class EnumValueTypes
     }
 
     /**
+     * Each alias the enums spell beside the scalars all of them admit under it, a wrapped enum admitting none; an alias
+     * none of them can use, and a taken name, are left out.
+     *
+     * @param  list<class-string>  $read
+     * @param  list<class-string>  $wrapped
+     * @param  list<string>  $takenNames
+     * @return AliasLiterals
+     */
+    private static function admittedLiterals(array $read, array $wrapped, array $takenNames): array
+    {
+        $admitted = [];
+        $usable = [];
+
+        foreach (array_unique([...$read, ...$wrapped]) as $enum) {
+            $own = in_array($enum, $wrapped, true) ? [] : self::ownAliasLiterals($enum);
+
+            // A name this enum spells but cannot use admits nothing, since a token of that name may be this enum's.
+            foreach (ValueResult::enumNames($enum) as $alias) {
+                $scalars = $own[$alias] ?? [];
+                $admitted[$alias] = array_key_exists($alias, $admitted)
+                    ? self::sharedScalars($admitted[$alias], $scalars)
+                    : $scalars;
+            }
+
+            $usable += array_fill_keys(array_keys($own), true);
+        }
+
+        return array_diff_key(array_intersect_key($admitted, $usable), array_flip($takenNames));
+    }
+
+    /**
+     * One enum's aliases that spell what PHP sends, beside the scalars each admits, as aliasUsable() rules for a reader
+     * carrying imports; none past the safe integer range, and none the enum's own override is spelled like.
+     *
+     * @return AliasLiterals
+     */
+    private static function ownAliasLiterals(string $enum): array
+    {
+        $cases = self::cases($enum);
+
+        if ($cases === null || array_any($cases['values'], self::unsafeInteger(...))) {
+            return [];
+        }
+
+        $literals = [];
+
+        if (self::aliasUsable($cases, carriesImports: true, fromNames: false)) {
+            $literals[ValueResult::enumTypeName($enum)] = $cases['backed'] ? $cases['values'] : $cases['names'];
+        }
+
+        if ($cases['backed'] && self::aliasUsable($cases, carriesImports: true, fromNames: true)) {
+            $literals[ValueResult::enumKindName($enum)] = $cases['names'];
+        }
+
+        $override = LaravelTsPublish::retypedEnumType($enum);
+
+        return $override === null ? $literals : array_filter(
+            $literals,
+            static fn (string $alias): bool => ! TsTypeString::typeNameOccursIn($alias, $override),
+            ARRAY_FILTER_USE_KEY,
+        );
+    }
+
+    /**
+     * The scalars of the first list the second also holds, in order.
+     *
+     * @param  list<int|string>  $scalars
+     * @param  list<int|string>  $others
+     * @return list<int|string>
+     */
+    private static function sharedScalars(array $scalars, array $others): array
+    {
+        return array_values(array_filter(
+            $scalars,
+            static fn (int|string $scalar): bool => in_array($scalar, $others, true),
+        ));
+    }
+
+    /**
      * The enum's published `…Type` alias, or with `$kind` its `…Kind`, carrying the enum so its file imports it.
      *
      * @param  class-string  $enum
@@ -250,7 +370,15 @@ final class EnumValueTypes
      */
     private static function scalarLiteral(int|string $value): string
     {
-        return is_int($value) && abs($value) > self::MAX_SAFE_INTEGER ? 'number' : self::literals([$value]);
+        return self::unsafeInteger($value) ? 'number' : self::literals([$value]);
+    }
+
+    /**
+     * Whether a case scalar is an integer JavaScript reads as a neighbouring number.
+     */
+    private static function unsafeInteger(int|string $value): bool
+    {
+        return is_int($value) && abs($value) > self::MAX_SAFE_INTEGER;
     }
 
     /**

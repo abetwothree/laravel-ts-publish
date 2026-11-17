@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +33,7 @@ use LogicException;
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
+ * @phpstan-import-type AliasLiterals from RedundantArms
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -911,8 +914,9 @@ class MethodAnalysis
      */
     public function rewritePropertyTypes(Closure $rewrite): void
     {
+        // An internal function's callable, such as `strtolower(...)`, throws on the row rewriteTypes() also passes.
         $this->rewriteTypes(
-            $rewrite,
+            static fn (string $type): string => $rewrite($type),
             fn (array $property): bool => ! isset($this->casts[$property['name']]) && ! ($property['keepsKeys'] ?? false),
         );
     }
@@ -937,6 +941,25 @@ class MethodAnalysis
         );
 
         DroppedUnionArms::stripped(array_values(array_unique($ids)));
+    }
+
+    /**
+     * Leave out of each key's type, body type and fill every union arm a sibling admits, except a key a cast types:
+     * `never[]` beside a list, and a case literal beside an alias of an enum the key reads and does not wrap.
+     */
+    public function absorbRedundantArms(): void
+    {
+        /** @var array<array-key, AliasLiterals> $aliasLiterals key name => what its aliases admit, read once */
+        $aliasLiterals = [];
+
+        $this->rewriteTypes(
+            function (string $type, array $property) use (&$aliasLiterals): string {
+                $name = $property['name'];
+
+                return RedundantArms::absorbed($type, $aliasLiterals[$name] ??= $this->aliasLiterals($name));
+            },
+            fn (array $property): bool => ! isset($this->casts[$property['name']]),
+        );
     }
 
     /**
@@ -1017,6 +1040,21 @@ class MethodAnalysis
         }
 
         return array_values(array_unique($fqcns));
+    }
+
+    /**
+     * Each usable alias of the enums a property reads and does not wrap, beside the case scalars it admits.
+     *
+     * @return AliasLiterals
+     */
+    private function aliasLiterals(string $name): array
+    {
+        return EnumValueTypes::channelAliasLiterals(
+            $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            $this->wrappedEnumFqcns($name),
+            $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
+            $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
+        );
     }
 
     /**
@@ -1104,7 +1142,7 @@ class MethodAnalysis
     /**
      * Rewrite the type, body type and fill of each property $takes takes.
      *
-     * @param  Closure(string): string  $rewrite
+     * @param  Closure(string, AnalyzedProperty): string  $rewrite  each text, beside the row it belongs to
      * @param  Closure(AnalyzedProperty): bool  $takes
      */
     private function rewriteTypes(Closure $rewrite, Closure $takes): void
@@ -1114,11 +1152,11 @@ class MethodAnalysis
                 continue;
             }
 
-            $property['type'] = $rewrite($property['type']);
+            $property['type'] = $rewrite($property['type'], $property);
 
             foreach (['bodyType', 'fillType'] as $field) {
                 if (isset($property[$field])) {
-                    $property[$field] = $rewrite($property[$field]);
+                    $property[$field] = $rewrite($property[$field], $property);
                 }
             }
         }

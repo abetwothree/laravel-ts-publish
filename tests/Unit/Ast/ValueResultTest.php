@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
+use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\UiTone;
@@ -370,6 +371,56 @@ describe('ValueResult::enumTypeName()', function () {
         expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
             ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
             ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
+    });
+});
+
+describe('ValueResult::withRedundantArmsAbsorbed()', function () {
+    test('leaves out a case literal beside the alias of the enum the result reads', function () {
+        $result = ['type' => "'image' | MediaTypeType", 'optional' => false, 'directEnumFqcn' => MediaType::class];
+
+        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe([...$result, 'type' => 'MediaTypeType']);
+    });
+
+    test('keeps a case literal of an enum the result also wraps in an EnumResource', function () {
+        $result = [
+            'type' => "'image' | MediaTypeType",
+            'optional' => false,
+            'directEnumFqcn' => MediaType::class,
+            'enumFqcn' => MediaType::class,
+        ];
+
+        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe($result);
+    });
+
+    test('keeps a case literal beside an alias no enum on the result admits it under', function () {
+        $result = ['type' => "'image' | MediaTypeType", 'optional' => false];
+
+        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe($result);
+    });
+
+    test('keeps a case literal of one of two same-named enums the result reads, the other wrapped', function () {
+        $result = [
+            'type' => "{ a: StatusKind; b: 'Draft' | StatusKind }",
+            'optional' => false,
+            'embeddedEnumFqcns' => [Status::class, CrmStatus::class],
+            'embeddedEnumResourceFqcns' => [CrmStatus::class],
+        ];
+
+        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe($result);
+    });
+
+    test('keeps a case literal beside an alias a model or resource of the result publishes under', function (string $channel, string $fqcn) {
+        $result = ['type' => "'image' | MediaTypeType", 'optional' => false, 'directEnumFqcn' => MediaType::class, $channel => $fqcn];
+
+        expect(ValueResult::withRedundantArmsAbsorbed($result))->toBe($result);
+    })->with([
+        'a model' => ['modelFqcn', 'Some\\Models\\MediaTypeType'],
+        'a resource' => ['resourceFqcn', 'Some\\Http\\Resources\\MediaTypeType'],
+    ]);
+
+    test('leaves out an empty list beside a list, with no enum on the result', function () {
+        expect(ValueResult::withRedundantArmsAbsorbed(['type' => 'never[] | PriorityType[]', 'optional' => false])['type'])
+            ->toBe('PriorityType[]');
     });
 });
 
