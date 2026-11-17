@@ -22,7 +22,7 @@
         "laravel-echo": "^2.6.3",
         "pusher-js": "^8.6.0",
         "typescript": "^7.0.2",
-        "vite": "^8.3.7"
+        "vite": "^8.3.8"
     },
     "devDependencies": {
         "patch-package": "^8.0.1"
