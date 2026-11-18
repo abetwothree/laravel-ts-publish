@@ -92,6 +92,7 @@ it('decides a guard by PHP\'s own operators on the value the read sends', functi
     '&& on false' => ['$this->is_pinned', '$this->is_pinned && $this->title !== \'\'', false, false],
     '&& on true' => ['$this->is_pinned', '$this->is_pinned && $this->title !== \'\'', true, null],
     'and on true, then true' => ['$this->is_pinned', '$this->is_pinned and true', true, true],
+    'or on false, then true' => ['$this->is_pinned', '$this->is_pinned or true', false, true],
     '|| on true' => ['$this->is_pinned', '$this->is_pinned || $this->x', true, true],
     '|| on false' => ['$this->is_pinned', '$this->is_pinned || $this->x', false, null],
     'an unknown read before the decided one' => ['$this->is_pinned', '$this->x && $this->is_pinned', false, null],
@@ -101,6 +102,10 @@ it('decides a guard by PHP\'s own operators on the value the read sends', functi
     'an operator outside the list' => ['$this->priority', '$this->priority->value > 1', Priority::High, null],
     'in_array() over the read' => ['$this->is_pinned', 'in_array(true, $this->is_pinned)', true, null],
     'in_array() with a spread' => ['$this->is_pinned', 'in_array(...$this->args())', true, null],
+    'in_array() with a strict flag that is no bool' => ['$this->is_pinned', 'in_array($this->is_pinned, [1], 1)', true, null],
+    'is_null() as a first-class callable' => ['$this->is_pinned', 'is_null(...)', true, null],
+    'isset() of two, the first unset' => ['$this->priority', 'isset($this->priority, $this->x)', null, false],
+    'isset() of two, the second unknown' => ['$this->priority', 'isset($this->priority, $this->x)', Priority::Low, null],
     'a constant nothing defines' => ['$this->is_pinned', '$this->is_pinned === NOT_DEFINED_ANYWHERE', true, null],
     'a constant alone' => ['$this->is_pinned', 'Status::Draft->value === 0', false, true],
 ]);
@@ -115,14 +120,12 @@ function conditionTruthCases(int $seed, int $cases): array
 {
     $random = new Randomizer(new Xoshiro256StarStar($seed));
     $values = conditionTruthDomain();
-    $made = [];
 
-    foreach (range(1, $cases) as $case) {
+    return array_map(static function () use ($random, $values): array {
         $value = $values[$random->getInt(0, count($values) - 1)];
-        $made[] = [conditionTruthGuard($random, $value, $random->getInt(1, 3)), $value];
-    }
 
-    return $made;
+        return [conditionTruthGuard($random, $value, $random->getInt(1, 3)), $value];
+    }, range(1, $cases));
 }
 
 /**
@@ -140,7 +143,8 @@ function conditionTruthDomain(): array
  */
 function conditionTruthGuard(Randomizer $random, mixed $value, int $depth): string
 {
-    // The unknown read is one leaf in eight, so most guards decide, and some decide only by short-circuiting past it.
+    // The unknown read is one leaf in eight, or ten beside a backed case, so most guards decide, and some decide only
+    // by short-circuiting past it.
     $leaf = static function () use ($random, $value): string {
         $leaves = ['$this->k', '$this->k', '$this->k', '$this->x', ...array_fill(0, 4, conditionTruthConstant($random))];
 

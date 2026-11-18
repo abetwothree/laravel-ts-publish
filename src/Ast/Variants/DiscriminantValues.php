@@ -26,9 +26,12 @@ final class DiscriminantValues
      * The values a row sends, in arm order and once each by `===`; null for a key the analysis does not hold, or a row
      * with any arm that is not finite.
      *
+     * With `$scalarsMayBeCases`, as under AnalysisScope::$casesAsLiterals, a row's scalar literal may stand for an enum
+     * case its read holds, so only `null` and the booleans answer, as they do for a key reading an enum directly.
+     *
      * @return DiscriminantValueList|null
      */
-    public static function of(MethodAnalysis $analysis, string $name): ?array
+    public static function of(MethodAnalysis $analysis, string $name, bool $scalarsMayBeCases): ?array
     {
         $row = array_find($analysis->writtenProperties(), static fn (array $property): bool => $property['name'] === $name);
 
@@ -41,7 +44,7 @@ final class DiscriminantValues
         $values = [];
 
         foreach (TsTypeString::splitTopLevelUnion($row['type']) as $arm) {
-            $sent = self::armValues($arm, $enums, readsEnum: $read !== []);
+            $sent = self::armValues($arm, $enums, $scalarsMayBeCases || $read !== []);
 
             if ($sent === null) {
                 return null;
@@ -57,10 +60,10 @@ final class DiscriminantValues
      * The values one arm sends, or null for an arm that is not finite.
      *
      * @param  list<class-string>  $enums  the enums the key reads and does not wrap
-     * @param  bool  $readsEnum  whether the key reads any enum directly
+     * @param  bool  $scalarsMayBeCases  whether a scalar literal may stand for a case the read holds
      * @return DiscriminantValueList|null
      */
-    private static function armValues(string $arm, array $enums, bool $readsEnum): ?array
+    private static function armValues(string $arm, array $enums, bool $scalarsMayBeCases): ?array
     {
         if ($arm === 'boolean') {
             return [self::scalar(true), self::scalar(false)];
@@ -68,10 +71,10 @@ final class DiscriminantValues
 
         $literal = self::literal($arm);
 
-        // An override may print an enum's case as a scalar literal, while the read holds the case itself.
+        // An override, or a case read as what json_encode() writes, prints a scalar where the read holds the case.
         return match (true) {
             $literal === null => self::aliasCases($arm, $enums),
-            $readsEnum && ! is_bool($literal->value) && $literal->value !== null => null,
+            $scalarsMayBeCases && ! is_bool($literal->value) && $literal->value !== null => null,
             default => [$literal],
         };
     }
@@ -90,7 +93,7 @@ final class DiscriminantValues
         $decoded = json_decode($arm);
         $value = self::scalar(is_scalar($decoded) ? $decoded : null);
 
-        // json_decode() reads any text it cannot parse as null too, so only a value printed back as the arm is its value.
+        // json_decode() reads unparsable text as null too, so only a value that prints back as the arm is its value.
         return $value->literal === $arm ? $value : null;
     }
 

@@ -17,18 +17,19 @@ beforeEach(function () {
 });
 
 /**
- * The values one row `k` of the given type and channels sends, each as its PHP value beside its literal.
+ * The values one row `k` of the given type and channels sends, each as its PHP value beside its literal, its scalar
+ * arms read as standing for enum cases under $scalarsMayBeCases.
  *
  * @param  array<string, array<array-key, mixed>>  $channels
  * @return list<array{mixed, string}>|null
  */
-function discriminantValuesOf(string $type, array $channels = []): ?array
+function discriminantValuesOf(string $type, array $channels = [], bool $scalarsMayBeCases = false): ?array
 {
     $analysis = new MethodAnalysis(...[
         'properties' => [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']],
         ...$channels,
     ]);
-    $values = DiscriminantValues::of($analysis, 'k');
+    $values = DiscriminantValues::of($analysis, 'k', $scalarsMayBeCases);
 
     return $values === null
         ? null
@@ -108,5 +109,26 @@ it('lists nothing for an alias #[TsCase] makes spell other than what PHP sends',
 });
 
 it('lists nothing for a key the analysis does not hold', function () {
-    expect(DiscriminantValues::of(new MethodAnalysis, 'k'))->toBeNull();
+    expect(DiscriminantValues::of(new MethodAnalysis, 'k', false))->toBeNull();
+});
+
+it('lists only null and the booleans of a row whose scalars may stand for enum cases', function (string $type, ?array $values) {
+    expect(discriminantValuesOf($type, scalarsMayBeCases: true))->toBe($values);
+})->with([
+    'number literals' => ['0 | 1', null],
+    'string literals' => ["'a' | 'b'", null],
+    'a nullable boolean' => ['boolean | null', [[true, 'true'], [false, 'false'], [null, 'null']]],
+]);
+
+it('reads a case\'s value and name under the case\'s literal, and no member of a scalar', function () {
+    $draft = new DiscriminantValue(Status::Draft, '0');
+    $public = new DiscriminantValue(Visibility::Public, "'Public'");
+    $pair = static fn (?DiscriminantValue $value): ?array => $value === null ? null : [$value->value, $value->literal];
+
+    expect($pair($draft->member('value')))->toBe([0, '0'])
+        ->and($pair($draft->member('name')))->toBe(['Draft', '0'])
+        ->and($pair($public->member('name')))->toBe(['Public', "'Public'"])
+        ->and($public->member('value'))->toBeNull()
+        ->and($draft->member('label'))->toBeNull()
+        ->and(new DiscriminantValue(true, 'true')->member('name'))->toBeNull();
 });
