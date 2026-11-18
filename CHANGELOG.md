@@ -2,6 +2,34 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.10.1 - 2026-11-18
+
+### What's new
+
+- **Unions no longer repeat what another arm already covers.** A published union drops an enum case's literal beside that enum's `…Type` alias, and `never[]` beside a list or `[]`. (#169)
+- **Enum reads off a helper are typed.** `->value` or `->name` on a helper that returns an enum case (`$this->m()`, `self::m()`, `static::m()`, `parent::m()`) publishes that case's value or name instead of `unknown`. (#169)
+
+### Type changes you will see
+
+```diff
+- status_or_pending: 'pending' | PaymentStatusType;
++ status_or_pending: PaymentStatusType;
+- priorities: (PriorityType | null)[] | never[];
++ priorities: (PriorityType | null)[];
+
+```
+- An accessor that returns an enum's `->value` keeps the enum's alias in `{Model}Resource` and `{Model}MutatorsResource` instead of `AsEnum<typeof …>`, because Laravel sends the scalar.
+
+### Upgrading
+
+- Run `php artisan ts:publish --fresh`, then type-check your frontend. Every dropped arm is admitted by the arm that stays, so nothing that type-checked before fails.
+- Frontend code that read such an accessor as an enum object (`.value`, `.label`) was reading a scalar at runtime; use the value directly.
+
+* GH-166 fix(ast): drop a union arm a sibling admits: a case literal beside its enum's alias, never[] beside a list by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/169
+* Fix redundant enum-typed aliases by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/171
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.10.0...v2.10.1
+
 ## v2.10.0 - 2026-11-13
 
 ### What's Changed
@@ -305,6 +333,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -323,6 +352,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -330,6 +360,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -371,6 +402,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -379,6 +411,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -399,6 +432,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -430,6 +464,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -478,6 +513,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
