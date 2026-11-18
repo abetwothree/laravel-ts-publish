@@ -97,7 +97,6 @@ final class ReturnShapeRefiner
                 $filled[$name] = [
                     'type' => $property['type'],
                     'import' => null,
-                    'reading' => 'names',
                     'customImports' => $resolved['customImports'],
                     ...(isset($resolved['tokenFqcns']) ? ['tokenFqcns' => $resolved['tokenFqcns']] : []),
                 ];
@@ -113,7 +112,7 @@ final class ReturnShapeRefiner
             $analysis->customImports = ImportMaps::merge($analysis->customImports, ...$imports);
         }
 
-        resolve(CastChannels::class)->fit($analysis, $filled, $analysis->boundClassNames());
+        resolve(CastChannels::class)->fit($analysis, $filled);
     }
 
     /**

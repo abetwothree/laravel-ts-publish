@@ -563,7 +563,7 @@ describe('extractImportableTypes', function () {
         'a qualified name' => ['Geo.Point', []],
     ]);
 
-    // A publisher that never keeps the package's import for a name a type only builds on imports no such name.
+    // Casts and clauses off a resource read only top-level arms; a resource's clauses read referencedTypeNames().
     test('extractImportableTypes reads no name a generic, a record or an object only builds on', function (string $type, array $names) {
         expect($this->service->extractImportableTypes($type))->toBe($names);
     })->with([
@@ -666,17 +666,6 @@ describe('referencedTypeNames', function () {
         'TypeScript\'s own' => ['Partial<Record<Key, Array<Foo>>> | Omit<Bar, "id">', ['Key', 'Foo', 'Bar']],
         'the app\'s own' => ['Paginated<User>', ['Paginated', 'User']],
         'a bare name TypeScript also declares' => ['Map<string, Foo> | Map | Set[]', ['Foo', 'Map', 'Set']],
-    ]);
-
-    test('reads the names a type is whole, one per top-level arm, apart from the names it is built from', function (string $type, array $names) {
-        expect($this->service->armNames($type))->toBe($names);
-    })->with([
-        'names' => ['User | Post[] | null', ['User', 'Post']],
-        'a name after a type operator' => ['keyof typeof Status | readonly Tag[]', ['Status', 'Tag']],
-        'a generic and an object' => ['Paginated<User> | { a: Post } | Meta', ['Meta']],
-        'a qualified name' => ['Geo.Point', []],
-        'a union inside a generic' => ['Pick<Base, "a" | "b">', []],
-        'primitives and a gap' => ['string | $gap1 | null', []],
     ]);
 
     test('reads each name once, in the order a type first spells it', function () {

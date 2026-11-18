@@ -32,50 +32,14 @@ final class CastChannels
      * The names a cast's own imports bring into the file, each the app's own, which no class of the package supplies.
      *
      * @param  CastInForce  $cast
-     * @param  list<string>  $resolved  the names the cast's file binds itself, MethodAnalysis::boundClassNames()
      * @return list<string>
      */
-    public static function brings(array $cast, array $resolved): array
+    public static function brings(array $cast): array
     {
         return [
-            ...($cast['import'] !== null ? self::importNames($cast, $resolved) : []),
+            ...($cast['import'] !== null ? TsTypeString::extractImportableTypes($cast['type']) : []),
             ...ImportMaps::localNames($cast['customImports'] ?? []),
         ];
-    }
-
-    /**
-     * The names a cast's import brings for its text, where its publisher keeps the package's import for a name the text
-     * only builds on: each name the text spells, but such a name its file imports a class of the package under. A name
-     * the text is whole stays the cast's, as the app's own type for its key.
-     *
-     * @param  list<string>  $resolved  the names its file binds itself, MethodAnalysis::boundClassNames()
-     * @return list<string>
-     */
-    public static function importedNames(string $type, array $resolved): array
-    {
-        $names = TsTypeString::referencedTypeNames($type);
-
-        if ($resolved === []) {
-            return $names;
-        }
-
-        $whole = self::wholeNames($type);
-
-        return array_values(array_filter(
-            $names,
-            static fn (string $name): bool => ! in_array($name, $resolved, true) || in_array($name, $whole, true),
-        ));
-    }
-
-    /**
-     * The names a cast's text is whole, which its import binds whatever its file resolves: its top-level arms, as the
-     * scanner splits them or as extractImportableTypes() reads them, so an arrow's last arm stays the cast's too.
-     *
-     * @return list<string>
-     */
-    public static function wholeNames(string $type): array
-    {
-        return array_values(array_unique([...TsTypeString::armNames($type), ...TsTypeString::extractImportableTypes($type)]));
     }
 
     /**
@@ -159,20 +123,17 @@ final class CastChannels
      * Rewrite every cast key's import channels to the classes its text spells, as embedded names, and carry the rest.
      *
      * A publisher calls it once, over the casts in force, after it knows every cast source. Each name a cast's import
-     * brings is bound by that import, so a custom import of it from another path is dropped, and a `names` cast's
-     * import is given each name it builds on that its file binds no class to, which no earlier step could know.
+     * brings is bound by that import, so a custom import of it from another path is dropped.
      *
      * @param  CastMap  $casts  key => the cast in force for it: its text, and the path of its own import, if any
-     * @param  list<string>  $resolved  the names the analysis's file binds itself, MethodAnalysis::boundClassNames()
      */
-    public function fit(MethodAnalysis $analysis, array $casts, array $resolved): void
+    public function fit(MethodAnalysis $analysis, array $casts): void
     {
         if ($casts === []) {
             return;
         }
 
-        $this->importBuiltOnNames($analysis, $casts, $resolved);
-        $this->unbindOtherPaths($analysis, $casts, $resolved);
+        $this->unbindOtherPaths($analysis, $casts);
 
         /** @var list<class-string> $broughtOver */
         $broughtOver = [];
@@ -190,7 +151,7 @@ final class CastChannels
             }
 
             $type = $castInForce['type'];
-            $brought = self::brings($castInForce, $resolved);
+            $brought = self::brings($castInForce);
 
             $enums = $this->enumsOf($analysis, $name);
             $models = $this->modelsOf($analysis, $name);
@@ -242,22 +203,6 @@ final class CastChannels
         }
 
         $this->settle($analysis, [...$displaced, ...$broughtOver], $broughtOver);
-    }
-
-    /**
-     * The names a cast's import brings for its text, as its entry's `reading` says: every name but those its file
-     * resolves, or the text's top-level arms for a publisher that never keeps the package's import.
-     *
-     * @param  CastInForce  $cast
-     * @param  list<string>  $resolved
-     * @return list<string>
-     */
-    private static function importNames(array $cast, array $resolved): array
-    {
-        return match ($cast['reading']) {
-            'names' => self::importedNames($cast['type'], $resolved),
-            'arms' => TsTypeString::extractImportableTypes($cast['type']),
-        };
     }
 
     /**
@@ -395,41 +340,20 @@ final class CastChannels
     }
 
     /**
-     * Give each `names` cast's import the names its text only builds on that its file binds no class to: a cast laid
-     * on a helper registered only the names it is whole, since the helper alone is not its file.
-     *
-     * @param  CastMap  $casts
-     * @param  list<string>  $resolved
-     */
-    private function importBuiltOnNames(MethodAnalysis $analysis, array $casts, array $resolved): void
-    {
-        foreach ($casts as $cast) {
-            if ($cast['import'] === null || $cast['reading'] !== 'names') {
-                continue;
-            }
-
-            $held = $analysis->customImports[$cast['import']] ?? [];
-            $missing = array_diff(self::importedNames($cast['type'], $resolved), array_map(ImportMaps::localName(...), $held));
-
-            if ($missing !== []) {
-                $analysis->customImports[$cast['import']] = [...$held, ...array_values($missing)];
-            }
-        }
-    }
-
-    /**
      * Drop each custom import of a name a cast in force brings from another path.
      *
      * @param  CastMap  $casts
-     * @param  list<string>  $resolved
      */
-    private function unbindOtherPaths(MethodAnalysis $analysis, array $casts, array $resolved): void
+    private function unbindOtherPaths(MethodAnalysis $analysis, array $casts): void
     {
         $bound = [];
 
         foreach ($casts as $cast) {
             if ($cast['import'] !== null) {
-                $bound[$cast['import']] = [...$bound[$cast['import']] ?? [], ...self::importNames($cast, $resolved)];
+                $bound[$cast['import']] = [
+                    ...$bound[$cast['import']] ?? [],
+                    ...TsTypeString::extractImportableTypes($cast['type']),
+                ];
             }
 
             foreach ($cast['customImports'] ?? [] as $path => $names) {

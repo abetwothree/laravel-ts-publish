@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -204,7 +203,7 @@ trait ParsesTsExtends
         // A name an entry only builds on takes no alias: the publisher imports it only where nothing else binds it.
         $builtOn = array_map(
             static fn (array $entry): array => $entry['read'] && $entry['import'] !== null
-                ? array_values(array_diff($entry['types'], CastChannels::wholeNames($entry['extends'])))
+                ? array_values(array_diff($entry['types'], TsTypeString::extractImportableTypes($entry['extends'])))
                 : [],
             $deduped,
         );

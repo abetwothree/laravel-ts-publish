@@ -140,13 +140,6 @@ class BroadcastEventTransformer extends CoreTransformer
     protected array $optionalOverrides = [];
 
     /**
-     * The names the event's file binds bare to one class of the package, which a cast's import leaves to that class.
-     *
-     * @var list<string>
-     */
-    protected array $castResolved = [];
-
-    /**
      * Import entries from TsExtends to be merged into typeImports.
      *
      * @var array<string, list<string>>
@@ -325,9 +318,8 @@ class BroadcastEventTransformer extends CoreTransformer
             $this->findable,
         );
         $analysis->absorbRedundantArms();
-        $this->castResolved = $analysis->boundClassNames();
 
-        resolve(CastChannels::class)->fit($analysis, $castsInForce, $this->castResolved);
+        resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
         $this->properties = $this->resolveProperties($analysis);
         $this->analysisCustomImports = $analysis->customImports;
@@ -484,20 +476,10 @@ class BroadcastEventTransformer extends CoreTransformer
 
         // A cast whose key names no payload property publishes nothing, so its import binds no name.
         foreach (array_intersect_key($this->tsTypeOverrides, $keys) as $name => $type) {
-            $casts[$name] = ['type' => $type, 'import' => $this->tsCastsImportPaths[$name] ?? null, 'reading' => 'names'];
+            $casts[$name] = ['type' => $type, 'import' => $this->tsCastsImportPaths[$name] ?? null];
         }
 
         return $casts;
-    }
-
-    /**
-     * The names a class-level cast's own import brings for the text it publishes.
-     *
-     * @return list<string>
-     */
-    protected function castImports(int|string $property): array
-    {
-        return CastChannels::importedNames($this->tsTypeOverrides[$property] ?? '', $this->castResolved);
     }
 
     /**
@@ -597,7 +579,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $names = [];
 
         foreach (array_keys($this->tsCastsImportPaths) as $property) {
-            array_push($names, ...$this->castImports($property));
+            array_push($names, ...TsTypeString::extractImportableTypes($this->tsTypeOverrides[$property] ?? ''));
         }
 
         foreach ([...array_values($this->tsExtendsImports), ...array_values($this->analysisCustomImports)] as $typeNames) {
@@ -677,7 +659,7 @@ class BroadcastEventTransformer extends CoreTransformer
 
             // A cast whose key names no payload property adds none, so its import would go unused.
             if ($type !== null && isset($this->properties[$property])) {
-                foreach ($this->castImports($property) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $imports[$importPath][] = $importName;
                 }
             }

@@ -155,7 +155,7 @@ class InertiaSharedDataAnalyzer
         $analysis->absorbRedundantArms();
 
         $castsInForce = $this->castsInForce($analysis, $mergedOverrides, $castPaths, $docblockByKey);
-        resolve(CastChannels::class)->fit($analysis, $castsInForce, $analysis->boundClassNames());
+        resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
         $members = $this->buildMembersWithOverrides(
@@ -454,12 +454,11 @@ class InertiaSharedDataAnalyzer
 
         foreach ($overrides as $key => $override) {
             if (array_key_exists($key, $paths)) {
-                $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key], 'reading' => 'arms'];
+                $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key]];
             } elseif (isset($docblock[$key])) {
                 $inForce[$key] = [
                     'type' => $override['type'],
                     'import' => null,
-                    'reading' => 'arms',
                     'customImports' => $docblock[$key]['customImports'],
                     'tokenFqcns' => $docblock[$key]['tokenFqcns'] ?? [],
                 ];

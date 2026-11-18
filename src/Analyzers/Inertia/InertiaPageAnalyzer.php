@@ -398,22 +398,22 @@ class InertiaPageAnalyzer
                 TopLevelRenumbering::rekey(array_intersect_key($importPaths, $castKeys), $castKeys),
                 $targets,
             );
-            // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
-            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
-            $analysis->absorbRedundantArms();
-            $resolved = $analysis->boundClassNames();
             $castImports = [];
 
             // A losing spelling's import goes with its type.
             foreach ($paths as $key => $path) {
                 $castImports[$path] = [
                     ...$castImports[$path] ?? [],
-                    ...CastChannels::importedNames($casts[$key] ?? '', $resolved),
+                    ...TsTypeString::extractImportableTypes($casts[$key] ?? ''),
                 ];
             }
 
             $externalImports = $this->withImports($externalImports, $castImports);
-            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths), $resolved);
+
+            // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
+            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
+            $analysis->absorbRedundantArms();
+            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $members = $this->buildMembersWithOverrides(
@@ -778,7 +778,7 @@ class InertiaPageAnalyzer
         $inForce = $analysis->casts;
 
         foreach ($casts as $key => $type) {
-            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null, 'reading' => 'names'];
+            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null];
         }
 
         return $inForce;

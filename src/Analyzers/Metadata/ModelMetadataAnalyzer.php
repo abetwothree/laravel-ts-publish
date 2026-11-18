@@ -154,11 +154,7 @@ class ModelMetadataAnalyzer
 
         // The transformer throws for one name imported from two paths, so no cast may unbind another path's import.
         $customImports = $analysis->customImports;
-        resolve(CastChannels::class)->fit(
-            $analysis,
-            $this->castsInForce($analysis, $result, $docblockTokens, $published),
-            $analysis->boundClassNames(),
-        );
+        resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $result, $docblockTokens, $published));
         $analysis->customImports = $customImports;
 
         $castPaths = array_intersect_key($result->importPaths, $payload);
@@ -231,8 +227,7 @@ class ModelMetadataAnalyzer
                     continue;
                 }
 
-                // Every name the text spells covers those applyTsCastsFromMethod() read, whichever it left out.
-                $names = TsTypeString::referencedTypeNames($value['type']);
+                $names = TsTypeString::extractImportableTypes($value['type']);
                 $analysis->customImports[$value['import']] = array_values(array_diff(
                     $analysis->customImports[$value['import']] ?? [],
                     $names,
@@ -387,12 +382,11 @@ class ModelMetadataAnalyzer
 
         foreach ($published as $key => $type) {
             if ($result->sources[$key] === 'casts') {
-                $inForce[$key] = ['type' => $type, 'import' => $result->importPaths[$key] ?? null, 'reading' => 'arms'];
+                $inForce[$key] = ['type' => $type, 'import' => $result->importPaths[$key] ?? null];
             } elseif ($result->sources[$key] === 'docblock') {
                 $inForce[$key] = [
                     'type' => $type,
                     'import' => null,
-                    'reading' => 'arms',
                     'customImports' => $result->docblockImports[$key] ?? [],
                     'tokenFqcns' => array_map(
                         static fn (?string $fqcn): ?string => $fqcn !== null && enum_exists($fqcn) ? $fqcn : null,

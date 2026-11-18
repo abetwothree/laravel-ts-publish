@@ -23,7 +23,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
@@ -2497,16 +2496,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             // The publisher fits the key's import channels to this text once it knows which cast is in force; the slots
             // a fill declared described the value this text replaces.
             unset($analysis->declaredTokenFqcns[$property]);
-            $analysis->casts[$property] = [
-                'type' => $type,
-                'import' => $import,
-                'reading' => 'names',
-                ...($optional === null ? [] : ['optional' => $optional]),
-            ];
+            $analysis->casts[$property] = $optional === null
+                ? ['type' => $type, 'import' => $import]
+                : ['type' => $type, 'import' => $import, 'optional' => $optional];
 
-            // Only the names the text is whole: the publisher's fit adds each it builds on that the file binds no class to.
             if ($import !== null) {
-                foreach (CastChannels::wholeNames($type) as $importName) {
+                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
                     $analysis->customImports[$import][] = $importName;
                 }
             }

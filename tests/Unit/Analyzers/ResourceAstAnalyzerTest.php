@@ -6595,13 +6595,7 @@ describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through
         $reflection = new ReflectionClass(BranchedCastSpreadResource::class);
         $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
 
-        expect($analysis->casts)->toBe([
-            'reviewable' => [
-                'type' => 'UserResource | null',
-                'import' => '@js/types/user',
-                'reading' => 'names',
-            ],
-        ])
+        expect($analysis->casts)->toBe(['reviewable' => ['type' => 'UserResource | null', 'import' => '@js/types/user']])
             ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
             ->toBe('UserResource | null');
     });
@@ -7355,21 +7349,20 @@ describe('a cast across its locations', function () {
     test('a method cast and the class casts for one signature reach the fit as one entry, under its published key', function () {
         $transformer = new class(SpellingsAcrossLocationsResource::class) extends ResourceTransformer
         {
-            /** @return array<string, array{type: string, import: string|null, reading: 'arms'|'names'}> */
+            /** @return array<string, array{type: string, import: string|null}> */
             public function exposedCastsInForce(): array
             {
                 return $this->castsInForce;
             }
         };
 
-        expect($transformer->exposedCastsInForce())
-            ->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null, 'reading' => 'names']]);
+        expect($transformer->exposedCastsInForce())->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null]]);
     });
 
     test('a numeric cast key from a spread helper reaches the parent analysis on its own key', function () {
         $analysis = new ResourceAstAnalyzer(new ReflectionClass(NumericCastSpreadResource::class), Post::class)->analyze();
 
-        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null, 'reading' => 'names']]);
+        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
     });
 });
 

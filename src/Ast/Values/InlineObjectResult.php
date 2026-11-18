@@ -119,7 +119,7 @@ final class InlineObjectResult
         self::readFillsClassLess($analysis);
 
         // No outer cast can retype a member, so a member's own method-level cast is the one in force.
-        resolve(CastChannels::class)->fit($analysis, $analysis->casts, $analysis->boundClassNames());
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
 
         if ($analysis->properties === [] && $spreadArms === []) {
             return ['type' => 'Record<string, unknown>', 'optional' => false];

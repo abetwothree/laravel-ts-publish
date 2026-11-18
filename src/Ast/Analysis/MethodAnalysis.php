@@ -47,11 +47,9 @@ use LogicException;
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
- * @phpstan-type CastReading = 'arms'|'names'
  * @phpstan-type CastInForce = array{
  *     type: string,
  *     import: string|null,
- *     reading: CastReading,
  *     optional?: bool,
  *     customImports?: TypesImportMap,
  *     tokenFqcns?: Slots,
@@ -170,8 +168,7 @@ class MethodAnalysis
      *                                                          for a mixed EnumResource/direct-access ternary or match
      * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
      *                          own import and its `optional` flag, if any; a publisher fits the key's import channels
-     *                          to that text. Its `reading` says which names the import brings: `arms`, the text's
-     *                          top-level arms; `names`, every name but one it builds on that its file binds itself
+     *                          to that text
      * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: kept apart from
      *                               every queue, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
@@ -609,35 +606,6 @@ class MethodAnalysis
             || isset($this->inlineResourceFqcns[$name])
             || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
             || isset($this->enumResourceArmShapes[$name]);
-    }
-
-    /**
-     * The names the analysis's file binds bare to exactly one class of the package: each model's and resource's name, and
-     * the type name of each enum a property reads directly. A name two classes print is aliased, so it binds neither,
-     * and an enum only wrapped in an `EnumResource` brings its const, which binds no type name.
-     *
-     * @return list<string>
-     */
-    public function boundClassNames(): array
-    {
-        /** @var array<string, array<string, true>> $classes */
-        $classes = [];
-
-        foreach (array_unique(array_column($this->properties, 'name')) as $name) {
-            foreach ($this->classSpellings((string) $name) as [$fqcn, $spelled]) {
-                $classes[$spelled][$fqcn] = true;
-            }
-
-            foreach ($this->readEnumFqcns((string) $name) as $enum) {
-                if (LaravelTsPublish::retypedEnumType($enum) === null) {
-                    $classes[ValueResult::enumTypeName($enum)][$enum] = true;
-                }
-            }
-        }
-
-        $bound = array_filter($classes, static fn (array $fqcns): bool => count($fqcns) === 1);
-
-        return array_map(strval(...), array_keys($bound));
     }
 
     /**

@@ -103,8 +103,7 @@ class TsTypeString
     /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
-     * Not referencedTypeNames(), which needs no import for any of TypeScript's own generics, where a shape allows only
-     * `Record` and `Date` of TypeScript's own names.
+     * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
      * Object-literal keys are stripped first so 'owner' in '{ owner: User }' isn't read as a value token.
      *
      * @param  list<string>  $importableNames  Local names an import already brings into the file.
@@ -163,9 +162,6 @@ class TsTypeString
      * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
      * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left
      * that is no gap arm.
-     *
-     * The reading of a publisher that never keeps the package's import for a name a type only builds on, so such a
-     * name imports from no path; one that does reads every name through referencedTypeNames().
      *
      * @return list<string>
      */
@@ -260,27 +256,6 @@ class TsTypeString
         }
 
         return array_values(array_unique(array_diff($names, $binders)));
-    }
-
-    /**
-     * The names that make up a whole top-level union arm of a type string, read past a leading type operator and
-     * trailing `[]`s: `User | Paginated<Post>` has `User`, while `Post` is a name it only builds on.
-     *
-     * @return list<string>
-     */
-    public function armNames(string $type): array
-    {
-        $names = [];
-
-        foreach ($this->splitTopLevelUnion($type) as $arm) {
-            $name = (string) preg_replace(['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\s*\[\s*\])+$/'], '', $arm);
-
-            if ($this->referencedTypeNames($arm) === [$name]) {
-                $names[] = $name;
-            }
-        }
-
-        return array_values(array_unique($names));
     }
 
     /**
