@@ -2,18 +2,29 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltOnTwoNamesTwoPathsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltOnUnsentResourceTwoPathsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndIntersectTwoPathsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndIntersectTypesTwoPathsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideMethodCastNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsIntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsTwoPathsBuiltOnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsTypesBesideCastNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideIntersectNestedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideMethodCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideNestedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholePackageNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnEnumNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnWrappedEnumNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedEmptyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameTypesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedTwiceResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PickBaseExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostIntersectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsIntersectResource;
@@ -126,9 +137,9 @@ it('imports the name a generic extends clause with a union inside spells', funct
         ->toContain('export interface PickBaseExtendsResource extends Pick<Base, "a" | "b">');
 });
 
-// A name a clause builds on keeps the import of the class the package publishes under it; one `types` lists stays the
-// clause's, so the package's class is aliased apart.
-it('keeps the package\'s import of a class a clause builds on, and imports from the clause\'s path only what it lists', function (string $resource, array $imports, string $declaration) {
+// A name a clause builds on keeps the import of the class the package publishes under it; one the clause is whole or
+// lists in `types` stays the clause's, as before, so the package's class is aliased apart.
+it('keeps the package\'s import of a class a clause builds on, and imports from the clause\'s path what it lists', function (string $resource, array $imports, string $declaration) {
     $content = intersectedResourceFile($resource);
 
     expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe($imports)
@@ -160,10 +171,20 @@ it('keeps the package\'s import of a class a clause builds on, and imports from 
         } & (Pick<UserResource, "id">);
 
         TS],
+    'an extends clause that is the name' => [ExtendsWholePackageNameResource::class, [
+        "import type { UserResource } from '@/types/user';",
+        "import type { UserResource as WorkbenchUserResource } from '../../../../../../workbench/app/http/resources';",
+    ], <<<'TS'
+        export interface ExtendsWholePackageNameResource extends UserResource
+        {
+            owner: WorkbenchUserResource;
+        }
+
+        TS],
 ]);
 
-// A name a clause only builds on comes from its path only where no other import binds it, as a cast's import does.
-it('imports no name a clause only builds on that a cast already imports from another path', function (string $resource, string $declaration) {
+// A clause name a cast already imports is the cast's, so the clause adds no second import of it from its own path.
+it('imports no clause name a cast already imports from another path', function (string $resource, string $declaration) {
     $content = intersectedResourceFile($resource);
 
     expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe(["import type { Meta } from '@/types/meta';"])
@@ -171,6 +192,9 @@ it('imports no name a clause only builds on that a cast already imports from ano
 })->with([
     'a class-level cast' => [ExtendsBesideCastNameResource::class, 'export interface ExtendsBesideCastNameResource extends Pick<Meta, "a">'],
     'a method-level cast' => [ExtendsBesideMethodCastNameResource::class, 'export interface ExtendsBesideMethodCastNameResource extends Partial<Meta>'],
+    'a class-level cast, the clause whole' => [ExtendsWholeBesideCastNameResource::class, 'export interface ExtendsWholeBesideCastNameResource extends Meta'],
+    'a method-level cast, the clause whole' => [ExtendsWholeBesideMethodCastNameResource::class, 'export interface ExtendsWholeBesideMethodCastNameResource extends Meta'],
+    'a class-level cast, listed in `types`' => [ExtendsTypesBesideCastNameResource::class, 'export interface ExtendsTypesBesideCastNameResource extends Pick<Meta, "a">'],
 ]);
 
 // One pass reads both attributes, so a name each imports from its own path is aliased apart, as two clauses are.
@@ -200,13 +224,55 @@ it('aliases a name an extends clause and an intersection import from two paths',
         TS],
 ]);
 
-// A name a clause only builds on takes no alias: a clause that names it whole already binds it for the file.
-it('binds a name a clause only builds on to the import a clause naming it whole brings', function (string $resource, string $declaration) {
+// A name a clause only builds on aliases as one it is whole does, across both attributes, so no name imports twice.
+it('aliases a name clauses build on or are from two paths', function (string $resource, array $imports, string $declaration) {
     $content = intersectedResourceFile($resource);
 
-    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe(["import type { Meta } from '@/types/meta';"])
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe($imports)
         ->and($content)->toContain($declaration);
 })->with([
-    'two extends clauses' => [ExtendsWholeBesideNestedResource::class, 'export interface ExtendsWholeBesideNestedResource extends Meta, Pick<Meta, "a">'],
-    'an extends clause and an intersection' => [ExtendsWholeBesideIntersectNestedResource::class, 'export type ExtendsWholeBesideIntersectNestedResource = Meta & {'],
+    'two extends clauses' => [ExtendsTwoPathsBuiltOnResource::class, [
+        "import type { Meta as AMeta } from '@/types/a';",
+        "import type { Meta as BMeta } from '@/types/b';",
+    ], 'export interface ExtendsTwoPathsBuiltOnResource extends Partial<AMeta>, Pick<BMeta, "a">'],
+    'an extends clause and an intersection' => [ExtendsIntersectTwoPathsBuiltOnResource::class, [
+        "import type { Meta as AMeta } from '@/types/a';",
+        "import type { Meta as BMeta } from '@/types/b';",
+    ], "export type ExtendsIntersectTwoPathsBuiltOnResource = Partial<AMeta> & {\n    id: number;\n} & (Pick<BMeta, \"a\">);"],
+    'two intersections' => [IntersectTwoPathsBuiltOnResource::class, [
+        "import type { Meta as AMeta } from '@/types/a';",
+        "import type { Meta as BMeta } from '@/types/b';",
+    ], '} & (Partial<AMeta>) & (Pick<BMeta, "a">);'],
+    'two names each' => [BuiltOnTwoNamesTwoPathsResource::class, [
+        "import type { Meta as AMeta, Paged as APaged } from '@/types/a';",
+        "import type { Meta as BMeta, Paged as BPaged } from '@/types/b';",
+    ], "export type BuiltOnTwoNamesTwoPathsResource = APaged<AMeta> & {\n    id: number;\n} & (BPaged<BMeta>);"],
+    'a resource\'s name no key sends' => [BuiltOnUnsentResourceTwoPathsResource::class, [
+        "import type { UserResource as AUserResource } from '@/types/a';",
+        "import type { UserResource as BUserResource } from '@/types/b';",
+    ], "= Pick<AUserResource, \"id\"> & {\n    id: number;\n} & (Partial<BUserResource>);"],
+    'a name one extends clause is whole' => [ExtendsWholeBesideNestedResource::class, [
+        "import type { Meta as MetaMeta } from '@/types/meta';",
+        "import type { Meta as OtherMeta } from '@/types/other';",
+    ], 'export interface ExtendsWholeBesideNestedResource extends MetaMeta, Pick<OtherMeta, "a">'],
+    'a name the extends clause is whole beside an intersection' => [ExtendsWholeBesideIntersectNestedResource::class, [
+        "import type { Meta as MetaMeta } from '@/types/meta';",
+        "import type { Meta as OtherMeta } from '@/types/other';",
+    ], "= MetaMeta & {\n    id: number;\n} & (Pick<OtherMeta, \"a\">);"],
+]);
+
+// An enum's const binds its name only where the file imports the const; otherwise the clause imports the name.
+it('imports a name a clause builds on that an enum\'s const takes only where the file imports no such const', function (bool $tolki, string $resource, array $imports) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", intersectedResourceFile($resource))) ?: []))->toBe($imports);
+})->with([
+    'a key reading the enum\'s type' => [false, IntersectBuiltOnEnumNameResource::class, [
+        "import type { Status } from '@/types/foo';",
+        "import type { StatusType } from '../../../../../../workbench/app/enums';",
+    ]],
+    'a key wrapping the enum, whose const the file imports' => [true, IntersectBuiltOnWrappedEnumNameResource::class, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status } from '../../../../../../workbench/app/enums';",
+    ]],
 ]);

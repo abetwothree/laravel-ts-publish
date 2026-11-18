@@ -50,6 +50,7 @@ use ReflectionClass;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
  * @phpstan-import-type Slots from TokenSlots
+ * @phpstan-import-type ClauseEntry from ParsesTsExtends
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -114,8 +115,8 @@ class ResourceTransformer extends CoreTransformer
     /** @var ImportMapType custom imports the AST analysis carried, kept apart until overrides have replaced types */
     protected array $analysisCustomImports = [];
 
-    /** @var ImportMapType the names a clause only builds on, kept apart until the classes the file imports are known */
-    protected array $nestedClauseImports = [];
+    /** @var list<ClauseEntry> the clauses as read, whose imports wait for the names the file binds by other means */
+    protected array $clauseEntries = [];
 
     /** @var array<array-key, bool> property name => optional override */
     protected array $optionalOverrides = [];
@@ -214,7 +215,7 @@ class ResourceTransformer extends CoreTransformer
             ->pruneOverriddenAnalysisImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
-            ->importNestedClauseNames()
+            ->settleClauseImports()
             ->resolveImportConflicts()
             ->keepWrittenInlineWraps()
             ->rewriteEnumResourceTypes()
@@ -363,38 +364,29 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Parse the resource's #[TsExtends] clauses and config entries and its #[TsIntersect] types in one pass, so a name
-     * both import from two paths is aliased apart, and register their imports, setting apart each name a clause only
-     * builds on.
+     * Read the resource's #[TsExtends] clauses and config entries and its #[TsIntersect] types. Until
+     * settleClauseImports() runs, each step before it reads every clause as written.
      */
     protected function parseTsExtends(): self
     {
-        $result = $this->parseClauseAttributes(
+        $this->clauseEntries = $this->readClauses(
             $this->reflectionResource,
             [TsExtends::class => 'resources', TsIntersect::class => null],
         );
-        $this->tsExtends = $result['clauses'][TsExtends::class];
-        $this->tsIntersect = $result['clauses'][TsIntersect::class];
+        $texts = array_fill_keys([TsExtends::class, TsIntersect::class], []);
 
-        foreach ($result['imports'] as $importPath => $typeNames) {
-            $nested = $result['nested'][$importPath] ?? [];
-            $whole = array_values(array_diff($typeNames, $nested));
-
-            if ($whole !== []) {
-                $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$whole];
-            }
-
-            if ($nested !== []) {
-                $this->nestedClauseImports[$importPath] = [...($this->nestedClauseImports[$importPath] ?? []), ...$nested];
-            }
+        foreach ($this->clauseEntries as $entry) {
+            $texts[$entry['attribute']][] = $entry['extends'];
         }
+
+        $this->tsExtends = $texts[TsExtends::class];
+        $this->tsIntersect = $texts[TsIntersect::class];
 
         return $this;
     }
 
     /**
-     * Every name a clause spells, #104's reading: importNestedClauseNames() keeps the package's import for a name the
-     * clause only builds on.
+     * Every name a clause spells, #104's reading: settleClauseImports() leaves to the file each name it binds itself.
      *
      * @return list<string>
      */
@@ -404,22 +396,23 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Import each name a clause only builds on from the clause's path, unless the file already binds that name: a class
-     * the package publishes under it, or another import, such as a cast's, whose binding the clause's name then reads.
+     * Settle the clauses once every other import and the package's classes are known: a name the file binds by those
+     * keeps that binding, and every other name imports from its clause's path, aliased across both attributes.
      */
-    protected function importNestedClauseNames(): self
+    protected function settleClauseImports(): self
     {
-        $bound = [
+        $consts = $this->shouldGenerateHasEnums() ? array_flip($this->enumPropertyFqcns()) : [];
+        $result = $this->settleClauses($this->clauseEntries, ImportMaps::localNames($this->customImports), [
             ...array_values($this->resourceFqcnMap),
             ...array_values($this->modelFqcnMap),
             ...array_merge([], ...array_map(ValueResult::enumNames(...), array_keys($this->enumFqcnMap))),
-            ...ImportMaps::localNames($this->customImports),
-        ];
+            ...array_values(array_intersect_key($this->enumConstMap, $consts)),
+        ]);
+        $this->tsExtends = $result['clauses'][TsExtends::class];
+        $this->tsIntersect = $result['clauses'][TsIntersect::class];
 
-        foreach ($this->nestedClauseImports as $importPath => $names) {
-            foreach (array_diff($names, $bound) as $name) {
-                $this->customImports[$importPath][] = $name;
-            }
+        foreach ($result['imports'] as $importPath => $typeNames) {
+            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
         }
 
         return $this;
