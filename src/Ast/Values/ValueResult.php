@@ -70,7 +70,7 @@ final class ValueResult
     }
 
     /**
-     * The value of a key an arm removes: PHP never sends it, so it prints as a key that may not be sent, holding nothing.
+     * The value of a key an arm removes: PHP never sends it, so it prints as a key that may be absent, holding nothing.
      *
      * @return ValueExpressionResult
      */
