@@ -386,23 +386,16 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Every name a clause spells, #104's reading, beside each name a top-level arm is whole, such as a global's name a
-     * clause is: settleClauseImports() leaves to the file each name it binds itself.
+     * Every name a clause spells, #104's reading, beside each name it lists whole, such as a global's name a clause is:
+     * settleClauseImports() leaves to the file each name it binds itself.
      *
      * @return list<string>
      */
     protected function clauseTypeNames(string $clause): array
     {
-        $arms = [];
+        $names = [...$this->listedTypeNames($clause), ...TsTypeString::referencedTypeNames($clause)];
 
-        // An arm holding a `|` holds a nested union, so it is no name whole; extractImportableTypes() reads each other.
-        foreach (TsTypeString::splitTopLevelUnion($clause) as $arm) {
-            if (! str_contains($arm, '|')) {
-                array_push($arms, ...TsTypeString::extractImportableTypes($arm));
-            }
-        }
-
-        return array_values(array_unique([...$arms, ...TsTypeString::referencedTypeNames($clause)]));
+        return array_values(array_unique($names));
     }
 
     /**

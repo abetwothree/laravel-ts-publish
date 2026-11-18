@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBuiltOnTwo
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsDomGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsIntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsLibGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsNestedArmBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsTypesBesideCastNameResource;
@@ -34,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackag
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedTwiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectLibGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PickBaseExtendsResource;
@@ -203,6 +205,22 @@ it('imports no name a clause builds on that a cast already imports from another 
 })->with([
     'a class-level cast' => [ExtendsBesideCastNameResource::class, 'export interface ExtendsBesideCastNameResource extends Pick<Meta, "a">'],
     'a method-level cast' => [ExtendsBesideMethodCastNameResource::class, 'export interface ExtendsBesideMethodCastNameResource extends Partial<Meta>'],
+]);
+
+// A name inside a union inside a clause is no arm the clause lists, so a cast's import of it binds it there as well.
+it('imports no name a clause builds on inside a nested union that a cast already imports from another path', function (string $resource, string $declaration) {
+    $content = intersectedResourceFile($resource);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import type { Meta } from '@/types/meta';",
+        "import type { Other } from '@/types/o';",
+    ])->and($content)->toContain($declaration)->toContain('    m: Other;');
+})->with([
+    'an intersection' => [IntersectNestedArmBesideCastNameResource::class, '} & ({ at: Meta | Other | null });'],
+    'an extends clause' => [
+        ExtendsNestedArmBesideCastNameResource::class,
+        'export interface ExtendsNestedArmBesideCastNameResource extends Record<string, Meta | Other | null>',
+    ],
 ]);
 
 // A name a clause is or lists stays the clause's beside a cast's import of it, aliased apart; the cast is as before.

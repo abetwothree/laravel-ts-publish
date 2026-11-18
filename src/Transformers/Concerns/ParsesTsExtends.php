@@ -138,6 +138,25 @@ trait ParsesTsExtends
     }
 
     /**
+     * The names a clause lists whole: each top-level arm that is one name, such as `Meta` or `Meta[]`.
+     *
+     * @return list<string>
+     */
+    protected function listedTypeNames(string $clause): array
+    {
+        $names = [];
+
+        // An arm holding a `|` holds a nested union, so it is no name whole; extractImportableTypes() reads each other.
+        foreach (TsTypeString::splitTopLevelUnion($clause) as $arm) {
+            if (! str_contains($arm, '|')) {
+                array_push($names, ...TsTypeString::extractImportableTypes($arm));
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
      * The class, then its traits and parent classes, breadth-first, each once: where its clause attributes are read.
      *
      * @template T of object
@@ -175,7 +194,7 @@ trait ParsesTsExtends
 
     /**
      * One clause as read. With an import it brings its `types`, or else the names clauseTypeNames() reads, and it
-     * lists its `types`, or else its top-level arms, the names it brought before any clause read more.
+     * lists its `types`, or else the names listedTypeNames() reads.
      *
      * @param  ClauseAttribute  $attribute
      * @param  list<string>|null  $types
@@ -188,7 +207,7 @@ trait ParsesTsExtends
             'extends' => $clause,
             'import' => $import,
             'types' => $import === null ? [] : ($types ?? $this->clauseTypeNames($clause)),
-            'listed' => $import === null ? [] : ($types ?? TsTypeString::extractImportableTypes($clause)),
+            'listed' => $import === null ? [] : ($types ?? $this->listedTypeNames($clause)),
         ];
     }
 
