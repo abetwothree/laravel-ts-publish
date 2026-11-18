@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -13,9 +14,13 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\PrettyPrinter\Standard;
 
-it('names the framework helper a call on $this runs', function (string $call, ?string $helper) {
+it('names a helper the framework lists, run on $this', function (
+    string $call,
+    ?string $helper,
+    string $subject = PostCardResource::class,
+) {
     $expr = runtimeClassCall($call);
-    $scope = new AnalysisScope(new ReflectionClass(PostCardResource::class));
+    $scope = new AnalysisScope(new ReflectionClass($subject));
     assert($expr instanceof MethodCall || $expr instanceof StaticCall);
 
     expect(ReadOnlyCalls::resourceHelper($expr, $scope)?->getName())->toBe($helper);
@@ -24,10 +29,14 @@ it('names the framework helper a call on $this runs', function (string $call, ?s
     'whenLoaded()' => ["\$this->whenLoaded('author')", 'whenLoaded'],
     'mergeWhen()' => ['$this->mergeWhen($c, [])', 'mergeWhen'],
     'parent::when()' => ['parent::when($c, 1)', 'when'],
+    'whenLoaded() on a collection' => ["\$this->whenLoaded('author')", 'whenLoaded', MergedResourceCollection::class],
     'a method the subject declares' => ['$this->header()', null],
     'a self:: method the subject declares' => ['self::header()', null],
     'a method no class declares' => ['$this->missing()', null],
     'a helper\'s name on another receiver' => ['$this->resource->when($c, 1)', null],
+    'a JsonResource method the framework does not list' => ['$this->resolve()', null],
+    'a static JsonResource method the framework does not list' => ['self::collection($items)', null],
+    'preserveQuery() on a collection' => ['$this->preserveQuery()', null, MergedResourceCollection::class],
 ]);
 
 it('gives the arguments a helper calls, as its value and default', function (string $call, array $callbacks) {
@@ -52,6 +61,15 @@ it('tells a callable a value names from a closure written there', function (stri
     'a class-and-method array' => ["[Foo::class, 'bar']", true],
     'a closure' => ['function () {}', false],
     'an arrow function' => ['fn () => 1', false],
+]);
+
+it('tells a `::class` name from another class constant', function (string $value, bool $named) {
+    expect(ReadOnlyCalls::isClassName(runtimeClassCall($value)))->toBe($named);
+})->with([
+    'Foo::class' => ['Foo::class', true],
+    'Foo::CLASS' => ['Foo::CLASS', true],
+    'Foo::BAR' => ['Foo::BAR', false],
+    'a string' => ["'Foo'", false],
 ]);
 
 it('knows Laravel\'s URL helpers', function (string $call, bool $helper) {

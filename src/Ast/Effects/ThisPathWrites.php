@@ -306,16 +306,9 @@ final class ThisPathWrites
      */
     private static function mayBeClosure(Expr $value): bool
     {
-        return ! ($value instanceof Scalar || $value instanceof ConstFetch || $value instanceof Array_ || self::isClassName($value)
+        return ! ($value instanceof Scalar || $value instanceof ConstFetch || $value instanceof Array_
+            || ReadOnlyCalls::isClassName($value)
             || ($value instanceof New_ && $value->class instanceof Name));
-    }
-
-    /**
-     * Whether an expression is a `::class` name.
-     */
-    private static function isClassName(?Expr $expr): bool
-    {
-        return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
     }
 
     /**
@@ -328,7 +321,7 @@ final class ThisPathWrites
         }
 
         if (! $expr instanceof ClassConstFetch || ! $expr->class instanceof Name || $expr->class->isSpecialClassName()
-            || ! $expr->name instanceof Identifier || self::isClassName($expr)
+            || ! $expr->name instanceof Identifier || ReadOnlyCalls::isClassName($expr)
         ) {
             return null;
         }
@@ -474,10 +467,7 @@ final class ThisPathWrites
      */
     private function safeHelperCall(MethodCall|NullsafeMethodCall $call, array $path, array $parameters): bool
     {
-        $helper = $call->name instanceof Identifier
-            && in_array($call->name->toLowerString(), ReadOnlyCalls::RESOURCE_HELPERS, true)
-            ? ReadOnlyCalls::resourceHelper($call, $this->scope)
-            : null;
+        $helper = ReadOnlyCalls::resourceHelper($call, $this->scope);
 
         if ($helper === null) {
             return false;

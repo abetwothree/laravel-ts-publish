@@ -69,14 +69,16 @@ final class ReadOnlyCalls
     ];
 
     /**
-     * The helper a call on `$this`, or through `$this::`, `self::`, `static::` or `parent::`, runs, where the
-     * framework's resource classes declare it.
+     * The helper RESOURCE_HELPERS lists that a call on `$this`, or through `$this::`, `self::`, `static::` or
+     * `parent::`, runs, where the framework's resource classes declare it.
      */
     public static function resourceHelper(
         MethodCall|NullsafeMethodCall|StaticCall $call,
         AnalysisScope $scope,
     ): ?ReflectionMethod {
-        if (! $call->name instanceof Identifier) {
+        if (! $call->name instanceof Identifier
+            || ! in_array($call->name->toLowerString(), self::RESOURCE_HELPERS, true)
+        ) {
             return null;
         }
 
@@ -180,7 +182,7 @@ final class ReadOnlyCalls
     /**
      * Whether an expression is a `::class` name.
      */
-    private static function isClassName(?Expr $expr): bool
+    public static function isClassName(?Expr $expr): bool
     {
         return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
     }
