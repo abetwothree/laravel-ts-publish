@@ -155,7 +155,7 @@ test('joinInto() keeps a gap in the mode where a method return\'s fill another b
 test('joinInto() keeps the groups of the one analysis it joins, and none of two', function () {
     $branch = static function (): MethodAnalysis {
         $analysis = new MethodAnalysis(properties: [['name' => 'a', 'type' => 'string', 'optional' => false, 'description' => '']]);
-        $analysis->variants = new LiteralVariants([], new LiteralWrites, true, []);
+        $analysis->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
 
         return $analysis;
     };

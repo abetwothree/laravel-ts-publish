@@ -34,6 +34,7 @@ function literalWithGroups(array $types, array $groups): MethodAnalysis
         $writes,
         true,
         VariantGroup::fingerprint($analysis, array_column($analysis->writtenProperties(), 'name')),
+        $analysis->casts,
     );
 
     return $analysis;
@@ -161,18 +162,21 @@ it('leaves a group flat that would pass 16 objects, and prints none where every 
     expect($alone->variants?->objects())->toBe([]);
 });
 
-it('holds for the rows the fold wrote, and for no row written or retyped after it', function () {
-    $analysis = literalWithGroups(['k' => '0 | 1', 'x' => 'string'], [groupOfValues('k', 'x', [0, 1])]);
+it('holds for the rows the fold wrote, and for no row written, retyped or cast after it', function () {
+    $analysis = literalWithGroups(['k' => '0 | 1', 'x' => 'string', 'y' => 'string'], [groupOfValues('k', 'x', [0, 1])]);
     $variants = $analysis->variants;
     assert($variants !== null);
     $retyped = clone $analysis;
     $retyped->properties[1]['type'] = 'string | null';
     $added = clone $analysis;
     $added->addProperty('more', ['type' => 'number', 'optional' => false]);
+    $cast = clone $analysis;
+    $cast->casts['y'] = ['type' => 'string', 'import' => '@js/types/wire'];
 
     expect($variants->holdsFor($analysis))->toBeTrue()
         ->and($variants->holdsFor($retyped))->toBeFalse()
-        ->and($variants->holdsFor($added))->toBeFalse();
+        ->and($variants->holdsFor($added))->toBeFalse()
+        ->and($variants->holdsFor($cast))->toBeFalse();
 });
 
 it('replays the objects once, whichever print asks', function () {

@@ -116,6 +116,7 @@ final class VariantReader
             $writes,
             $liftsMerges,
             VariantGroup::fingerprint($analysis, array_column($analysis->writtenProperties(), 'name')),
+            $analysis->casts,
         );
     }
 

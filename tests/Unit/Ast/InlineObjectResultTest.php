@@ -142,7 +142,7 @@ it('prints the first two groups\' 16 objects, a third group that would pass 16 l
         ),
         range(0, 3),
     )), [['a', 'x'], ['b', 'y'], ['c', 'z']]);
-    $analysis->variants = new LiteralVariants($groups, $writes, true, VariantGroup::fingerprint($analysis, array_keys($types)));
+    $analysis->variants = new LiteralVariants($groups, $writes, true, VariantGroup::fingerprint($analysis, array_keys($types)), []);
     $objects = [];
 
     foreach (range(0, 3) as $a) {

@@ -10,10 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 
 /**
  * The groups one array literal's fold holds, beside the writes they were read from, whether `filter()` lifts the
- * literal's merge calls, and every row the fold wrote, which a later rewrite of any row no longer matches.
+ * literal's merge calls, and every row and cast the fold wrote, which a later rewrite or cast no longer matches.
  *
  * @phpstan-import-type RowFingerprints from VariantGroup
  * @phpstan-import-type ReplayedValues from LiteralWrites
+ * @phpstan-import-type CastMap from MethodAnalysis
  *
  * @internal
  */
@@ -30,22 +31,25 @@ final class LiteralVariants
      *
      * @param  list<VariantGroup>  $groups  in the order of their discriminants
      * @param  RowFingerprints  $fingerprint  every row the fold wrote
+     * @param  CastMap  $casts  every cast the fold wrote, which the replayed objects carry too
      */
     public function __construct(
         public readonly array $groups,
         public readonly LiteralWrites $writes,
         public readonly bool $liftsMerges,
         public readonly array $fingerprint,
+        public readonly array $casts,
     ) {}
 
     /**
-     * Whether an analysis still holds every row the fold wrote, and no other, so its objects describe what it sends.
+     * Whether an analysis still holds every row and cast the fold wrote, and no other, so its objects describe what it
+     * sends: a cast laid after the fold never reaches them, so they would drop its import and class.
      */
     public function holdsFor(MethodAnalysis $analysis): bool
     {
         $rows = VariantGroup::fingerprint($analysis, array_column($analysis->writtenProperties(), 'name'));
 
-        return $rows === $this->fingerprint;
+        return $rows === $this->fingerprint && $analysis->casts === $this->casts;
     }
 
     /**

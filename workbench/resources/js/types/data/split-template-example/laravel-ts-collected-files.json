@@ -245,6 +245,8 @@
     "app\/Http\/Resources\/JsonApi\/ToAttributesOnlyPlainResource.php",
     "app\/Http\/Resources\/JsonApi\/UserResource.php",
     "app\/Http\/Resources\/JsonApi\/VariableAttributesPostResource.php",
+    "app\/Http\/Resources\/JsonApi\/WireAttachmentPostResource.php",
+    "app\/Http\/Resources\/JsonApi\/WirePriorityPostResource.php",
     "app\/Http\/Resources\/KpiResource.php",
     "app\/Http\/Resources\/LedgerCollection.php",
     "app\/Http\/Resources\/LocalVarByReferenceResource.php",

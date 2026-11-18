@@ -396,7 +396,7 @@ it('takes over every field of another analysis, both flags included', function (
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
     $source->closedToDottedKeys = ['a' => true];
-    $source->variants = new LiteralVariants([], new LiteralWrites, true, []);
+    $source->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);
@@ -956,7 +956,7 @@ it('leaves out each arm a sibling admits in a key\'s body type and fill too', fu
 
 it('drops a literal\'s groups once another analysis merges in', function () {
     $merged = new MethodAnalysis(properties: [['name' => 'a', 'type' => 'string', 'optional' => false, 'description' => '']]);
-    $merged->variants = new LiteralVariants([], new LiteralWrites, true, []);
+    $merged->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
     $merged->merge(new MethodAnalysis(properties: [['name' => 'b', 'type' => 'string', 'optional' => false, 'description' => '']]));
 
     expect($merged->variants)->toBeNull();

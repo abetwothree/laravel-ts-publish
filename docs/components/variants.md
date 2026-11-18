@@ -86,7 +86,8 @@ and a group where:
 A group stays unprinted where its rows changed after the fold. Each group fingerprints its rows
 (`VariantGroup::holdsFor()`), and a nested literal its whole fold (`LiteralVariants::holdsFor()`), so a `@return`
 fill, a method `#[TsCasts]`, `MethodAnalysis::stripGaps()` or a rename voids it. A class or model `#[TsCasts]` on
-a grouped key declines the group at the top level, through `VariantUnions::apply()`'s `$declinedKeys`.
+a grouped key declines the group at the top level, through `VariantUnions::apply()`'s `$declinedKeys`. A nested
+literal also fingerprints its casts, since its replayed objects never carry one laid after the fold.
 
 Objects that hold two same-named enums, one nested in a member, print flat (`InlineObjectResult::queuesEnumsApart()`),
 since a union of them reads one object's queued enum for the next one's token.

@@ -14,6 +14,7 @@ import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode, UiToneDto } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
+import type { AttachmentResource, PriorityType } from '@js/types/wire';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
@@ -6529,6 +6530,24 @@ declare global {
             id: string;
             type: 'variable_attributes_posts';
             attributes: { title: string; word_count: number | null; content?: string; is_long: boolean };
+        }
+        /**
+         * A JSON:API resource whose class cast keeps the text inference gives an attribute the priority picks, but imports its
+         * class from elsewhere: the attributes publish flat, with the cast's class (GH-157).
+         */
+        export interface WireAttachmentPostResource {
+            id: string;
+            type: 'wire_attachment_posts';
+            attributes: { priority: workbench.app.enums.PriorityType | null; attachment: AttachmentResource | null };
+        }
+        /**
+         * A JSON:API resource whose class cast keeps the text inference gives its discriminant attribute, but imports it from
+         * elsewhere: the attributes publish flat, with the cast's import (GH-157).
+         */
+        export interface WirePriorityPostResource {
+            id: string;
+            type: 'wire_priority_posts';
+            attributes: { priority: workbench.app.enums.PriorityType | null; escalated_title: string | null };
         }
     }
     export namespace workbench.app.http.resources.reportCards {
