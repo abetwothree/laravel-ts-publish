@@ -84,6 +84,51 @@ final class DottedTopLevelKeys
     }
 
     /**
+     * Object literals that name one key set, as one parenthesized union beside their members joined key by key, each
+     * optional where an arm's is; null for any other arms, or fewer than two.
+     *
+     * @param  list<string>  $arms
+     * @return array{string, list<array{string, string}>}|null
+     */
+    private static function sameKeyedObjects(array $arms): ?array
+    {
+        $objects = [];
+
+        foreach ($arms as $arm) {
+            $members = TsTypeShape::members($arm);
+
+            if ($members === null || $members === []) {
+                return null;
+            }
+
+            $objects[] = array_column(array_map(
+                static fn (array $member): array => [self::memberName($member[0]), $member],
+                $members,
+            ), 1, 0);
+        }
+
+        $names = array_keys($objects[0] ?? []);
+        $alike = array_all($objects, static fn (array $object): bool => array_keys($object) === $names);
+
+        if (count($objects) < 2 || ! $alike) {
+            return null;
+        }
+
+        $joined = array_map(static function (int|string $name) use ($objects): array {
+            $members = array_column($objects, $name);
+            $optional = array_any($members, static fn (array $member): bool => str_ends_with($member[0], '?'));
+            $printed = $members[0][0];
+
+            return [
+                $optional && ! str_ends_with($printed, '?') ? $printed.'?' : $printed,
+                implode(' | ', array_unique(array_column($members, 1))),
+            ];
+        }, $names);
+
+        return ['('.implode(' | ', $arms).')', $joined];
+    }
+
+    /**
      * Pieces of one literal text between the typed ones.
      *
      * @return list<TypePiece>
@@ -332,6 +377,8 @@ final class DottedTopLevelKeys
         $one = count($solid) === 1 ? $solid[0] : null;
         $object = $one === null ? null : TsTypeShape::members($one);
         $element = $one === null ? null : TsTypeShape::elementType($one);
+        // A union of objects naming one key set, as a literal printed one object per variant is, is written as one.
+        [$one, $object] = $one === null ? self::sameKeyedObjects($solid) ?? [null, null] : [$one, $object];
         $written = $this->members($children);
         $absent = $written['optional'];
 
@@ -453,7 +500,7 @@ final class DottedTopLevelKeys
         $written = $this->wrapped($this->members($children, $members, $kept))['pieces'];
 
         $pieces = match (true) {
-            $entered === [] && $base['direct'] => [
+            $entered === [] && $base['direct'] && ! str_starts_with($arm, '(') => [
                 ['text' => rtrim(substr($arm, 0, -1), " \t\n;,"), 'from' => $from],
                 ...self::text('; '),
                 ...$this->members($children)['pieces'],

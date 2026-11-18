@@ -49,7 +49,20 @@ use PhpParser\Node\Expr;
  *      heldProp?: bool,
  *      returnsCallable?: bool,
  *      closedToDottedKeys?: string,
- *      resolvedFqcn?: class-string<JsonResource>
+ *      resolvedFqcn?: class-string<JsonResource>,
+ *      unsplit?: array{of: string, print: ObjectPrint}
+ * }
+ * @phpstan-type ObjectPrint = array{
+ *      type: string,
+ *      optional: bool,
+ *      keyPresence?: array<string, array<string, PresenceFacts>>,
+ *      keepsKeys?: bool,
+ *      embeddedEnumFqcns?: list<class-string>,
+ *      embeddedEnumResourceFqcns?: list<class-string>,
+ *      embeddedModelFqcns?: list<class-string>,
+ *      embeddedResourceFqcns?: list<class-string>,
+ *      customImports?: TypesImportMap,
+ *      carriedFqcns?: CarriedMap
  * }
  *
  * `directEnumFqcn` says the value holds this enum, and its type may spell the enum's override instead of its
@@ -87,6 +100,10 @@ use PhpParser\Node\Expr;
  *
  * A list or collection built from such a value has another type, so ValueResult::closedToDottedKeys() reads the mark
  * only while the type, its null arm aside, is the one it was set for.
+ *
+ * `unsplit` holds, beside a literal printed one object per variant (LiteralVariants), the one object its rows print
+ * and the union it was printed beside: a reader that takes the value's keys back reads that object through
+ * ValueResult::unsplit(), only while `type` is still that union.
  *
  * @internal
  */

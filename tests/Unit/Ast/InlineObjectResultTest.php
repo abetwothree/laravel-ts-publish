@@ -11,6 +11,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResponseExtras;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\DiscriminantValue;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\Variant;
@@ -172,6 +174,21 @@ it('prints a method\'s literal flat where its `@return` changes a row, and split
 it('prints a nested literal split under an outer `@return` that leaves its rows as the body reads them', function () {
     expect(resolve(AstEngine::class)->analyzeMethod(VariantFormsResource::class, 'nestedUnderReturn')->properties[0]['type'])
         ->toBe('{ pinned: true; v: string } | { pinned: false; v: null }');
+});
+
+it('carries the one object a split literal prints, with its own classes, for a reader that takes its keys back', function () {
+    $analysis = nestedFormLiteral('caseCompare');
+    $split = new InlineObjectResult()->of($analysis);
+    $one = ValueResult::unsplit($split);
+
+    expect($split['type'])->toBe('{ status: 0; v: null } | { status: 1; v: string | null }')
+        ->and($split)->not->toHaveKey('embeddedEnumFqcns')
+        ->and($one['type'])->toBe('{ status: StatusType; v: string | null }')
+        ->and($one['embeddedEnumFqcns'] ?? [])->toBe([Status::class])
+        ->and(ObjectMembers::members($split))->toBe([
+            ['status', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]],
+            ['v', ['type' => 'string | null', 'optional' => false]],
+        ]);
 });
 
 it('reads a later resource arm\'s keys from its one object, whatever variants its own literal holds', function () {

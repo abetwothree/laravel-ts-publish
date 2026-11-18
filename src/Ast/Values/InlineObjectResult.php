@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Config;
  * attributes all publish their object through it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ObjectPrint from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
  * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ClassMapType from MethodAnalysis
@@ -80,21 +81,40 @@ final class InlineObjectResult
         $variants = $analysis->variants;
         $objects = $variants !== null && $variants->holdsFor($analysis) ? $variants->objects() : [];
 
+        if ($objects === []) {
+            return $this->unsplit($analysis, $spreadArms);
+        }
+
         // Each print takes its own copy, as one object would otherwise carry a spread arm's imports once per print.
-        return $objects === [] ? $this->flat($analysis, $spreadArms) : ValueResult::unionResults(array_map(
-            fn (MethodAnalysis $object): array => $this->flat(clone $object, $spreadArms),
+        $union = ValueResult::unionResults(array_map(
+            fn (MethodAnalysis $object): array => $this->unsplit(clone $object, $spreadArms),
             $objects,
         ));
+
+        // A reader that takes the keys back reads them from one object, as ValueResult::unsplit() hands it over.
+        return [...$union, 'unsplit' => ['of' => $union['type'], 'print' => $this->unsplit($analysis, $spreadArms)]];
+    }
+
+    /**
+     * A result's classes of one kind: its single-entry import channel's class, then its embedded queue.
+     *
+     * @param  class-string|null  $single
+     * @param  list<class-string>  $embedded
+     * @return list<class-string>
+     */
+    private static function channelFqcns(?string $single, array $embedded): array
+    {
+        return [...($single !== null ? [$single] : []), ...$embedded];
     }
 
     /**
      * An analysis as the one inline object type its rows print, whatever variants it holds, carrying the import
-     * channels of every class it names. A reader that takes the object's keys back needs one object.
+     * channels of every class it names.
      *
      * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms  the arms the object type intersects with
-     * @return ValueExpressionResult
+     * @return ObjectPrint
      */
-    public function flat(MethodAnalysis $analysis, array $spreadArms = []): array
+    private function unsplit(MethodAnalysis $analysis, array $spreadArms): array
     {
         self::readFillsClassLess($analysis);
 
@@ -276,18 +296,6 @@ final class InlineObjectResult
         }
 
         return $result;
-    }
-
-    /**
-     * A result's classes of one kind: its single-entry import channel's class, then its embedded queue.
-     *
-     * @param  class-string|null  $single
-     * @param  list<class-string>  $embedded
-     * @return list<class-string>
-     */
-    private static function channelFqcns(?string $single, array $embedded): array
-    {
-        return [...($single !== null ? [$single] : []), ...$embedded];
     }
 
     /**

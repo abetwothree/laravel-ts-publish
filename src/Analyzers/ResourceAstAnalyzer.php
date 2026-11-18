@@ -1851,7 +1851,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return;
         }
 
-        $written = new InlineObjectResult()->flat($armWrites);
+        $written = new InlineObjectResult()->of($armWrites);
         // A member no queue can read, such as an enum wrap, still says which keys the arm always writes.
         $keys = ObjectMembers::writtenMembers($written) ?? array_map(
             static fn (array $property): array => [$property['name'], [
@@ -1914,7 +1914,8 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
      */
     private function spreadsClosedShape(array $result): bool
     {
-        $members = TsTypeShape::members(TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0]));
+        $type = VisibleGaps::aside(ValueResult::unsplitType($result))[0];
+        $members = TsTypeShape::members(TsTypeString::withoutNullArm($type));
 
         return $members !== null
             && ! array_any($members, static fn (array $member): bool => IndexSignatureKey::is($member[0]) || VisibleGaps::isMarker($member[0]));

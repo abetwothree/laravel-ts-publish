@@ -49,8 +49,10 @@ trait ReadsCollectedItems
         } catch (ConstExprEvaluationException) {
         }
 
+        $read = ValueResult::unsplit($engine->resolve($items));
+
         // A gap is an arm no rule typed: the items are read as without it, and it stays beside them.
-        return ValueResult::gapTransparent($engine->resolve($items), static function (array $result): ?array {
+        return ValueResult::gapTransparent($read, static function (array $result): ?array {
             $type = $result['type'];
 
             if ($type === 'unknown') {

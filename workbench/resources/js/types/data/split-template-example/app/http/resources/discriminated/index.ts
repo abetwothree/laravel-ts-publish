@@ -4,3 +4,4 @@ export * from './pinned-placement-resource';
 export * from './pinned-post-resource';
 export * from './pinned-wraps-resource';
 export * from './post-priority-resource';
+export * from './read-back-resource';

@@ -128,13 +128,15 @@ final class InlineArrayHandler implements ExpressionHandler
      * key its arms' union, one some arm lacks a key it may leave unset; a `?` member reads as writtenMembers() has it.
      *
      * The item loop writes these keys over the keys before the spread, so planArms() keeps no arm for it. A gap arm of
-     * the value, which no rule typed, is set aside: it names no key and leaves no key unset.
+     * the value, which no rule typed, is set aside: it names no key and leaves no key unset. A literal printed one
+     * object per variant writes the keys of its one object (ValueResult::unsplit()).
      *
      * @param  ValueExpressionResult  $result  the spread's value
      * @return KeyedValues|null
      */
     public static function spreadKeys(Expr $value, array $result, AnalysisScope $scope): ?array
     {
+        $result = ValueResult::unsplit($result);
         $arms = TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0]));
         $objects = array_values(array_diff($arms, ['never[]']));
 
@@ -172,6 +174,7 @@ final class InlineArrayHandler implements ExpressionHandler
      */
     public static function spreadSignature(Expr $value, array $result, AnalysisScope $scope): ?array
     {
+        $result = ValueResult::unsplit($result);
         $map = self::spreadObject($result);
         $mapValue = $map !== null && self::readsWholeValue($value, $result, $scope) ? self::mapValue($map) : null;
 
@@ -198,6 +201,7 @@ final class InlineArrayHandler implements ExpressionHandler
         int $position,
         bool $printedArm = false,
     ): bool {
+        $result = ValueResult::unsplit($result);
         $keys = self::spreadKeys($value, $result, $scope);
 
         if ($keys === null) {
@@ -478,7 +482,7 @@ final class InlineArrayHandler implements ExpressionHandler
             return ['arm' => ['fqcn' => $chain['fqcn'], 'isModel' => true, 'isCollection' => $chain['isCollection']], 'value' => null];
         }
 
-        $spreadResult = $engine->resolve($expr);
+        $spreadResult = ValueResult::unsplit($engine->resolve($expr));
 
         if (isset($spreadResult['resourceFqcn'])
             && $spreadResult['type'] === TsNaming::resourceTypeName($spreadResult['resourceFqcn'])) {

@@ -681,6 +681,51 @@ it('reads a value as closed to dotted keys only while its type is the one it was
         ->and(ValueResult::closedToDottedKeys(['type' => '{ data: R }', 'optional' => false]))->toBeFalse();
 });
 
+// A literal printed one object per variant is read back as keys from its one object, while the union stands.
+it('reads a split result as its one-object print, with that print\'s classes, only while its type is the union', function () {
+    $union = '{ s: 0; v: string } | { s: 1; v: null }';
+    $split = [
+        'type' => $union,
+        'optional' => true,
+        'embeddedModelFqcns' => [User::class],
+        'unnamedKeys' => true,
+        'unsplit' => ['of' => $union, 'print' => [
+            'type' => '{ s: StatusType; v: string | null }',
+            'optional' => false,
+            'embeddedEnumFqcns' => [Status::class],
+        ]],
+    ];
+    $rewritten = [...$split, 'type' => $union.' | null'];
+
+    expect(ValueResult::unsplit($split))->toBe([
+        'type' => '{ s: StatusType; v: string | null }',
+        'optional' => true,
+        'unnamedKeys' => true,
+        'embeddedEnumFqcns' => [Status::class],
+    ])
+        ->and(ValueResult::unsplitType($split))->toBe('{ s: StatusType; v: string | null }')
+        ->and(ValueResult::unsplit($rewritten))->toBe($rewritten)
+        ->and(ValueResult::unsplitType($rewritten))->toBe($union.' | null')
+        ->and(ValueResult::unsplitType(['type' => $union, 'optional' => false]))->toBe($union);
+});
+
+it('joins the facts a result records for its one-object print\'s text to the print\'s own', function () {
+    $print = '{ a?: string; b?: number }';
+    $split = [
+        'type' => '{ k: true; a?: string } | { k: false; a?: never }',
+        'optional' => false,
+        'keyPresence' => ['{ k: true; a?: string }' => ['a' => ['removed' => true]], $print => ['b' => ['absent' => true]]],
+        'unsplit' => ['of' => '{ k: true; a?: string } | { k: false; a?: never }', 'print' => [
+            'type' => $print,
+            'optional' => false,
+            'keyPresence' => [$print => ['a' => ['removed' => true]]],
+        ]],
+    ];
+
+    expect(ValueResult::unsplit($split)['keyPresence'][$print] ?? null)
+        ->toBe(['a' => ['removed' => true], 'b' => ['absent' => true]]);
+});
+
 // A map() element is what its callback returns, and one that returns a callable may hold an object.
 it('reads the value a held callable returns apart from the callable', function () {
     $number = ['type' => 'number', 'optional' => false];

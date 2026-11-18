@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Operators;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -45,7 +46,7 @@ final class OffsetReadHandler implements ExpressionHandler
             return null;
         }
 
-        $holder = $engine->resolve($expr->var);
+        $holder = ValueResult::unsplit($engine->resolve($expr->var));
         $read = $this->keyRead($holder['type'], (string) $expr->dim->value);
 
         return $read !== null && ($holder['absentKeys'] ?? false) ? [...$read, 'optional' => false] : $read;

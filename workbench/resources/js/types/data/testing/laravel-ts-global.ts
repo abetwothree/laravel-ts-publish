@@ -6305,6 +6305,19 @@ declare global {
             badge: string | workbench.app.http.resources.UserResource | never[] | null;
             escalated_at?: string | null;
         }
+        /**
+         * Literals whose keys follow a sibling key's value, read back as keys (GH-157): a helper that writes into one, a
+         * collection, a spread and a key read. Each reads the literal as one object, as it did before the literal split.
+         */
+        export interface ReadBackResource {
+            stamped: { pinned: boolean; v: string | null; at: number };
+            stamped_enum: { status: workbench.app.enums.StatusType; v: string | null; at: number };
+            stamped_local: { pinned: boolean; v: string | null; at: number };
+            collected: { pinned: boolean; v: string | null };
+            spread: { pinned: boolean; v: string | null; x: number };
+            read_pinned: boolean;
+            read_v: string | null;
+        }
     }
     export namespace workbench.app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */

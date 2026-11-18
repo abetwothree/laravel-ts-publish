@@ -362,6 +362,58 @@ final class ValueResult
     }
 
     /**
+     * The result as the one object its literal prints, whatever variants it holds, with that print's own classes, while
+     * its type is still the union printed beside it; else the result as it is. A reader that takes a value's keys back
+     * reads it through this, as the keys follow one object, not each variant's.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function unsplit(array $result): array
+    {
+        $unsplit = $result['unsplit'] ?? null;
+
+        if ($unsplit === null || $unsplit['of'] !== $result['type']) {
+            return $result;
+        }
+
+        $print = $unsplit['print'];
+        // Facts recorded on the result for the print's own text since it was printed join the print's.
+        $presence = $print['keyPresence'] ?? [];
+
+        foreach ($result['keyPresence'] ?? [] as $object => $facts) {
+            $presence[$object] = [...$presence[$object] ?? [], ...$facts];
+        }
+
+        // The union's classes and facts about its objects give way to the print's own.
+        $read = $result;
+        unset(
+            $read['unsplit'], $read['keyPresence'], $read['keepsKeys'], $read['enumFqcn'], $read['directEnumFqcn'],
+            $read['sendsEnumScalar'], $read['resourceFqcn'], $read['modelFqcn'], $read['embeddedEnumFqcns'],
+            $read['embeddedEnumResourceFqcns'], $read['embeddedModelFqcns'], $read['embeddedResourceFqcns'],
+            $read['multiEnumResourceFqcns'], $read['customImports'], $read['carriedFqcns'], $read['wrapIsCollection'],
+            $read['directIsArray'],
+        );
+
+        return [
+            ...$read,
+            ...$print,
+            'optional' => $result['optional'],
+            ...($presence === [] ? [] : ['keyPresence' => $presence]),
+        ];
+    }
+
+    /**
+     * The type a reader that takes a value's keys back reads: its one-object print, as unsplit() reads it.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function unsplitType(array $result): string
+    {
+        return self::unsplit($result)['type'];
+    }
+
+    /**
      * Whether a published type may stand for null: it has a `null` arm, or is `unknown`.
      */
     public static function mayBeNull(string $type): bool

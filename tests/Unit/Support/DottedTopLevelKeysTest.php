@@ -64,6 +64,22 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
     'a new key' => [['a.b' => 'number'], ['a' => '{ b: number }']],
     'a new key every write may leave out' => [['a.b' => 'number?', 'a.c' => 'string?'], ['a' => '{ b?: number; c?: string }?']],
     'into an object' => [['a' => '{ id: number }', 'a.b' => 'string'], ['a' => '{ id: number; b: string }']],
+    'into objects naming one key set' => [
+        ['a' => '{ k: true; v: string } | { k: false; v: null }', 'a.b' => 'number'],
+        ['a' => '({ k: true; v: string } | { k: false; v: null }) & { b: number }'],
+    ],
+    'over a key objects naming one key set hold' => [
+        ['a' => '{ k: true; v: string } | { k: false; v: null }', 'a.v' => 'number'],
+        ['a' => "Omit<({ k: true; v: string } | { k: false; v: null }), 'v'> & { v: number }"],
+    ],
+    'into objects naming one key set that may be null' => [
+        ['a' => '{ k: true; v: string } | { k: false; v: null } | null', 'a.b' => 'number'],
+        ['a' => '({ k: true; v: string } | { k: false; v: null }) & { b: number } | { b: number }'],
+    ],
+    'into objects naming two key sets' => [
+        ['a' => '{ k: number } | { j: string }', 'a.b' => 'number'],
+        ['a' => '(({ k: number } | { j: string }) & { b: number }) | { b: number }'],
+    ],
     'into a later object' => [['a.b' => 'string', 'a' => '{ id: number }'], ['a' => '{ id: number; b: string }']],
     'into an object the write may leave alone' => [
         ['a' => '{ id: number }', 'a.b' => 'string?'],

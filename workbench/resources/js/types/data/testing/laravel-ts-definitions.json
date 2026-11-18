@@ -14332,6 +14332,46 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\ReadBackResource": {
+            "name": "ReadBackResource",
+            "properties": [
+                {
+                    "name": "stamped",
+                    "type": "{ pinned: boolean; v: string | null; at: number }",
+                    "optional": false
+                },
+                {
+                    "name": "stamped_enum",
+                    "type": "{ status: StatusType; v: string | null; at: number }",
+                    "optional": false
+                },
+                {
+                    "name": "stamped_local",
+                    "type": "{ pinned: boolean; v: string | null; at: number }",
+                    "optional": false
+                },
+                {
+                    "name": "collected",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "spread",
+                    "type": "{ pinned: boolean; v: string | null; x: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "read_v",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [

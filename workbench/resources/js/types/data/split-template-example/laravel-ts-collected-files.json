@@ -184,6 +184,7 @@
     "app\/Http\/Resources\/Discriminated\/PinnedPostResource.php",
     "app\/Http\/Resources\/Discriminated\/PinnedWrapsResource.php",
     "app\/Http\/Resources\/Discriminated\/PostPriorityResource.php",
+    "app\/Http\/Resources\/Discriminated\/ReadBackResource.php",
     "app\/Http\/Resources\/DocumentedRecipientsResource.php",
     "app\/Http\/Resources\/DuplicateKeyCastResource.php",
     "app\/Http\/Resources\/EmptyResource.php",
