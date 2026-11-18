@@ -17,6 +17,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type LiteralSpan from TypeScanner
  *
+ * @phpstan-type TypeToken = array{string, bool}
+ *
  * @internal
  */
 class TsTypeString
@@ -45,6 +47,28 @@ class TsTypeString
 
     /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
     protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
+
+    /** The words a type reads as an operator or a modifier, never as a name. */
+    protected const array TYPE_OPERATORS = [
+        'abstract', 'as', 'asserts', 'const', 'extends', 'get', 'import', 'in', 'infer', 'is', 'keyof', 'new', 'out',
+        'readonly', 'set', 'typeof', 'unique',
+    ];
+
+    /** The tokens a type starts right after, so a name after one is a type even where a `:` follows it. */
+    protected const array TYPE_LEADS = [
+        '?', '|', '&', '=>', '<', '=', 'abstract', 'as', 'asserts', 'extends', 'in', 'infer', 'is', 'keyof', 'new',
+        'typeof', 'unique',
+    ];
+
+    /** TypeScript's own generics, whose head no import brings; a bare name spelled like one is the app's own. */
+    protected const array LIB_GENERICS = [
+        'Array', 'ArrayLike', 'AsyncGenerator', 'AsyncIterable', 'AsyncIterableIterator', 'AsyncIterator', 'Awaited',
+        'Capitalize', 'ConstructorParameters', 'Exclude', 'Extract', 'Generator', 'InstanceType', 'Iterable',
+        'IterableIterator', 'Iterator', 'Lowercase', 'Map', 'NoInfer', 'NonNullable', 'Omit', 'OmitThisParameter',
+        'Parameters', 'Partial', 'Pick', 'Promise', 'PromiseLike', 'Readonly', 'ReadonlyArray', 'ReadonlyMap',
+        'ReadonlySet', 'Record', 'Required', 'ReturnType', 'Set', 'ThisParameterType', 'ThisType', 'Uncapitalize',
+        'Uppercase', 'WeakMap', 'WeakRef', 'WeakSet',
+    ];
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
     protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
@@ -79,7 +103,8 @@ class TsTypeString
     /**
      * Whether a resolved shape value contains an identifier that would need an import to be valid.
      *
-     * extractImportableTypes() can't be reused: it skips '<'/'{' content, which docblock shapes routinely have.
+     * Not referencedTypeNames(), which needs no import for any of TypeScript's own generics, where a shape allows only
+     * `Record` and `Date` of TypeScript's own names.
      * Object-literal keys are stripped first so 'owner' in '{ owner: User }' isn't read as a value token.
      *
      * @param  list<string>  $importableNames  Local names an import already brings into the file.
@@ -135,36 +160,74 @@ class TsTypeString
     }
 
     /**
-     * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
-     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left
-     * that is no gap arm.
+     * The type names an import would bring for a TypeScript type string: the names it references, as
+     * referencedTypeNames() reads them.
      *
      * @return list<string>
      */
     public function extractImportableTypes(string $typeString): array
     {
-        $parts = explode('|', $typeString);
-        $importable = [];
-        // A digit or a combining mark continues an identifier but cannot start one.
-        $identifier = '/^(?![\p{Nd}\p{Mn}\p{Mc}])'.$this->identifierCharacter().'+$/u';
+        return $this->referencedTypeNames($typeString);
+    }
 
-        foreach ($parts as $part) {
-            $name = (string) preg_replace(
-                ['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\s*\[\s*\])+$/'],
-                '',
-                trim($part),
-            );
+    /**
+     * The names a type string references in a type position, each once in the order it first spells them: the names a
+     * file must bind for the type to compile.
+     *
+     * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
+     * arm, a name after a `.`, a binder `infer` or a mapped type declares, a predicate's parameter, or the head of one
+     * of TypeScript's own generics. The operand of `typeof` is one.
+     *
+     * @return list<string>
+     */
+    public function referencedTypeNames(string $type): array
+    {
+        $tokens = $this->typeTokens($type);
+        $keywords = [...self::TS_PRIMITIVES, ...self::KEYWORD_TYPES, ...self::TYPE_OPERATORS];
+        $names = [];
+        $binders = [];
+        $opened = [];
 
-            $named = ! in_array($name, self::TS_PRIMITIVES, true) && ! VisibleGaps::isGap($name);
+        foreach ($tokens as $index => [$token, $isName]) {
+            if (! $isName) {
+                match ($token) {
+                    '{', '[', '(', '<' => $opened[] = $token,
+                    '}', ']', ')', '>' => array_pop($opened),
+                    default => null,
+                };
 
-            if (! $named || preg_match($identifier, $name) !== 1) {
                 continue;
             }
 
-            $importable[] = $name;
+            $before = $tokens[$index - 1][0] ?? '';
+            $after = $tokens[$index + 1][0] ?? '';
+            $afterNext = $tokens[$index + 2][0] ?? '';
+            $leads = in_array($before, self::TYPE_LEADS, true);
+
+            if ($before === '.' || in_array($token, $keywords, true)) {
+                continue;
+            }
+
+            if ($before === 'infer' || ($after === 'in' && end($opened) === '[')) {
+                $binders[] = $token;
+
+                continue;
+            }
+
+            // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
+            // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
+            $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
+            $method = $after === '(' && end($opened) === '{' && ! $leads && $before !== ':';
+            $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
+                && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
+            $libHead = $after === '<' && in_array($token, self::LIB_GENERICS, true);
+
+            if (! $binds && ! $method && ! $predicate && ! $libHead && ! VisibleGaps::isGap($token)) {
+                $names[] = $token;
+            }
         }
 
-        return array_values(array_unique($importable));
+        return array_values(array_unique(array_diff($names, $binders)));
     }
 
     /**
@@ -712,6 +775,36 @@ class TsTypeString
             // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
+    }
+
+    /**
+     * A type's tokens, each beside whether it is a name: every name, `...`, `=>`, and every other character, with each
+     * literal's text read as one `~`, as the scanner reads it, and each `\u` escape as the character it names.
+     *
+     * @return list<TypeToken>
+     */
+    private function typeTokens(string $type): array
+    {
+        $code = '';
+        $from = 0;
+
+        foreach (TypeScanner::literalSpans($type) as [$start, $end]) {
+            $code .= substr($type, $from, $start - $from).'~';
+            $from = $end;
+        }
+
+        $code .= substr($type, $from);
+        $class = $this->identifierCharacter();
+        // A digit or a combining mark continues a name but cannot start one, so `1User` holds no name.
+        $pattern = '/(?<name>(?<!'.$class.')(?![\p{Nd}\p{Mn}\p{Mc}])'.$class.'+)|\.\.\.|=>|\S/u';
+
+        $code = $this->decodeIdentifierEscapes($code) ?? $code;
+
+        if (preg_match_all($pattern, $code, $matches, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL) === false) {
+            return [];
+        }
+
+        return array_map(static fn (array $match): array => [(string) $match[0], $match['name'] !== null], $matches);
     }
 
     /**
