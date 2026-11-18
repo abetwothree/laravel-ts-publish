@@ -398,8 +398,11 @@ class InertiaPageAnalyzer
                 TopLevelRenumbering::rekey(array_intersect_key($importPaths, $castKeys), $castKeys),
                 $targets,
             );
+            // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
+            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
+            $analysis->absorbRedundantArms();
+            $resolved = $analysis->boundClassNames();
             $castImports = [];
-            $resolved = $analysis->allChannelNames();
 
             // A losing spelling's import goes with its type.
             foreach ($paths as $key => $path) {
@@ -410,11 +413,7 @@ class InertiaPageAnalyzer
             }
 
             $externalImports = $this->withImports($externalImports, $castImports);
-
-            // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
-            resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
-            $analysis->absorbRedundantArms();
-            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths, $resolved));
+            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths), $resolved);
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $members = $this->buildMembersWithOverrides(
@@ -772,21 +771,14 @@ class InertiaPageAnalyzer
      *
      * @param  array<array-key, string>  $casts  the action's casts, by the key each retypes
      * @param  array<array-key, string>  $paths  each of those casts' import path, by its key
-     * @param  list<string>  $resolved  the names the page's file imports a class of the package under
      * @return CastMap
      */
-    private function castsInForce(MethodAnalysis $analysis, array $casts, array $paths, array $resolved): array
+    private function castsInForce(MethodAnalysis $analysis, array $casts, array $paths): array
     {
         $inForce = $analysis->casts;
 
         foreach ($casts as $key => $type) {
-            $import = $paths[$key] ?? null;
-            $inForce[$key] = [
-                'type' => $type,
-                'import' => $import,
-                'reading' => 'names',
-                ...($import === null ? [] : ['resolved' => $resolved]),
-            ];
+            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null, 'reading' => 'names'];
         }
 
         return $inForce;

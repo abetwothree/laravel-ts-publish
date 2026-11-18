@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndInterse
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideMethodCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideIntersectNestedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideNestedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedEmptyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameTypesResource;
@@ -196,4 +198,15 @@ it('aliases a name an extends clause and an intersection import from two paths',
         } & (Partial<BBase>);
 
         TS],
+]);
+
+// A name a clause only builds on takes no alias: a clause that names it whole already binds it for the file.
+it('binds a name a clause only builds on to the import a clause naming it whole brings', function (string $resource, string $declaration) {
+    $content = intersectedResourceFile($resource);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe(["import type { Meta } from '@/types/meta';"])
+        ->and($content)->toContain($declaration);
+})->with([
+    'two extends clauses' => [ExtendsWholeBesideNestedResource::class, 'export interface ExtendsWholeBesideNestedResource extends Meta, Pick<Meta, "a">'],
+    'an extends clause and an intersection' => [ExtendsWholeBesideIntersectNestedResource::class, 'export type ExtendsWholeBesideIntersectNestedResource = Meta & {'],
 ]);

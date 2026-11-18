@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\BuildsOnSibling
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeFoldedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\HelperCastBuildsOnSiblingController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\LiteralCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
 use AbeTwoThree\LaravelTsPublish\Transformers\RouteTransformer;
@@ -1146,6 +1147,17 @@ it('keeps the model import a page cast builds on when another key embeds the mod
         ->toBe('Inertia.SharedData & { k: { owner: User | null; meta: Meta }, author: User }')
         ->and($transformer->typeImports)->toBe([
             '@/types/meta' => ['Meta'],
+            '../../../../../../app/models' => ['User'],
+        ]);
+});
+
+it('keeps the model import a props helper\'s cast builds on when the page embeds the model', function () {
+    app(Router::class)->get('/helper-cast-builds-on-sibling/{post}', [HelperCastBuildsOnSiblingController::class, 'show']);
+    $transformer = new RouteTransformer(HelperCastBuildsOnSiblingController::class);
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { k: Paginated<User>, author: User }')
+        ->and($transformer->typeImports)->toBe([
+            '@/types/meta' => ['Paginated'],
             '../../../../../../app/models' => ['User'],
         ]);
 });

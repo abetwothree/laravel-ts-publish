@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -200,13 +201,21 @@ trait ParsesTsExtends
             }
         }
 
+        // A name an entry only builds on takes no alias: the publisher imports it only where nothing else binds it.
+        $builtOn = array_map(
+            static fn (array $entry): array => $entry['read'] && $entry['import'] !== null
+                ? array_values(array_diff($entry['types'], CastChannels::wholeNames($entry['extends'])))
+                : [],
+            $deduped,
+        );
+
         /** @var array<string, list<string>> $typeToImportPaths */
         $typeToImportPaths = [];
-        foreach ($deduped as $entry) {
+        foreach ($deduped as $index => $entry) {
             if ($entry['import'] === null) {
                 continue;
             }
-            foreach ($entry['types'] as $typeName) {
+            foreach (array_diff($entry['types'], $builtOn[$index]) as $typeName) {
                 if (! in_array($entry['import'], $typeToImportPaths[$typeName] ?? [], true)) {
                     $typeToImportPaths[$typeName][] = $entry['import'];
                 }
@@ -234,12 +243,11 @@ trait ParsesTsExtends
         /** @var array<string, list<string>> $claimed  the names an entry imports whole or lists in its `types` */
         $claimed = [];
 
-        foreach ($deduped as $entry) {
+        foreach ($deduped as $index => $entry) {
             $extendsClause = $entry['extends'];
 
             if ($entry['import'] !== null) {
                 $typeNamesToImport = [];
-                $builtOn = $entry['read'] ? array_diff($entry['types'], TsTypeString::armNames($extendsClause)) : [];
 
                 foreach ($entry['types'] as $typeName) {
                     $aliasKey = $typeName."\0".$entry['import'];
@@ -254,7 +262,7 @@ trait ParsesTsExtends
                     } else {
                         $typeNamesToImport[] = $typeName;
 
-                        if (in_array($typeName, $builtOn, true)) {
+                        if (in_array($typeName, $builtOn[$index], true)) {
                             $nested[$entry['import']][] = $typeName;
                         } else {
                             $claimed[$entry['import']][] = $typeName;

@@ -113,7 +113,7 @@ final class ReturnShapeRefiner
             $analysis->customImports = ImportMaps::merge($analysis->customImports, ...$imports);
         }
 
-        resolve(CastChannels::class)->fit($analysis, $filled);
+        resolve(CastChannels::class)->fit($analysis, $filled, $analysis->boundClassNames());
     }
 
     /**

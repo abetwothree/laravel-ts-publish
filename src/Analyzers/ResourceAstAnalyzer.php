@@ -2448,7 +2448,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     {
         $keys = array_column($analysis->properties, 'name');
         $types = JsEmitter::castsByKey($types, $keys);
-        $fileNames = null;
 
         JsEmitter::warnAmbiguousCasts($this->scope->subjectReflection->getName(), array_keys($types), $keys);
 
@@ -2495,9 +2494,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 ];
             }
 
-            // A name the text builds on that its file resolves to a class keeps the package's import.
-            $resolved = $import === null ? [] : ($fileNames ??= $analysis->allChannelNames());
-
             // The publisher fits the key's import channels to this text once it knows which cast is in force; the slots
             // a fill declared described the value this text replaces.
             unset($analysis->declaredTokenFqcns[$property]);
@@ -2506,11 +2502,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 'import' => $import,
                 'reading' => 'names',
                 ...($optional === null ? [] : ['optional' => $optional]),
-                ...($import === null ? [] : ['resolved' => $resolved]),
             ];
 
+            // Only the names the text is whole: the publisher's fit adds each it builds on that the file binds no class to.
             if ($import !== null) {
-                foreach (CastChannels::importedNames($type, $resolved) as $importName) {
+                foreach (CastChannels::wholeNames($type) as $importName) {
                     $analysis->customImports[$import][] = $importName;
                 }
             }

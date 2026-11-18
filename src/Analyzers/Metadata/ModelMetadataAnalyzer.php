@@ -154,7 +154,11 @@ class ModelMetadataAnalyzer
 
         // The transformer throws for one name imported from two paths, so no cast may unbind another path's import.
         $customImports = $analysis->customImports;
-        resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $result, $docblockTokens, $published));
+        resolve(CastChannels::class)->fit(
+            $analysis,
+            $this->castsInForce($analysis, $result, $docblockTokens, $published),
+            $analysis->boundClassNames(),
+        );
         $analysis->customImports = $customImports;
 
         $castPaths = array_intersect_key($result->importPaths, $payload);

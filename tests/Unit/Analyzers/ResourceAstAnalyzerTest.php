@@ -6600,7 +6600,6 @@ describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through
                 'type' => 'UserResource | null',
                 'import' => '@js/types/user',
                 'reading' => 'names',
-                'resolved' => ['UserResource'],
             ],
         ])
             ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
@@ -7356,7 +7355,7 @@ describe('a cast across its locations', function () {
     test('a method cast and the class casts for one signature reach the fit as one entry, under its published key', function () {
         $transformer = new class(SpellingsAcrossLocationsResource::class) extends ResourceTransformer
         {
-            /** @return array<string, array{type: string, import: string|null}> */
+            /** @return array<string, array{type: string, import: string|null, reading: 'arms'|'names'}> */
             public function exposedCastsInForce(): array
             {
                 return $this->castsInForce;

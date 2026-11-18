@@ -105,7 +105,7 @@ final class AnalysisComposer
         resolve(IndexSignatureReconciler::class)
             ->reconcile($analysis, array_map(fn (array $cast): string => $cast['type'], $analysis->casts));
         $analysis->absorbRedundantArms();
-        resolve(CastChannels::class)->fit($analysis, $analysis->casts);
+        resolve(CastChannels::class)->fit($analysis, $analysis->casts, $analysis->boundClassNames());
         $this->collectProperties($analysis);
         $this->collectNameMaps($analysis);
         $this->propertyFqcnQueues = $this->buildPropertyFqcnQueues($analysis);

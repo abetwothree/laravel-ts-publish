@@ -9,7 +9,7 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Workbench\App\Models\User;
 
-/** A test-only event whose class-level #[TsCasts] builds on the model another key reads, beside a name only it imports. */
+/** A test-only event whose class-level #[TsCasts] builds on the model another key reads, beside a name it imports. */
 #[TsCasts(['k' => ['type' => '{ owner: User; meta: Meta }', 'import' => '@/types/meta']])]
 final class CastBuildsOnSiblingModelEvent implements ShouldBroadcast
 {

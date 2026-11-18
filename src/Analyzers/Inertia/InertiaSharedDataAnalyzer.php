@@ -155,7 +155,7 @@ class InertiaSharedDataAnalyzer
         $analysis->absorbRedundantArms();
 
         $castsInForce = $this->castsInForce($analysis, $mergedOverrides, $castPaths, $docblockByKey);
-        resolve(CastChannels::class)->fit($analysis, $castsInForce);
+        resolve(CastChannels::class)->fit($analysis, $castsInForce, $analysis->boundClassNames());
 
         $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
         $members = $this->buildMembersWithOverrides(

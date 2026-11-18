@@ -331,7 +331,6 @@ final class BranchJoin
                 'type' => $cast['type'],
                 'import' => $cast['import'],
                 'reading' => $cast['reading'],
-                ...(isset($cast['resolved']) ? ['resolved' => $cast['resolved']] : []),
             ];
             $casts[(string) $name] = match (true) {
                 $anyOptional => [...$joined, 'optional' => true],
