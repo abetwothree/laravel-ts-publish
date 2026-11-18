@@ -37,6 +37,7 @@ class ResourceWriter extends CoreWriter
             ...array_column($data->properties, 'type'),
             ...$data->variants,
             ...$data->tsExtends,
+            ...$data->intersections,
             ...array_filter([$data->typeAlias]),
         );
 

@@ -38,6 +38,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastW
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsArrayResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectAsEnumBesideTypeofCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPriorityResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsExtendsResource;
@@ -318,6 +319,19 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
         ],
     ],
 ]);
+
+// An intersection is part of the type the file declares, so an `AsEnum` it alone spells is imported as a key's is.
+test('imports AsEnum for an intersection that alone spells it, beside a cast that imports the enum\'s const', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(IntersectAsEnumBesideTypeofCastResource::class));
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status } from '../../../../../../workbench/app/enums';",
+    ])->and($content)->toContain('} & ({ hint?: AsEnum<typeof Status> });');
+});
 
 // A cast that holds the enum's type name publishes as written and imports that type, and a key beside a cast key
 // keeps its wrap.
