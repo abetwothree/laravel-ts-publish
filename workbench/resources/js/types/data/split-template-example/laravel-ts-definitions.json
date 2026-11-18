@@ -14233,6 +14233,61 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\HiddenWritesResource": {
+            "name": "HiddenWritesResource",
+            "properties": [
+                {
+                    "name": "by_reference",
+                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_reference_in_helper",
+                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "callable_in_when",
+                    "type": "{ is_pinned: true; cleared?: boolean; detail: string } | { is_pinned: false; cleared?: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "write_before_dropper",
+                    "type": "{ maybe: true; detail: string; reset: boolean; check: string } | { maybe: false; detail: null; reset: boolean; check: string }",
+                    "optional": false
+                },
+                {
+                    "name": "write_before_dropper_enum",
+                    "type": "{ priority: 0 | 2 | 3; detail: string; reset: boolean; check: string } | { priority: 1; detail: null; reset: boolean; check: string }",
+                    "optional": false
+                },
+                {
+                    "name": "call_in_arm",
+                    "type": "{ is_pinned: true; changed: string; detail: string } | { is_pinned: false; changed: null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "hooked",
+                    "type": "{ flag: true; detail: string } | { flag: false; detail: number }",
+                    "optional": false
+                },
+                {
+                    "name": "handed_model",
+                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_helpers_down",
+                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_fills_model",
+                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Discriminated\\IntersectedPostResource": {
             "name": "IntersectedPostResource",
             "properties": [
@@ -14374,6 +14429,56 @@
                 {
                     "name": "read_v",
                     "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\ReadingCallsResource": {
+            "name": "ReadingCallsResource",
+            "properties": [
+                {
+                    "name": "enum_method",
+                    "type": "{ status: StatusType; color: string; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "forwarded_key",
+                    "type": "{ is_pinned: boolean; key: number; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "forwarded_key_in_arm",
+                    "type": "{ is_pinned: true; key: number; detail: string } | { is_pinned: false; key: null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "relation_check",
+                    "type": "{ is_pinned: boolean; loaded: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "forwarded_check_in_when",
+                    "type": "{ is_pinned: boolean; author_title?: string; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_resource",
+                    "type": "{ is_pinned: true; author?: UserResource; detail: string } | { is_pinned: false; author?: UserResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_callable_in_when",
+                    "type": "{ is_pinned: true; label?: string; detail: string } | { is_pinned: false; label?: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "dropper_outside_group",
+                    "type": "{ id: number; priority: 0; detail: string; stage: string } | { id: number; priority: 1 | 2 | 3; detail: null; stage: string }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_call_in_arm",
+                    "type": "{ is_pinned: true; label: string; detail: string } | { is_pinned: false; label: null; detail: null }",
                     "optional": false
                 }
             ]

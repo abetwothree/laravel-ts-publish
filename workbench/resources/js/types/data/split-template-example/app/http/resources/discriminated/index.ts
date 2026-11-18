@@ -1,5 +1,6 @@
 export * from './discriminant-forms-resource';
 export * from './feed-placement-resource';
+export * from './hidden-writes-resource';
 export * from './intersected-post-resource';
 export * from './numeric-keys-resource';
 export * from './pinned-placement-resource';
@@ -7,6 +8,7 @@ export * from './pinned-post-resource';
 export * from './pinned-wraps-resource';
 export * from './post-priority-resource';
 export * from './read-back-resource';
+export * from './reading-calls-resource';
 export * from './swapped-enums-resource';
 export * from './swapped-resources-resource';
 export * from './unseen-writes-resource';
