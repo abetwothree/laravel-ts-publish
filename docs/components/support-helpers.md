@@ -93,6 +93,13 @@ The helpers and the test that pins them live in these files:
   [AST engine § Redundant arms](ast-engine.md#redundant-arms) says who calls it and with which map.
 - [`Support\TypeStrings\LiteralArm`](../../src/Support/TypeStrings/LiteralArm.php): the scalar a literal union arm
   spells, a quoted string, a JSON number, `true` or `false`, or null for any other arm. Static and `@internal`.
+- [`Support\TypeStrings\TsLibGlobals`](../../src/Support/TypeStrings/TsLibGlobals.php): every global name declared
+  by the TypeScript lib files that the repo's tsconfigs load, which a type spells with no import. Generated: after a
+  TypeScript bump, run `php .github/scripts/generate-ts-lib-globals.php`. `TsLibGlobalsTest` compares the committed
+  list with the script's output wherever TypeScript is installed, the CI gates job included, so it fails until then.
+- [`Support\VariantRows`](../../src/Support/VariantRows.php): the reserved row an API resource's top level holds a
+  group of keys in, one arm per value of the key the others follow, and the split of a resource's rows into shared
+  keys and variants. Static and `@internal`; [Variants](variants.md) covers the groups.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -125,6 +132,10 @@ Ask what the helper's input domain is, not what calls it:
 | Which arm of this type is a gap, where does the open marker go, and what does the type read with them set aside or stripped? | `VisibleGaps` |
 | Does one union arm admit another, and what is a type without each arm a sibling admits? | `RedundantArms` |
 | Which scalar does this literal union arm spell? | `LiteralArm::value()` |
+| Which names must a file bind for this type to compile? | `TsTypeString::referencedTypeNames()` |
+| How do I respell a name only where it stands as a type? | `TsTypeString::aliasReferences()` |
+| Does a type spell this name with no import, as a TypeScript or DOM global? | `TsLibGlobals::NAMES` |
+| Which of a resource's rows are its variants, and what is a variant row called? | `VariantRows` |
 | Which separator do this object literal's members print with? | `TsTypeShape::memberSeparator()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | How does an arm stand alone once the arms beside it are gone? | `TsTypeShape::loneArm()` |
@@ -200,8 +211,9 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
 `TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
-`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`) and `ImportMaps::localNames()`; `TsTypeShape`'s are `TypeScanner`,
-`PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and `TsTypeShape`. That one-way dependency is
+`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and `TsLibGlobals::NAMES`;
+`TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and
+`TsTypeShape`. That one-way dependency is
 what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and
 `withoutNullArm()` reads gap arms alone as `unknown`, so no lone gap reaches its callers. A new member that wants
 `toTsType()` is not a type-string helper, and would be in the same bind as the
@@ -212,6 +224,14 @@ a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave 
 `shapeValueHasUnimportableToken()` masks it, while a template literal's `${…}` is read as type code.
 Two readers stay literal-blind: `typeNameOccursIn()`, as its [known gap][literal-blind] says, and
 `extractImportableTypes()`, which still splits an override's or cast's type on every `|`.
+
+`referencedTypeNames()` reads every name a type references at any depth, through generics and objects, and leaves out
+a member's own name, literal text, a primitive, a type parameter the type declares and a `TsLibGlobals` name. Only an
+API resource's clauses read it, `#[TsExtends]`, `#[TsIntersect]` and `ts_extends.resources`, through
+`ResourceTransformer::clauseTypeNames()`. Every cast and every other publisher's clause keeps
+`extractImportableTypes()`'s top-level arms, as [`#[TsCasts]` overrides § Imports](ts-casts.md#imports) says.
+`aliasReferences()` respells a name only where it stands as a type or a binder declares it, so a binder and its uses
+rename together, and an alias of `Meta` leaves the literal in `Pick<Meta, "Meta">` and the key in `{ Meta: Meta }`.
 
 `hoistNull()`, `orUndefined()`, `TsTypeString::withNullArm()` and `orNull()`, `listType()`, `mergeTypeScriptInfos()`,
 `TokenSlots::uniqueArms()` and `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join.

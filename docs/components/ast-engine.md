@@ -25,6 +25,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Receivers/` | Which class an expression holds, and the methods called on it |
 | `Resources/` | API resource facts: backing model, collections, response body and extras, resolved body, JSON:API |
 | `Values/` | Value results and the readers that type a value: constants, reflection, aggregates |
+| `Variants/` | The keys of one literal that follow a sibling key's value, read and printed one object per variant: [Variants](variants.md) |
 
 These are the classes a change to the engine usually touches:
 
@@ -935,8 +936,9 @@ left out: `$this->resource` read whole under its own `instanceof` proof, as the 
 leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
-compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
-answer.
+compare it around a read to tell a dropped arm's `null` from a literal one, `AnalysisMemo` replays it for a reused
+answer, and `VariantReader` declines a group whose arm reads grew it
+([Variants § Where a group declines](variants.md#where-a-group-declines)).
 
 Each site hands its union and each arm it left out, paired with its site, to `DroppedUnionArms::leftOut()`, which
 records each arm. Where a drop leaves the union only `null` and/or `never[]`, it adds one run-output warning per arm
@@ -1126,6 +1128,7 @@ These pages cover the engine's neighbors:
 
 - [Receiver types](receiver-types.md): how the engine names the class a `$x->m()` or `$x->prop` receiver holds.
 - [ResourceAstAnalyzer](resource-ast-analyzer.md): the resource-specific rules the handlers implement.
+- [Variants](variants.md): the keys of a literal that follow a sibling key's value, printed one object per variant.
 - [AccessorBodyAnalyzer](accessor-body-analyzer.md) and [Model metadata](model-metadata.md): the two model-side
   consumers.
 - [ImportNameRegistry](import-name-registry.md): aliasing two same-basename imports.

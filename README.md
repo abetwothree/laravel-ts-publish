@@ -260,6 +260,7 @@ Key capabilities include:
 
 - **Model-aware types**: properties are typed from the backing model's columns, casts, accessors, and relations.
 - **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties, usually with `| null` where Laravel can send `null`.
+- **Discriminated unions**: keys that follow another key's value narrow on it.
 - **Nested resources**: `::make()`, `::collection()`, `new`, and `toResource()` publish the imported resource type.
 - **Resource collections**: a collection publishes the body Laravel sends under the wrap key your app sets, over items or a length-aware, simple, or cursor paginator.
 - **JSON:API resources**: a `JsonApiResource` publishes the resource object it sends, with typed `attributes` and `relationships`.
@@ -559,8 +560,7 @@ Key capabilities include:
 - **Four features**: works on models, resources, form requests, and broadcast events, by attribute or config.
 - **Inherited**: an attribute on a parent class or a trait applies to every class that extends or uses it.
 - **Repeatable**: stack several `#[TsExtends]` attributes to extend several interfaces.
-- **Generic helpers**: wrap a type in `Pick<>`, `Omit<>`, or `Partial<>`, and list the names to import in `types`.
-- **Deduplication and aliasing**: a clause reached twice appears once, and clashing type names get aliases.
+- **Generic helpers**: wrap a type in `Pick<>`, `Omit<>`, or `Partial<>`, and list the names to import in `types`.- **Deduplication and aliasing**: a clause reached twice appears once, and clashing type names get aliases.
 
 For inheritance order, config syntax, and alias rules, see the [Extending Interfaces documentation](https://tolki.abe.dev/ts/extending-interfaces.html).
 

@@ -735,6 +735,10 @@ key. In the [gap mode](#the-gap-mode), a key the join types without a later sour
 (`fold-join`), and a union of objects written in place gives a key one of its objects leaves untyped a gap
 (`union-spread-key`, `InlineArrayHandler`), so the `@return` types what those writes may send.
 
+Once `applyTo()` has written the fold, `VariantReader::read()` reads the same `LiteralWrites` for the keys that follow
+a sibling key's value, and sets `$analysis->variants`. It reads every literal, top level and nested, and leaves the
+rows `applyTo()` wrote as they are ([Variants](variants.md)).
+
 ## Resource classes a value names
 
 ### `toResource()` convention guesses are gated on the published set
@@ -1212,6 +1216,7 @@ These pages own the rules this page links to:
 - [Model attribute resolver](model-attribute-resolver.md), [accessor body analyzer](accessor-body-analyzer.md),
   [import name registry](import-name-registry.md) and [support helpers](support-helpers.md).
 - [`#[TsCasts]` overrides](ts-casts.md): cast precedence, the final-text rule and the imports a cast keeps.
+- [Variants](variants.md): the keys of a literal that follow a sibling key's value, and a resource's top-level arms.
 - [Type-inference gates](../testing/type-inference-gates.md): the CI checks for a type regressing to `unknown` and for
   a token emitted without its import.
 

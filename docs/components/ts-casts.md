@@ -110,6 +110,15 @@ pins it.
 
 ## Imports
 
+- A cast with an `import` brings the names `TsTypeString::extractImportableTypes()` reads from its text, its
+  top-level union arms only, on every publisher. A name nested in a generic or an object, such as `Meta` in
+  `Paginated<Meta>`, gets no import from it.
+- An API resource's clauses read deeper, through `ResourceTransformer::clauseTypeNames()` and
+  [`referencedTypeNames()`](support-helpers.md#tstypestring), and `settleClauses()` settles them in one alias pass
+  over `#[TsExtends]` and `#[TsIntersect]`, once the casts' imports are known. A lib global a clause only builds on
+  gets no import. Nor does any other name it only builds on that the file already binds, through a cast's import or
+  the package's own. A name it lists whole or in `types` keeps its import, aliased apart from a cast's import of that
+  name from another path. Another publisher's clause reads as a cast does.
 - The cast's own import is kept, and it binds each name it brings. A displaced class of that name is dropped unless
   another key reads it, and `fit()` drops a custom import of that name from any other path, such as a displaced
   `#[TsType]` import, on every publisher but a companion, whose transformer throws for one name from two paths.

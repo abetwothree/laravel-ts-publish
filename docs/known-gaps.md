@@ -293,6 +293,10 @@ Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel t
 - Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
 - A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
   publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
+- Ternary arms of nested literals that wrap two enums sharing a name, one of them in two arms, publish the first enum
+  in every arm and import the other unused: `$a ? ['e' => EnumResource::make($this->status), 'x' => 1] : ($b ?
+  ['e' => EnumResource::make($this->status), 'x' => 1] : ['e' => EnumResource::make(CrmStatus::Lead), 'x' => 'a'])`
+  publishes `{ e: AsEnum<typeof WorkbenchStatus>; x: number } | { e: AsEnum<typeof WorkbenchStatus>; x: string }`.
 
 No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
 that has an `import`.
@@ -869,6 +873,14 @@ provider's `boot()` for the console too.
 holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
 prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the body. Type such a prop with `#[TsCasts]`.
 
+### A clause on a collection that publishes a flat alias is dropped, and its import stays
+
+A body-less resource collection whose live wrap key is `null` or empty publishes a flat alias, such as
+`export type PostCollection = PostResource[];`, which prints no clause. So a `#[TsExtends]`, `#[TsIntersect]` or
+`ts_extends.resources` type never reaches it. The clause still counts as spelling its names
+(`ResourceTransformer::clauses()`), so the file keeps their import, which `noUnusedLocals` reports as TS6196.
+Intersect the alias in your own code instead, as in `type Paged = PostCollection & Extra`.
+
 ### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource` publish `unknown`
 
 Inside a collection, `$this->resource` holds the items in a `Support\Collection` or the paginator the collection was
@@ -1271,6 +1283,12 @@ named key.
 In an API resource that preserves keys, `[$this->when($c, 'x'), 'y']` publishes `string[]`, though a false `$c` sends
 `{"1":"y"}`. `collect([[$this->when($c, 'x')]])` publishes `string[][]` in any resource, though the filter never enters
 a `Collection`, so the missing value encodes as `{}`. Keep conditional values out of lists there.
+
+### A `when*()` key in a ternary of literals a `collect()` holds publishes optional, though Laravel sends `{}` for it
+
+`collect($c ? ['a' => $this->when($d, 1)] : ['b' => 2])` publishes `{ a?: number } | { b: number }`. The filter
+never enters a `Collection`, so a false `$d` leaves the `MissingValue` in place, which `json_encode()` writes as `{}`:
+Laravel sends `{"a":{}}`. Keep conditional values out of a literal you collect.
 
 ### An untyped property's default ignores writes the scan cannot see
 

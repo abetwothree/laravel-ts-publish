@@ -147,7 +147,9 @@ imports one identifier namespace, so `ResolvesImportConflicts::applyImportNameRe
 reserves every name they took in the const registry. An enum `Role` (type `RoleType`) imported beside an enum `RoleType`
 (const `RoleType`) keeps the type and aliases the const, and so does a model `Grade` imported beside the `Grade` enum's
 const. The `Badge` fixtures pin both shapes. Before either resolves, both registries reserve the names the file's custom
-imports bring (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`): the app wrote them, so the package's imports step aside.
+imports bring (`#[TsType]`, `#[TsCasts]`, `#[TsExtends]`, `#[TsIntersect]`): the app wrote them, so the package's
+imports step aside. A resource's clauses leave out a name they only build on that the package or a cast already binds
+([`#[TsCasts]` overrides § Imports](ts-casts.md#imports)).
 
 A composed class's `{Basename}Type` is one of those names: it rides `customImports` under its
 [marker](model-attribute-resolver.md#step-2-an-override-resolved-and-composed), so an enum or model that spells the

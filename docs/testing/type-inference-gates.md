@@ -176,8 +176,8 @@ hide inside an unrelated change to the bare count.
 
 ### The app-side stubs
 
-The trees import modules that belong to the consuming app, named by `#[TsCasts]`, `#[TsExtends]` and `#[TsType]`. The
-`paths` in `tsconfig.json` point those aliases at hand-written stubs:
+The trees import modules that belong to the consuming app, named by `#[TsCasts]`, `#[TsExtends]`, `#[TsIntersect]` and
+`#[TsType]`. The `paths` in `tsconfig.json` point those aliases at hand-written stubs:
 
 | Alias | Stub |
 | --- | --- |
@@ -437,6 +437,9 @@ The gates miss these cases:
   when the object then collapses to `unknown` no member key is left to match.
 - **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
   sibling among `x`'s members, so a regression of `x` itself can still be masked.
+- **Literal text holding a separator or a bracket**: `split_members()` and the bracket scanners, which both gates
+  share, read every `;`, `,` and bracket, inside a string literal too. A member whose type holds `'a;b'` or `'}'`, such
+  as a split resource's string discriminant, splits there, and a member past the split can regress unseen.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. A key a
   `@return` types reorders often: the merge lists the body's arms first and the declared arms it adds after them, so
   an object arm can sit at another index than at the base, and a key that gains a second object arm renames each
