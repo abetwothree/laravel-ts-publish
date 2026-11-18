@@ -130,6 +130,19 @@ it('replays the literal once per variant, a second group\'s variants inside each
     ]);
 });
 
+it('sends each grouped key in item order: the discriminant its literal, and each dependent its arm or null', function () {
+    $variant = new Variant(
+        [new DiscriminantValue(true, 'true'), new DiscriminantValue(false, 'false')],
+        ['x' => ['type' => 'string', 'optional' => false], 'y' => null],
+    );
+
+    expect(new VariantGroup('k', ['x', 'k', 'y'], [], [$variant])->sent($variant))->toBe([
+        'x' => ['type' => 'string', 'optional' => false],
+        'k' => ['type' => 'boolean', 'optional' => false],
+        'y' => null,
+    ]);
+});
+
 it('prints a dependent its arm removes as a key that may not be sent, holding nothing', function () {
     $group = new VariantGroup('k', ['k', 'x'], [], [
         new Variant([new DiscriminantValue(true, 'true')], ['x' => ['type' => 'string', 'optional' => false]]),

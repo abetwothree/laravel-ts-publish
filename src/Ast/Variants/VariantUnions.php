@@ -47,10 +47,8 @@ final class VariantUnions
     {
         $object = new MethodAnalysis;
 
-        foreach ($group->keys as $key) {
-            $object->addProperty($key, $key === $group->discriminant
-                ? ['type' => $variant->literal(), 'optional' => false]
-                : $variant->dependents[$key] ?? ['type' => 'never', 'optional' => true, 'removed' => true]);
+        foreach ($group->sent($variant) as $key => $value) {
+            $object->addProperty($key, $value ?? ValueResult::removed());
         }
 
         return $object;

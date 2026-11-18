@@ -200,7 +200,7 @@ class JsonWriter
                     array_keys($transformer->properties),
                 ),
                 ...($transformer->variants !== [] ? ['variants' => $transformer->variants] : []),
-                ...($transformer->tsIntersect !== [] ? ['intersections' => $transformer->tsIntersect] : []),
+                ...($transformer->intersections !== [] ? ['intersections' => $transformer->intersections] : []),
             ];
         }
 

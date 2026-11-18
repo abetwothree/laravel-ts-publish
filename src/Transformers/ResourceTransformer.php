@@ -98,7 +98,7 @@ class ResourceTransformer extends CoreTransformer
     public protected(set) array $tsExtends = [];
 
     /** @var list<string> the TypeScript types the resource's type is intersected with */
-    public protected(set) array $tsIntersect = [];
+    public protected(set) array $intersections = [];
 
     /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
     public protected(set) ?string $typeAlias = null;
@@ -242,7 +242,7 @@ class ResourceTransformer extends CoreTransformer
             tsExtends: $this->tsExtends,
             typeAlias: $this->typeAlias,
             variants: $this->variants,
-            intersections: $this->tsIntersect,
+            intersections: $this->intersections,
         );
     }
 
@@ -380,7 +380,7 @@ class ResourceTransformer extends CoreTransformer
         }
 
         $this->tsExtends = $texts[TsExtends::class];
-        $this->tsIntersect = $texts[TsIntersect::class];
+        $this->intersections = $texts[TsIntersect::class];
 
         return $this;
     }
@@ -415,7 +415,7 @@ class ResourceTransformer extends CoreTransformer
         $classes = array_keys(array_filter(array_count_values($names), static fn (int $count): bool => $count === 1));
         $result = $this->settleClauses($this->clauseEntries, $this->customImports, array_map(strval(...), $classes));
         $this->tsExtends = $result['clauses'][TsExtends::class];
-        $this->tsIntersect = $result['clauses'][TsIntersect::class];
+        $this->intersections = $result['clauses'][TsIntersect::class];
 
         foreach ($result['imports'] as $importPath => $typeNames) {
             $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
@@ -431,7 +431,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function clauses(): array
     {
-        return [...$this->tsExtends, ...$this->tsIntersect];
+        return [...$this->tsExtends, ...$this->intersections];
     }
 
     /**

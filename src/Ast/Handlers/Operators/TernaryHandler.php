@@ -136,8 +136,8 @@ final class TernaryHandler implements ExpressionHandler, KeepsHeldObjects, Split
     }
 
     /**
-     * The arm an `instanceof` proof holds in, read with its subject narrowed and keyed by its index; empty where there is
-     * no proof or its subject cannot be narrowed.
+     * The arm an `instanceof` proof holds in, read with its subject narrowed and keyed by its index; empty where there
+     * is no proof or its subject cannot be narrowed.
      *
      * @param  InstanceofProof|null  $proof
      * @return array<0|1, ValueExpressionResult>

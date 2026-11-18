@@ -342,7 +342,7 @@ it('names no item for a key another item, a spread whose keys are unread or a me
     'a later printed arm' => [static fn (LiteralWrites $writes) => $writes->recordArm(['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null])],
 ]);
 
-// PHP writes the later key over whatever an earlier item wrote, but filter() lifts a merge call over every key after it.
+// PHP writes the later key over whatever an earlier item wrote, but filter() lifts a merge call over each key after it.
 it('names the item for a key written after an item that may write any key, unless that item is a merge', function () {
     $spread = new LiteralWrites;
     $spread->record(ResourceAnalysis::unreadAnalysis(), 0);

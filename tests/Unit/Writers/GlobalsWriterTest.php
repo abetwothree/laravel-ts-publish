@@ -526,7 +526,7 @@ test('the globals template qualifies each name through its own transformer\'s ma
 
         public array $variants = [];
 
-        public array $tsIntersect = [];
+        public array $intersections = [];
 
         public function globalTypeReferenceMap(): array
         {

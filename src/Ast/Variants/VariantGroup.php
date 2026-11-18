@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 
 /**
  * A discriminant and the keys that follow its value, split into variants, with each key's row as the fold wrote it: a
  * rewrite of any of those rows after the fold leaves the variants describing rows no longer published.
+ *
+ * @phpstan-import-type ReplayedValues from LiteralWrites
  *
  * @phpstan-type RowFingerprint = array{type: string, optional: bool}
  * @phpstan-type RowFingerprints = array<string, RowFingerprint>
@@ -57,5 +60,24 @@ final readonly class VariantGroup
     public function holdsFor(MethodAnalysis $analysis): bool
     {
         return self::fingerprint($analysis, $this->keys) === $this->fingerprints;
+    }
+
+    /**
+     * What each key sends in one of the group's variants, in item order: the discriminant its literal, and each
+     * dependent its arm, null where the arm removes it.
+     *
+     * @return ReplayedValues
+     */
+    public function sent(Variant $variant): array
+    {
+        $sent = [];
+
+        foreach ($this->keys as $key) {
+            $sent[$key] = $key === $this->discriminant
+                ? ['type' => $variant->literal(), 'optional' => false]
+                : $variant->dependents[$key] ?? null;
+        }
+
+        return $sent;
     }
 }

@@ -70,6 +70,16 @@ final class ValueResult
     }
 
     /**
+     * The value of a key an arm removes: PHP never sends it, so it prints as a key that may not be sent, holding nothing.
+     *
+     * @return ValueExpressionResult
+     */
+    public static function removed(): array
+    {
+        return ['type' => 'never', 'optional' => true, 'removed' => true];
+    }
+
+    /**
      * A value as a template-literal index signature publishes it: never optional, its type admitting `undefined`.
      *
      * `[key: T]?:` is a syntax error, and a key matching the pattern is not guaranteed present.

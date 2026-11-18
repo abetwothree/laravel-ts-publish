@@ -248,7 +248,7 @@ final class LiteralWrites
 
         foreach ($values as $name => $value) {
             $at = $this->soleWrite((string) $name) ?? throw new LogicException("No keyed item alone writes `{$name}`.");
-            $value ??= ['type' => 'never', 'optional' => true, 'removed' => true];
+            $value ??= ValueResult::removed();
             [$absent, $removed] = self::valueFacts($value);
             $write = $this->writes[$at];
             $copy->sources[$write->source] = ['value' => $value];

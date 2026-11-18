@@ -118,11 +118,11 @@ $references = $transformer->globalTypeReferenceMap();
 @else
 @php
 $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
-$interface = count($transformer->variants) === 0 && count($transformer->tsIntersect) === 0;
-$intersections = implode(' & ', array_map(fn (string $type): string => '('.$type.')', $transformer->tsIntersect));
+$interface = count($transformer->variants) === 0 && count($transformer->intersections) === 0;
+$intersections = implode(' & ', array_map(fn (string $type): string => '('.$type.')', $transformer->intersections));
 $end = $intersections === '' ? ';' : ' & '.$intersections.';';
 @endphp
-@if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0 && count($transformer->tsIntersect) === 0)
+@if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0 && count($transformer->intersections) === 0)
         export type {{ $transformer->resourceName }} =
 @foreach (TsTypeString::splitTopLevelUnion($transformer->variants[0]) as $arm)
             | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}

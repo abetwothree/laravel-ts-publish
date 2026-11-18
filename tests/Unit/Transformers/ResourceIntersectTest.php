@@ -82,7 +82,7 @@ it('publishes a resource with an intersection as a type of its keys and the type
 it('keeps a transformed resource\'s intersections beside its extends clauses, and hands them to its data', function () {
     $transformer = new ResourceTransformer(IntersectedPostResource::class);
 
-    expect($transformer->tsIntersect)->toBe(['PostPlacementVariants'])
+    expect($transformer->intersections)->toBe(['PostPlacementVariants'])
         ->and($transformer->tsExtends)->toBe([])
         ->and($transformer->data()->intersections)->toBe(['PostPlacementVariants'])
         ->and($transformer->data()->toArray()['intersections'])->toBe(['PostPlacementVariants']);
@@ -130,7 +130,7 @@ it('imports each intersection\'s names beside the extends clause\'s', function (
 it('publishes an intersection once, and aliases a name two paths bring as an extends clause does', function () {
     $transformer = new ResourceTransformer(IntersectedTwiceResource::class);
 
-    expect($transformer->tsIntersect)->toBe(['FeedPlacement', 'PinnedPlacement'])
+    expect($transformer->intersections)->toBe(['FeedPlacement', 'PinnedPlacement'])
         ->and($transformer->typeImports)->toMatchArray([
             '@/types/feed' => ['Placement as FeedPlacement'],
             '@/types/pinned' => ['Placement as PinnedPlacement'],

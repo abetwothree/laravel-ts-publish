@@ -77,11 +77,7 @@ final class LiteralVariants
             $split = true;
             $combinations = array_merge(...array_map(
                 static fn (array $values): array => array_map(
-                    static fn (Variant $variant): array => array_replace(
-                        $values,
-                        [$group->discriminant => ['type' => $variant->literal(), 'optional' => false]],
-                        $variant->dependents,
-                    ),
+                    static fn (Variant $variant): array => array_replace($values, $group->sent($variant)),
                     $group->variants,
                 ),
                 $combinations,
