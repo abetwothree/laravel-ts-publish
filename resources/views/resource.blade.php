@@ -1,5 +1,6 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
+@use('AbeTwoThree\LaravelTsPublish\Support\ResourceDeclaration')
 @if($usesTolkiPackage && count($data->valueImports) > 0)
 import { type AsEnum } from '@tolki/ts';
 
@@ -19,24 +20,22 @@ if ($description) {
 }
 
 $description .= "@see {$data->fqcn}";
-$interface = count($data->variants) === 0 && count($data->intersections) === 0;
-$intersections = implode(' & ', array_map(fn (string $type): string => '('.$type.')', $data->intersections));
-$end = $intersections === '' ? ';' : ' & '.$intersections.';';
+$declaration = ResourceDeclaration::of($data->tsExtends, $data->properties, $data->variants, $data->intersections);
 @endphp
 {!! JsEmitter::formatJsDoc($description) !!}
 @if($data->typeAlias !== null)
 export type {{ $data->resourceName }} = {!! $data->typeAlias !!};
-@elseif(count($data->variants) === 1 && count($data->properties) === 0 && count($data->tsExtends) === 0 && count($data->intersections) === 0)
+@elseif($declaration->armsAlone)
 export type {{ $data->resourceName }} =
 @foreach (TsTypeString::splitTopLevelUnion($data->variants[0]) as $arm)
     | {!! $arm !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
-@if($interface)
+@if($declaration->interface)
 export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @else
-export type {{ $data->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $data->tsExtends)) !!}{!! count($data->properties) > 0 ? '{' : (count($data->variants) > 0 ? '(' : $intersections.';') !!}
+export type {{ $data->resourceName }} = {!! $declaration->open !!}
 @endif
 @foreach ($data->properties as $name => $property)
 @if($property['description'])
@@ -44,15 +43,13 @@ export type {{ $data->resourceName }} = {!! implode('', array_map(fn (string $ex
 @endif
     {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
-@if($interface)
-}
-@elseif(count($data->properties) > 0)
-}{!! count($data->variants) > 0 ? ' & (' : $end !!}
+@if($declaration->close !== null)
+{!! $declaration->close !!}
 @endif
 @foreach ($data->variants as $variant)
 @foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
     | {!! $arm !!}
 @endforeach
-){!! $loop->last ? $end : ' & (' !!}
+{!! $declaration->closeArms($loop->last) !!}
 @endforeach
 @endif

@@ -21,6 +21,7 @@ before, and only the print changes. Users read
 | [`VariantGroup`], [`Variant`], [`LiteralVariants`] | One discriminant with its dependents and variants, and one literal's groups with its replayed objects |
 | [`VariantUnions`] | A resource's top level, each group replaced by one variant row |
 | [`VariantRows`] | The reserved row name, and a resource's rows split into shared keys and variants |
+| [`ResourceDeclaration`] | How the `resource` and `globals` templates open and close a resource around its shared keys and arms |
 
 ## How a group is read
 
@@ -98,9 +99,10 @@ A split nested literal's result also carries `unsplit`: the one object its rows 
 result's `type` is still the union printed beside it (`ValueResult::isSplit()`). A reader that parses a printed
 object back into keys reads it through `ValueResult::unsplit()` or `unsplitType()`, as `ObjectMembers`,
 `ReadsCollectedItems`, `ResponseExtras`, `OffsetReadHandler`, `VariableHandler` and `InlineArrayHandler`'s spreads
-do, since keys follow one object, not each variant. A page's or shared data's row keeps `splitOf`, so `DottedTopLevelKeys`
-writes a dotted key under it into the whole union, `(A | B) & { extra }`. A new reader of printed keys goes
-through `unsplit()` too, or it reads the union.
+do, since keys follow one object, not each variant. A row keeps `splitOf`, and a page's or shared data's prop is
+`split` while `MethodAnalysis::isSplit()` holds for its row, so `DottedTopLevelKeys` writes a dotted key under it into
+the whole union, `(A | B) & { extra }`. A new reader of printed keys goes through `unsplit()` too, or it reads the
+union.
 
 ## Tests and gates
 
@@ -121,6 +123,7 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`LiteralVariants`]: ../../src/Ast/Variants/LiteralVariants.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`ReadPath`]: ../../src/Ast/Parsing/ReadPath.php
+[`ResourceDeclaration`]: ../../src/Support/ResourceDeclaration.php
 [`SplitsOnCondition`]: ../../src/Ast/Contracts/SplitsOnCondition.php
 [`Variant`]: ../../src/Ast/Variants/Variant.php
 [`VariantGroup`]: ../../src/Ast/Variants/VariantGroup.php

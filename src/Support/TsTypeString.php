@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
-use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TsLibGlobals;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeTokens;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
@@ -17,9 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * @phpstan-import-type SiblingImportNames from ImportNameRegistry
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type LiteralSpan from TypeScanner
- *
- * @phpstan-type TypeToken = array{string, bool}
- * @phpstan-type TypeRole = 'binder'|'other'|'type'
  *
  * @internal
  */
@@ -34,6 +31,9 @@ class TsTypeString
     /** The spelling of an object with no keys: TypeScript's `{}` accepts any value but null and undefined. */
     public const string EMPTY_OBJECT = 'Record<string, never>';
 
+    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
+    public const array KEYWORD_TYPES = ['true', 'false', 'this'];
+
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
@@ -46,21 +46,6 @@ class TsTypeString
      */
     protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
         .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
-
-    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
-    protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
-
-    /** The words a type reads as an operator or a modifier, never as a name. */
-    protected const array TYPE_OPERATORS = [
-        'abstract', 'as', 'asserts', 'const', 'extends', 'get', 'import', 'in', 'infer', 'is', 'keyof', 'new', 'out',
-        'readonly', 'set', 'typeof', 'unique',
-    ];
-
-    /** The tokens a type starts right after, so a name after one is a type even where a `:` follows it. */
-    protected const array TYPE_LEADS = [
-        '?', '|', '&', '=>', '<', '=', 'abstract', 'as', 'asserts', 'extends', 'in', 'infer', 'is', 'keyof', 'new',
-        'typeof', 'unique',
-    ];
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
     protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
@@ -185,87 +170,24 @@ class TsTypeString
 
     /**
      * The names a type string references in a type position, each once in the order it first spells them: the names a
-     * file must bind for the type to compile.
-     *
-     * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
-     * arm, a name after a `.`, a binder `infer`, a mapped type or a type parameter list declares, a predicate's
-     * parameter, or a global of the TypeScript libs (TsLibGlobals). The operand of `typeof` is one.
+     * file must bind for the type to compile, as TypeTokens reads them.
      *
      * @return list<string>
      */
     public function referencedTypeNames(string $type): array
     {
-        $tokens = $this->typeTokens($type);
-        $names = [];
-        $binders = [];
-
-        foreach ($this->typeRoles($tokens) as $index => $role) {
-            $token = $tokens[$index][0];
-
-            if ($role === 'binder') {
-                $binders[] = $token;
-            } elseif ($role === 'type' && ! isset(TsLibGlobals::NAMES[$token]) && ! VisibleGaps::isGap($token)) {
-                $names[] = $token;
-            }
-        }
-
-        return array_values(array_unique(array_diff($names, $binders)));
+        return $this->typeTokens()->referencedTypeNames($type);
     }
 
     /**
-     * Respell each occurrence of a name that stands as a type or a binder declares, as referencedTypeNames() reads
-     * them, by its alias, so a binder and its uses rename together: never literal text, a member's own name or a name
-     * after a `.`.
+     * Respell each occurrence of a name that stands as a type or a binder declares by its alias, as TypeTokens reads
+     * them: never literal text, a member's own name or a name after a `.`.
      *
      * @param  array<string, string>  $aliases  name => alias
      */
     public function aliasReferences(string $type, array $aliases): string
     {
-        if ($aliases === []) {
-            return $type;
-        }
-
-        $tokens = $this->typeTokens($type);
-        $isTypeAt = [];
-
-        foreach ($this->typeRoles($tokens) as $index => $role) {
-            if (isset($aliases[$tokens[$index][0]])) {
-                $isTypeAt[$tokens[$index][0]][] = $role !== 'other';
-            }
-        }
-
-        // The same names the tokens read, in the same order: literal text is skipped, and an escape is read as a name.
-        $class = $this->identifierCharacter();
-        $pattern = '/(?<!'.$class.')(?![\p{Nd}\p{Mn}\p{Mc}])(?:'.$class.'|\\\\u(?:\{[0-9A-Fa-f]+\}|[0-9A-Fa-f]{4}))+/u';
-        $spans = TypeScanner::literalSpans($type);
-
-        if (preg_match_all($pattern, $type, $matches, PREG_OFFSET_CAPTURE) === false) {
-            return $type;
-        }
-
-        $seen = [];
-        $respelled = [];
-
-        foreach ($matches[0] as [$spelled, $at]) {
-            $name = $this->decodeIdentifierEscapes($spelled) ?? $spelled;
-            $inLiteral = array_any($spans, static fn (array $span): bool => $at >= $span[0] && $at < $span[1]);
-
-            if (! isset($aliases[$name]) || $inLiteral) {
-                continue;
-            }
-
-            $occurrence = $seen[$name] = ($seen[$name] ?? -1) + 1;
-
-            if ($isTypeAt[$name][$occurrence] ?? false) {
-                $respelled[] = [$at, strlen($spelled), $aliases[$name]];
-            }
-        }
-
-        foreach (array_reverse($respelled) as [$at, $length, $alias]) {
-            $type = substr_replace($type, $alias, $at, $length);
-        }
-
-        return $type;
+        return $this->typeTokens()->aliasReferences($type, $aliases);
     }
 
     /**
@@ -816,116 +738,11 @@ class TsTypeString
     }
 
     /**
-     * The role of each name token of a type, by its index: a `type` it stands as, a `binder` a type parameter list,
-     * `infer` or a mapped type declares, or `other`: a keyword, a member's, label's, parameter's or method's own name,
-     * a name after a `.` or a predicate's parameter.
-     *
-     * @param  list<TypeToken>  $tokens
-     * @return array<int, TypeRole>
+     * The token reader on the identifier pattern and escape decoder this PCRE2 settles on.
      */
-    private function typeRoles(array $tokens): array
+    protected function typeTokens(): TypeTokens
     {
-        $keywords = [...self::TS_PRIMITIVES, ...self::KEYWORD_TYPES, ...self::TYPE_OPERATORS];
-        $parameterLists = $this->typeParameterLists($tokens);
-        $roles = [];
-        $opened = [];
-
-        foreach ($tokens as $index => [$token, $isName]) {
-            if (! $isName) {
-                match ($token) {
-                    '{', '[', '(', '<' => $opened[] = $index,
-                    '}', ']', ')', '>' => array_pop($opened),
-                    default => null,
-                };
-
-                continue;
-            }
-
-            $before = $tokens[$index - 1][0] ?? '';
-            $after = $tokens[$index + 1][0] ?? '';
-            $afterNext = $tokens[$index + 2][0] ?? '';
-            $leads = in_array($before, self::TYPE_LEADS, true);
-            $enclosing = $opened === [] ? null : $opened[array_key_last($opened)];
-            $enclosedBy = $enclosing === null ? '' : $tokens[$enclosing][0];
-            $declared = $enclosing !== null && isset($parameterLists[$enclosing])
-                && in_array($before, ['<', ',', 'const', 'in', 'out'], true);
-            $roles[$index] = 'other';
-
-            if ($before === '.' || in_array($token, $keywords, true)) {
-                continue;
-            }
-
-            if ($declared || $before === 'infer' || ($after === 'in' && $enclosedBy === '[')) {
-                $roles[$index] = 'binder';
-
-                continue;
-            }
-
-            // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
-            // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
-            $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
-            $method = ($after === '(' || ($after === '<' && isset($parameterLists[$index + 1])))
-                && $enclosedBy === '{' && ! $leads && $before !== ':';
-            $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
-                && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
-            $roles[$index] = $binds || $method || $predicate ? 'other' : 'type';
-        }
-
-        return $roles;
-    }
-
-    /**
-     * The token index of each `<` that opens a type parameter list, the one a `(` follows once it closes: `<T>(x: T)`.
-     *
-     * @param  list<TypeToken>  $tokens
-     * @return array<int, true>
-     */
-    private function typeParameterLists(array $tokens): array
-    {
-        $lists = [];
-        $angles = [];
-
-        foreach ($tokens as $index => [$token]) {
-            if ($token === '<') {
-                $angles[] = $index;
-            } elseif ($token === '>' && $angles !== [] && ($tokens[$index + 1][0] ?? '') === '(') {
-                $lists[(int) array_pop($angles)] = true;
-            } elseif ($token === '>') {
-                array_pop($angles);
-            }
-        }
-
-        return $lists;
-    }
-
-    /**
-     * A type's tokens, each beside whether it is a name: every name, `...`, `=>`, and every other character, with each
-     * literal's text read as one `~`, as the scanner reads it, and each `\u` escape as the character it names.
-     *
-     * @return list<TypeToken>
-     */
-    private function typeTokens(string $type): array
-    {
-        $code = '';
-        $from = 0;
-
-        foreach (TypeScanner::literalSpans($type) as [$start, $end]) {
-            $code .= substr($type, $from, $start - $from).'~';
-            $from = $end;
-        }
-
-        $code .= substr($type, $from);
-        $class = $this->identifierCharacter();
-        // A digit or a combining mark continues a name but cannot start one, so `1User` holds no name.
-        $pattern = '/(?<name>(?<!'.$class.')(?![\p{Nd}\p{Mn}\p{Mc}])'.$class.'+)|\.\.\.|=>|\S/u';
-
-        $code = $this->decodeIdentifierEscapes($code) ?? $code;
-
-        if (preg_match_all($pattern, $code, $matches, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL) === false) {
-            return [];
-        }
-
-        return array_map(static fn (array $match): array => [(string) $match[0], $match['name'] !== null], $matches);
+        return new TypeTokens($this->identifierCharacter(), $this->decodeIdentifierEscapes(...));
     }
 
     /**

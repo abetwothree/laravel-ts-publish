@@ -240,6 +240,16 @@ class MethodAnalysis
     }
 
     /**
+     * Whether a row still prints its literal one object per variant: its type is still the union it was split as.
+     *
+     * @param  AnalyzedProperty  $property
+     */
+    public static function isSplit(array $property): bool
+    {
+        return ($property['splitOf'] ?? null) === $property['type'];
+    }
+
+    /**
      * Record one resolved value as a property and route every FQCN channel it carries.
      *
      * The one place a value becomes a property: a channel added here reaches every collector,

@@ -59,6 +59,10 @@ The helpers and the test that pins them live in these files:
   `TypeScannerCorpusTest` proves it against TypeScript's parser on golden, hand-written and generated types. Static
   and `@internal`. `TsTypeShape` splits, nests and lists on it, `TsTypeString` reads its literal spans and masks, and
   the docblock engine and `DocblockTags` read PHPDoc through it.
+- [`Support\TypeStrings\TypeTokens`](../../src/Support/TypeStrings/TypeTokens.php): a type string read token by
+  token, each name beside the role it plays, a type, a binder or another word, and the two readers built on it:
+  `referencedTypeNames()` and `aliasReferences()`, which `TsTypeString` delegates to with its identifier pattern and
+  escape decoder. `@internal`.
 - [`Support\TypeStrings\ScanDialect`](../../src/Support/TypeStrings/ScanDialect.php): whether the scanner reads a
   TypeScript type or a PHPDoc type, where a backtick is plain text, no arrow owns a union, and a quote with no closer
   on its line is plain text, as PHPStan's lexer reads it. `@internal`.
@@ -100,6 +104,9 @@ The helpers and the test that pins them live in these files:
 - [`Support\VariantRows`](../../src/Support/VariantRows.php): the reserved row an API resource's top level holds a
   group of keys in, one arm per value of the key the others follow, and the split of a resource's rows into shared
   keys and variants. Static and `@internal`; [Variants](variants.md) covers the groups.
+- [`Support\ResourceDeclaration`](../../src/Support/ResourceDeclaration.php): how an API resource's declaration opens
+  and closes around its rows and groups of arms, which the `resource` and `globals` templates both print through.
+  `@internal`.
 - [`LaravelTsPublishDelegationTest`](../../tests/Unit/LaravelTsPublishDelegationTest.php): the only pin on the
   delegations and on the helpers' container bindings.
 
@@ -136,6 +143,7 @@ Ask what the helper's input domain is, not what calls it:
 | How do I respell a name only where it stands as a type? | `TsTypeString::aliasReferences()` |
 | Does a type spell this name with no import, as a TypeScript or DOM global? | `TsLibGlobals::NAMES` |
 | Which of a resource's rows are its variants, and what is a variant row called? | `VariantRows` |
+| How does a resource's declaration open and close around its rows and groups of arms? | `ResourceDeclaration` |
 | Which separator do this object literal's members print with? | `TsTypeShape::memberSeparator()` |
 | How does this arm join a union beside others, an arrow kept from taking them in? | `TsTypeShape::unionArm()` |
 | How does an arm stand alone once the arms beside it are gone? | `TsTypeShape::loneArm()` |
@@ -152,6 +160,7 @@ Ask what the helper's input domain is, not what calls it:
 | What text does this one whole quoted string spell? | `PrintedKey::decodeQuoted()` |
 | Which list index does this array key name? | `PhpArrayKey::listIndex()` |
 | How deep does each byte of this type string sit, and which bytes are literal text? | `TypeScanner` |
+| Which role does each name of this type play: a type, a binder or another word? | `TypeTokens` |
 | Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
 | Which class stands behind each token of a declaration's type, and what is that type read with no class? | `TokenSlots` |
 | Which names does a class's token take: its type's, an enum's `…Kind` or its const's? | `TokenSlots::typeName()`, `namesOf()` |
@@ -211,7 +220,7 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
 `TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
-`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and `TsLibGlobals::NAMES`;
+`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and `TypeTokens`;
 `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and
 `TsTypeShape`. That one-way dependency is
 what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and
@@ -225,11 +234,11 @@ a value, so no split cuts it, `qualifyGlobalType()` and the token readers leave 
 Two readers stay literal-blind: `typeNameOccursIn()`, as its [known gap][literal-blind] says, and
 `extractImportableTypes()`, which still splits an override's or cast's type on every `|`.
 
-`referencedTypeNames()` reads every name a type references at any depth, through generics and objects, and leaves out
-a member's own name, literal text, a primitive, a type parameter the type declares and a `TsLibGlobals` name. Only an
-API resource's clauses read it, `#[TsExtends]`, `#[TsIntersect]` and `ts_extends.resources`, through
-`ResourceTransformer::clauseTypeNames()`. Every cast and every other publisher's clause keeps
-`extractImportableTypes()`'s top-level arms, as [`#[TsCasts]` overrides § Imports](ts-casts.md#imports) says.
+`referencedTypeNames()`, which `TypeTokens` answers, reads every name a type references at any depth, through
+generics and objects, and leaves out a member's own name, literal text, a primitive, a type parameter the type declares
+and a `TsLibGlobals` name. Only an API resource's clauses read it, `#[TsExtends]`, `#[TsIntersect]` and
+`ts_extends.resources`, through `ResourceTransformer::clauseTypeNames()`. Every cast and every other publisher's clause
+keeps `extractImportableTypes()`'s top-level arms, as [`#[TsCasts]` overrides § Imports](ts-casts.md#imports) says.
 `aliasReferences()` respells a name only where it stands as a type or a binder declares it, so a binder and its uses
 rename together, and an alias of `Meta` leaves the literal in `Pick<Meta, "Meta">` and the key in `{ Meta: Meta }`.
 

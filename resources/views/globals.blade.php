@@ -1,5 +1,6 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
+@use('AbeTwoThree\LaravelTsPublish\Support\ResourceDeclaration')
 /* eslint-disable */
 // biome-ignore lint: disable
 // oxlint-disable
@@ -118,20 +119,18 @@ $references = $transformer->globalTypeReferenceMap();
 @else
 @php
 $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
-$interface = count($transformer->variants) === 0 && count($transformer->intersections) === 0;
-$intersections = implode(' & ', array_map(fn (string $type): string => '('.$type.')', $transformer->intersections));
-$end = $intersections === '' ? ';' : ' & '.$intersections.';';
+$declaration = ResourceDeclaration::of($transformer->tsExtends, $transformer->properties, $transformer->variants, $transformer->intersections);
 @endphp
-@if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0 && count($transformer->intersections) === 0)
+@if($declaration->armsAlone)
         export type {{ $transformer->resourceName }} =
 @foreach (TsTypeString::splitTopLevelUnion($transformer->variants[0]) as $arm)
             | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
-@if($interface)
+@if($declaration->interface)
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @else
-        export type {{ $transformer->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $transformer->tsExtends)) !!}{!! count($transformer->properties) > 0 ? '{' : (count($transformer->variants) > 0 ? '(' : $intersections.';') !!}
+        export type {{ $transformer->resourceName }} = {!! $declaration->open !!}
 @endif
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
@@ -139,16 +138,14 @@ $end = $intersections === '' ? ';' : ' & '.$intersections.';';
 @endif
             {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $qualified($property['type']) !!};
 @endforeach
-@if($interface)
-        }
-@elseif(count($transformer->properties) > 0)
-        }{!! count($transformer->variants) > 0 ? ' & (' : $end !!}
+@if($declaration->close !== null)
+        {!! $declaration->close !!}
 @endif
 @foreach ($transformer->variants as $variant)
 @foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
             | {!! $qualified($arm) !!}
 @endforeach
-        ){!! $loop->last ? $end : ' & (' !!}
+        {!! $declaration->closeArms($loop->last) !!}
 @endforeach
 @endif
 @endif

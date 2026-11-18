@@ -199,7 +199,7 @@ class InertiaSharedDataAnalyzer
                 'type' => $property['type'],
                 'optional' => $property['optional'],
                 ...(isset($analysis->closedToDottedKeys[$property['name']]) ? ['closed' => true] : []),
-                ...(($property['splitOf'] ?? null) === $property['type'] ? ['arrays' => true] : []),
+                ...(MethodAnalysis::isSplit($property) ? ['split' => true] : []),
             ];
         }
 

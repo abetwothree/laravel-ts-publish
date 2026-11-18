@@ -14,13 +14,13 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  *
  * Each key it writes prints from pieces, so a class token is read with the classes of the key whose type it prints.
  *
- * @phpstan-type SentEntry = array{type: string, optional: bool, closed?: bool, arrays?: bool}
+ * @phpstan-type SentEntry = array{type: string, optional: bool, closed?: bool, split?: bool}
  * @phpstan-type TypePiece = array{text: string, from: array-key|null}
  * @phpstan-type TopLevelEntry = array{
  *     type: string,
  *     optional: bool,
  *     closed?: bool,
- *     arrays?: bool,
+ *     split?: bool,
  *     pieces?: list<TypePiece>,
  * }
  * @phpstan-type Base = array{
@@ -29,7 +29,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  *     optional: bool,
  *     direct: bool,
  *     closed: bool,
- *     arrays: bool,
+ *     split: bool,
  * }
  * @phpstan-type JoinedMembers = list<array{string, string}>
  * @phpstan-type Node = array{parent: ?string, segment: string, leaf: array-key|null, base: Base|null, or: ?string}
@@ -60,8 +60,9 @@ final class DottedTopLevelKeys
      * Write each dotted key into its path as Inertia unpacks it.
      *
      * @param  array<array-key, SentEntry>  $props  each top-level key as Laravel sends it, `closed` where its value is
-     *                                              an object Inertia replaces rather than opens, `arrays` where each
-     *                                              arm of it is an array the writes enter
+     *                                              an object Inertia replaces rather than opens, `split` where it is
+     *                                              a literal printed one object per variant, each an array the writes
+     *                                              enter
      * @return array<array-key, TopLevelEntry> a key the writes reach carries the pieces of its type, each naming the
      *                                         input key whose type it prints, or null for the text between them
      */
@@ -308,7 +309,7 @@ final class DottedTopLevelKeys
                     'optional' => $entry['optional'],
                     'direct' => true,
                     'closed' => $entry['closed'] ?? false,
-                    'arrays' => $entry['arrays'] ?? false,
+                    'split' => $entry['split'] ?? false,
                 ]];
             }
 
@@ -394,7 +395,7 @@ final class DottedTopLevelKeys
         $object = $one === null ? null : TsTypeShape::members($one);
         $element = $one === null ? null : TsTypeShape::elementType($one);
         // A literal printed one object per variant holds an array in each arm, which every write enters as one.
-        if ($one === null && $base['arrays']) {
+        if ($one === null && $base['split']) {
             [$one, $object] = self::sameKeyedObjects($solid) ?? [null, null];
         }
         $written = $this->members($children);
@@ -505,7 +506,7 @@ final class DottedTopLevelKeys
                 'optional' => $held[$segment]['optional'],
                 'direct' => false,
                 'closed' => false,
-                'arrays' => false,
+                'split' => false,
             ];
 
             if ($this->nodes[$child]['leaf'] === null && $this->nodes[$child]['base'] === null) {

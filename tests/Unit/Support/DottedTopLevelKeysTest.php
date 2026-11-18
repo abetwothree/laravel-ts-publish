@@ -162,7 +162,7 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
 
 // A literal printed one object per variant is an array in every arm, so Arr::set() writes into each as into one.
 it('writes a dotted key into a union whose every arm is an array as into one object', function (string $union, string $key, string $nested) {
-    $print = DottedTopLevelKeys::nest(['a' => [...topLevelEntry($union), 'arrays' => true], $key => topLevelEntry('number')]);
+    $print = DottedTopLevelKeys::nest(['a' => [...topLevelEntry($union), 'split' => true], $key => topLevelEntry('number')]);
 
     expect($print['a']['type'] ?? null)->toBe($nested);
 })->with([
