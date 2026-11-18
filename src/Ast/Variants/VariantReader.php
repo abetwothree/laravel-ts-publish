@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
+use Illuminate\Support\Facades\Config;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -46,7 +47,7 @@ use PhpParser\NodeFinder;
  * @phpstan-type Discriminant = array{name: string, read: ReadPath, values: DiscriminantValueList}
  * @phpstan-type SoleKey = array{string, Expr, int}
  * @phpstan-type Picks = array{arms: list<ConditionalArm>, drops: bool}
- * @phpstan-type ArmFingerprint = array{type: string, optional: bool, classes: array<string, list<string>>}
+ * @phpstan-type ArmFingerprint = array{type: string, optional: bool, wraps: list<string>, reads: list<string>}
  *
  * @internal
  */
@@ -345,8 +346,8 @@ final class VariantReader
     }
 
     /**
-     * What an arm sends, as a row's fingerprint beside the classes each channel names, or null where it removes its
-     * key: two arms spelling one name for two classes, or one class on two channels, publish apart once rewritten.
+     * What an arm sends, as a row's fingerprint beside the classes its tokens name, or null where it removes its key:
+     * two arms spelling one name for two classes, or one enum wrapped and one read directly, publish apart.
      *
      * @param  ValueExpressionResult|null  $result
      * @return ArmFingerprint|null
@@ -357,29 +358,45 @@ final class VariantReader
             return null;
         }
 
-        $channels = [
-            'enumFqcn' => [$result['enumFqcn'] ?? null],
-            'directEnumFqcn' => [$result['directEnumFqcn'] ?? null],
-            'resourceFqcn' => [$result['resourceFqcn'] ?? null],
-            'modelFqcn' => [$result['modelFqcn'] ?? null],
-            'embeddedEnumFqcns' => $result['embeddedEnumFqcns'] ?? [],
-            'embeddedEnumResourceFqcns' => $result['embeddedEnumResourceFqcns'] ?? [],
-            'embeddedModelFqcns' => $result['embeddedModelFqcns'] ?? [],
-            'embeddedResourceFqcns' => $result['embeddedResourceFqcns'] ?? [],
-            'multiEnumResourceFqcns' => $result['multiEnumResourceFqcns'] ?? [],
+        $wraps = [
+            $result['enumFqcn'] ?? null,
+            ...$result['embeddedEnumResourceFqcns'] ?? [],
+            ...$result['multiEnumResourceFqcns'] ?? [],
         ];
-        $classes = [];
+        $reads = [
+            $result['directEnumFqcn'] ?? null,
+            $result['resourceFqcn'] ?? null,
+            $result['modelFqcn'] ?? null,
+            ...$result['embeddedEnumFqcns'] ?? [],
+            ...$result['embeddedModelFqcns'] ?? [],
+            ...$result['embeddedResourceFqcns'] ?? [],
+        ];
 
-        foreach ($channels as $channel => $fqcns) {
-            $named = array_values(array_unique(array_filter($fqcns)));
-            sort($named);
-
-            if ($named !== []) {
-                $classes[$channel] = $named;
-            }
+        // Only the tolki package prints an enum resource apart from a read of its enum, as `AsEnum<typeof X>`.
+        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+            [$wraps, $reads] = [[], [...$reads, ...$wraps]];
         }
 
-        return ['type' => $result['type'], 'optional' => $result['optional'], 'classes' => $classes];
+        return [
+            'type' => $result['type'],
+            'optional' => $result['optional'],
+            'wraps' => self::classList($wraps),
+            'reads' => self::classList($reads),
+        ];
+    }
+
+    /**
+     * The classes named, each once, sorted.
+     *
+     * @param  list<class-string|null>  $fqcns
+     * @return list<class-string>
+     */
+    private static function classList(array $fqcns): array
+    {
+        $named = array_values(array_unique(array_filter($fqcns)));
+        sort($named);
+
+        return $named;
     }
 
     /**

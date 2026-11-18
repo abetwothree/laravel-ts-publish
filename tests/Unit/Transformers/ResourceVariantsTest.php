@@ -9,11 +9,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostDeclare
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostFlatResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostRetypedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostSplitResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapOrReadPinnedResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
 
 /**
  * The data a resource publishes.
@@ -133,4 +135,17 @@ it('publishes the keys flat under a `@return` that changes a row they follow, an
         ->and($declared->variants)->toBe([
             '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
         ]);
+});
+
+// Only the tolki package prints an enum resource apart from a direct read of its enum, as `AsEnum<typeof X>`; without
+// it both print the enum's type, so neither the value nor its key's arms tell them apart.
+it('publishes a wrap and a direct read of one enum in one arm where the tolki package is off', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+    $data = variantsData(WrapOrReadResource::class);
+    $arms = '{ priority: 0 | 1; status: StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string }';
+
+    expect(variantsProps($data))->toBe(['is_pinned' => 'boolean', 'stage' => 'StatusType', 'reordered' => $arms])
+        ->and($data->variants)->toBe([$arms])
+        ->and(variantsData(WrapOrReadPinnedResource::class)->variants)->toBe([])
+        ->and(variantsProps(variantsData(WrapOrReadPinnedResource::class)))->toBe(['is_pinned' => 'boolean', 'stage' => 'StatusType']);
 });
