@@ -10,6 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
 
 /**
  * The type a resource's file declares, as the writer renders it.
@@ -110,4 +111,50 @@ it('narrows each key a resource\'s arms hold by the value of the key they follow
     expect([$status, $output])->toBe([0, ''])
         ->and($uncheckedStatus)->not->toBe(0)
         ->and(substr_count($uncheckedOutput, 'error TS2322'))->toBe(5);
+});
+
+// GH-157: an enum resource and a direct read of the same enum print one token, so only their channels tell the arms
+// apart; each value PHP sends must still compile against the arm its discriminant selects.
+it('keeps an arm wrapping an enum apart from one reading the same enum directly', function () {
+    $tsc = dirname(__DIR__, 2).'/node_modules/.bin/tsc';
+
+    if (! is_executable($tsc)) {
+        $this->markTestSkipped('tsc is not installed');
+    }
+
+    $alias = renderedAlias(WrapOrReadResource::class);
+    $snippet = <<<TS
+        export {};
+        type AsEnum<T> = { enum: T };
+        declare const Status: { readonly Draft: 0; readonly Published: 1 };
+        type StatusType = 0 | 1;
+        type O = {$alias};
+
+        const low: O = { priority: 0, status: { enum: Status }, tally: 1, is_pinned: true, stage: { enum: Status }, reordered: { priority: 0, status: { enum: Status }, tally: 1 } };
+        const medium: O = { priority: 1, status: 0, tally: 1, is_pinned: false, stage: 1, reordered: { priority: 1, status: 0, tally: 1 } };
+        const high: O = { priority: 2, status: null, tally: 'none', is_pinned: false, stage: 0, reordered: { priority: 2, status: null, tally: 'none' } };
+
+        declare const o: O;
+        if (o.priority === 0) { const a: AsEnum<typeof Status> = o.status; }
+        else if (o.priority === 1) { const b: StatusType = o.status; }
+        if (o.is_pinned) { const c: AsEnum<typeof Status> = o.stage; }
+        else { const d: StatusType = o.stage; }
+        if (o.reordered.priority === 1) { const e: StatusType = o.reordered.status; }
+        // @ts-expect-error status is a wrap or a read until priority narrows it
+        const f: StatusType = o.status;
+        // @ts-expect-error stage is a wrap or a read until is_pinned narrows it
+        const g: StatusType = o.stage;
+
+        TS;
+    $unchecked = implode("\n", array_filter(
+        explode("\n", $snippet),
+        static fn (string $line): bool => ! str_starts_with($line, '// @ts-expect-error'),
+    ));
+
+    [$status, $output] = compileStrict($tsc, $snippet);
+    [$uncheckedStatus, $uncheckedOutput] = compileStrict($tsc, $unchecked);
+
+    expect([$status, $output])->toBe([0, ''])
+        ->and($uncheckedStatus)->not->toBe(0)
+        ->and(substr_count($uncheckedOutput, 'error TS2322'))->toBe(2);
 });

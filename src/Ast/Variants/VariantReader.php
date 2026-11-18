@@ -46,7 +46,7 @@ use PhpParser\NodeFinder;
  * @phpstan-type Discriminant = array{name: string, read: ReadPath, values: DiscriminantValueList}
  * @phpstan-type SoleKey = array{string, Expr, int}
  * @phpstan-type Picks = array{arms: list<ConditionalArm>, drops: bool}
- * @phpstan-type ArmFingerprint = array{type: string, optional: bool, classes: list<string>}
+ * @phpstan-type ArmFingerprint = array{type: string, optional: bool, classes: array<string, list<string>>}
  *
  * @internal
  */
@@ -345,8 +345,8 @@ final class VariantReader
     }
 
     /**
-     * What an arm sends, as a row's fingerprint beside the classes its tokens name, or null where it removes its key:
-     * two arms spelling one name for two classes publish apart once the file aliases them.
+     * What an arm sends, as a row's fingerprint beside the classes each channel names, or null where it removes its
+     * key: two arms spelling one name for two classes, or one class on two channels, publish apart once rewritten.
      *
      * @param  ValueExpressionResult|null  $result
      * @return ArmFingerprint|null
@@ -357,18 +357,27 @@ final class VariantReader
             return null;
         }
 
-        $classes = array_values(array_unique(array_filter([
-            $result['enumFqcn'] ?? null,
-            $result['directEnumFqcn'] ?? null,
-            $result['resourceFqcn'] ?? null,
-            $result['modelFqcn'] ?? null,
-            ...$result['embeddedEnumFqcns'] ?? [],
-            ...$result['embeddedEnumResourceFqcns'] ?? [],
-            ...$result['embeddedModelFqcns'] ?? [],
-            ...$result['embeddedResourceFqcns'] ?? [],
-            ...$result['multiEnumResourceFqcns'] ?? [],
-        ])));
-        sort($classes);
+        $channels = [
+            'enumFqcn' => [$result['enumFqcn'] ?? null],
+            'directEnumFqcn' => [$result['directEnumFqcn'] ?? null],
+            'resourceFqcn' => [$result['resourceFqcn'] ?? null],
+            'modelFqcn' => [$result['modelFqcn'] ?? null],
+            'embeddedEnumFqcns' => $result['embeddedEnumFqcns'] ?? [],
+            'embeddedEnumResourceFqcns' => $result['embeddedEnumResourceFqcns'] ?? [],
+            'embeddedModelFqcns' => $result['embeddedModelFqcns'] ?? [],
+            'embeddedResourceFqcns' => $result['embeddedResourceFqcns'] ?? [],
+            'multiEnumResourceFqcns' => $result['multiEnumResourceFqcns'] ?? [],
+        ];
+        $classes = [];
+
+        foreach ($channels as $channel => $fqcns) {
+            $named = array_values(array_unique(array_filter($fqcns)));
+            sort($named);
+
+            if ($named !== []) {
+                $classes[$channel] = $named;
+            }
+        }
 
         return ['type' => $result['type'], 'optional' => $result['optional'], 'classes' => $classes];
     }

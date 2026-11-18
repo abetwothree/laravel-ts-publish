@@ -14394,6 +14394,20 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\WrapOrReadResource": {
+            "name": "WrapOrReadResource",
+            "properties": [
+                {
+                    "name": "reordered",
+                    "type": "{ priority: 0; status: AsEnum<typeof Status>; tally: number } | { priority: 1; status: StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string }",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ priority: 0; status: AsEnum<typeof Status>; tally: number } | { priority: 1; status: StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string }",
+                "{ is_pinned: true; stage: AsEnum<typeof Status> } | { is_pinned: false; stage: StatusType }"
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [

@@ -6348,6 +6348,20 @@ declare global {
             beside_same_named: { pinned: true; e: workbench.app.enums.StatusType; c: workbench.crm.enums.StatusType; v: number } | { pinned: false; e: workbench.app.enums.StatusType; c: workbench.crm.enums.StatusType; v: null };
             literals_ternary: { e: workbench.app.enums.StatusType; x: number } | { e: null; x: string };
         }
+        /**
+         * Keys whose arms send one enum wrapped in an enum resource for one value and read directly for another (GH-157):
+         * each value keeps its own arm, at the top level, in a nested literal and with the arms written in another order.
+         */
+        export type WrapOrReadResource = {
+            reordered: { priority: 0; status: workbench.app.enums.StatusType; tally: number } | { priority: 1; status: workbench.app.enums.StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string };
+        } & (
+            | { priority: 0; status: workbench.app.enums.StatusType; tally: number }
+            | { priority: 1; status: workbench.app.enums.StatusType; tally: number }
+            | { priority: 2 | 3 | null; status: null; tally: string }
+        ) & (
+            | { is_pinned: true; stage: workbench.app.enums.StatusType }
+            | { is_pinned: false; stage: workbench.app.enums.StatusType }
+        );
     }
     export namespace workbench.app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
