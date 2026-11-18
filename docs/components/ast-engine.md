@@ -19,6 +19,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Callbacks/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
+| `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]), a discriminant's read ([`InterveningWrites`]), and the framework calls known only to read ([`ReadOnlyCalls`]) |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
@@ -1156,12 +1157,14 @@ These pages cover the engine's neighbors:
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
+[`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
 [`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
+[`ReadOnlyCalls`]: ../../src/Ast/Effects/ReadOnlyCalls.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php
 [`RedundantArms::admits()`]: ../../src/Support/TypeStrings/RedundantArms.php
@@ -1173,7 +1176,7 @@ These pages cover the engine's neighbors:
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
-[`ThisPathWrites`]: ../../src/Ast/Analysis/ThisPathWrites.php
+[`ThisPathWrites`]: ../../src/Ast/Effects/ThisPathWrites.php
 [`VisibleGaps`]: ../../src/Support/TypeStrings/VisibleGaps.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver

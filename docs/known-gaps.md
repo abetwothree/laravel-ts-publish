@@ -603,7 +603,7 @@ Check which spelling you wrote before you assume a value is `unknown`:
   through, a write through a local or to one bound by reference (`$ref = &$this->post`, a by-reference destructuring,
   or any local once `extract()` or a variable variable runs), a write through another `$this` chain that sets a member
   the tested chain reads through, since two chains can hold one object, code no scan sees, and any call outside the
-  known-safe list [`ThisPathWrites`](../src/Ast/Analysis/ThisPathWrites.php) keeps, which leaves out a call naming the
+  known-safe list [`ThisPathWrites`](../src/Ast/Effects/ThisPathWrites.php) keeps, which leaves out a call naming the
   subject's own or an ancestor's class, as PHP runs one on `$this`. One such call, such as `$this->reload()`,
   `PostResource::make($this->resource)` or a call on a local, publishes every read of the chain unnarrowed. Trusted,
   though each may change the chain: a gate or policy callback a `Gate` or ability check runs, even one that writes the

@@ -2,13 +2,11 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
-use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
-use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
@@ -47,9 +45,6 @@ use ReflectionClass;
  */
 final class InterveningWrites
 {
-    /** The framework classes whose helpers a resource calls between its keys, each of which only reads it. */
-    private const array READING_HELPERS = [JsonResource::class, ConditionallyLoadsAttributes::class];
-
     /**
      * Whether the items may write the read: $items as they spell writes, and $calling, the items no group's key
      * holds, through the calls they make.
@@ -72,7 +67,7 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a call may write the read: through the body a call on `$this` reaches, unless it is a reading helper,
+     * Whether a call may write the read: through the body a call on `$this` reaches, unless it is a resource helper,
      * through a closure, or as a method of an object holding the read.
      */
     private static function callMayWrite(CallLike $call, ReadPath $read, AnalysisScope $scope, bool $proxied): bool
@@ -84,7 +79,7 @@ final class InterveningWrites
         if ($call instanceof StaticCall) {
             $class = $scope->staticCallClass($call);
 
-            return $class !== null && self::bodyMayWrite($class, $call->name, $read, $proxied);
+            return $class !== null && self::bodyMayWrite($class, $call, $read, $scope, $proxied);
         }
 
         if (! $call instanceof MethodCall && ! $call instanceof NullsafeMethodCall) {
@@ -96,8 +91,9 @@ final class InterveningWrites
         if ($receiver?->root === 'this' && $receiver->segments === []) {
             return ! $call->name instanceof Identifier || self::bodyMayWrite(
                 $scope->thisMemberClass($call->name->toString(), true),
-                $call->name,
+                $call,
                 $read,
+                $scope,
                 $proxied,
             );
         }
@@ -107,26 +103,24 @@ final class InterveningWrites
 
     /**
      * Whether the method a call names on a class may write the read: one the class lacks or whose body cannot be
-     * read may, a reading helper never does, and any other does where its body writes `$this` at the read.
+     * read may, a resource helper never does, and any other does where its body writes `$this` at the read.
      *
      * @param  ReflectionClass<object>  $class
      */
     private static function bodyMayWrite(
         ReflectionClass $class,
-        Identifier|Expr $name,
+        MethodCall|NullsafeMethodCall|StaticCall $call,
         ReadPath $read,
+        AnalysisScope $scope,
         bool $proxied,
     ): bool {
+        $name = $call->name;
+
         if (! $name instanceof Identifier || ! $class->hasMethod($name->toString())) {
             return true;
         }
 
-        $file = $class->getMethod($name->toString())->getFileName();
-
-        if (array_any(
-            self::READING_HELPERS,
-            static fn (string $helper): bool => new ReflectionClass($helper)->getFileName() === $file,
-        )) {
+        if (ReadOnlyCalls::resourceHelper($call, $scope) !== null) {
             return false;
         }
 

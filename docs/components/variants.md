@@ -82,7 +82,7 @@ and a group where:
 - an item from the group's first key to its last may write the discriminant's read, or a read it is a member of,
   whatever operator reads it ([`InterveningWrites`]): a write it spells, `$this->resource->x` standing for `$this->x`;
   outside the group's own items, a `$this` call whose body writes one or cannot be read, a closure call, or a call on
-  a read holding it. Laravel's `JsonResource` and `ConditionallyLoadsAttributes` helpers only read.
+  a read holding it. Laravel's resource helpers ([`ReadOnlyCalls`]) only read.
 
 A group stays unprinted where its rows changed after the fold. Each group fingerprints its rows
 (`VariantGroup::holdsFor()`), and a nested literal its whole fold (`LiteralVariants::holdsFor()`), so a `@return`
@@ -128,9 +128,10 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`ConditionalArms`]: ../../src/Ast/Variants/ConditionalArms.php
 [`DiscriminantValue`]: ../../src/Ast/Variants/DiscriminantValue.php
 [`DiscriminantValues`]: ../../src/Ast/Variants/DiscriminantValues.php
-[`InterveningWrites`]: ../../src/Ast/Variants/InterveningWrites.php
+[`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
 [`LiteralVariants`]: ../../src/Ast/Variants/LiteralVariants.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
+[`ReadOnlyCalls`]: ../../src/Ast/Effects/ReadOnlyCalls.php
 [`ReadPath`]: ../../src/Ast/Parsing/ReadPath.php
 [`ResourceDeclaration`]: ../../src/Support/ResourceDeclaration.php
 [`SplitsOnCondition`]: ../../src/Ast/Contracts/SplitsOnCondition.php

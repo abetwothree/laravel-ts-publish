@@ -193,9 +193,9 @@ the test leaves of the subject, its collection's element and keys included (its 
 An `if` test narrows a variable the same way, through [`fromVariable()`](#variables), so a guard narrows a `morphTo`
 parameter's targets: past `if (! $o instanceof Post) { return null; }` in a `whenLoaded('imageable', …)` closure, `$o`
 holds `Post`, not every target. It narrows a `$this->prop` chain as the ternary does, inside each block it proves and
-past a guard that leaves, while every call between the test and the read is one `ThisPathWrites` knows cannot reach it.
-On an API resource it narrows `$this->resource` for each value inside a block it proves, so a collection's items read as
-the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
+past a guard that leaves, while every call between the test and the read is one [`ThisPathWrites`] knows cannot reach
+it. On an API resource it narrows `$this->resource` for each value inside a block it proves, so a collection's items
+read as the paginator `if ($this->resource instanceof LengthAwarePaginator)` names.
 
 A subject method the proven arm or block calls as a value reads its body with `$this->resource` backed by the one model
 the proof leaves: `SubjectMethodTypeResolver` passes it as `MethodReturnTypeResolver::resolve()`'s `$backing`, and the
@@ -638,6 +638,7 @@ These pages cover the neighbors of receiver resolution:
 [`ReceiverPropertyFetchHandler`]: ../../src/Ast/Handlers/Members/ReceiverPropertyFetchHandler.php
 [`ReceiverType`]: ../../src/Ast/Receivers/ReceiverType.php
 [`ResolvesAuthHelperCalls`]: ../../src/Ast/Concerns/ResolvesAuthHelperCalls.php
+[`ThisPathWrites`]: ../../src/Ast/Effects/ThisPathWrites.php
 [glossary]: ../../GLOSSARY.md
 [gap-guards]: ../known-gaps.md#with-two-user-models-the-signed-in-user-publishes-unknown-past-auth-auth-and-request
 [gap-shape]: ../known-gaps.md#a-shape-whose-values-name-a-class-can-lose-some-of-them

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
