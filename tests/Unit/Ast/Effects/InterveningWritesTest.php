@@ -117,6 +117,7 @@ function interveningCalls(): array
         'a writer named by [self::class, …]' => ['array_map([self::class, \'writer\'], [1])', true],
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
         'a writer named by [Ancestor::class, …]' => ['array_map([InterveningBase::class, \'baseWriter\'], [1])', true],
+        'a writer named by [\'Fqcn\', …]' => ['array_map([\''.InterveningResource::class.'\', \'writer\'], [1])', true],
         'a writer named by \'Fqcn::m\'' => ['array_map(\''.InterveningResource::class.'::writer\', [1])', true],
         'a writer named by self::class.\'::m\'' => ['array_map(self::class.\'::writer\', [1])', true],
         'a writer named by a computed self::class callable' => ['array_map(self::class.\'::\'.$name, [1])', true],
@@ -210,6 +211,12 @@ function interveningCalls(): array
         'a reader named by [self::class, …]' => ["array_map([self::class, 'reader'], ['a'])", false],
         'a reader named by [static::class, …]' => ["array_map([static::class, 'reader'], ['a'])", false],
         'a reader named by [Ancestor::class, …]' => ["array_map([InterveningBase::class, 'baseReader'], ['a'])", false],
+        'a reader named by [\'Fqcn\', …]' => ["array_map(['".InterveningResource::class."', 'reader'], ['a'])", false],
+        'a callback a helper typed string returns from a local' => ['$this->when(true, $this->typedLocalLabel())', false],
+        'a callback an untyped helper returns, beside a closure\'s return' => [
+            '$this->when(true, $this->untypedWithInnerReturn())',
+            false,
+        ],
         'a reader named by \'Fqcn::m\'' => ["array_map('".InterveningResource::class."::reader', ['a'])", false],
         'a reader named by self::class.\'::m\'' => ["array_map(self::class.'::reader', ['a'])", false],
         'a reader through Closure::fromCallable([self::class, …])' => [

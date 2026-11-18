@@ -175,6 +175,28 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Returns a label held in a local, its signature typing a string.
+     */
+    private function typedLocalLabel(): string
+    {
+        $label = (string) $this->title;
+
+        return $label;
+    }
+
+    /**
+     * Returns a label, its signature typing nothing; the closure it builds returns the writer to whoever calls it.
+     */
+    private function untypedWithInnerReturn()
+    {
+        $later = function (): Closure {
+            return $this->writer(...);
+        };
+
+        return 'label';
+    }
+
+    /**
      * Returns a label once it has called itself down to zero, its signature typing nothing.
      */
     private function untypedCountDown(int $from)
