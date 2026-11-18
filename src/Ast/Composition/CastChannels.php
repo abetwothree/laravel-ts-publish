@@ -44,10 +44,10 @@ final class CastChannels
 
     /**
      * The names a cast's import brings for its text, where its publisher keeps the package's import for a name the text
-     * only builds on: each name the text spells, but such a name a class on its key's channels prints. A name the text
-     * is whole stays the cast's, as the app's own type for its key.
+     * only builds on: each name the text spells, but such a name its file imports a class of the package under. A name
+     * the text is whole stays the cast's, as the app's own type for its key.
      *
-     * @param  list<string>  $resolved  the names the classes on the cast's key print, MethodAnalysis::channelNames()
+     * @param  list<string>  $resolved  the names its file imports a class of the package under
      * @return list<string>
      */
     public static function importedNames(string $type, array $resolved): array
@@ -230,17 +230,18 @@ final class CastChannels
     }
 
     /**
-     * The names a cast's import brings for its text: importedNames() where its entry carries the names its key resolves,
-     * else the text's top-level arms, as a publisher that never keeps the package's import reads them.
+     * The names a cast's import brings for its text, as its entry's `reading` says: every name but those its file
+     * resolves, or the text's top-level arms for a publisher that never keeps the package's import.
      *
      * @param  CastInForce  $cast
      * @return list<string>
      */
     private static function importNames(array $cast): array
     {
-        return array_key_exists('resolved', $cast)
-            ? self::importedNames($cast['type'], $cast['resolved'])
-            : TsTypeString::extractImportableTypes($cast['type']);
+        return match ($cast['reading']) {
+            'names' => self::importedNames($cast['type'], $cast['resolved'] ?? []),
+            'arms' => TsTypeString::extractImportableTypes($cast['type']),
+        };
     }
 
     /**

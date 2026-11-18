@@ -140,7 +140,8 @@ class BroadcastEventTransformer extends CoreTransformer
     protected array $optionalOverrides = [];
 
     /**
-     * Property name => the names the classes its value carried print, which a class-level cast's import leaves to them.
+     * Property name => the names the event's file imports a class of the package under, which its cast's import leaves
+     * to them.
      *
      * @var array<array-key, list<string>>
      */
@@ -481,12 +482,18 @@ class BroadcastEventTransformer extends CoreTransformer
         $casts = $analysis->casts;
         $keys = array_flip(array_column($analysis->properties, 'name'));
 
+        $resolved = $analysis->allChannelNames();
+
         // A cast whose key names no payload property publishes nothing, so its import binds no name.
         foreach (array_intersect_key($this->tsTypeOverrides, $keys) as $name => $type) {
             $import = $this->tsCastsImportPaths[$name] ?? null;
-            $resolved = $import === null ? [] : $analysis->channelNames((string) $name);
             $this->castResolvedNames[$name] = $resolved;
-            $casts[$name] = ['type' => $type, 'import' => $import, ...($import === null ? [] : ['resolved' => $resolved])];
+            $casts[$name] = [
+                'type' => $type,
+                'import' => $import,
+                'reading' => 'names',
+                ...($import === null ? [] : ['resolved' => $resolved]),
+            ];
         }
 
         return $casts;

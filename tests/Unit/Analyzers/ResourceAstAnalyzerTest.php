@@ -6596,7 +6596,12 @@ describe('ResourceAstAnalyzer with BranchedCastSpreadResource (cast keys through
         $analysis = (new ResourceAstAnalyzer($reflection, Image::class))->analyze();
 
         expect($analysis->casts)->toBe([
-            'reviewable' => ['type' => 'UserResource | null', 'import' => '@js/types/user', 'resolved' => ['UserResource']],
+            'reviewable' => [
+                'type' => 'UserResource | null',
+                'import' => '@js/types/user',
+                'reading' => 'names',
+                'resolved' => ['UserResource'],
+            ],
         ])
             ->and((new ResourceTransformer(BranchedCastSpreadResource::class))->properties['reviewable']['type'])
             ->toBe('UserResource | null');
@@ -7358,13 +7363,14 @@ describe('a cast across its locations', function () {
             }
         };
 
-        expect($transformer->exposedCastsInForce())->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null]]);
+        expect($transformer->exposedCastsInForce())
+            ->toBe(['[key: `${string}\\\\_x`]' => ['type' => 'number', 'import' => null, 'reading' => 'names']]);
     });
 
     test('a numeric cast key from a spread helper reaches the parent analysis on its own key', function () {
         $analysis = new ResourceAstAnalyzer(new ReflectionClass(NumericCastSpreadResource::class), Post::class)->analyze();
 
-        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null]]);
+        expect($analysis->casts)->toBe([42 => ['type' => 'boolean', 'import' => null, 'reading' => 'names']]);
     });
 });
 

@@ -97,6 +97,7 @@ final class ReturnShapeRefiner
                 $filled[$name] = [
                     'type' => $property['type'],
                     'import' => null,
+                    'reading' => 'names',
                     'customImports' => $resolved['customImports'],
                     ...(isset($resolved['tokenFqcns']) ? ['tokenFqcns' => $resolved['tokenFqcns']] : []),
                 ];

@@ -399,14 +399,13 @@ class InertiaPageAnalyzer
                 $targets,
             );
             $castImports = [];
-            $resolved = [];
+            $resolved = $analysis->allChannelNames();
 
             // A losing spelling's import goes with its type.
             foreach ($paths as $key => $path) {
-                $resolved[$key] = $analysis->channelNames((string) $key);
                 $castImports[$path] = [
                     ...$castImports[$path] ?? [],
-                    ...CastChannels::importedNames($casts[$key] ?? '', $resolved[$key]),
+                    ...CastChannels::importedNames($casts[$key] ?? '', $resolved),
                 ];
             }
 
@@ -773,7 +772,7 @@ class InertiaPageAnalyzer
      *
      * @param  array<array-key, string>  $casts  the action's casts, by the key each retypes
      * @param  array<array-key, string>  $paths  each of those casts' import path, by its key
-     * @param  array<array-key, list<string>>  $resolved  the names the classes each key with a path carried print
+     * @param  list<string>  $resolved  the names the page's file imports a class of the package under
      * @return CastMap
      */
     private function castsInForce(MethodAnalysis $analysis, array $casts, array $paths, array $resolved): array
@@ -782,7 +781,12 @@ class InertiaPageAnalyzer
 
         foreach ($casts as $key => $type) {
             $import = $paths[$key] ?? null;
-            $inForce[$key] = ['type' => $type, 'import' => $import, ...($import === null ? [] : ['resolved' => $resolved[$key] ?? []])];
+            $inForce[$key] = [
+                'type' => $type,
+                'import' => $import,
+                'reading' => 'names',
+                ...($import === null ? [] : ['resolved' => $resolved]),
+            ];
         }
 
         return $inForce;

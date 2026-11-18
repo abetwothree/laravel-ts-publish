@@ -47,9 +47,11 @@ use LogicException;
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
+ * @phpstan-type CastReading = 'arms'|'names'
  * @phpstan-type CastInForce = array{
  *     type: string,
  *     import: string|null,
+ *     reading: CastReading,
  *     optional?: bool,
  *     customImports?: TypesImportMap,
  *     tokenFqcns?: Slots,
@@ -169,7 +171,8 @@ class MethodAnalysis
      *                                                          for a mixed EnumResource/direct-access ternary or match
      * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
      *                          own import and its `optional` flag, if any; a publisher fits the key's import channels
-     *                          to that text. `resolved`, where the package's import wins, names the key's classes
+     *                          to that text. Its `reading` says which names the import brings: `arms`, the text's
+     *                          top-level arms; `names`, every name but those `resolved` lists, the file's own classes
      * @param  CarriedMap  $carried  per kind, each class a cast displaced and its text does not spell: kept apart from
      *                               every queue, and imported only for a text with no class of its name behind it
      * @param  string|null  $flatTypeAlias  when set, the collection emits `export type X = SingularResource[]` instead of an interface
@@ -607,6 +610,23 @@ class MethodAnalysis
             || isset($this->inlineResourceFqcns[$name])
             || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
             || isset($this->enumResourceArmShapes[$name]);
+    }
+
+    /**
+     * The names the classes on every property's import channels publish under, channelNames() across the analysis: the
+     * names its file imports a class of the package under.
+     *
+     * @return list<string>
+     */
+    public function allChannelNames(): array
+    {
+        $names = [];
+
+        foreach (array_unique(array_column($this->properties, 'name')) as $name) {
+            array_push($names, ...$this->channelNames((string) $name));
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**

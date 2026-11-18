@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndIntersectTwoPathsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndIntersectTypesTwoPathsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideCastNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideMethodCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedEmptyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameResource;
@@ -152,6 +156,44 @@ it('keeps the package\'s import of a class a clause builds on, and imports from 
         export type IntersectedPackageNameTypesResource = {
             owner: WorkbenchUserResource;
         } & (Pick<UserResource, "id">);
+
+        TS],
+]);
+
+// A name a clause only builds on comes from its path only where no other import binds it, as a cast's import does.
+it('imports no name a clause only builds on that a cast already imports from another path', function (string $resource, string $declaration) {
+    $content = intersectedResourceFile($resource);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe(["import type { Meta } from '@/types/meta';"])
+        ->and($content)->toContain($declaration);
+})->with([
+    'a class-level cast' => [ExtendsBesideCastNameResource::class, 'export interface ExtendsBesideCastNameResource extends Pick<Meta, "a">'],
+    'a method-level cast' => [ExtendsBesideMethodCastNameResource::class, 'export interface ExtendsBesideMethodCastNameResource extends Partial<Meta>'],
+]);
+
+// One pass reads both attributes, so a name each imports from its own path is aliased apart, as two clauses are.
+it('aliases a name an extends clause and an intersection import from two paths', function (string $resource, array $imports, string $declaration) {
+    $content = intersectedResourceFile($resource);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe($imports)
+        ->and($content)->toEndWith($declaration);
+})->with([
+    'names read from each' => [ExtendsAndIntersectTwoPathsResource::class, [
+        "import type { Base as ABase } from '@/a';",
+        "import type { Base as BBase } from '@/b';",
+    ], <<<'TS'
+        export type ExtendsAndIntersectTwoPathsResource = ABase & {
+            id: number;
+        } & (BBase);
+
+        TS],
+    'names each lists in its `types`' => [ExtendsAndIntersectTypesTwoPathsResource::class, [
+        "import type { Base as ABase } from '@/a';",
+        "import type { Base as BBase } from '@/b';",
+    ], <<<'TS'
+        export type ExtendsAndIntersectTypesTwoPathsResource = ABase & {
+            id: number;
+        } & (Partial<BBase>);
 
         TS],
 ]);

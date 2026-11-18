@@ -55,11 +55,11 @@ test('castsEveryBranchAgrees() keeps a cast only where every branch setting its 
         ],
         casts: $casts,
     );
-    $cast = ['type' => 'Money', 'import' => '@/money'];
+    $cast = ['type' => 'Money', 'import' => '@/money', 'reading' => 'names', 'resolved' => ['Cents']];
 
     expect(BranchJoin::castsEveryBranchAgrees([
         $branch(['a' => $cast, 'b' => $cast]),
-        $branch(['a' => [...$cast, 'optional' => true], 'b' => ['type' => 'Cents', 'import' => '@/money']]),
+        $branch(['a' => [...$cast, 'optional' => true], 'b' => ['type' => 'Cents', 'import' => '@/money', 'reading' => 'names']]),
     ], ['a', 'b']))->toBe(['a' => [...$cast, 'optional' => true]]);
 });
 

@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantUnions;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -49,7 +50,6 @@ use ReflectionClass;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
  * @phpstan-import-type Slots from TokenSlots
- * @phpstan-import-type TsExtendsResult from ParsesTsExtends
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -204,7 +204,6 @@ class ResourceTransformer extends CoreTransformer
     {
         $this->initReflection()
             ->parseTsExtends()
-            ->parseTsIntersect()
             ->resolveModelClass()
             ->parseModelTsCastsOverrides()
             ->parseResourceTsCastsOverrides()
@@ -364,38 +363,19 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Parse the resource's #[TsExtends] clauses and config entries, and the imports they bring.
+     * Parse the resource's #[TsExtends] clauses and config entries and its #[TsIntersect] types in one pass, so a name
+     * both import from two paths is aliased apart, and register their imports, setting apart each name a clause only
+     * builds on.
      */
     protected function parseTsExtends(): self
     {
-        $this->tsExtends = $this->registerClauses(
-            $this->parseTsExtendsFromReflection($this->reflectionResource, 'resources'),
+        $result = $this->parseClauseAttributes(
+            $this->reflectionResource,
+            [TsExtends::class => 'resources', TsIntersect::class => null],
         );
+        $this->tsExtends = $result['clauses'][TsExtends::class];
+        $this->tsIntersect = $result['clauses'][TsIntersect::class];
 
-        return $this;
-    }
-
-    /**
-     * Parse the types the resource's #[TsIntersect] attributes intersect its type with, and the imports they bring.
-     */
-    protected function parseTsIntersect(): self
-    {
-        $this->tsIntersect = $this->registerClauses(
-            $this->parseClauseAttributes($this->reflectionResource, TsIntersect::class, null),
-        );
-
-        return $this;
-    }
-
-    /**
-     * Register the imports one clause attribute brings, setting apart each name a clause only builds on, and return its
-     * clauses.
-     *
-     * @param  TsExtendsResult  $result
-     * @return list<string>
-     */
-    protected function registerClauses(array $result): array
-    {
         foreach ($result['imports'] as $importPath => $typeNames) {
             $nested = $result['nested'][$importPath] ?? [];
             $whole = array_values(array_diff($typeNames, $nested));
@@ -409,7 +389,7 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        return $result['extends'];
+        return $this;
     }
 
     /**
@@ -424,19 +404,20 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Import each name a clause only builds on from the clause's path, unless the file imports a class the package
-     * publishes under that name, whose import then binds the clause's name too.
+     * Import each name a clause only builds on from the clause's path, unless the file already binds that name: a class
+     * the package publishes under it, or another import, such as a cast's, whose binding the clause's name then reads.
      */
     protected function importNestedClauseNames(): self
     {
-        $published = [
+        $bound = [
             ...array_values($this->resourceFqcnMap),
             ...array_values($this->modelFqcnMap),
             ...array_merge([], ...array_map(ValueResult::enumNames(...), array_keys($this->enumFqcnMap))),
+            ...ImportMaps::localNames($this->customImports),
         ];
 
         foreach ($this->nestedClauseImports as $importPath => $names) {
-            foreach (array_diff($names, $published) as $name) {
+            foreach (array_diff($names, $bound) as $name) {
                 $this->customImports[$importPath][] = $name;
             }
         }
@@ -679,13 +660,18 @@ class ResourceTransformer extends CoreTransformer
     protected function collectCastsInForce(array $castKeys, MethodAnalysis $analysis): array
     {
         $casts = $analysis->casts;
+        $resolved = $analysis->allChannelNames();
 
         foreach ($castKeys as $property => $type) {
             $import = isset($this->tsTypeOverrides[$property])
                 ? ($this->tsCastsImportPaths[$property] ?? null)
                 : ($this->modelTsCastsImportPaths[$property] ?? null);
-            $resolved = $import === null ? [] : $analysis->channelNames((string) $property);
-            $casts[$property] = ['type' => $type, 'import' => $import, ...($import === null ? [] : ['resolved' => $resolved])];
+            $casts[$property] = [
+                'type' => $type,
+                'import' => $import,
+                'reading' => 'names',
+                ...($import === null ? [] : ['resolved' => $resolved]),
+            ];
         }
 
         return $casts;

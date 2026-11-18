@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\BuildsOnModelCastController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\BuildsOnSiblingModelCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeFoldedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
@@ -1133,6 +1134,18 @@ it('keeps the model import a page cast builds on, and imports only the rest from
     expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { meta: { author: User | null; tag: Tag } }')
         ->and($transformer->typeImports)->toBe([
             '@/types/tag' => ['Tag'],
+            '../../../../../../app/models' => ['User'],
+        ]);
+});
+
+it('keeps the model import a page cast builds on when another key embeds the model', function () {
+    app(Router::class)->get('/builds-on-sibling-model-cast/{post}', [BuildsOnSiblingModelCastController::class, 'show']);
+    $transformer = new RouteTransformer(BuildsOnSiblingModelCastController::class);
+
+    expect($transformer->actions[0]['pageType'])
+        ->toBe('Inertia.SharedData & { k: { owner: User | null; meta: Meta }, author: User }')
+        ->and($transformer->typeImports)->toBe([
+            '@/types/meta' => ['Meta'],
             '../../../../../../app/models' => ['User'],
         ]);
 });

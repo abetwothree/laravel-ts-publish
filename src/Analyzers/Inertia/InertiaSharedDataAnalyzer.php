@@ -454,11 +454,12 @@ class InertiaSharedDataAnalyzer
 
         foreach ($overrides as $key => $override) {
             if (array_key_exists($key, $paths)) {
-                $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key]];
+                $inForce[$key] = ['type' => $override['type'], 'import' => $paths[$key], 'reading' => 'arms'];
             } elseif (isset($docblock[$key])) {
                 $inForce[$key] = [
                     'type' => $override['type'],
                     'import' => null,
+                    'reading' => 'arms',
                     'customImports' => $docblock[$key]['customImports'],
                     'tokenFqcns' => $docblock[$key]['tokenFqcns'] ?? [],
                 ];

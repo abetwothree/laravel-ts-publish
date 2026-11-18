@@ -227,7 +227,7 @@ class ModelMetadataAnalyzer
                     continue;
                 }
 
-                // Every name the text spells covers each that applyTsCastsFromMethod() read, keeping the package's import.
+                // Every name the text spells covers those applyTsCastsFromMethod() read, whichever it left out.
                 $names = TsTypeString::referencedTypeNames($value['type']);
                 $analysis->customImports[$value['import']] = array_values(array_diff(
                     $analysis->customImports[$value['import']] ?? [],
@@ -383,11 +383,12 @@ class ModelMetadataAnalyzer
 
         foreach ($published as $key => $type) {
             if ($result->sources[$key] === 'casts') {
-                $inForce[$key] = ['type' => $type, 'import' => $result->importPaths[$key] ?? null];
+                $inForce[$key] = ['type' => $type, 'import' => $result->importPaths[$key] ?? null, 'reading' => 'arms'];
             } elseif ($result->sources[$key] === 'docblock') {
                 $inForce[$key] = [
                     'type' => $type,
                     'import' => null,
+                    'reading' => 'arms',
                     'customImports' => $result->docblockImports[$key] ?? [],
                     'tokenFqcns' => array_map(
                         static fn (?string $fqcn): ?string => $fqcn !== null && enum_exists($fqcn) ? $fqcn : null,

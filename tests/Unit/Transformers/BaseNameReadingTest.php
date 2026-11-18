@@ -19,7 +19,7 @@ use Workbench\App\Models\User;
 // A caller that does not keep the package's import for a name a cast or clause only builds on reads its text as
 // extractImportableTypes() does, its top-level arms, so a nested name imports from no path it did not before.
 describe('a cast or clause with an import that only builds on a name, where the package\'s import does not win', function () {
-    // TsCastsImportResolver imports a cast's whole text as one name, as it did before; only the package's `User` moves.
+    // Pins base's known defect: shared data and a companion import a cast's whole text as one name (a follow-up issue).
     it('keeps shared data\'s imports', function () {
         $result = analyzeSharedDataFor(MiddlewareWithNestedNameCast::class);
 
@@ -29,6 +29,7 @@ describe('a cast or clause with an import that only builds on a name, where the 
         ]);
     });
 
+    // Pins base's known defect too: the whole cast text imported as one name, slated for the same follow-up issue.
     it('keeps a model metadata companion\'s imports', function () {
         config()->set('ts-publish.model_metadata.provider_class', NestedNameCastMetadataProvider::class);
 

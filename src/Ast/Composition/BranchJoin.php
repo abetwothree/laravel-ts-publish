@@ -327,10 +327,16 @@ final class BranchJoin
                 static fn (?array $branchCast): bool => ($branchCast['optional'] ?? null) === true,
             );
 
+            $joined = [
+                'type' => $cast['type'],
+                'import' => $cast['import'],
+                'reading' => $cast['reading'],
+                ...(isset($cast['resolved']) ? ['resolved' => $cast['resolved']] : []),
+            ];
             $casts[(string) $name] = match (true) {
-                $anyOptional => ['type' => $cast['type'], 'import' => $cast['import'], 'optional' => true],
+                $anyOptional => [...$joined, 'optional' => true],
                 array_all($branchCasts, static fn (?array $branchCast): bool => $branchCast === $cast) => $cast,
-                default => ['type' => $cast['type'], 'import' => $cast['import']],
+                default => $joined,
             };
         }
 
