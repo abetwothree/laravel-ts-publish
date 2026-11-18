@@ -185,7 +185,8 @@ class InertiaSharedDataAnalyzer
     }
 
     /**
-     * Flatten the analysis into a prop map, later declarations of a key winning; one a dotted key replaces is `closed`.
+     * Flatten the analysis into a prop map, later declarations of a key winning; one a dotted key replaces is `closed`,
+     * and one whose every arm is an array it writes into, a literal printed one object per variant, is `arrays`.
      *
      * @return SharedPropMap
      */
@@ -198,6 +199,7 @@ class InertiaSharedDataAnalyzer
                 'type' => $property['type'],
                 'optional' => $property['optional'],
                 ...(isset($analysis->closedToDottedKeys[$property['name']]) ? ['closed' => true] : []),
+                ...(($property['splitOf'] ?? null) === $property['type'] ? ['arrays' => true] : []),
             ];
         }
 

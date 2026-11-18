@@ -68,6 +68,7 @@ use LogicException;
  *     bodyType?: string,
  *     fillType?: string,
  *     keepsKeys?: bool,
+ *     splitOf?: string,
  *     absent?: true,
  *     removed?: true,
  * }
@@ -269,6 +270,7 @@ class MethodAnalysis
             'optional' => $optional || $result['optional'],
             'description' => $description,
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ...(ValueResult::isSplit($result) ? ['splitOf' => $result['type']] : []),
             ...self::presenceFacts(
                 $optional || ($result['optional'] && $absent),
                 $result['optional'] && (! $absent || ($result['removed'] ?? false)),

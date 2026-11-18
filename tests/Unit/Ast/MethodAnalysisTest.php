@@ -956,3 +956,17 @@ it('drops a literal\'s groups once another analysis merges in', function () {
 
     expect($merged->variants)->toBeNull();
 });
+
+// Inertia's dotted keys write into each arm of a literal printed one object per variant, every one an array.
+it('marks a row whose value is a literal printed one object per variant with that union, while it is', function () {
+    $union = '{ k: true; v: string } | { k: false; v: null }';
+    $split = ['type' => $union, 'optional' => false, 'unsplit' => ['of' => $union, 'print' => [
+        'type' => '{ k: boolean; v: string | null }', 'optional' => false,
+    ]]];
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('split', $split);
+    $analysis->addProperty('rewritten', [...$split, 'type' => $union.' | null']);
+
+    expect($analysis->properties[0]['splitOf'] ?? null)->toBe($union)
+        ->and($analysis->properties[1])->not->toHaveKey('splitOf');
+});

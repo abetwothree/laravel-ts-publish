@@ -82,17 +82,17 @@ final class InlineObjectResult
         $objects = $variants !== null && $variants->holdsFor($analysis) ? $variants->objects() : [];
 
         if ($objects === []) {
-            return $this->unsplit($analysis, $spreadArms);
+            return $this->oneObject($analysis, $spreadArms);
         }
 
         // Each print takes its own copy, as one object would otherwise carry a spread arm's imports once per print.
         $union = ValueResult::unionResults(array_map(
-            fn (MethodAnalysis $object): array => $this->unsplit(clone $object, $spreadArms),
+            fn (MethodAnalysis $object): array => $this->oneObject(clone $object, $spreadArms),
             $objects,
         ));
 
         // A reader that takes the keys back reads them from one object, as ValueResult::unsplit() hands it over.
-        return [...$union, 'unsplit' => ['of' => $union['type'], 'print' => $this->unsplit($analysis, $spreadArms)]];
+        return [...$union, 'unsplit' => ['of' => $union['type'], 'print' => $this->oneObject($analysis, $spreadArms)]];
     }
 
     /**
@@ -114,7 +114,7 @@ final class InlineObjectResult
      * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms  the arms the object type intersects with
      * @return ObjectPrint
      */
-    private function unsplit(MethodAnalysis $analysis, array $spreadArms): array
+    private function oneObject(MethodAnalysis $analysis, array $spreadArms): array
     {
         self::readFillsClassLess($analysis);
 

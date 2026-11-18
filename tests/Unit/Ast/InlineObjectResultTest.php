@@ -206,11 +206,8 @@ it('leads each object with the spread arm that leads the literal', function () {
 });
 
 it('prints a value Laravel may remove itself as optional in its arm, and a removed arm as never', function () {
-    $alone = printedFormLiteral('whenLoadedAlone');
-
-    expect($alone)->toStartWith('{ author?: ')
-        ->and(printedFormLiteral('whenLoadedArm'))
-        ->toBe('{ pinned: true; '.substr($alone, 2, -2).' } | { pinned: false; author?: never }');
+    expect(printedFormLiteral('whenLoadedAlone'))->toBe('{ author?: User }')
+        ->and(printedFormLiteral('whenLoadedArm'))->toBe('{ pinned: true; author?: User } | { pinned: false; author?: never }');
 });
 
 it('prints the [] a with() key sends in its removed arm, beside the keys at with()\'s own level, flat', function () {

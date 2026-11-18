@@ -6318,6 +6318,17 @@ declare global {
             read_pinned: boolean;
             read_v: string | null;
         }
+        /**
+         * Enum resources inside literals that print one object per arm (GH-157): beside a group, as a group's arm, two in its
+         * arms, beside a same-named enum read directly, and in a ternary of two literals. Each wrap keeps its value import.
+         */
+        export interface WrapArmsResource {
+            beside_group: { pinned: true; until: string | null; status: app.enums.StatusType } | { pinned: false; until?: never; status: app.enums.StatusType };
+            in_arm: { pinned: true; e: app.enums.StatusType } | { pinned: false; e: null };
+            two_wraps: { pinned: true; e: app.enums.StatusType } | { pinned: false; e: app.enums.VisibilityType | null };
+            beside_same_named: { pinned: true; e: app.enums.StatusType; c: crm.enums.StatusType; v: number } | { pinned: false; e: app.enums.StatusType; c: crm.enums.StatusType; v: null };
+            literals_ternary: { e: app.enums.StatusType; x: number } | { e: null; x: string };
+        }
     }
     export namespace app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */

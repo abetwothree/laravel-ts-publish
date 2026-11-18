@@ -50,6 +50,12 @@ final class ValueResult
     /** The members that send no value of their own: `null`, and the `[]` an enum wrap around null may be sent as. */
     public const array EMPTY_ARMS = ['null', 'never[]'];
 
+    /** The keys of a result that say what the value is, not which classes or keys its printed objects hold. */
+    private const array VALUE_FACTS = [
+        'optional', 'absent', 'removed', 'unnamedKeys', 'listKeys', 'absentReadsNull', 'absentKeys', 'heldObject',
+        'mayHoldObject', 'heldProp', 'returnsCallable', 'closedToDottedKeys', 'resolvedFqcn',
+    ];
+
     /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
     private static array $enumNames = [];
 
@@ -373,7 +379,7 @@ final class ValueResult
     {
         $unsplit = $result['unsplit'] ?? null;
 
-        if ($unsplit === null || $unsplit['of'] !== $result['type']) {
+        if ($unsplit === null || ! self::isSplit($result)) {
             return $result;
         }
 
@@ -385,22 +391,27 @@ final class ValueResult
             $presence[$object] = [...$presence[$object] ?? [], ...$facts];
         }
 
-        // The union's classes and facts about its objects give way to the print's own.
-        $read = $result;
-        unset(
-            $read['unsplit'], $read['keyPresence'], $read['keepsKeys'], $read['enumFqcn'], $read['directEnumFqcn'],
-            $read['sendsEnumScalar'], $read['resourceFqcn'], $read['modelFqcn'], $read['embeddedEnumFqcns'],
-            $read['embeddedEnumResourceFqcns'], $read['embeddedModelFqcns'], $read['embeddedResourceFqcns'],
-            $read['multiEnumResourceFqcns'], $read['customImports'], $read['carriedFqcns'], $read['wrapIsCollection'],
-            $read['directIsArray'],
-        );
+        $read = $print;
 
-        return [
-            ...$read,
-            ...$print,
-            'optional' => $result['optional'],
-            ...($presence === [] ? [] : ['keyPresence' => $presence]),
-        ];
+        // Only what the value itself is stays from the union: every class and key fact is the print's own.
+        foreach (self::VALUE_FACTS as $fact) {
+            if (array_key_exists($fact, $result)) {
+                $read[$fact] = $result[$fact];
+            }
+        }
+
+        return $presence === [] ? $read : [...$read, 'keyPresence' => $presence];
+    }
+
+    /**
+     * Whether a result is a literal printed one object per variant, each an array PHP holds, while its type is still
+     * that union.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function isSplit(array $result): bool
+    {
+        return ($result['unsplit']['of'] ?? null) === $result['type'];
     }
 
     /**
@@ -962,6 +973,9 @@ final class ValueResult
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
+        // Never deduped either: aliasTypeofConst() walks it against each `typeof X` an arm's object spells, in order.
+        /** @var list<class-string> $embeddedEnumResourceFqcns the enums nested objects wrap in an enum resource */
+        $embeddedEnumResourceFqcns = [];
         // One queue entry per rendered token, built in branch order because aliasPropertyType() walks it
         // against the rendered type left to right. A whole-branch model is appended in loop position, and
         // deduped: analyzeClosureUnion() collapses branches rendering the same string, leaving no token.
@@ -1001,6 +1015,8 @@ final class ValueResult
             if (isset($inner['embeddedEnumFqcns'])) {
                 array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
             }
+
+            array_push($embeddedEnumResourceFqcns, ...$inner['embeddedEnumResourceFqcns'] ?? []);
 
             if (isset($inner['modelFqcn']) && ! in_array($inner['modelFqcn'], $branchModelFqcns, true)) {
                 $branchModelFqcns[] = $inner['modelFqcn'];
@@ -1070,6 +1086,10 @@ final class ValueResult
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
+        }
+
+        if ($embeddedEnumResourceFqcns !== []) {
+            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
         }
 
         if ($embeddedModelFqcns !== []) {

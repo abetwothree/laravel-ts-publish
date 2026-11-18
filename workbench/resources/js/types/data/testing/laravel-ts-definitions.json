@@ -14372,6 +14372,36 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\WrapArmsResource": {
+            "name": "WrapArmsResource",
+            "properties": [
+                {
+                    "name": "beside_group",
+                    "type": "{ pinned: true; until: string | null; status: AsEnum<typeof WorkbenchStatus> } | { pinned: false; until?: never; status: AsEnum<typeof WorkbenchStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "in_arm",
+                    "type": "{ pinned: true; e: AsEnum<typeof WorkbenchStatus> } | { pinned: false; e: null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_wraps",
+                    "type": "{ pinned: true; e: AsEnum<typeof WorkbenchStatus> } | { pinned: false; e: AsEnum<typeof Visibility> | null }",
+                    "optional": false
+                },
+                {
+                    "name": "beside_same_named",
+                    "type": "{ pinned: true; e: AsEnum<typeof WorkbenchStatus>; c: StatusType; v: number } | { pinned: false; e: AsEnum<typeof WorkbenchStatus>; c: StatusType; v: null }",
+                    "optional": false
+                },
+                {
+                    "name": "literals_ternary",
+                    "type": "{ e: AsEnum<typeof WorkbenchStatus>; x: number } | { e: null; x: string }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [

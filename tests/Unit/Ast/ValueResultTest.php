@@ -700,13 +700,15 @@ it('reads a split result as its one-object print, with that print\'s classes, on
     expect(ValueResult::unsplit($split))->toBe([
         'type' => '{ s: StatusType; v: string | null }',
         'optional' => true,
-        'unnamedKeys' => true,
         'embeddedEnumFqcns' => [Status::class],
+        'unnamedKeys' => true,
     ])
         ->and(ValueResult::unsplitType($split))->toBe('{ s: StatusType; v: string | null }')
         ->and(ValueResult::unsplit($rewritten))->toBe($rewritten)
         ->and(ValueResult::unsplitType($rewritten))->toBe($union.' | null')
-        ->and(ValueResult::unsplitType(['type' => $union, 'optional' => false]))->toBe($union);
+        ->and(ValueResult::unsplitType(['type' => $union, 'optional' => false]))->toBe($union)
+        ->and(ValueResult::isSplit($split))->toBeTrue()
+        ->and(ValueResult::isSplit($rewritten))->toBeFalse();
 });
 
 it('joins the facts a result records for its one-object print\'s text to the print\'s own', function () {
