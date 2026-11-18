@@ -1851,7 +1851,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             return;
         }
 
-        $written = new InlineObjectResult()->of($armWrites);
+        $written = new InlineObjectResult()->flat($armWrites);
         // A member no queue can read, such as an enum wrap, still says which keys the arm always writes.
         $keys = ObjectMembers::writtenMembers($written) ?? array_map(
             static fn (array $property): array => [$property['name'], [

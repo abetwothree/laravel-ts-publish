@@ -362,6 +362,26 @@ it('names the item for a key written after an item that may write any key, unles
         ->and($partMerge->soleWriter('k'))->toBeNull();
 });
 
+it('replays each sole keyed write with another value, a null one removing the key, and leaves its own writes', function () {
+    $writes = new LiteralWrites;
+    $writes->recordKey('k', ['type' => 'boolean', 'optional' => false], 0);
+    $writes->recordKey('v', ['type' => 'string | null', 'optional' => false], 1);
+    $writes->recordKey('w', ['type' => 'number', 'optional' => false], 2);
+    $replayed = foldedInto($writes->replayed(['k' => ['type' => 'true', 'optional' => false], 'v' => null]));
+
+    expect(foldedKeys($replayed))->toBe(['k' => 'true', 'v?' => 'never', 'w' => 'number'])
+        ->and(array_intersect_key($replayed->properties[1], ['absent' => true, 'removed' => true]))->toBe(['removed' => true])
+        ->and(foldedKeys(foldedInto($writes)))->toBe(['k' => 'boolean', 'v' => 'string | null', 'w' => 'number']);
+});
+
+it('replays no key that no keyed item writes alone', function () {
+    $writes = new LiteralWrites;
+    $writes->recordKey('k', ['type' => 'number', 'optional' => false], 0);
+    $writes->recordKey('k', ['type' => 'string', 'optional' => false], 1);
+
+    expect(fn () => $writes->replayed(['k' => null]))->toThrow(LogicException::class);
+});
+
 /**
  * An analysis of no key whose read was not followed through, as a merge of a value no rule reads leaves it.
  */

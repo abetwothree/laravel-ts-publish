@@ -14107,82 +14107,82 @@
             "properties": [
                 {
                     "name": "negated",
-                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "type": "{ pinned: true; v: number } | { pinned: false; v: string | null }",
                     "optional": false
                 },
                 {
                     "name": "strict_true",
-                    "type": "{ pinned: boolean; v: string | null }",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null }",
                     "optional": false
                 },
                 {
                     "name": "strict_false",
-                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "type": "{ pinned: true; v: number } | { pinned: false; v: string | null }",
                     "optional": false
                 },
                 {
                     "name": "case_compare",
-                    "type": "{ status: StatusType; v: string | null }",
+                    "type": "{ status: 0; v: null } | { status: 1; v: string | null }",
                     "optional": false
                 },
                 {
                     "name": "case_not_equal",
-                    "type": "{ status: StatusType; v: string | number }",
+                    "type": "{ status: 0; v: number } | { status: 1; v: string }",
                     "optional": false
                 },
                 {
                     "name": "value_read",
-                    "type": "{ status: StatusType; v: string | number | null }",
+                    "type": "{ status: 0; v: string | null } | { status: 1; v: number }",
                     "optional": false
                 },
                 {
                     "name": "unit_enum_default",
-                    "type": "{ visibility: VisibilityType | null; v: string | null }",
+                    "type": "{ visibility: 'Public'; v: string } | { visibility: 'Private' | 'Protected' | 'Internal' | 'Draft' | null; v: null }",
                     "optional": false
                 },
                 {
                     "name": "match_true",
-                    "type": "{ status: StatusType; v: string | number | null }",
+                    "type": "{ status: 0; v: string | null } | { status: 1; v: number }",
                     "optional": false
                 },
                 {
                     "name": "when_dependent",
-                    "type": "{ pinned: boolean; until?: string | null }",
+                    "type": "{ pinned: true; until: string | null } | { pinned: false; until?: never }",
                     "optional": false
                 },
                 {
                     "name": "when_closure",
-                    "type": "{ pinned: boolean; until?: number }",
+                    "type": "{ pinned: true; until: number } | { pinned: false; until?: never }",
                     "optional": false
                 },
                 {
                     "name": "unless_default",
-                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "type": "{ pinned: true; v: number } | { pinned: false; v: string | null }",
                     "optional": false
                 },
                 {
                     "name": "two_dependents",
-                    "type": "{ a: string | null; pinned: boolean; b: string | null }",
+                    "type": "{ a: string; pinned: true; b: null } | { a: null; pinned: false; b: string | null }",
                     "optional": false
                 },
                 {
                     "name": "nested_ternary",
-                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: string | number | null }",
                     "optional": false
                 },
                 {
                     "name": "two_discriminants",
-                    "type": "{ pinned: boolean; status: StatusType; a: string | null; b: string | number | null }",
+                    "type": "{ pinned: true; status: 0; a: string; b: string | null } | { pinned: true; status: 1; a: string; b: number } | { pinned: false; status: 0; a: null; b: string | null } | { pinned: false; status: 1; a: null; b: number }",
                     "optional": false
                 },
                 {
                     "name": "throw_arm",
-                    "type": "{ priority: PriorityType | null; v: string | number }",
+                    "type": "{ priority: 0; v: string } | { priority: 2; v: number }",
                     "optional": false
                 },
                 {
                     "name": "shared_keys",
-                    "type": "{ id: number; pinned: boolean; v: string | number; title: string }",
+                    "type": "{ id: number; pinned: true; v: string; title: string } | { id: number; pinned: false; v: number; title: string }",
                     "optional": false
                 },
                 {

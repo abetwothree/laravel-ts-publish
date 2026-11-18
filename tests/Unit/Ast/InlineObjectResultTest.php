@@ -2,11 +2,26 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResponseExtras;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\DiscriminantValue;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\Variant;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantGroup;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Variants\Fixtures\VariantFormsResource;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
@@ -85,4 +100,104 @@ it('prints no open marker beside a string-keyed Record arm, which already types 
 
     expect(resolve(AnalysisMemo::class)->showingGaps(fn (): array => new InlineObjectResult()->of($analysis, [$map]))['type'])
         ->toBe('Record<string, number>');
+});
+
+/**
+ * The literal a VariantFormsResource method returns, read as a nested literal is.
+ */
+function nestedFormLiteral(string $method): MethodAnalysis
+{
+    $return = resolve(MethodLocator::class)->locate(VariantFormsResource::class, $method)?->method->stmts[0] ?? null;
+    assert($return instanceof Return_ && $return->expr instanceof Array_);
+
+    return new ResourceAstAnalyzer(new ReflectionClass(VariantFormsResource::class), Post::class)->returnArrayAnalysis($return->expr);
+}
+
+/**
+ * The type a VariantFormsResource method's literal prints as a nested literal, beside the arms its spreads keep.
+ */
+function printedFormLiteral(string $method): string
+{
+    $analysis = nestedFormLiteral($method);
+
+    return new InlineObjectResult()->of($analysis, $analysis->spreadArms())['type'];
+}
+
+it('prints the first two groups\' 16 objects, a third group that would pass 16 left flat in each', function () {
+    $writes = new LiteralWrites;
+    $types = ['a' => 'number', 'x' => 'string', 'b' => 'number', 'y' => 'string', 'c' => 'number', 'z' => 'string'];
+
+    foreach (array_keys($types) as $index => $name) {
+        $writes->recordKey($name, ['type' => $types[$name], 'optional' => false], $index);
+    }
+
+    $analysis = new MethodAnalysis;
+    $writes->applyTo($analysis, true);
+    $groups = array_map(static fn (array $pair): VariantGroup => new VariantGroup($pair[0], $pair, [], array_map(
+        static fn (int $value): Variant => new Variant(
+            [new DiscriminantValue($value, (string) $value)],
+            [$pair[1] => ['type' => "'{$pair[0]}{$value}'", 'optional' => false]],
+        ),
+        range(0, 3),
+    )), [['a', 'x'], ['b', 'y'], ['c', 'z']]);
+    $analysis->variants = new LiteralVariants($groups, $writes, true, VariantGroup::fingerprint($analysis, array_keys($types)));
+    $objects = [];
+
+    foreach (range(0, 3) as $a) {
+        foreach (range(0, 3) as $b) {
+            $objects[] = "{ a: {$a}; x: 'a{$a}'; b: {$b}; y: 'b{$b}'; c: number; z: string }";
+        }
+    }
+
+    expect(new InlineObjectResult()->of($analysis)['type'])->toBe(implode(' | ', $objects));
+});
+
+it('prints a literal flat once a row the fold wrote changes', function () {
+    $analysis = nestedFormLiteral('sharedKeys');
+    $analysis->properties[0]['type'] = 'string';
+
+    expect(new InlineObjectResult()->of($analysis)['type'])->toBe('{ id: string; pinned: boolean; v: string | number; title: string }');
+});
+
+it('prints a method\'s literal flat where its `@return` changes a row, and split where its rows are the body\'s', function () {
+    $resolver = resolve(MethodReturnTypeResolver::class);
+
+    expect($resolver->resolve(VariantFormsResource::class, 'docblockFilled')['type'] ?? null)->toBe('{ pinned: boolean; v?: string }')
+        ->and($resolver->resolve(VariantFormsResource::class, 'docblockAgreeing')['type'] ?? null)->toBe('{ pinned: boolean; v: string }')
+        ->and($resolver->resolve(VariantFormsResource::class, 'strictTrue')['type'] ?? null)
+        ->toBe('{ pinned: true; v: string } | { pinned: false; v: null }');
+});
+
+// The body's own rows are what an outer `@return` keeps for a nested literal, so the variants still hold for them.
+it('prints a nested literal split under an outer `@return` that leaves its rows as the body reads them', function () {
+    expect(resolve(AstEngine::class)->analyzeMethod(VariantFormsResource::class, 'nestedUnderReturn')->properties[0]['type'])
+        ->toBe('{ pinned: true; v: string } | { pinned: false; v: null }');
+});
+
+it('reads a later resource arm\'s keys from its one object, whatever variants its own literal holds', function () {
+    expect(printedFormLiteral('keyBeforeGroupedArm'))
+        ->toBe("Omit<PostPriorityResource, 'escalated_at'> & { escalated_at: number | string | null }");
+});
+
+it('leads each object with the spread arm that leads the literal', function () {
+    $analysis = nestedFormLiteral('spreadArmLeads');
+    $result = new InlineObjectResult()->of($analysis, $analysis->spreadArms());
+
+    expect($result['type'])->toBe(
+        "Omit<UserResource, 'pinned' | 'v'> & { pinned: true; v: string } | Omit<UserResource, 'pinned' | 'v'> & { pinned: false; v: null }",
+    )->and($result['embeddedResourceFqcns'] ?? [])->toBe([UserResource::class]);
+});
+
+it('prints a value Laravel may remove itself as optional in its arm, and a removed arm as never', function () {
+    $alone = printedFormLiteral('whenLoadedAlone');
+
+    expect($alone)->toStartWith('{ author?: ')
+        ->and(printedFormLiteral('whenLoadedArm'))
+        ->toBe('{ pinned: true; '.substr($alone, 2, -2).' } | { pinned: false; author?: never }');
+});
+
+it('prints the [] a with() key sends in its removed arm, beside the keys at with()\'s own level, flat', function () {
+    expect(ResponseExtras::withOf(VariantFormsResource::class)->object['type'] ?? null)->toBe(
+        '{ pinned: boolean; v: string | null; meta: { pinned: true; until: string | null } | { pinned: false; until: never[] } }',
+    );
 });

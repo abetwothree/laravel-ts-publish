@@ -161,7 +161,7 @@ final readonly class ResponseExtras
             return $complete ? self::none() : new self(null, null, false);
         }
 
-        $object = resolve(InlineObjectResult::class)->of($analysis);
+        $object = resolve(InlineObjectResult::class)->flat($analysis);
         $members = TsTypeShape::members($object['type']) ?? [];
         $required = array_any($analysis->properties, fn (array $property): bool => ! $property['optional']);
 

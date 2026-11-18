@@ -2,7 +2,7 @@ import { defineRoute, annotatePageProps } from '@tolki/ts';
 
 import type { PriorityType } from '../../enums';
 
-export type ShowPageProps = Inertia.SharedData & { pinned: boolean, pinned_title: string | null, placement: { pinned: boolean; at: string | null; rank: PriorityType | null } };
+export type ShowPageProps = Inertia.SharedData & { pinned: boolean, pinned_title: string | null, placement: { pinned: true; at: string | null; rank: PriorityType | null } | { pinned: false; at: string | null; rank: null } };
 
 export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts.discriminated',

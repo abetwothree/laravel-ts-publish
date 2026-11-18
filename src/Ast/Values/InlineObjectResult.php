@@ -67,7 +67,8 @@ final class InlineObjectResult
     }
 
     /**
-     * An analysis as the inline object type it publishes, carrying the import channels of every class it names.
+     * An analysis as the inline object type it publishes, carrying the import channels of every class it names: one
+     * object per variant where the literal's rows still hold its groups (LiteralVariants), else one object.
      *
      * A JSON:API resource object publishes its `attributes` analysis through this, whatever source built it.
      *
@@ -75,6 +76,25 @@ final class InlineObjectResult
      * @return ValueExpressionResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
+    {
+        $variants = $analysis->variants;
+        $objects = $variants !== null && $variants->holdsFor($analysis) ? $variants->objects() : [];
+
+        // Each print takes its own copy, as one object would otherwise carry a spread arm's imports once per print.
+        return $objects === [] ? $this->flat($analysis, $spreadArms) : ValueResult::unionResults(array_map(
+            fn (MethodAnalysis $object): array => $this->flat(clone $object, $spreadArms),
+            $objects,
+        ));
+    }
+
+    /**
+     * An analysis as the one inline object type its rows print, whatever variants it holds, carrying the import
+     * channels of every class it names. A reader that takes the object's keys back needs one object.
+     *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms  the arms the object type intersects with
+     * @return ValueExpressionResult
+     */
+    public function flat(MethodAnalysis $analysis, array $spreadArms = []): array
     {
         self::readFillsClassLess($analysis);
 

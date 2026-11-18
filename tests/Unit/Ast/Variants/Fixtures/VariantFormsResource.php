@@ -11,6 +11,7 @@ use LogicException;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 
@@ -517,6 +518,60 @@ final class VariantFormsResource extends JsonResource
             'v' => $this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned
                 ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? $this->title : $this->id)
                     : null) : null) : null) : null) : null) : null) : null) : null,
+        ];
+    }
+
+    /**
+     * A when() on a read whose value Laravel may remove itself.
+     *
+     * @return array<string, mixed>
+     */
+    public function whenLoadedArm(): array
+    {
+        return ['pinned' => $this->is_pinned, 'author' => $this->when($this->is_pinned, $this->whenLoaded('author'))];
+    }
+
+    /**
+     * The value whenLoadedArm()'s when() sends, alone.
+     *
+     * @return array<string, mixed>
+     */
+    public function whenLoadedAlone(): array
+    {
+        return ['author' => $this->whenLoaded('author')];
+    }
+
+    /**
+     * A key a later spread of a resource whose own literal holds a group may write over.
+     *
+     * @return array<string, mixed>
+     */
+    public function keyBeforeGroupedArm(): array
+    {
+        return ['escalated_at' => 1, ...PostPriorityResource::make($this->resource)->resolve()];
+    }
+
+    /**
+     * A literal holding a group under a key, which the method's `@return` declares with `v` optional.
+     *
+     * @return array{meta: array{pinned: bool, v?: string}}
+     */
+    public function nestedUnderReturn(): array
+    {
+        return ['meta' => ['pinned' => $this->is_pinned, 'v' => $this->is_pinned === true ? $this->title : null]];
+    }
+
+    /**
+     * A group at the top level of the keys the response sends beside the body, and one nested under a key.
+     *
+     * @return array<string, mixed>
+     */
+    public function with(Request $request): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->is_pinned ? $this->title : null,
+            'meta' => ['pinned' => $this->is_pinned, 'until' => $this->when($this->is_pinned, $this->updated_at)],
         ];
     }
 

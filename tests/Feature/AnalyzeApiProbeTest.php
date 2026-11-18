@@ -224,6 +224,17 @@ it('returns properties and imports that agree with each other', function (string
     }
 })->with(array_keys(analysisProbeCases()));
 
+// analyze()'s own keys stay flat, while a nested literal is one object per value its sibling key sends (GH-157).
+it('publishes a nested literal\'s keys that follow a sibling key as one object per value, and its own keys flat', function () {
+    $result = resolve(AstEngine::class)->analyze(DiscriminatedPayload::class, 'toArray', null, ANALYSIS_PROBE_PATH);
+
+    expect(array_column($result->properties, 'type', 'name'))->toBe([
+        'archived' => 'boolean',
+        'reason' => 'string | null',
+        'meta' => '{ status: 0; count: number; detail: string | null } | { status: 1; count: number; detail: number }',
+    ]);
+});
+
 // A case value an enum's alias beside it admits, and an empty list beside a list, go; each `*_kept` arm stays (GH-166).
 it('publishes no arm another arm of its union admits', function (string $name, array $expected) {
     [$class, $method, $modelClass] = analysisProbeCases()[$name];

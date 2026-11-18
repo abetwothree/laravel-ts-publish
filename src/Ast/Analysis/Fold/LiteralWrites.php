@@ -40,6 +40,7 @@ use PhpParser\Node;
  * @phpstan-type Source = array{analysis: MethodAnalysis}|array{value: ValueExpressionResult}
  * @phpstan-type OrderEntry = array{key: string}|array{signature: int, name: string}
  * @phpstan-type PrintedMapArm = array{arm: InlineSpreadArm|ObjectSpreadArm, map: MapArm}
+ * @phpstan-type ReplayedValues = array<string, ValueExpressionResult|null>
  *
  * @internal
  */
@@ -217,7 +218,9 @@ final class LiteralWrites
      */
     public function soleWriter(string $name): ?int
     {
-        return $this->soleWrite($name)?->position;
+        $at = $this->soleWrite($name);
+
+        return $at === null ? null : $this->writes[$at]->position;
     }
 
     /**
@@ -227,9 +230,39 @@ final class LiteralWrites
      */
     public function soleValue(string $name): ?array
     {
-        $write = $this->soleWrite($name);
+        $at = $this->soleWrite($name);
 
-        return $write === null ? null : $this->sources[$write->source]['value'] ?? null;
+        return $at === null ? null : $this->sources[$this->writes[$at]->source]['value'] ?? null;
+    }
+
+    /**
+     * A copy whose one keyed item soleWriter() names for each key writes the given value instead; a null one removes
+     * the key. LiteralVariants folds it once per variant, each grouped key sending its arm.
+     *
+     * @param  ReplayedValues  $values  each key => the value it sends, null where it is removed
+     */
+    public function replayed(array $values): self
+    {
+        $copy = clone $this;
+        $replayed = [];
+
+        foreach ($values as $name => $value) {
+            $at = $this->soleWrite((string) $name) ?? throw new LogicException("No keyed item alone writes `{$name}`.");
+            $value ??= ['type' => 'never', 'optional' => true, 'removed' => true];
+            [$absent, $removed] = self::valueFacts($value);
+            $write = $this->writes[$at];
+            $copy->sources[$write->source] = ['value' => $value];
+            $replayed[$at] = new KeyWrite(
+                $write->name, $write->position, $write->fromMerge, $absent, $removed, $write->source,
+            );
+        }
+
+        $copy->writes = array_map(
+            fn (int $at): KeyWrite => $replayed[$at] ?? $this->writes[$at],
+            array_keys($this->writes),
+        );
+
+        return $copy;
     }
 
     /**
@@ -482,9 +515,9 @@ final class LiteralWrites
     }
 
     /**
-     * A key's one write, where a keyed item writes it under its own name and nothing else may write it.
+     * The index of a key's one write, where a keyed item writes it under its own name and nothing else may write it.
      */
-    private function soleWrite(string $name): ?KeyWrite
+    private function soleWrite(string $name): ?int
     {
         $writes = array_filter($this->writes, static fn (KeyWrite $write): bool => $write->name === $name);
         $at = array_key_first($writes);
@@ -493,7 +526,7 @@ final class LiteralWrites
             return null;
         }
 
-        return isset($this->keyedSources[$writes[$at]->source]) ? $writes[$at] : null;
+        return isset($this->keyedSources[$writes[$at]->source]) ? $at : null;
     }
 
     /**
