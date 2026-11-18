@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
@@ -89,28 +90,37 @@ trait ParsesTsExtends
     }
 
     /**
-     * Deduplicate the clauses and alias each name two import paths bring, leaving out each name the file binds by other
-     * means: one another import brings, or one a package class takes that the clause only builds on. A name the clause
-     * lists, its `types` or a top-level arm, stays the clause's, and that class is aliased apart.
+     * Deduplicate the clauses and alias each name two import paths bring, leaving out each name a clause only builds on
+     * that the file binds by other means: another import, or the one package class that takes it. A name the clause
+     * lists, its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it.
      *
      * @param  list<ClauseEntry>  $entries
-     * @param  list<string>  $imported  the local names the file's other imports bind
-     * @param  list<string>  $classes  the names the classes of the package the file imports take
+     * @param  array<string, list<string>>  $imports  the file's other imports, path => names
+     * @param  list<string>  $classes  the names each of which one class of the package the file imports takes
      * @return ClauseSets
      */
-    protected function settleClauses(array $entries, array $imported = [], array $classes = []): array
+    protected function settleClauses(array $entries, array $imports = [], array $classes = []): array
     {
+        $paths = [];
+
+        foreach ($imports as $path => $names) {
+            foreach ($names as $name) {
+                $paths[ImportMaps::localName($name)][] = $path;
+            }
+        }
+
         $unbound = [];
 
         foreach ($entries as $entry) {
             $unbound[] = [...$entry, 'types' => array_values(array_filter(
                 $entry['types'],
-                static fn (string $name): bool => ! in_array($name, $imported, true)
-                    && (in_array($name, $entry['listed'], true) || ! in_array($name, $classes, true)),
+                static fn (string $name): bool => in_array($name, $entry['listed'], true)
+                    ? ! in_array($entry['import'], $paths[$name] ?? [], true)
+                    : ! isset($paths[$name]) && ! in_array($name, $classes, true),
             ))];
         }
 
-        return $this->deduplicateAndResolveExtendsConflicts($unbound);
+        return $this->deduplicateAndResolveExtendsConflicts($unbound, array_keys($paths));
     }
 
     /**
@@ -183,9 +193,10 @@ trait ParsesTsExtends
      * Deduplicate entries and resolve type name conflicts across import paths.
      *
      * @param  list<ClauseEntry>  $rawEntries
+     * @param  list<string>  $taken  the names another import of the file binds, which a clause's import of them aliases
      * @return ClauseSets
      */
-    private function deduplicateAndResolveExtendsConflicts(array $rawEntries): array
+    private function deduplicateAndResolveExtendsConflicts(array $rawEntries, array $taken = []): array
     {
         $deduped = [];
         $seenPairs = [];
@@ -215,7 +226,7 @@ trait ParsesTsExtends
         /** @var array<string, string> $aliasMap */
         $aliasMap = [];
         foreach ($typeToImportPaths as $typeName => $importPaths) {
-            if (count($importPaths) <= 1) {
+            if (count($importPaths) <= 1 && ! in_array($typeName, $taken, true)) {
                 continue;
             }
             foreach ($importPaths as $importPath) {
@@ -233,20 +244,18 @@ trait ParsesTsExtends
 
             if ($entry['import'] !== null) {
                 $typeNamesToImport = [];
+                $aliases = [];
                 foreach ($entry['types'] as $typeName) {
                     $aliasKey = $typeName."\0".$entry['import'];
                     if (isset($aliasMap[$aliasKey])) {
-                        $alias = $aliasMap[$aliasKey];
-                        $extendsClause = preg_replace(
-                            '/\b'.preg_quote($typeName, '/').'\b/',
-                            $alias,
-                            $extendsClause,
-                        ) ?? $extendsClause;
-                        $typeNamesToImport[] = $typeName.' as '.$alias;
+                        $aliases[$typeName] = $aliasMap[$aliasKey];
+                        $typeNamesToImport[] = $typeName.' as '.$aliasMap[$aliasKey];
                     } else {
                         $typeNamesToImport[] = $typeName;
                     }
                 }
+
+                $extendsClause = TsTypeString::aliasReferences($extendsClause, $aliases);
 
                 $existing = $imports[$entry['import']] ?? [];
                 foreach ($typeNamesToImport as $tn) {

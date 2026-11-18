@@ -93,9 +93,9 @@ function referencedTypeNameCases(int $seed, int $cases): array
 {
     $random = new Randomizer(new Xoshiro256StarStar($seed));
     $pick = static fn (array $from): string => $from[$random->getInt(0, count($from) - 1)];
-    $names = ['User', 'Post', 'Café', 'Ωmega', '$Ref', '_Base', 'Map', 'Grid2'];
+    $names = ['User', 'Post', 'Café', 'Ωmega', '$Ref', '_Base', 'Atlas', 'Grid2'];
     $keys = ['id', 'User', 'Post', 'Café', 'in', 'is', 'typeof', 'é', '$key'];
-    $plain = ['string', 'number', 'null', 'unknown', 'never', 'true', 'this', 'boolean'];
+    $plain = ['string', 'number', 'null', 'unknown', 'never', 'true', 'this', 'boolean', 'Date', 'Map'];
     $literals = ["'User'", '"a | Post"', "'it\\'s Map'", '`Grid2`', '0', '-1.5', '1e3'];
     $features = [];
 
@@ -659,13 +659,15 @@ describe('referencedTypeNames', function () {
         'a spread' => ['[...Foo[], Bar]', ['Foo', 'Bar']],
     ]);
 
-    // A head of TypeScript's own generics needs no import, and a name of the app's own keeps its import as before.
-    test('reads a generic\'s head unless TypeScript declares it, and a name spelled like one of those bare', function (string $type, array $names) {
+    test('never reads a global type TypeScript or the DOM declares, generic or not', function (string $type, array $names) {
         expect($this->service->referencedTypeNames($type))->toBe($names);
     })->with([
-        'TypeScript\'s own' => ['Partial<Record<Key, Array<Foo>>> | Omit<Bar, "id">', ['Key', 'Foo', 'Bar']],
-        'the app\'s own' => ['Paginated<User>', ['Paginated', 'User']],
-        'a bare name TypeScript also declares' => ['Map<string, Foo> | Map | Set[]', ['Foo', 'Map', 'Set']],
+        'a generic\'s head' => ['Partial<Record<Key, Array<Foo>>> | Omit<Bar, "id">', ['Key', 'Foo', 'Bar']],
+        'the app\'s own generic' => ['Paginated<User>', ['Paginated', 'User']],
+        'a generic\'s name bare' => ['Map<string, Foo> | Map | Set[]', ['Foo']],
+        'a global inside a generic' => ['Record<string, Date>', []],
+        'a global beside a name' => ['{ meta: Meta; at: Date }', ['Meta']],
+        'globals that are no generic' => ['RegExp | Error | { f: File; b: Blob; u: URL; d: FormData }', []],
     ]);
 
     test('reads each name once, in the order a type first spells it', function () {
@@ -699,6 +701,25 @@ describe('referencedTypeNames', function () {
             'binder', 'gap', 'key spelled like a name', 'lib', 'literal', 'members on lines of their own', 'method',
             'predicate', 'qualified', 'type parameter',
         ])->and(min($seen))->toBeGreaterThanOrEqual(20);
+    });
+});
+
+describe('aliasReferences', function () {
+    test('respells a name only where it stands as a type', function (string $type, string $aliased) {
+        expect($this->service->aliasReferences($type, ['Meta' => 'AMeta']))->toBe($aliased);
+    })->with([
+        'a string literal' => ['Pick<Meta, "Meta">', 'Pick<AMeta, "Meta">'],
+        'a member\'s key' => ['{ Meta: Meta; m?: Meta[] }', '{ Meta: AMeta; m?: AMeta[] }'],
+        'a method\'s name' => ['{ Meta(x: Meta): void }', '{ Meta(x: AMeta): void }'],
+        'a qualified name' => ['Geo.Meta | Meta.Sub', 'Geo.Meta | AMeta.Sub'],
+        'a template literal' => ['`Meta-${Meta}`', '`Meta-${AMeta}`'],
+        'a longer name' => ['MetaData | Meta', 'MetaData | AMeta'],
+        'a type parameter' => ['<Meta>(x: Meta) => Meta', '<Meta>(x: Meta) => Meta'],
+        'an escaped name' => ['M\\u0065ta | Meta', 'AMeta | AMeta'],
+    ]);
+
+    test('leaves a type with no alias to make as written', function () {
+        expect($this->service->aliasReferences('Pick<Meta, "a">', []))->toBe('Pick<Meta, "a">');
     });
 });
 

@@ -60,14 +60,19 @@ class TsTypeString
         'typeof', 'unique',
     ];
 
-    /** TypeScript's own generics, whose head no import brings; a bare name spelled like one is the app's own. */
-    protected const array LIB_GENERICS = [
-        'Array', 'ArrayLike', 'AsyncGenerator', 'AsyncIterable', 'AsyncIterableIterator', 'AsyncIterator', 'Awaited',
-        'Capitalize', 'ConstructorParameters', 'Exclude', 'Extract', 'Generator', 'InstanceType', 'Iterable',
-        'IterableIterator', 'Iterator', 'Lowercase', 'Map', 'NoInfer', 'NonNullable', 'Omit', 'OmitThisParameter',
-        'Parameters', 'Partial', 'Pick', 'Promise', 'PromiseLike', 'Readonly', 'ReadonlyArray', 'ReadonlyMap',
-        'ReadonlySet', 'Record', 'Required', 'ReturnType', 'Set', 'ThisParameterType', 'ThisType', 'Uncapitalize',
-        'Uppercase', 'WeakMap', 'WeakRef', 'WeakSet',
+    /** The global types TypeScript's and the DOM's libraries declare, generic or not, which no import brings. */
+    protected const array LIB_TYPES = [
+        'AggregateError', 'Array', 'ArrayBuffer', 'ArrayLike', 'AsyncGenerator', 'AsyncIterable',
+        'AsyncIterableIterator', 'AsyncIterator', 'Awaited', 'BigInt', 'BigInt64Array', 'BigUint64Array', 'Blob',
+        'Boolean', 'CallableFunction', 'Capitalize', 'ConstructorParameters', 'DataView', 'Date', 'Error', 'EvalError',
+        'Exclude', 'Extract', 'File', 'Float32Array', 'Float64Array', 'FormData', 'Function', 'Generator',
+        'InstanceType', 'Int16Array', 'Int32Array', 'Int8Array', 'Iterable', 'IterableIterator', 'Iterator',
+        'Lowercase', 'Map', 'NewableFunction', 'NoInfer', 'NonNullable', 'Number', 'Object', 'Omit',
+        'OmitThisParameter', 'Parameters', 'Partial', 'Pick', 'Promise', 'PromiseLike', 'PropertyKey', 'RangeError',
+        'Readonly', 'ReadonlyArray', 'ReadonlyMap', 'ReadonlySet', 'Record', 'ReferenceError', 'RegExp', 'Required',
+        'ReturnType', 'Set', 'SharedArrayBuffer', 'String', 'Symbol', 'SyntaxError', 'TemplateStringsArray',
+        'ThisParameterType', 'ThisType', 'TypeError', 'URIError', 'URL', 'URLSearchParams', 'Uint16Array',
+        'Uint32Array', 'Uint8Array', 'Uint8ClampedArray', 'Uncapitalize', 'Uppercase', 'WeakMap', 'WeakRef', 'WeakSet',
     ];
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
@@ -197,65 +202,79 @@ class TsTypeString
      *
      * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
      * arm, a name after a `.`, a binder `infer`, a mapped type or a type parameter list declares, a predicate's
-     * parameter, or the head of one of TypeScript's own generics. The operand of `typeof` is one.
+     * parameter, or a global type of TypeScript's or the DOM's own. The operand of `typeof` is one.
      *
      * @return list<string>
      */
     public function referencedTypeNames(string $type): array
     {
         $tokens = $this->typeTokens($type);
-        $keywords = [...self::TS_PRIMITIVES, ...self::KEYWORD_TYPES, ...self::TYPE_OPERATORS];
-        $parameterLists = $this->typeParameterLists($tokens);
         $names = [];
-        $binders = [];
-        $opened = [];
 
-        foreach ($tokens as $index => [$token, $isName]) {
-            if (! $isName) {
-                match ($token) {
-                    '{', '[', '(', '<' => $opened[] = $index,
-                    '}', ']', ')', '>' => array_pop($opened),
-                    default => null,
-                };
+        foreach ($this->typePositions($tokens) as $index => $isType) {
+            $token = $tokens[$index][0];
 
-                continue;
-            }
-
-            $before = $tokens[$index - 1][0] ?? '';
-            $after = $tokens[$index + 1][0] ?? '';
-            $afterNext = $tokens[$index + 2][0] ?? '';
-            $leads = in_array($before, self::TYPE_LEADS, true);
-            $enclosing = $opened === [] ? null : $opened[array_key_last($opened)];
-            $enclosedBy = $enclosing === null ? '' : $tokens[$enclosing][0];
-
-            if ($before === '.' || in_array($token, $keywords, true)) {
-                continue;
-            }
-
-            $declared = $enclosing !== null && isset($parameterLists[$enclosing])
-                && in_array($before, ['<', ',', 'const', 'in', 'out'], true);
-
-            if ($declared || $before === 'infer' || ($after === 'in' && $enclosedBy === '[')) {
-                $binders[] = $token;
-
-                continue;
-            }
-
-            // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
-            // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
-            $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
-            $method = ($after === '(' || ($after === '<' && isset($parameterLists[$index + 1])))
-                && $enclosedBy === '{' && ! $leads && $before !== ':';
-            $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
-                && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
-            $libHead = $after === '<' && in_array($token, self::LIB_GENERICS, true);
-
-            if (! $binds && ! $method && ! $predicate && ! $libHead && ! VisibleGaps::isGap($token)) {
+            if ($isType && ! in_array($token, self::LIB_TYPES, true) && ! VisibleGaps::isGap($token)) {
                 $names[] = $token;
             }
         }
 
-        return array_values(array_unique(array_diff($names, $binders)));
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Respell each occurrence of a name that stands as a type, as referencedTypeNames() reads one, by its alias: never
+     * literal text, a member's own name, a name after a `.` or one a binder declares.
+     *
+     * @param  array<string, string>  $aliases  name => alias
+     */
+    public function aliasReferences(string $type, array $aliases): string
+    {
+        if ($aliases === []) {
+            return $type;
+        }
+
+        $tokens = $this->typeTokens($type);
+        $isTypeAt = [];
+
+        foreach ($this->typePositions($tokens) as $index => $isType) {
+            if (isset($aliases[$tokens[$index][0]])) {
+                $isTypeAt[$tokens[$index][0]][] = $isType;
+            }
+        }
+
+        // The same names the tokens read, in the same order: literal text is skipped, and an escape is read as a name.
+        $class = $this->identifierCharacter();
+        $pattern = '/(?<!'.$class.')(?![\p{Nd}\p{Mn}\p{Mc}])(?:'.$class.'|\\\\u(?:\{[0-9A-Fa-f]+\}|[0-9A-Fa-f]{4}))+/u';
+        $spans = TypeScanner::literalSpans($type);
+
+        if (preg_match_all($pattern, $type, $matches, PREG_OFFSET_CAPTURE) === false) {
+            return $type;
+        }
+
+        $seen = [];
+        $respelled = [];
+
+        foreach ($matches[0] as [$spelled, $at]) {
+            $name = $this->decodeIdentifierEscapes($spelled) ?? $spelled;
+            $inLiteral = array_any($spans, static fn (array $span): bool => $at >= $span[0] && $at < $span[1]);
+
+            if (! isset($aliases[$name]) || $inLiteral) {
+                continue;
+            }
+
+            $occurrence = $seen[$name] = ($seen[$name] ?? -1) + 1;
+
+            if ($isTypeAt[$name][$occurrence] ?? false) {
+                $respelled[] = [$at, strlen($spelled), $aliases[$name]];
+            }
+        }
+
+        foreach (array_reverse($respelled) as [$at, $length, $alias]) {
+            $type = substr_replace($type, $alias, $at, $length);
+        }
+
+        return $type;
     }
 
     /**
@@ -803,6 +822,69 @@ class TsTypeString
             // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
+    }
+
+    /**
+     * Whether each name token of a type stands as a type, by its index. A keyword does not, nor does a member's,
+     * label's, parameter's or method's own name, a name after a `.`, a predicate's parameter, or a binder's name.
+     *
+     * @param  list<TypeToken>  $tokens
+     * @return array<int, bool>
+     */
+    private function typePositions(array $tokens): array
+    {
+        $keywords = [...self::TS_PRIMITIVES, ...self::KEYWORD_TYPES, ...self::TYPE_OPERATORS];
+        $parameterLists = $this->typeParameterLists($tokens);
+        $positions = [];
+        $binders = [];
+        $opened = [];
+
+        foreach ($tokens as $index => [$token, $isName]) {
+            if (! $isName) {
+                match ($token) {
+                    '{', '[', '(', '<' => $opened[] = $index,
+                    '}', ']', ')', '>' => array_pop($opened),
+                    default => null,
+                };
+
+                continue;
+            }
+
+            $before = $tokens[$index - 1][0] ?? '';
+            $after = $tokens[$index + 1][0] ?? '';
+            $afterNext = $tokens[$index + 2][0] ?? '';
+            $leads = in_array($before, self::TYPE_LEADS, true);
+            $enclosing = $opened === [] ? null : $opened[array_key_last($opened)];
+            $enclosedBy = $enclosing === null ? '' : $tokens[$enclosing][0];
+            $declared = $enclosing !== null && isset($parameterLists[$enclosing])
+                && in_array($before, ['<', ',', 'const', 'in', 'out'], true);
+            $positions[$index] = false;
+
+            if ($before === '.' || in_array($token, $keywords, true)) {
+                continue;
+            }
+
+            if ($declared || $before === 'infer' || ($after === 'in' && $enclosedBy === '[')) {
+                $binders[] = $token;
+
+                continue;
+            }
+
+            // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
+            // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
+            $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
+            $method = ($after === '(' || ($after === '<' && isset($parameterLists[$index + 1])))
+                && $enclosedBy === '{' && ! $leads && $before !== ':';
+            $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
+                && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
+            $positions[$index] = ! $binds && ! $method && ! $predicate;
+        }
+
+        foreach ($positions as $index => $isType) {
+            $positions[$index] = $isType && ! in_array($tokens[$index][0], $binders, true);
+        }
+
+        return $positions;
     }
 
     /**

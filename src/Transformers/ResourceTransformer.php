@@ -402,12 +402,15 @@ class ResourceTransformer extends CoreTransformer
     protected function settleClauseImports(): self
     {
         $consts = $this->shouldGenerateHasEnums() ? array_flip($this->enumPropertyFqcns()) : [];
-        $result = $this->settleClauses($this->clauseEntries, ImportMaps::localNames($this->customImports), [
+        $names = [
             ...array_values($this->resourceFqcnMap),
             ...array_values($this->modelFqcnMap),
             ...array_merge([], ...array_map(ValueResult::enumNames(...), array_keys($this->enumFqcnMap))),
             ...array_values(array_intersect_key($this->enumConstMap, $consts)),
-        ]);
+        ];
+        // Two classes of one name are both aliased, so that name binds neither.
+        $classes = array_keys(array_filter(array_count_values($names), static fn (int $count): bool => $count === 1));
+        $result = $this->settleClauses($this->clauseEntries, $this->customImports, array_map(strval(...), $classes));
         $this->tsExtends = $result['clauses'][TsExtends::class];
         $this->tsIntersect = $result['clauses'][TsIntersect::class];
 
