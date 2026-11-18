@@ -22,6 +22,7 @@ import type { HasTimestamps } from '@/types/common';
 import type { GeoBounds, GeoPoint } from '@/types/geo';
 import type { ParentModelInterface } from '@/types/model-parent';
 import type { TraitInterface } from '@/types/model-trait';
+import type { PostPlacementVariants } from '@/types/placement';
 import type { FormRequestBase } from '@/types/requests';
 import type { ResourceRoutes } from '@/types/resources';
 import type { Routable } from '@/types/routing';
@@ -6275,6 +6276,15 @@ declare global {
             published_at: string | null;
             rating: string | null;
         }
+        /**
+         * GH-157's escape hatch: the keys publish flat, and a union written by hand is intersected with them, so `is_pinned`
+         * still narrows `placement`.
+         */
+        export type IntersectedPostResource = {
+            id: number;
+            is_pinned: boolean;
+            placement: PinnedPlacementResource | FeedPlacementResource;
+        } & (PostPlacementVariants);
         /** The placement a pinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
         export interface PinnedPlacementResource {
             rank: app.enums.PriorityType | null;

@@ -118,17 +118,20 @@ $references = $transformer->globalTypeReferenceMap();
 @else
 @php
 $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
+$interface = count($transformer->variants) === 0 && count($transformer->tsIntersect) === 0;
+$intersections = implode(' & ', array_map(fn (string $type): string => '('.$type.')', $transformer->tsIntersect));
+$end = $intersections === '' ? ';' : ' & '.$intersections.';';
 @endphp
-@if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0)
+@if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0 && count($transformer->tsIntersect) === 0)
         export type {{ $transformer->resourceName }} =
 @foreach (TsTypeString::splitTopLevelUnion($transformer->variants[0]) as $arm)
             | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
-@if(count($transformer->variants) === 0)
+@if($interface)
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @else
-        export type {{ $transformer->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $transformer->tsExtends)) !!}{!! count($transformer->properties) > 0 ? '{' : '(' !!}
+        export type {{ $transformer->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $transformer->tsExtends)) !!}{!! count($transformer->properties) > 0 ? '{' : (count($transformer->variants) > 0 ? '(' : $intersections.';') !!}
 @endif
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
@@ -136,16 +139,16 @@ $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsType
 @endif
             {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $qualified($property['type']) !!};
 @endforeach
-@if(count($transformer->variants) === 0)
+@if($interface)
         }
 @elseif(count($transformer->properties) > 0)
-        } & (
+        }{!! count($transformer->variants) > 0 ? ' & (' : $end !!}
 @endif
 @foreach ($transformer->variants as $variant)
 @foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
             | {!! $qualified($arm) !!}
 @endforeach
-        ){!! $loop->last ? ';' : ' & (' !!}
+        ){!! $loop->last ? $end : ' & (' !!}
 @endforeach
 @endif
 @endif

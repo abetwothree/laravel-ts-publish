@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
 
 /**
- * Parses #[TsExtends] attributes and config entries into merged extends clauses and imports.
+ * Parses #[TsExtends] attributes and config entries into merged extends clauses and imports, and a resource's
+ * #[TsIntersect] attributes into its intersected types the same way.
  *
  * A type name reachable from two different import paths is aliased with that path's last segment
  * (`Routable` from `@/types/routing` → `RoutingRoutable`), and its extends clause is rewritten.
@@ -35,10 +37,26 @@ trait ParsesTsExtends
      */
     protected function parseTsExtendsFromReflection(ReflectionClass $reflection, string $scope): array
     {
+        return $this->parseClauseAttributes($reflection, TsExtends::class, $scope);
+    }
+
+    /**
+     * Parse one clause attribute from a class, its traits and its parents, breadth-first, then the config entries of
+     * its scope, if it has one.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $reflection
+     * @param  class-string<TsExtends|TsIntersect>  $attribute
+     * @param  'broadcast_events'|'form_requests'|'models'|'resources'|null  $configScope
+     * @return TsExtendsResult
+     */
+    protected function parseClauseAttributes(ReflectionClass $reflection, string $attribute, ?string $configScope): array
+    {
         /** @var list<RawEntry> $rawEntries */
         $rawEntries = [];
 
-        $this->collectTsExtendsAttributes($reflection, $rawEntries);
+        $this->collectClauseAttributes($reflection, $attribute, $rawEntries);
 
         // Traits and parent classes, breadth-first.
         $queue = [...array_values($reflection->getTraits())];
@@ -54,7 +72,7 @@ trait ParsesTsExtends
             }
             $visited[$name] = true;
 
-            $this->collectTsExtendsAttributes($current, $rawEntries);
+            $this->collectClauseAttributes($current, $attribute, $rawEntries);
 
             foreach ($current->getTraits() as $trait) {
                 $queue[] = $trait;
@@ -65,8 +83,8 @@ trait ParsesTsExtends
         }
 
         /** @var list<string|array{extends: string, import?: string, types?: list<string>}> $configEntries */
-        $configEntries = array_values(array_filter(
-            Config::array("ts-publish.ts_extends.{$scope}", []),
+        $configEntries = $configScope === null ? [] : array_values(array_filter(
+            Config::array("ts-publish.ts_extends.{$configScope}", []),
             fn (mixed $v): bool => is_string($v) || is_array($v),
         ));
 
@@ -90,22 +108,24 @@ trait ParsesTsExtends
     }
 
     /**
-     * Collect #[TsExtends] attributes from a single reflection class into the entries list.
+     * Collect one clause attribute from a single reflection class into the entries list.
      *
      * @template T of object
      *
      * @param  ReflectionClass<T>  $reflection
+     * @param  class-string<TsExtends|TsIntersect>  $attribute
      * @param  list<RawEntry>  $entries
      */
-    private function collectTsExtendsAttributes(ReflectionClass $reflection, array &$entries): void
+    private function collectClauseAttributes(ReflectionClass $reflection, string $attribute, array &$entries): void
     {
-        foreach ($reflection->getAttributes(TsExtends::class) as $attr) {
+        foreach ($reflection->getAttributes($attribute) as $attr) {
             $instance = $attr->newInstance();
+            $clause = $instance instanceof TsIntersect ? $instance->type : $instance->extends;
             $typeNames = $instance->import !== null
-                ? ($instance->types ?? TsTypeString::extractImportableTypes($instance->extends))
+                ? ($instance->types ?? TsTypeString::extractImportableTypes($clause))
                 : [];
             $entries[] = [
-                'extends' => $instance->extends,
+                'extends' => $clause,
                 'import' => $instance->import,
                 'types' => $typeNames,
             ];

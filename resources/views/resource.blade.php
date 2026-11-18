@@ -19,21 +19,24 @@ if ($description) {
 }
 
 $description .= "@see {$data->fqcn}";
+$interface = count($data->variants) === 0 && count($data->intersections) === 0;
+$intersections = implode(' & ', array_map(fn (string $type): string => '('.$type.')', $data->intersections));
+$end = $intersections === '' ? ';' : ' & '.$intersections.';';
 @endphp
 {!! JsEmitter::formatJsDoc($description) !!}
 @if($data->typeAlias !== null)
 export type {{ $data->resourceName }} = {!! $data->typeAlias !!};
-@elseif(count($data->variants) === 1 && count($data->properties) === 0 && count($data->tsExtends) === 0)
+@elseif(count($data->variants) === 1 && count($data->properties) === 0 && count($data->tsExtends) === 0 && count($data->intersections) === 0)
 export type {{ $data->resourceName }} =
 @foreach (TsTypeString::splitTopLevelUnion($data->variants[0]) as $arm)
     | {!! $arm !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
-@if(count($data->variants) === 0)
+@if($interface)
 export interface {{ $data->resourceName }}{!! count($data->tsExtends) > 0 ? ' extends ' . implode(', ', $data->tsExtends) : '' !!}
 {
 @else
-export type {{ $data->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $data->tsExtends)) !!}{!! count($data->properties) > 0 ? '{' : '(' !!}
+export type {{ $data->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $data->tsExtends)) !!}{!! count($data->properties) > 0 ? '{' : (count($data->variants) > 0 ? '(' : $intersections.';') !!}
 @endif
 @foreach ($data->properties as $name => $property)
 @if($property['description'])
@@ -41,15 +44,15 @@ export type {{ $data->resourceName }} = {!! implode('', array_map(fn (string $ex
 @endif
     {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $property['type'] !!};
 @endforeach
-@if(count($data->variants) === 0)
+@if($interface)
 }
 @elseif(count($data->properties) > 0)
-} & (
+}{!! count($data->variants) > 0 ? ' & (' : $end !!}
 @endif
 @foreach ($data->variants as $variant)
 @foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
     | {!! $arm !!}
 @endforeach
-){!! $loop->last ? ';' : ' & (' !!}
+){!! $loop->last ? $end : ' & (' !!}
 @endforeach
 @endif

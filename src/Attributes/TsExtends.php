@@ -22,7 +22,7 @@ class TsExtends
     /**
      * @param  string  $extends  The raw TypeScript extends clause (e.g. 'CustomInterface' or 'Pick<CustomInterface, "id">').
      * @param  string|null  $import  Import path specifies the import path for the types used in the extends clause.
-     * @param  list<string>|null  $types  Explicitly lists type names to import (auto-extracted from simple extends when null).
+     * @param  list<string>|null  $types  Explicitly lists type names to import (read from the extends clause when null).
      */
     public function __construct(
         public string $extends,

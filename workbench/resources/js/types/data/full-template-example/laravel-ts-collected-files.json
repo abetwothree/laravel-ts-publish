@@ -180,6 +180,7 @@
     "app\/Http\/Resources\/DepotTierResource.php",
     "app\/Http\/Resources\/Discriminated\/DiscriminantFormsResource.php",
     "app\/Http\/Resources\/Discriminated\/FeedPlacementResource.php",
+    "app\/Http\/Resources\/Discriminated\/IntersectedPostResource.php",
     "app\/Http\/Resources\/Discriminated\/PinnedPlacementResource.php",
     "app\/Http\/Resources\/Discriminated\/PinnedPostResource.php",
     "app\/Http\/Resources\/Discriminated\/PinnedWrapsResource.php",

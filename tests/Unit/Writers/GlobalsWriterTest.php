@@ -526,6 +526,8 @@ test('the globals template qualifies each name through its own transformer\'s ma
 
         public array $variants = [];
 
+        public array $tsIntersect = [];
+
         public function globalTypeReferenceMap(): array
         {
             return ['PropertyName' => 'own.elsewhere.PropertyName'];
@@ -681,4 +683,24 @@ test('the globals file publishes a resource\'s arms as a type, each arm qualifie
                     | { is_pinned: false; state: workbench.app.enums.VisibilityType | null; stage: workbench.crm.enums.StatusType; author?: never };
         TS)
         ->not->toContain('export interface PinnedPostResource');
+});
+
+test('the globals file publishes a resource intersected with a type as a type, the type last and imported once', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = new GlobalsWriter(new Filesystem)->write($runner);
+
+    expect(substr_count($content, "import type { PostPlacementVariants } from '@/types/placement';"))->toBe(1)
+        ->and($content)->toContain(<<<'TS'
+                export type IntersectedPostResource = {
+                    id: number;
+                    is_pinned: boolean;
+                    placement: PinnedPlacementResource | FeedPlacementResource;
+                } & (PostPlacementVariants);
+        TS)
+        ->not->toContain('export interface IntersectedPostResource');
 });

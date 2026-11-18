@@ -165,12 +165,14 @@ class JsonWriter
     }
 
     /**
-     * Each resource's name beside its flat type alias, or its shared keys and, where it has any, its variants.
+     * Each resource's name beside its flat type alias, or its shared keys and, where it has any, its variants and the
+     * types it is intersected with.
      *
      * @return array<class-string, array{name: string, typeAlias: string}|array{
      *  name: string,
      *  properties: list<array{name: string, type: string, optional: bool}>,
-     *  variants?: list<string>
+     *  variants?: list<string>,
+     *  intersections?: list<string>
      * }>
      */
     protected function createJsonForResources(Runner $runner): array
@@ -198,6 +200,7 @@ class JsonWriter
                     array_keys($transformer->properties),
                 ),
                 ...($transformer->variants !== [] ? ['variants' => $transformer->variants] : []),
+                ...($transformer->tsIntersect !== [] ? ['intersections' => $transformer->tsIntersect] : []),
             ];
         }
 

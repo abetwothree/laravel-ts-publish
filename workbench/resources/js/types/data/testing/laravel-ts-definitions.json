@@ -14233,6 +14233,29 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\IntersectedPostResource": {
+            "name": "IntersectedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "placement",
+                    "type": "PinnedPlacementResource | FeedPlacementResource",
+                    "optional": false
+                }
+            ],
+            "intersections": [
+                "PostPlacementVariants"
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedPlacementResource": {
             "name": "PinnedPlacementResource",
             "properties": [
