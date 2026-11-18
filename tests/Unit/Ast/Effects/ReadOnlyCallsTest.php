@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnpinningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
@@ -121,6 +122,19 @@ it('knows a resource built with JsonResource\'s own constructor', function (stri
     'a collection, with its own constructor' => [AnonymousResourceCollection::class, false],
     'another class' => [Model::class, false],
     'a class no file declares' => ['Missing\\Resource', false],
+]);
+
+it('knows a resource\'s make() and collection(), where they build it as `new` does', function (string $call, bool $builds) {
+    $expr = runtimeClassCall($call);
+    assert($expr instanceof StaticCall);
+
+    expect(ReadOnlyCalls::buildsResourceStatically($expr))->toBe($builds);
+})->with([
+    'make()' => ['\\'.UserResource::class.'::make($post)', true],
+    'collection(), in another case' => ['\\'.UserResource::class.'::COLLECTION($posts)', true],
+    'make() of a resource with its own constructor' => ['\\'.UnpinningResource::class.'::make($post)', false],
+    'another static method' => ['\\'.UserResource::class.'::wrap(\'data\')', false],
+    'self::make()' => ['self::make($post)', false],
 ]);
 
 it('knows the Gate facade\'s checks', function (string $call, bool $check) {

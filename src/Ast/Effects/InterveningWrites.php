@@ -400,8 +400,8 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a call is one the framework only reads with: `route()` or `url()`, a Gate check, or `new` of a resource
-     * with JsonResource's own constructor.
+     * Whether a call is one the framework only reads with: `route()` or `url()`, a Gate check, or `new`, make() or
+     * collection() of a resource with JsonResource's own constructor.
      *
      * @param  ReflectionClass<object>  $declaring
      */
@@ -415,7 +415,8 @@ final class InterveningWrites
 
         return match (true) {
             $call instanceof FuncCall => ReadOnlyCalls::urlHelper($call),
-            $call instanceof StaticCall => ReadOnlyCalls::gateCheck($call),
+            $call instanceof StaticCall => ReadOnlyCalls::gateCheck($call)
+                || ReadOnlyCalls::buildsResourceStatically($call),
             default => $built !== null && ReadOnlyCalls::buildsResource($built),
         };
     }

@@ -6376,8 +6376,8 @@ declare global {
          * Literals whose items between a discriminant and its dependents only read: a method of the discriminant's own enum,
          * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
          * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
-         * check and a resource, and a static helper. Nothing changes the discriminant, so each literal should publish one
-         * object per variant (GH-174).
+         * check and a resource, built with `new` or make(), and a static helper. Nothing changes the discriminant, so each
+         * literal should publish one object per variant (GH-174).
          */
         export interface ReadingCallsResource {
             enum_method: { status: 0; color: string; detail: null } | { status: 1; color: string; detail: string };
@@ -6393,6 +6393,7 @@ declare global {
             url_of_model: { is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null };
             gate_on_model: { is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null };
             resource_of_model: { is_pinned: true; card: app.http.resources.UserResource; detail: string } | { is_pinned: false; card: app.http.resources.UserResource; detail: null };
+            resource_of_model_make: { is_pinned: true; author: app.http.resources.UserResource; detail: string } | { is_pinned: false; author: app.http.resources.UserResource; detail: null };
             static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
         }
         /**

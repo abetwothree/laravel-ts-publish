@@ -65,6 +65,12 @@ function interveningCalls(): array
         'a self:: helper that writes' => ['self::writer()', true],
         'another class\'s static method handed the model' => ['PinWriter::unpin($this->resource)', true],
         'the model handed to a helper' => ['$this->reader($this->resource)', true],
+        'a resource whose own constructor writes the model' => ['new UnpinningResource($this->resource)', true],
+        'make() of a resource whose own constructor writes the model' => ['UnpinningResource::make($this->resource)', true],
+        'collection() of a resource whose own constructor writes the model' => [
+            'UnpinningResource::collection([$this->resource])',
+            true,
+        ],
         'a model method that is not known to read' => ['$this->isFeatured()', true],
         'additional(), a framework method that writes the read' => [
             "\$this->additional(['a' => 1])",
@@ -88,6 +94,9 @@ function interveningCalls(): array
         'a Gate check handed the model' => ["Gate::allows('view', \$this->resource)", false],
         'a resource of the model' => ['new UserResource($this->resource)', false],
         'a resource of a loaded relation' => ["new UserResource(\$this->whenLoaded('author'))", false],
+        'make() of a resource' => ['UserResource::make($this->resource)', false],
+        'collection() of a resource' => ['UserResource::collection([$this->resource])', false],
+        'collection() of a loaded relation' => ["UserResource::collection(\$this->whenLoaded('comments'))", false],
         'a self:: helper that reads' => ['self::reader($this->title)', false],
         'a static helper that reads' => ['self::shout($this->title)', false],
         'whenAppended(), read through its body' => ["\$this->whenAppended('flag')", false],

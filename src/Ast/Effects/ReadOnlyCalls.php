@@ -63,6 +63,12 @@ final class ReadOnlyCalls
     /** The helpers that return the authentication guard. */
     public const array AUTH_HELPERS = ['auth'];
 
+    /**
+     * The static methods that build a resource, or a collection of it, through `new`, lowercased, each with the
+     * JsonResource methods it runs.
+     */
+    public const array RESOURCE_BUILDERS = ['make' => ['make'], 'collection' => ['collection', 'newCollection']];
+
     /** Eloquent's methods that read a model and change nothing on it; `trashed()` is the SoftDeletes trait's. */
     public const array MODEL_READERS = [
         'getKey', 'getKeyName', 'getKeyType', 'getRouteKey', 'getRouteKeyName', 'getTable', 'getForeignKey',
@@ -179,6 +185,22 @@ final class ReadOnlyCalls
     {
         return is_a($class, JsonResource::class, true)
             && new ReflectionMethod($class, '__construct')->getDeclaringClass()->getName() === JsonResource::class;
+    }
+
+    /**
+     * Whether a static call builds a resource as `new` of it does: a builder RESOURCE_BUILDERS lists, on a class with
+     * JsonResource's own constructor that overrides none of the methods the builder runs.
+     */
+    public static function buildsResourceStatically(StaticCall $call): bool
+    {
+        $class = $call->class instanceof Name && ! $call->class->isSpecialClassName() ? $call->class->toString() : null;
+        $runs = $call->name instanceof Identifier ? self::RESOURCE_BUILDERS[$call->name->toLowerString()] ?? null : null;
+
+        return $class !== null && $runs !== null && self::buildsResource($class) && array_all(
+            $runs,
+            static fn (string $method): bool => new ReflectionMethod($class, $method)->getDeclaringClass()->getName()
+                === JsonResource::class,
+        );
     }
 
     /**

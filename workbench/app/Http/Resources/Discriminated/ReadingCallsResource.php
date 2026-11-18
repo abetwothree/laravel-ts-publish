@@ -17,8 +17,8 @@ use Workbench\App\Models\Post;
  * Literals whose items between a discriminant and its dependents only read: a method of the discriminant's own enum,
  * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
  * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
- * check and a resource, and a static helper. Nothing changes the discriminant, so each literal should publish one
- * object per variant (GH-174).
+ * check and a resource, built with `new` or make(), and a static helper. Nothing changes the discriminant, so each
+ * literal should publish one object per variant (GH-174).
  *
  * @mixin Post
  */
@@ -96,6 +96,11 @@ class ReadingCallsResource extends JsonResource
             'resource_of_model' => [
                 'is_pinned' => $this->is_pinned,
                 'card' => new UserResource($this->resource),
+                'detail' => $this->is_pinned ? $this->title : null,
+            ],
+            'resource_of_model_make' => [
+                'is_pinned' => $this->is_pinned,
+                'author' => UserResource::make($this->resource),
                 'detail' => $this->is_pinned ? $this->title : null,
             ],
             'static_reader' => [

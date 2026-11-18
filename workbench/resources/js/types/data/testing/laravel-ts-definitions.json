@@ -14512,6 +14512,11 @@
                     "optional": false
                 },
                 {
+                    "name": "resource_of_model_make",
+                    "type": "{ is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null }",
+                    "optional": false
+                },
+                {
                     "name": "static_reader",
                     "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
                     "optional": false
