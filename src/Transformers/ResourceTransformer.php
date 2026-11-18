@@ -376,7 +376,7 @@ class ResourceTransformer extends CoreTransformer
         $texts = array_fill_keys([TsExtends::class, TsIntersect::class], []);
 
         foreach ($this->clauseEntries as $entry) {
-            $texts[$entry['attribute']][] = $entry['extends'];
+            $texts[$entry['attribute']][] = $entry['clause'];
         }
 
         $this->tsExtends = $texts[TsExtends::class];

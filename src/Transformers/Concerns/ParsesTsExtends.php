@@ -26,7 +26,7 @@ use ReflectionClass;
  * @phpstan-type ConfigScope = 'broadcast_events'|'form_requests'|'models'|'resources'
  * @phpstan-type ClauseEntry = array{
  *     attribute: ClauseAttribute,
- *     extends: string,
+ *     clause: string,
  *     import: string|null,
  *     types: list<string>,
  *     listed: list<string>,
@@ -123,7 +123,7 @@ trait ParsesTsExtends
             ))];
         }
 
-        return $this->deduplicateAndResolveExtendsConflicts($unbound, array_keys($paths));
+        return $this->deduplicateAndAliasClauses($unbound, array_keys($paths));
     }
 
     /**
@@ -204,7 +204,7 @@ trait ParsesTsExtends
     {
         return [
             'attribute' => $attribute,
-            'extends' => $clause,
+            'clause' => $clause,
             'import' => $import,
             'types' => $import === null ? [] : ($types ?? $this->clauseTypeNames($clause)),
             'listed' => $import === null ? [] : ($types ?? $this->listedTypeNames($clause)),
@@ -212,19 +212,19 @@ trait ParsesTsExtends
     }
 
     /**
-     * Deduplicate entries and resolve type name conflicts across import paths.
+     * Deduplicate the clauses of both attributes and alias each name two import paths bring, across all of them.
      *
      * @param  list<ClauseEntry>  $rawEntries
      * @param  list<string>  $taken  the names another import of the file binds, which a clause's import of them aliases
      * @return ClauseSets
      */
-    private function deduplicateAndResolveExtendsConflicts(array $rawEntries, array $taken = []): array
+    private function deduplicateAndAliasClauses(array $rawEntries, array $taken = []): array
     {
         $deduped = [];
         $seenPairs = [];
 
         foreach ($rawEntries as $entry) {
-            $key = $entry['attribute']."\0".$entry['extends']."\0".($entry['import'] ?? '');
+            $key = $entry['attribute']."\0".$entry['clause']."\0".($entry['import'] ?? '');
             if (! isset($seenPairs[$key])) {
                 $seenPairs[$key] = true;
                 $deduped[] = $entry;
@@ -262,7 +262,7 @@ trait ParsesTsExtends
         $imports = [];
 
         foreach ($deduped as $entry) {
-            $extendsClause = $entry['extends'];
+            $clause = $entry['clause'];
 
             if ($entry['import'] !== null) {
                 $typeNamesToImport = [];
@@ -277,7 +277,7 @@ trait ParsesTsExtends
                     }
                 }
 
-                $extendsClause = TsTypeString::aliasReferences($extendsClause, $aliases);
+                $clause = TsTypeString::aliasReferences($clause, $aliases);
 
                 $existing = $imports[$entry['import']] ?? [];
                 foreach ($typeNamesToImport as $tn) {
@@ -291,7 +291,7 @@ trait ParsesTsExtends
                 }
             }
 
-            $clauses[$entry['attribute']][] = $extendsClause;
+            $clauses[$entry['attribute']][] = $clause;
         }
 
         return ['clauses' => $clauses, 'imports' => $imports];
