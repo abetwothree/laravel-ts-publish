@@ -26,6 +26,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\Serializi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SummarizedPostApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WireEditorApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WirePriorityApiResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -49,7 +50,6 @@ use Workbench\App\Http\Resources\JsonApi\ToArrayPostResource;
 use Workbench\App\Http\Resources\JsonApi\ToAttributesOnlyPlainResource;
 use Workbench\App\Http\Resources\JsonApi\VariableAttributesPostResource;
 use Workbench\App\Http\Resources\JsonApi\WireAttachmentPostResource;
-use Workbench\App\Http\Resources\JsonApi\WirePriorityPostResource;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
 use Workbench\App\Models\Post;
@@ -176,7 +176,7 @@ test('a class cast on an attribute publishes the attributes flat, with the cast\
         ->and($data->typeImports)->toMatchArray($imports);
 })->with([
     'on the discriminant' => [
-        WirePriorityPostResource::class,
+        WirePriorityApiResource::class,
         '{ priority: PriorityType | null; escalated_title: string | null }',
         ['@js/types/wire' => ['PriorityType']],
     ],

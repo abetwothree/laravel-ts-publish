@@ -16064,26 +16064,6 @@
                 }
             ]
         },
-        "Workbench\\App\\Http\\Resources\\JsonApi\\WirePriorityPostResource": {
-            "name": "WirePriorityPostResource",
-            "properties": [
-                {
-                    "name": "id",
-                    "type": "string",
-                    "optional": false
-                },
-                {
-                    "name": "type",
-                    "type": "'wire_priority_posts'",
-                    "optional": false
-                },
-                {
-                    "name": "attributes",
-                    "type": "{ priority: PriorityType | null; escalated_title: string | null }",
-                    "optional": false
-                }
-            ]
-        },
         "Workbench\\App\\Http\\Resources\\KpiResource": {
             "name": "KpiResource",
             "properties": [
