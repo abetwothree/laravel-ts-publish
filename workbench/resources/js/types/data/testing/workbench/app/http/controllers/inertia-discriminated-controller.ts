@@ -4,7 +4,7 @@ import type { PriorityType } from '../../enums';
 
 export type ShowPageProps = Inertia.SharedData & { pinned: boolean, pinned_title: string | null, placement: { pinned: boolean; at: string | null; rank: PriorityType | null } };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts.discriminated',
     url: '/posts/{post}/discriminated',
     methods: ['get', 'head'] as const,
