@@ -4,8 +4,9 @@ import type { UserResource } from '..';
  * Literals whose items between a discriminant and its dependents only read: a method of the discriminant's own enum,
  * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
  * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
- * check and a resource, built with `new` or make(), a static helper, and a reading helper's callable handed to
- * array_map(). Nothing changes the discriminant, so each literal should publish one object per variant (GH-174).
+ * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
+ * array_map(), and when() handed a method's result on another read. Nothing changes the discriminant, so each literal
+ * should publish one object per variant (GH-174).
  *
  * @see Workbench\App\Http\Resources\Discriminated\ReadingCallsResource
  */
@@ -26,5 +27,6 @@ export interface ReadingCallsResource
     resource_of_model: { is_pinned: true; card: UserResource; detail: string } | { is_pinned: false; card: UserResource; detail: null };
     resource_of_model_make: { is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null };
     callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
+    when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
     static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
 }

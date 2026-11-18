@@ -18,6 +18,7 @@ use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignRef;
+use PhpParser\Node\Expr\BinaryOp\Pipe;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Eval_;
 use PhpParser\Node\Expr\FuncCall;
@@ -54,7 +55,7 @@ use ReflectionClass;
 final class InterveningWrites
 {
     /** How many levels of `$this` method bodies one scan reads; a body any deeper may write. */
-    private const int DEPTH = 3;
+    public const int DEPTH = 3;
 
     /** The built-ins that call the callable they are given first. */
     private const array CALLERS = ['call_user_func', 'call_user_func_array'];
@@ -89,8 +90,8 @@ final class InterveningWrites
         $this->targets = new CallableTargets($runtime);
         $this->closures = new ClosureReach(
             $this->targets,
-            $this->references,
-            $runtime,
+            $this->locator,
+            $proxied,
             $this->methodMayWrite(...),
             $this->holdsObject(...),
         );
@@ -186,9 +187,11 @@ final class InterveningWrites
     {
         return new NodeFinder()->findFirst($nodes, fn (Node $node): bool => $this->writes($node, $depth)
             || ($node instanceof CallLike && $this->bindsByReference($node, $declaring, $depth))
-            || ($calls && ($node instanceof CallLike
-                ? $this->callMayWrite($node, $declaring, $depth)
-                : $this->runsUnseen($node)))) !== null;
+            || ($calls && match (true) {
+                $node instanceof CallLike => $this->callMayWrite($node, $declaring, $depth),
+                $node instanceof Pipe => $this->pipeMayWrite($node, $declaring, $depth),
+                default => $this->runsUnseen($node),
+            })) !== null;
     }
 
     /**
@@ -241,6 +244,17 @@ final class InterveningWrites
         return ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && $call->name instanceof Identifier
             ? $this->objectCallMayWrite($call, $call->name->toString(), $declaring, $depth)
             : ! $this->knownToRead($call, $declaring) && $this->handsSubject($call, $declaring, $depth);
+    }
+
+    /**
+     * Whether a pipe may change the read: it calls its right side with its left handed to it.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function pipeMayWrite(Pipe $pipe, ReflectionClass $declaring, int $depth): bool
+    {
+        return $this->closures->hands($pipe->left, $declaring, $depth)
+            || $this->closures->mayWrite($pipe->right, $declaring, $depth);
     }
 
     /**
@@ -337,7 +351,7 @@ final class InterveningWrites
     {
         return $arguments->hasUnpack() || array_any(
             ReadOnlyCalls::callbacks($arguments),
-            fn (Expr $callback): bool => $this->closures->callbackMayWrite($callback, $declaring, $depth),
+            fn (Expr $callback): bool => $this->closures->mayWrite($callback, $declaring, $depth),
         );
     }
 

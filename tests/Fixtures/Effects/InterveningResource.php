@@ -151,11 +151,35 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Returns the reader as a closure.
+     */
+    private function readerCallback(): Closure
+    {
+        return $this->reader(...);
+    }
+
+    /**
      * Returns a value its signature does not type.
      */
     private function untypedCallback()
     {
         return 'label';
+    }
+
+    /**
+     * Returns the writer as a closure its signature does not type.
+     */
+    private function untypedWriterCallback()
+    {
+        return $this->writer(...);
+    }
+
+    /**
+     * Returns a label once it has called itself down to zero, its signature typing nothing.
+     */
+    private function untypedCountDown(int $from)
+    {
+        return $from > 0 ? $this->untypedCountDown($from - 1) : 'done';
     }
 
     /**

@@ -27,7 +27,7 @@ function windowReach(array $items, string $read = '$this->is_pinned', string $su
         [$read, ...$items],
     ));
     $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects; '
-        .'use Illuminate\Support\Facades\Gate; use Workbench\App\Http\Resources\UserResource; '
+        .'use Closure; use Illuminate\Support\Facades\Gate; use Workbench\App\Http\Resources\UserResource; '
         ."use Workbench\App\Support\PinWriter; return [{$values}];";
     $array = new NodeFinder()->findFirstInstanceOf(new AstParser()->parseSource($source), Array_::class);
     $sent = ReadPath::of(runtimeClassCall($read));
@@ -95,8 +95,10 @@ function interveningCalls(): array
         'a static property callback' => ['$this->when(true, self::$callback)', true],
         'an assignment callback of a writer' => ['$this->when(true, $f = $this->writer(...))', true],
         'a callback a helper returns, typed Closure' => ['$this->when(true, $this->writerCallback())', true],
-        'a callback a helper returns, untyped' => ['$this->when(true, $this->untypedCallback())', true],
-        'a function\'s callable when() calls' => ['$this->when(true, strtoupper(...))', true],
+        'a callback an untyped helper returns, read through its returns' => [
+            '$this->when(true, $this->untypedWriterCallback())',
+            true,
+        ],
         'an array holding the model' => ['collect([$this->resource])', true],
         'a ternary yielding the model' => ['collect($flag ? $this->resource : null)', true],
         'a coalesce yielding the model' => ['collect($this->resource ?? null)', true],
@@ -112,6 +114,30 @@ function interveningCalls(): array
         'a writer named by [\'parent\', …]' => ["array_map(['parent', 'baseWriter'], [1])", true],
         'a writer named by [$this, …]' => ["array_map([\$this, 'writer'], [1])", true],
         'a method of $this named by a local' => ['array_map([$this, $name], [1])', true],
+        'a writer named by [self::class, …]' => ['array_map([self::class, \'writer\'], [1])', true],
+        'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
+        'a writer named by [Ancestor::class, …]' => ['array_map([InterveningBase::class, \'baseWriter\'], [1])', true],
+        'a writer named by \'Fqcn::m\'' => ['array_map(\''.InterveningResource::class.'::writer\', [1])', true],
+        'a writer named by self::class.\'::m\'' => ['array_map(self::class.\'::writer\', [1])', true],
+        'a writer named by a computed self::class callable' => ['array_map(self::class.\'::\'.$name, [1])', true],
+        'a writer through Closure::fromCallable([self::class, …])' => [
+            'array_map(Closure::fromCallable([self::class, \'writer\']), [1])',
+            true,
+        ],
+        'a closure a helper returns, handed to array_map()' => ['array_map($this->writerCallback(), [1])', true],
+        'a closure a helper returns, handed to a collection\'s map()' => [
+            'collect([1])->map($this->writerCallback())->all()',
+            true,
+        ],
+        'a pipe into a writer\'s callable' => ['1 |> $this->writer(...)', true],
+        'a pipe of the model into another class\'s static method' => ['$this->resource |> PinWriter::unpin(...)', true],
+        'a pipe of the model into an arrow function' => ['$this->resource |> (fn ($post) => $post->is_pinned = false)', true],
+        'a pipe into a local' => ['$this->title |> $callback', true],
+        'the model handed to an invoked static callable' => ['PinWriter::unpin(...)->__invoke($this->resource)', true],
+        'an object cast of a local callback' => ['$this->when(true, (object) $callback)', true],
+        'a coalescing assignment callback' => ['$this->when(true, $f ??= $this->writer(...))', true],
+        'a clone of a local callback' => ['$this->when(true, clone $callback)', true],
+        'a forwarded model method callback not known to read' => ['$this->when(true, $this->isFeatured())', true],
         'a model method\'s callable handed to array_map()' => ['array_map($this->resource->touch(...), [1])', true],
         'another class\'s missing static method handed to array_map()' => ['array_map(PinWriter::missing(...), [1])', true],
         'a named ancestor\'s writer' => ['InterveningBase::baseWriter()', true],
@@ -160,6 +186,40 @@ function interveningCalls(): array
         'new self of the subject' => ['new self($this->resource)', false],
         'new static of the subject' => ['new static($this->resource)', false],
         'a helper read once per scan, whatever its case' => ['$this->middleTwice()', false],
+        'a callback an untyped helper returns' => ['$this->when(true, $this->untypedCallback())', false],
+        'a callback a self-recursive untyped helper returns' => ['$this->when(true, $this->untypedCountDown(3))', false],
+        'a function\'s callable when() calls' => ['$this->when(true, strtoupper(...))', false],
+        'make() of a resource as a when() value' => ['$this->when(true, UserResource::make($this->resource))', false],
+        'make() of a loaded relation as a when() value' => [
+            "\$this->when(true, UserResource::make(\$this->whenLoaded('author')))",
+            false,
+        ],
+        'collection() as a when() value' => ['$this->when(true, UserResource::collection([$this->resource]))', false],
+        'a concatenation as a when() value' => ["\$this->when(true, \$this->title.' (pinned)')", false],
+        'a cast as a when() value' => ['$this->when(true, (string) $this->id)', false],
+        'a comparison as a when() value' => ['$this->when(true, $this->id > 5)', false],
+        'a negation as a when() value' => ['$this->when(true, ! $this->title)', false],
+        'an array read of a property as a when() value' => ["\$this->when(true, \$this->metadata['title'] ?? null)", false],
+        'a method of another read as a when() value' => ["\$this->when(true, \$this->created_at?->format('Y-m-d'))", false],
+        'another class\'s static method as a when() value' => [
+            '$this->when(true, \\Illuminate\\Support\\Str::upper((string) $this->title))',
+            false,
+        ],
+        'a forwarded model reader as a when() value' => ['$this->when(true, $this->getKey())', false],
+        'an object cast of a read as a when() value' => ['$this->when(true, (object) $this->title)', false],
+        'a reader named by [self::class, …]' => ["array_map([self::class, 'reader'], ['a'])", false],
+        'a reader named by [static::class, …]' => ["array_map([static::class, 'reader'], ['a'])", false],
+        'a reader named by [Ancestor::class, …]' => ["array_map([InterveningBase::class, 'baseReader'], ['a'])", false],
+        'a reader named by \'Fqcn::m\'' => ["array_map('".InterveningResource::class."::reader', ['a'])", false],
+        'a reader named by self::class.\'::m\'' => ["array_map(self::class.'::reader', ['a'])", false],
+        'a reader through Closure::fromCallable([self::class, …])' => [
+            "array_map(Closure::fromCallable([self::class, 'reader']), ['a'])",
+            false,
+        ],
+        'a reader closure a helper returns, handed to array_map()' => ["array_map(\$this->readerCallback(), ['a'])", false],
+        'a pipe into a reader\'s callable' => ['1 |> $this->reader(...)', false],
+        'a pipe of a read into a function\'s callable' => ['$this->title |> strtoupper(...)', false],
+        'a pipe of a read into an arrow function' => ['$this->title |> (fn ($title) => strtoupper($title))', false],
     ];
 }
 

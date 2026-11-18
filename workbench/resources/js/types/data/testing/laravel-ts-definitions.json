@@ -14522,6 +14522,11 @@
                     "optional": false
                 },
                 {
+                    "name": "when_value_of_another_read",
+                    "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null }",
+                    "optional": false
+                },
+                {
                     "name": "static_reader",
                     "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
                     "optional": false
