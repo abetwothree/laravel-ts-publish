@@ -668,6 +668,9 @@ describe('referencedTypeNames', function () {
         'a global inside a generic' => ['Record<string, Date>', []],
         'a global beside a name' => ['{ meta: Meta; at: Date }', ['Meta']],
         'globals that are no generic' => ['RegExp | Error | { f: File; b: Blob; u: URL; d: FormData }', []],
+        'the DOM\'s globals' => ['Partial<Response> | Pick<Event, "type"> | { n: Node; d: Document; q: Request; e: HTMLElement }', []],
+        'the DOM\'s globals inside a generic' => ['Partial<Record<string, Element | Headers | AbortSignal | KeyboardEvent>>', []],
+        'a global value' => ['ReturnType<typeof fetch> | { m: Meta }', ['Meta']],
     ]);
 
     test('reads each name once, in the order a type first spells it', function () {
@@ -714,7 +717,8 @@ describe('aliasReferences', function () {
         'a qualified name' => ['Geo.Meta | Meta.Sub', 'Geo.Meta | AMeta.Sub'],
         'a template literal' => ['`Meta-${Meta}`', '`Meta-${AMeta}`'],
         'a longer name' => ['MetaData | Meta', 'MetaData | AMeta'],
-        'a type parameter' => ['<Meta>(x: Meta) => Meta', '<Meta>(x: Meta) => Meta'],
+        'a type parameter, renamed with its uses' => ['<Meta>(x: Meta) => Meta', '<AMeta>(x: AMeta) => AMeta'],
+        'a type parameter shadowing a use' => ['{ f: <Meta>(x: Meta) => Meta; g: Meta }', '{ f: <AMeta>(x: AMeta) => AMeta; g: AMeta }'],
         'an escaped name' => ['M\\u0065ta | Meta', 'AMeta | AMeta'],
     ]);
 

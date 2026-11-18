@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Illuminate\Support\Facades\Config;
@@ -18,6 +19,8 @@ use ReflectionClass;
  *
  * A type name reachable from two different import paths, across every clause settled together, is aliased with that
  * path's last segment (`Routable` from `@/types/routing` → `RoutingRoutable`), and its clause is rewritten.
+ *
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type ClauseAttribute = class-string<TsExtends|TsIntersect>
  * @phpstan-type ConfigScope = 'broadcast_events'|'form_requests'|'models'|'resources'
@@ -95,7 +98,7 @@ trait ParsesTsExtends
      * lists, its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it.
      *
      * @param  list<ClauseEntry>  $entries
-     * @param  array<string, list<string>>  $imports  the file's other imports, path => names
+     * @param  TypesImportMap  $imports  the file's other imports, path => names
      * @param  list<string>  $classes  the names each of which one class of the package the file imports takes
      * @return ClauseSets
      */

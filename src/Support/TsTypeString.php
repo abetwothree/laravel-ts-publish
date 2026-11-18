@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TsLibGlobals;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
@@ -18,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * @phpstan-import-type LiteralSpan from TypeScanner
  *
  * @phpstan-type TypeToken = array{string, bool}
+ * @phpstan-type TypeRole = 'binder'|'other'|'type'
  *
  * @internal
  */
@@ -58,21 +60,6 @@ class TsTypeString
     protected const array TYPE_LEADS = [
         '?', '|', '&', '=>', '<', '=', 'abstract', 'as', 'asserts', 'extends', 'in', 'infer', 'is', 'keyof', 'new',
         'typeof', 'unique',
-    ];
-
-    /** The global types TypeScript's and the DOM's libraries declare, generic or not, which no import brings. */
-    protected const array LIB_TYPES = [
-        'AggregateError', 'Array', 'ArrayBuffer', 'ArrayLike', 'AsyncGenerator', 'AsyncIterable',
-        'AsyncIterableIterator', 'AsyncIterator', 'Awaited', 'BigInt', 'BigInt64Array', 'BigUint64Array', 'Blob',
-        'Boolean', 'CallableFunction', 'Capitalize', 'ConstructorParameters', 'DataView', 'Date', 'Error', 'EvalError',
-        'Exclude', 'Extract', 'File', 'Float32Array', 'Float64Array', 'FormData', 'Function', 'Generator',
-        'InstanceType', 'Int16Array', 'Int32Array', 'Int8Array', 'Iterable', 'IterableIterator', 'Iterator',
-        'Lowercase', 'Map', 'NewableFunction', 'NoInfer', 'NonNullable', 'Number', 'Object', 'Omit',
-        'OmitThisParameter', 'Parameters', 'Partial', 'Pick', 'Promise', 'PromiseLike', 'PropertyKey', 'RangeError',
-        'Readonly', 'ReadonlyArray', 'ReadonlyMap', 'ReadonlySet', 'Record', 'ReferenceError', 'RegExp', 'Required',
-        'ReturnType', 'Set', 'SharedArrayBuffer', 'String', 'Symbol', 'SyntaxError', 'TemplateStringsArray',
-        'ThisParameterType', 'ThisType', 'TypeError', 'URIError', 'URL', 'URLSearchParams', 'Uint16Array',
-        'Uint32Array', 'Uint8Array', 'Uint8ClampedArray', 'Uncapitalize', 'Uppercase', 'WeakMap', 'WeakRef', 'WeakSet',
     ];
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
@@ -202,7 +189,7 @@ class TsTypeString
      *
      * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
      * arm, a name after a `.`, a binder `infer`, a mapped type or a type parameter list declares, a predicate's
-     * parameter, or a global type of TypeScript's or the DOM's own. The operand of `typeof` is one.
+     * parameter, or a global of the TypeScript libs (TsLibGlobals). The operand of `typeof` is one.
      *
      * @return list<string>
      */
@@ -210,21 +197,25 @@ class TsTypeString
     {
         $tokens = $this->typeTokens($type);
         $names = [];
+        $binders = [];
 
-        foreach ($this->typePositions($tokens) as $index => $isType) {
+        foreach ($this->typeRoles($tokens) as $index => $role) {
             $token = $tokens[$index][0];
 
-            if ($isType && ! in_array($token, self::LIB_TYPES, true) && ! VisibleGaps::isGap($token)) {
+            if ($role === 'binder') {
+                $binders[] = $token;
+            } elseif ($role === 'type' && ! isset(TsLibGlobals::NAMES[$token]) && ! VisibleGaps::isGap($token)) {
                 $names[] = $token;
             }
         }
 
-        return array_values(array_unique($names));
+        return array_values(array_unique(array_diff($names, $binders)));
     }
 
     /**
-     * Respell each occurrence of a name that stands as a type, as referencedTypeNames() reads one, by its alias: never
-     * literal text, a member's own name, a name after a `.` or one a binder declares.
+     * Respell each occurrence of a name that stands as a type or a binder declares, as referencedTypeNames() reads
+     * them, by its alias, so a binder and its uses rename together: never literal text, a member's own name or a name
+     * after a `.`.
      *
      * @param  array<string, string>  $aliases  name => alias
      */
@@ -237,9 +228,9 @@ class TsTypeString
         $tokens = $this->typeTokens($type);
         $isTypeAt = [];
 
-        foreach ($this->typePositions($tokens) as $index => $isType) {
+        foreach ($this->typeRoles($tokens) as $index => $role) {
             if (isset($aliases[$tokens[$index][0]])) {
-                $isTypeAt[$tokens[$index][0]][] = $isType;
+                $isTypeAt[$tokens[$index][0]][] = $role !== 'other';
             }
         }
 
@@ -825,18 +816,18 @@ class TsTypeString
     }
 
     /**
-     * Whether each name token of a type stands as a type, by its index. A keyword does not, nor does a member's,
-     * label's, parameter's or method's own name, a name after a `.`, a predicate's parameter, or a binder's name.
+     * The role of each name token of a type, by its index: a `type` it stands as, a `binder` a type parameter list,
+     * `infer` or a mapped type declares, or `other`: a keyword, a member's, label's, parameter's or method's own name,
+     * a name after a `.` or a predicate's parameter.
      *
      * @param  list<TypeToken>  $tokens
-     * @return array<int, bool>
+     * @return array<int, TypeRole>
      */
-    private function typePositions(array $tokens): array
+    private function typeRoles(array $tokens): array
     {
         $keywords = [...self::TS_PRIMITIVES, ...self::KEYWORD_TYPES, ...self::TYPE_OPERATORS];
         $parameterLists = $this->typeParameterLists($tokens);
-        $positions = [];
-        $binders = [];
+        $roles = [];
         $opened = [];
 
         foreach ($tokens as $index => [$token, $isName]) {
@@ -858,14 +849,14 @@ class TsTypeString
             $enclosedBy = $enclosing === null ? '' : $tokens[$enclosing][0];
             $declared = $enclosing !== null && isset($parameterLists[$enclosing])
                 && in_array($before, ['<', ',', 'const', 'in', 'out'], true);
-            $positions[$index] = false;
+            $roles[$index] = 'other';
 
             if ($before === '.' || in_array($token, $keywords, true)) {
                 continue;
             }
 
             if ($declared || $before === 'infer' || ($after === 'in' && $enclosedBy === '[')) {
-                $binders[] = $token;
+                $roles[$index] = 'binder';
 
                 continue;
             }
@@ -877,14 +868,10 @@ class TsTypeString
                 && $enclosedBy === '{' && ! $leads && $before !== ':';
             $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
                 && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
-            $positions[$index] = ! $binds && ! $method && ! $predicate;
+            $roles[$index] = $binds || $method || $predicate ? 'other' : 'type';
         }
 
-        foreach ($positions as $index => $isType) {
-            $positions[$index] = $isType && ! in_array($tokens[$index][0], $binders, true);
-        }
-
-        return $positions;
+        return $roles;
     }
 
     /**

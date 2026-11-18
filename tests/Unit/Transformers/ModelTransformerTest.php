@@ -1557,7 +1557,7 @@ describe('ModelTransformer TsExtends deduplication and conflict resolution', fun
             ->and($data->typeImports['@/types/legacy'])->toBe(['Trackable as LegacyTrackable']);
     });
 
-    test('situation 2 — alias is applied inside a generic extends clause via preg_replace', function () {
+    test('situation 2 — alias is applied inside a generic extends clause', function () {
         config()->set('ts-publish.ts_extends.models', [
             ['extends' => 'Pick<Trackable, "created_by">', 'import' => '@/types/tracking', 'types' => ['Trackable']],
             ['extends' => 'Trackable', 'import' => '@/types/legacy'],
@@ -1568,6 +1568,19 @@ describe('ModelTransformer TsExtends deduplication and conflict resolution', fun
         expect($data->tsExtends)->toBe(['Pick<TrackingTrackable, "created_by">', 'LegacyTrackable'])
             ->and($data->typeImports['@/types/tracking'])->toBe(['Trackable as TrackingTrackable'])
             ->and($data->typeImports['@/types/legacy'])->toBe(['Trackable as LegacyTrackable']);
+    });
+
+    test('situation 2 — alias renames a type parameter of the same name with its uses', function () {
+        config()->set('ts-publish.ts_extends.models', [
+            ['extends' => 'Record<string, { f: <Meta>(x: Meta) => Meta; g: Meta }>', 'import' => '@/types/a', 'types' => ['Meta']],
+            ['extends' => 'Meta', 'import' => '@/types/b'],
+        ]);
+
+        $data = (new ModelTransformer(User::class))->data();
+
+        expect($data->tsExtends)->toBe(['Record<string, { f: <AMeta>(x: AMeta) => AMeta; g: AMeta }>', 'BMeta'])
+            ->and($data->typeImports['@/types/a'])->toBe(['Meta as AMeta'])
+            ->and($data->typeImports['@/types/b'])->toBe(['Meta as BMeta']);
     });
 
     test('situation 3 — same type name from same import path is deduplicated to a single import', function () {

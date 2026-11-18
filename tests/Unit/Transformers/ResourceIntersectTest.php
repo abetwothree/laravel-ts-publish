@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasBesideLiteralResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasBesideMemberKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AliasShadowedByTypeParameterResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltOnTwoNamesTwoPathsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BuiltOnUnsentResourceTwoPathsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndIntersectTwoPathsResource;
@@ -11,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAndInterse
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBesideMethodCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsBuiltOnTwoEnumsNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsDomGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsIntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsLibGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
@@ -25,12 +27,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholePacka
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnEnumNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnTwoEnumsNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnWrappedEnumNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectDomGlobalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedEmptyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameTypesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedTwiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectLibGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PickBaseExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostIntersectResource;
@@ -277,6 +281,10 @@ it('aliases a name clauses build on or are from two paths', function (string $re
         "import type { Meta as AMeta } from '@/types/a';",
         "import type { Meta as BMeta } from '@/types/b';",
     ], 'export interface AliasBesideLiteralResource extends Pick<AMeta, "Meta">, Partial<BMeta>'],
+    'a name one clause also declares as a type parameter' => [AliasShadowedByTypeParameterResource::class, [
+        "import type { Meta as AMeta } from '@/types/a';",
+        "import type { Meta as BMeta } from '@/types/b';",
+    ], 'extends Record<string, { f: <AMeta>(x: AMeta) => AMeta; g: AMeta }>, BMeta'],
     'a name one clause also spells as a member\'s key' => [AliasBesideMemberKeyResource::class, [
         "import type { Meta as AMeta } from '@/types/a';",
         "import type { Meta as BMeta } from '@/types/b';",
@@ -316,6 +324,11 @@ it('imports no global type TypeScript declares that a clause spells', function (
     'the whole clause, which imports it as before' => [ExtendsWholeLibNameResource::class, [
         "import type { Date } from '@/types/date';",
     ], 'export interface ExtendsWholeLibNameResource extends Date'],
+    'an arm of a union inside an object' => [IntersectNestedArmGlobalResource::class, [
+        "import type { Meta } from '@/types/meta';",
+    ], '} & ({ at: Meta | Date | null });'],
+    'the DOM\'s, inside generics' => [ExtendsDomGlobalResource::class, [], 'extends Partial<Response>, Pick<Event, "type">'],
+    'the DOM\'s, in an object and a generic' => [IntersectDomGlobalsResource::class, [], '} & ({ n: Node; d: Document; q: Request; e: HTMLElement })'],
 ]);
 
 // Two enums the file reads print one type name, both aliased, so the name binds neither and the clause imports it.
