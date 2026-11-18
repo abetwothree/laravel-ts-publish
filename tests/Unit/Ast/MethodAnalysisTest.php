@@ -636,7 +636,7 @@ it('names the inline channel each class is queued on, and none for a class of no
     'any other class' => ['Carbon\Carbon', null],
 ]);
 
-it('lists a key\'s classes outside its inline queues, and the enums it wraps at its top', function () {
+it('lists a key\'s classes outside its inline queues, the enums it reads, and the enums it wraps at its top', function () {
     $analysis = new MethodAnalysis(
         enumResources: ['k' => 'Workbench\App\Enums\Status'],
         nestedResources: ['k' => 'Workbench\App\Http\Resources\PostResource'],
@@ -658,6 +658,8 @@ it('lists a key\'s classes outside its inline queues, and the enums it wraps at 
         ->and($analysis->wrappedEnumFqcns('k'))->toBe([
             'Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority', 'Workbench\App\Enums\UiTone',
         ])
+        ->and($analysis->readEnumFqcns('k'))->toBe(['Workbench\App\Enums\Role', 'Workbench\App\Enums\Season'])
+        ->and($analysis->readEnumFqcns('none'))->toBe([])
         ->and($analysis->singleChannelFqcns('none'))->toBe([]);
 });
 

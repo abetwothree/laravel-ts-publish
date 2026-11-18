@@ -607,7 +607,7 @@ class MethodAnalysis
     public function channelNames(string $name): array
     {
         $held = array_filter(
-            $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            $this->readEnumFqcns($name),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
         $names = array_column($this->classSpellings($name), 1);
@@ -681,6 +681,16 @@ class MethodAnalysis
     public function allWrappedEnumFqcns(): array
     {
         return $this->fqcnsOnChannels([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+    }
+
+    /**
+     * The enums a property's value reads directly, whose aliases its type may spell.
+     *
+     * @return list<class-string>
+     */
+    public function readEnumFqcns(string $name): array
+    {
+        return $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns);
     }
 
     /**
@@ -1053,7 +1063,7 @@ class MethodAnalysis
         $classes = $this->classSpellings($name);
 
         return EnumValueTypes::absorbRules(
-            read: $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            read: $this->readEnumFqcns($name),
             wrapped: $this->wrappedEnumFqcns($name),
             takenNames: array_column($classes, 1),
             classes: $classes,

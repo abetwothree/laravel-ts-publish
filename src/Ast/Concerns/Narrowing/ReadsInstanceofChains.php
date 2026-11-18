@@ -5,15 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanOr;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\Instanceof_;
-use PhpParser\Node\Expr\NullsafePropertyFetch;
-use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
@@ -108,24 +106,9 @@ trait ReadsInstanceofChains
 
     /**
      * Whether two expressions spell the same variable or property read.
-     *
-     * A method call is never the same read: a second call may return another value than the one the test saw.
      */
     private function isSameReadPath(Expr $left, Expr $right): bool
     {
-        if ($left instanceof Variable && $right instanceof Variable) {
-            return is_string($left->name) && $left->name === $right->name;
-        }
-
-        if (! ($left instanceof PropertyFetch && $right instanceof PropertyFetch)
-            && ! ($left instanceof NullsafePropertyFetch && $right instanceof NullsafePropertyFetch)
-        ) {
-            return false;
-        }
-
-        return $left->name instanceof Identifier
-            && $right->name instanceof Identifier
-            && $left->name->toString() === $right->name->toString()
-            && $this->isSameReadPath($left->var, $right->var);
+        return ReadPath::sameRead($left, $right);
     }
 }
