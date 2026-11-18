@@ -64,7 +64,7 @@ final readonly class VariantGroup
 
     /**
      * What each key sends in one of the group's variants, in item order: the discriminant its literal, and each
-     * dependent its arm, null where the arm removes it.
+     * dependent its arm, null where the arm removes it. A numeric name keys it as an int, as PHP keys any array.
      *
      * @return ReplayedValues
      */

@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostSplitRe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapOrReadPinnedResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Resources\Discriminated\NumericKeysResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
@@ -148,4 +149,17 @@ it('publishes a wrap and a direct read of one enum in one arm where the tolki pa
         ->and($data->variants)->toBe([$arms])
         ->and(variantsData(WrapOrReadPinnedResource::class)->variants)->toBe([])
         ->and(variantsProps(variantsData(WrapOrReadPinnedResource::class)))->toBe(['is_pinned' => 'boolean', 'stage' => 'StatusType']);
+});
+
+// PHP turns a numeric key's name into an int wherever the name keys an array, so each arm must take it back as a name.
+it('keeps a numeric key\'s name as the discriminant or a dependent, at the top level and nested', function () {
+    $data = variantsData(NumericKeysResource::class);
+
+    expect(variantsProps($data))->toBe([
+        'nested' => '{ pinned: true; "0": string; "7": 0; note: string } | { pinned: true; "0": string; "7": 1; note: number }'
+            .' | { pinned: false; "0": null; "7": 0; note: string } | { pinned: false; "0": null; "7": 1; note: number }',
+    ])->and($data->variants)->toBe([
+        '{ is_pinned: true; "0": string } | { is_pinned: false; "0": null }',
+        '{ "7": 0; note: string } | { "7": 1; note: number }',
+    ]);
 });

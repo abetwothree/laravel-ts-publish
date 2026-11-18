@@ -40,7 +40,7 @@ use PhpParser\Node;
  * @phpstan-type Source = array{analysis: MethodAnalysis}|array{value: ValueExpressionResult}
  * @phpstan-type OrderEntry = array{key: string}|array{signature: int, name: string}
  * @phpstan-type PrintedMapArm = array{arm: InlineSpreadArm|ObjectSpreadArm, map: MapArm}
- * @phpstan-type ReplayedValues = array<string, ValueExpressionResult|null>
+ * @phpstan-type ReplayedValues = array<array-key, ValueExpressionResult|null>
  *
  * @internal
  */
@@ -239,7 +239,7 @@ final class LiteralWrites
      * A copy whose one keyed item soleWriter() names for each key writes the given value instead; a null one removes
      * the key. LiteralVariants folds it once per variant, each grouped key sending its arm.
      *
-     * @param  ReplayedValues  $values  each key => the value it sends, null where it is removed
+     * @param  ReplayedValues  $values  each key (an int where numeric) => the value it sends, null where it is removed
      */
     public function replayed(array $values): self
     {

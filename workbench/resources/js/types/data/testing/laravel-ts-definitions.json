@@ -14256,6 +14256,20 @@
                 "PostPlacementVariants"
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\NumericKeysResource": {
+            "name": "NumericKeysResource",
+            "properties": [
+                {
+                    "name": "nested",
+                    "type": "{ pinned: true; \"0\": string; \"7\": 0; note: string } | { pinned: true; \"0\": string; \"7\": 1; note: number } | { pinned: false; \"0\": null; \"7\": 0; note: string } | { pinned: false; \"0\": null; \"7\": 1; note: number }",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ is_pinned: true; \"0\": string } | { is_pinned: false; \"0\": null }",
+                "{ \"7\": 0; note: string } | { \"7\": 1; note: number }"
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedPlacementResource": {
             "name": "PinnedPlacementResource",
             "properties": [

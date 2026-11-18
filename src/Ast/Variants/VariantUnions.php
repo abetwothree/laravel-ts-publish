@@ -47,8 +47,11 @@ final class VariantUnions
     {
         $object = new MethodAnalysis;
 
-        foreach ($group->sent($variant) as $key => $value) {
-            $object->addProperty($key, $value ?? ValueResult::removed());
+        $sent = $group->sent($variant);
+
+        // The names come from the group's keys: PHP turns a numeric name into an int where it keys `$sent`.
+        foreach ($group->keys as $key) {
+            $object->addProperty($key, $sent[$key] ?? ValueResult::removed());
         }
 
         return $object;

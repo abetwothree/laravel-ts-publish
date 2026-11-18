@@ -20,7 +20,7 @@ final readonly class Variant
      * Values beside their dependents' arms.
      *
      * @param  DiscriminantValueList  $values  in the order the discriminant sends them
-     * @param  array<string, ValueExpressionResult|null>  $dependents  each dependent's arm, null where it is removed
+     * @param  array<array-key, ValueExpressionResult|null>  $dependents  each dependent's arm by name, null if removed
      */
     public function __construct(
         public array $values,
