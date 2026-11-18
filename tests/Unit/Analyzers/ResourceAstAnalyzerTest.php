@@ -4940,7 +4940,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
             ->and($props['not_null_same_type_default']['optional'])->toBeFalse();
     });
 
-    // hasExplicitDefaultArg() contract — pinned per brief: position is the only signal, since Laravel
+    // explicitDefault() contract — pinned per brief: position is the only signal, since Laravel
     // distinguishes an omitted argument from an explicitly-passed `null` via func_num_args(), not `=== null`.
     it('treats an explicit null at the default position as a real default', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);

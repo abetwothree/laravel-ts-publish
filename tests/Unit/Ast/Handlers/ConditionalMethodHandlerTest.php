@@ -565,7 +565,7 @@ it('still treats a spread at the default position as no default', function () {
     expect($result)->toBe(['type' => 'number', 'optional' => true]);
 });
 
-// valueSkipped() reads the same unreliable passedCount() hasExplicitDefaultArg() already bails on for a
+// valueSkipped() reads the same unreliable passedCount() explicitDefault() already bails on for a
 // spread, so it must bail too: a spread before a named default must not be misread as a skipped $value.
 it('does not report a skipped value when a spread precedes a named default', function () {
     $expr = new MethodCall(new Variable('this'), 'whenHas', [
