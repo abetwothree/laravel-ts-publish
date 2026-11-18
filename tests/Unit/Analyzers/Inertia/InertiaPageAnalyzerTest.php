@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\LaravelTsPublish as LaravelTsPublishService;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AlikeArmsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CallableReturnsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\CollaboratorPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ConditionableWrapController;
@@ -93,6 +94,7 @@ use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
+use Workbench\App\Http\Controllers\InertiaRedundantArmsController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
 use Workbench\App\Http\Controllers\InertiaTsCastsController;
@@ -2836,4 +2838,16 @@ it('reads a paginator\'s kind from a declared class only where the class decides
         .'either: AnonymousResourceCollection<PostResource> | JsonResourcePaginator<PostResource>, fragment: unknown }')
         ->and([$sent->contract, $sent->abstract, $sent->either])->each->toHaveProperties(['data', 'links', 'meta'])
         ->and($sent->fragment)->toBeNull();
+});
+
+// A ternary of two props alike but for a case value one writes publishes one arm once the case value goes (GH-166).
+it('publishes once a prop\'s arm a case value\'s absorbing made alike another', function () {
+    expect(pageData(AlikeArmsController::class.'@show')['pageType'] ?? null)
+        ->toBe('Inertia.SharedData & { lst: StatusType[], obj: { s: StatusType } }');
+});
+
+// Each render's page type leaves out a case value its enum's alias admits and an empty list beside a list (GH-166).
+it('publishes no case value beside its enum\'s alias and no empty list beside a list on a page', function () {
+    expect(pageData(InertiaRedundantArmsController::class.'@show')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
+        .'priorities: (PriorityType | null)[], status: StatusType, status_or_draft?: StatusType }');
 });

@@ -241,7 +241,8 @@ class ModelMetadataAnalyzer
     }
 
     /**
-     * Run the engine over provide() as the provider runs it, with its Model parameter bound to its declared type.
+     * Run the engine over provide() as the provider runs it, with its Model parameter bound to its declared type, and
+     * leave out each arm a sibling admits, as every publisher's last pass does.
      *
      * Located on the provider, an inherited or trait body reads `$this` and `static` as the provider and `self` as
      * its declaring class. The provider is the known runtime class: the transformer passes its instance's class.
@@ -251,14 +252,16 @@ class ModelMetadataAnalyzer
     protected function analyzeBody(string $providerClass): MethodAnalysis
     {
         $context = resolve(MethodLocator::class)->locate($providerClass, 'provide');
+        $engine = resolve(AstEngine::class);
 
-        if ($context === null) {
-            return resolve(AstEngine::class)->analyzeMethod($providerClass, 'provide');
-        }
+        $analysis = $context === null
+            ? $engine->analyzeMethod($providerClass, 'provide')
+            : new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $engine->bindingsFor($context), $context)
+                ->analyze();
 
-        $scope = resolve(AstEngine::class)->bindingsFor($context);
+        $analysis->absorbRedundantArms();
 
-        return new ResourceAstAnalyzer($context->reflection, null, 'provide', null, $scope, $context)->analyze();
+        return $analysis;
     }
 
     /**

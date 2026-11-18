@@ -90,7 +90,7 @@ declare global {
             updated_at: string | null;
             // Mutators
             /** The status, or Pending's value until the payment is paid (GH-166). */
-            status_or_pending: 'pending' | workbench.accounting.enums.PaymentStatusType;
+            status_or_pending: workbench.accounting.enums.PaymentStatusType;
             due_notice: workbench.accounting.enums.DueAtNoticeType;
             // Relations
             invoice: Invoice;
@@ -4696,7 +4696,7 @@ declare global {
         }
         /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
         export interface PlaceholderReadingsResource {
-            fills: { f: never[] | number[] }[];
+            fills: { f: number[] }[];
             pairs: [string | null, number][];
         }
         /**
@@ -5211,15 +5211,15 @@ declare global {
         }
         /** A `@return` that types an arm the body cannot, beside a case value its enum's alias admits (GH-166). */
         export interface RedundantArmsDocblockResource {
-            status: 0 | workbench.app.enums.StatusType | number;
-            media: 'image' | workbench.app.enums.MediaTypeType;
+            status: workbench.app.enums.StatusType | number;
+            media: workbench.app.enums.MediaTypeType;
         }
         /** Case values a branch writes over the enum's alias, and an empty list over a list (GH-166). */
         export interface RedundantArmsResource {
-            status: workbench.app.enums.StatusType | 0 | 1;
-            priorities: (workbench.app.enums.PriorityType | null)[] | never[];
-            status_or_draft: 0 | workbench.app.enums.StatusType;
-            priority_name: 'Low' | workbench.app.enums.PriorityKind;
+            status: workbench.app.enums.StatusType;
+            priorities: (workbench.app.enums.PriorityType | null)[];
+            status_or_draft: workbench.app.enums.StatusType;
+            priority_name: workbench.app.enums.PriorityKind;
         }
         /**
          * Regression fixture: analyzeThisMethodCall() spread a reflected TypeScriptTypeInfo straight into its

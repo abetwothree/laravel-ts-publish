@@ -3034,6 +3034,16 @@ describe('mergeTypeScriptInfos', function () {
             ->and($this->service->mergeTypeScriptInfos([$text, $text]))->not->toHaveKey('keepsKeys');
     });
 
+    test('keeps every enum an arm wraps in an EnumResource, once', function () {
+        $wrap = [...$this->service->emptyTypeScriptInfo(), 'type' => 'A', 'wrappedEnumFqcns' => ['App\\Enums\\A', 'App\\Enums\\B']];
+        $other = [...$this->service->emptyTypeScriptInfo(), 'type' => 'B', 'wrappedEnumFqcns' => ['App\\Enums\\B']];
+        $text = [...$this->service->emptyTypeScriptInfo(), 'type' => 'string'];
+
+        expect($this->service->mergeTypeScriptInfos([$wrap, $other, $text])['wrappedEnumFqcns'] ?? null)
+            ->toBe(['App\\Enums\\A', 'App\\Enums\\B'])
+            ->and($this->service->mergeTypeScriptInfos([$text, $text]))->not->toHaveKey('wrappedEnumFqcns');
+    });
+
     test('preserves a separate type token for each unique FQCN even when basenames are the same', function () {
         $infoA = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['App\\Models\\User']];
         $infoB = [...$this->service->emptyTypeScriptInfo(), 'type' => 'User', 'classes' => ['User'], 'classFqcns' => ['Crm\\Models\\User']];

@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKe
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalDocblockEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\RedundantArmsMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
@@ -309,4 +310,13 @@ test('reads a numeric @return shape key on its own key instead of stopping the r
 test('keeps a numeric provide() cast key on its own key', function () {
     expect(analyzeMetadataTypesFor(NumericCastKeyMetadataProvider::class, ['label', '42'])->types)
         ->toBe(['label' => 'string', 42 => 'boolean']);
+});
+
+// `tags` is empty in one return only, so the publisher's own pass is what leaves its `never[]` out. A wrapped enum
+// admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
+test('publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
+    $analysis = analyzeMetadataTypesFor(RedundantArmsMetadataProvider::class, ['status', 'tags', 'kept']);
+
+    expect($analysis->types)->toBe(['status' => 'StatusType', 'tags' => '(PriorityType | null)[]', 'kept' => 'StatusType | 0'])
+        ->and($analysis->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']]);
 });

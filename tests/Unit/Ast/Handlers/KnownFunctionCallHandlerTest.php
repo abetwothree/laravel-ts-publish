@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -20,6 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use PhpParser\Node\Expr;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 use Workbench\App\Enums\Grade;
@@ -168,6 +170,16 @@ it('reads array_values() of an empty object as no values', function (string $php
 })->with([
     'an empty object cast to an array' => ['array_values((array) (object) [])'],
 ]);
+
+// `$keyed ?? []` reads `{ x: string } | never[]`, and the list of the keyed arm already admits the empty one (GH-153).
+it('reads array_values() of a keyed array or the empty one as one list, before any publisher\'s pass', function () {
+    $parse = fn (string $source): Expr => new AstParser()->parseSource('<?php '.$source.';')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+    $scope->localVarBindings['keyed'] = $parse('$c ? ["x" => "a"] : null');
+    $analyzer = new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class, 'toArray', null, $scope);
+
+    expect($analyzer->resolve($parse('array_values($keyed ?? [])'))['type'])->toBe('string[]');
+});
 
 it('keeps the element type through array_values()', function () {
     expect(analyzedKeyTypes(ReshapedListsPayload::class))->toMatchArray([

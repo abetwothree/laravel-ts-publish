@@ -4,7 +4,7 @@ import type { MediaTypeType, PriorityType } from '../workbench/app/enums';
 
 export interface WidgetPropsProbe
 {
-    kind: MediaTypeType | 'image' | 'video' | null;
+    kind: MediaTypeType | null;
     method: string;
-    modes: PriorityType[] | never[];
+    modes: PriorityType[];
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -21,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -415,7 +417,8 @@ class ModelTransformer extends CoreTransformer
             $cast = $attribute['cast'];
 
             // Resolves through the accessor → cast → DB type waterfall, which adds the column's null.
-            $resolved = $resolver->resolveAttribute($this->findable, $name);
+            // Absorbed before the export check so `$typings === $resolved` below tells it from the cast fallback.
+            $resolved = $this->withRedundantArmsAbsorbed($resolver->resolveAttribute($this->findable, $name));
 
             // Fall back to the raw cast so enum and class metadata still propagates.
             $typings = $this->exportedTypeInfo($resolved['type'] !== 'unknown' ? $resolved : match ($cast) {
@@ -493,7 +496,7 @@ class ModelTransformer extends CoreTransformer
                 continue;
             }
 
-            $resolved = $this->exportedTypeInfo($resolved);
+            $resolved = $this->exportedTypeInfo($this->withRedundantArmsAbsorbed($resolved));
 
             if ($isAppended) {
                 $this->appends[$name] = ['type' => $resolved['type'], 'description' => $this->resolveAccessorDescription($name), 'optional' => $this->optionalOverrides[$name] ?? false];
@@ -684,6 +687,36 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * The attribute's type info with each union arm a sibling admits left out, flagged as sending its enum's scalar
+     * where an alias took a case literal in. Where no name in it spells two classes and no token queue is kept, an arm
+     * alike an earlier one goes too.
+     *
+     * The model file is where an accessor publishes; each reader of the attribute absorbs at its own publisher's pass.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return TypeScriptTypeInfo
+     */
+    protected function withRedundantArmsAbsorbed(array $info): array
+    {
+        $classes = [];
+
+        foreach ($info['classFqcns'] as $i => $fqcn) {
+            $classes[] = [$fqcn, $info['classes'][$i] ?? class_basename($fqcn)];
+        }
+
+        [$aliasLiterals, $dedupesAlike] = EnumValueTypes::absorbRules(
+            read: $info['enumFqcns'],
+            wrapped: $info['wrappedEnumFqcns'] ?? [],
+            takenNames: $info['classes'],
+            classes: $classes,
+            keepsTokens: ($info['classTokenFqcns'] ?? []) !== [],
+        );
+        [$type, $tookLiteral] = RedundantArms::absorbedReporting($info['type'], $aliasLiterals, $dedupesAlike);
+
+        return [...$info, 'type' => $type, ...($tookLiteral ? ['sendsEnumScalar' => true] : [])];
+    }
+
+    /**
      * Each relation's key with the given suffix, unless an attribute or a relation already publishes it.
      *
      * @return list<string>
@@ -783,13 +816,13 @@ class ModelTransformer extends CoreTransformer
      * The one enum a property's type is, bare, as a list or as both, optionally nullable, else null.
      *
      * The model's Resource interface prints `AsEnum<typeof X>` in place of the whole type, so a shape, a list of shapes
-     * or a union with any other arm keeps its own type.
+     * or a union with any other arm keeps its own type, as does an alias standing for a scalar the value sends.
      *
      * @param  TypeScriptTypeInfo  $info
      */
     protected function soleEnumFqcn(array $info, string $type): ?string
     {
-        if (count($info['enumFqcns']) !== 1) {
+        if (count($info['enumFqcns']) !== 1 || ($info['sendsEnumScalar'] ?? false)) {
             return null;
         }
 

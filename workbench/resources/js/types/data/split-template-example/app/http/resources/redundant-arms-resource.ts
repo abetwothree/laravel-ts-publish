@@ -7,8 +7,8 @@ import type { PriorityKind, PriorityType, StatusType } from '../../enums';
  */
 export interface RedundantArmsResource
 {
-    status: StatusType | 0 | 1;
-    priorities: (PriorityType | null)[] | never[];
-    status_or_draft: 0 | StatusType;
-    priority_name: 'Low' | PriorityKind;
+    status: StatusType;
+    priorities: (PriorityType | null)[];
+    status_or_draft: StatusType;
+    priority_name: PriorityKind;
 }

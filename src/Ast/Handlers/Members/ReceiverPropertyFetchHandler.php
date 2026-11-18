@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
@@ -18,8 +19,10 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Match_;
+use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Throw_;
 use PhpParser\Node\Expr\Variable;
@@ -29,7 +32,8 @@ use UnitEnum;
 
 /**
  * `<receiver>->prop` and `<receiver>?->prop` typed from the property on the receiver's PHP class, or off an enum case
- * itself as the literal it sends; the rules are in docs/components/receiver-types.md § Property access on a receiver.
+ * itself, or one a helper naming no class returns, as the literal it sends; the rules are in
+ * docs/components/receiver-types.md § Property access on a receiver.
  *
  * Registered immediately before ReceiverMethodCallHandler, so every specific handler keeps priority.
  *
@@ -61,16 +65,17 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         $caseMember = $this->caseMember($expr->var, $name, $scope);
 
         if ($caseMember !== null) {
-            return $expr instanceof NullsafePropertyFetch
-                ? [...$caseMember, 'type' => TsTypeString::withNullArm($caseMember['type'])]
-                : $caseMember;
+            return $this->withOwnNullArm($expr, $caseMember);
         }
 
         $receivers = resolve(ReceiverClassResolver::class);
         $receiver = $receivers->resolve($expr->var, $scope);
 
         if ($receiver === null) {
-            return null;
+            // A helper declared to return a class keeps that class's member; only one naming none is read by its body.
+            $helperMember = $this->helperCaseMember($expr->var, $name, $scope);
+
+            return $helperMember === null ? null : $this->withOwnNullArm($expr, $helperMember);
         }
 
         $merged = ReceiverMemberReader::value($receiver, $name, $scope);
@@ -102,10 +107,57 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
             default => null,
         };
 
-        if ($arms === null) {
-            return $this->ownCaseMember($receiver, $name, $scope);
+        return $arms === null
+            ? $this->ownCaseMember($receiver, $name, $scope)
+            : $this->armsCaseMember($arms, $name, $scope);
+    }
+
+    /**
+     * A member read off what a `$this->m()`, `$this::m()`, `self::m()`, `static::m()` or `parent::m()` helper returns,
+     * each returned expression an arm whose cases resolve in the class declaring the helper; null for any other
+     * receiver or an unlisted body.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function helperCaseMember(Expr $receiver, string $name, AnalysisScope $scope): ?array
+    {
+        if (! ($receiver instanceof MethodCall || $receiver instanceof StaticCall)
+            || ! $receiver->name instanceof Identifier
+            || $receiver->isFirstClassCallable()
+        ) {
+            return null;
         }
 
+        $method = $receiver->name->toString();
+        $owner = match (true) {
+            $receiver instanceof StaticCall => $scope->staticCallClass($receiver),
+            $receiver->var instanceof Variable && $receiver->var->name === 'this' => $scope->thisMemberClass($method, true),
+            default => null,
+        };
+
+        if ($owner === null || ! $owner->hasMethod($method)) {
+            return null;
+        }
+
+        $returned = resolve(ReturnLiteralReader::class)->returnedExpressions($owner->getName(), $method);
+
+        if ($returned === null) {
+            return null;
+        }
+
+        $declaring = AnalysisScope::detached($owner->getMethod($method)->getDeclaringClass(), $scope->runtime);
+
+        return $this->armsCaseMember($returned, $name, $declaring);
+    }
+
+    /**
+     * The member the cases of every arm but a `null` or a `throw` send, joined; null where an arm holds no case.
+     *
+     * @param  array<Expr>  $arms
+     * @return ValueExpressionResult|null
+     */
+    private function armsCaseMember(array $arms, string $name, AnalysisScope $scope): ?array
+    {
         $results = [];
 
         foreach ($arms as $arm) {
@@ -145,5 +197,18 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         }
 
         return $case instanceof UnitEnum ? EnumValueTypes::caseMember($case, $name) : null;
+    }
+
+    /**
+     * A case member as the read sends it, with `| null` for its own `?->`.
+     *
+     * @param  ValueExpressionResult  $member
+     * @return ValueExpressionResult
+     */
+    private function withOwnNullArm(PropertyFetch|NullsafePropertyFetch $expr, array $member): array
+    {
+        return $expr instanceof NullsafePropertyFetch
+            ? [...$member, 'type' => TsTypeString::withNullArm($member['type'])]
+            : $member;
     }
 }

@@ -317,6 +317,7 @@ class BroadcastEventTransformer extends CoreTransformer
             $this->tsExtends !== [],
             $this->findable,
         );
+        $analysis->absorbRedundantArms();
 
         resolve(CastChannels::class)->fit($analysis, $castsInForce);
 

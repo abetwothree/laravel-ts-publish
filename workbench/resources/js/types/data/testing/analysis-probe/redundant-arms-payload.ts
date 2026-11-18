@@ -6,27 +6,28 @@ import { MediaType } from '../workbench/app/enums';
 
 export interface RedundantArmsPayloadProbe
 {
-    case_beside_alias: 'image' | MediaTypeType;
-    case_beside_nullable_alias: 'image' | MediaTypeType | null;
-    coalesced_case: MediaTypeType | 'video';
-    matched_cases: 'audio' | 'video' | MediaTypeType;
-    backed_name: 'Pass' | GradeKind;
-    pure_name: 'Public' | VisibilityType;
-    int_case: 0 | PriorityType;
-    nested: { inner: 'image' | MediaTypeType };
-    listed: ('image' | MediaTypeType)[];
-    helper_case_beside_alias: 0 | StatusType;
-    helper_case_value: unknown;
-    helper_case_name: unknown;
-    values_of_keyed: string[] | never[];
+    case_beside_alias: MediaTypeType;
+    case_beside_nullable_alias: MediaTypeType | null;
+    coalesced_case: MediaTypeType;
+    matched_cases: MediaTypeType;
+    backed_name: GradeKind;
+    pure_name: VisibilityType;
+    int_case: PriorityType;
+    nested: { inner: MediaTypeType };
+    listed: MediaTypeType[];
+    helper_case_beside_alias: StatusType;
+    helper_case_value: 0;
+    helper_case_name: 'Draft';
+    values_of_keyed: string[];
     name_beside_value_alias_kept: 'Image' | MediaTypeType;
     other_enum_case_kept: 'spring' | MediaTypeType;
     cases_without_alias_kept: 'image' | 'video';
     wrap_beside_case_kept: AsEnum<typeof MediaType> | 'image';
-    emptied_list: never[] | PriorityType[];
-    filled_list: never[] | PriorityType[];
-    nullable_list: never[] | PriorityType[] | null;
+    wrap_and_read_kept: { w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType };
+    emptied_list: PriorityType[];
+    filled_list: PriorityType[];
+    nullable_list: PriorityType[] | null;
     record_beside_empty_kept: never[] | Record<string, PriorityType>;
     object_beside_empty_kept: never[] | { a: number };
-    folded_case: 'image' | 'video' | MediaTypeType;
+    folded_case: MediaTypeType;
 }

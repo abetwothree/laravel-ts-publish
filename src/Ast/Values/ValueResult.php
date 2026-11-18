@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use BackedEnum;
 use Closure;
@@ -465,9 +466,9 @@ final class ValueResult
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
      * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
-     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. An empty
-     * `[]` beside a list is no member of its own, since the list already admits it. Its held-object flag is the arms',
-     * and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
+     * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. A
+     * `never[]` beside a list or the empty tuple `[]` is no member of its own, as either admits it. Its held-object
+     * flag is the arms', and it is closed to dotted keys where every arm is, or is the `null` Inertia replaces as well.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
@@ -512,7 +513,7 @@ final class ValueResult
         // arm by arm, one member per class.
         $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
 
-        $union = [...$result, 'type' => self::withoutEmptyListBesideList($result['type']), 'optional' => $optional];
+        $union = [...$result, 'type' => self::withTopLevelArmsAbsorbed($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
         $presence = self::armsKeyPresence($results);
 
@@ -779,23 +780,21 @@ final class ValueResult
     }
 
     /**
-     * A union's type without the `never[]` of an empty `[]` beside a list member, which already admits an empty array.
+     * A union's type without each top-level arm a sibling admits, as RedundantArms reads it: `never[]` beside a list
+     * or the empty tuple.
+     *
+     * An arm's inside is left to the publisher's pass, as armsKeyPresence() keys each arm's facts by its object's text.
      */
-    private static function withoutEmptyListBesideList(string $type): string
+    private static function withTopLevelArmsAbsorbed(string $type): string
     {
         if (! str_contains($type, 'never[]')) {
             return $type;
         }
 
-        $members = TsTypeString::splitTopLevelUnion($type);
-        $lists = array_filter(
-            $members,
-            fn (string $member): bool => $member !== 'never[]' && TsTypeShape::elementType($member) !== null,
-        );
+        $arms = TsTypeString::splitTopLevelUnion($type);
+        $kept = RedundantArms::kept($arms);
 
-        return $lists === [] || ! in_array('never[]', $members, true)
-            ? $type
-            : implode(' | ', array_diff($members, ['never[]']));
+        return $kept === $arms ? $type : implode(' | ', $kept);
     }
 
     /**
@@ -864,6 +863,18 @@ final class ValueResult
     private static function wrapsAnEnum(array $results): bool
     {
         return array_any($results, fn (array $result): bool => isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']));
+    }
+
+    /**
+     * Whether a result carries an enum on any channel, read directly or wrapped in an enum resource.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private static function carriesAnEnum(array $result): bool
+    {
+        return self::directEnumChannelFqcns($result) !== []
+            || self::wrapsAnEnum([$result])
+            || ($result['embeddedEnumResourceFqcns'] ?? []) !== [];
     }
 
     /**
@@ -1034,6 +1045,13 @@ final class ValueResult
 
         if (array_any($branchResults, fn (array $inner): bool => $inner['unnamedKeys'] ?? false)) {
             $result['unnamedKeys'] = true;
+        }
+
+        // A literal beside an enum's scalar carries no enum, so only the arms that carry one decide.
+        $enumArms = array_filter($branchResults, self::carriesAnEnum(...));
+
+        if ($enumArms !== [] && array_all($enumArms, fn (array $inner): bool => $inner['sendsEnumScalar'] ?? false)) {
+            $result['sendsEnumScalar'] = true;
         }
 
         // Every list arm keeps its int keys only where each branch spelling one says so.

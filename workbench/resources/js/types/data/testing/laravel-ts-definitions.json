@@ -4322,7 +4322,7 @@
                 },
                 {
                     "name": "status_or_pending",
-                    "type": "'pending' | PaymentStatusType"
+                    "type": "PaymentStatusType"
                 },
                 {
                     "name": "due_notice",
@@ -17695,7 +17695,7 @@
             "properties": [
                 {
                     "name": "fills",
-                    "type": "{ f: never[] | number[] }[]",
+                    "type": "{ f: number[] }[]",
                     "optional": false
                 },
                 {
@@ -19422,12 +19422,12 @@
             "properties": [
                 {
                     "name": "status",
-                    "type": "0 | StatusType | number",
+                    "type": "StatusType | number",
                     "optional": false
                 },
                 {
                     "name": "media",
-                    "type": "'image' | MediaTypeType",
+                    "type": "MediaTypeType",
                     "optional": false
                 }
             ]
@@ -19437,22 +19437,22 @@
             "properties": [
                 {
                     "name": "status",
-                    "type": "StatusType | 0 | 1",
+                    "type": "StatusType",
                     "optional": false
                 },
                 {
                     "name": "priorities",
-                    "type": "(PriorityType | null)[] | never[]",
+                    "type": "(PriorityType | null)[]",
                     "optional": false
                 },
                 {
                     "name": "status_or_draft",
-                    "type": "0 | StatusType",
+                    "type": "StatusType",
                     "optional": false
                 },
                 {
                     "name": "priority_name",
-                    "type": "'Low' | PriorityKind",
+                    "type": "PriorityKind",
                     "optional": false
                 }
             ]

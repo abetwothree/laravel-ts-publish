@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -14,8 +15,10 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +34,8 @@ use LogicException;
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
  * @phpstan-import-type ObjectSpreadArm from InlineObjectResult
+ * @phpstan-import-type AbsorbRules from EnumValueTypes
+ * @phpstan-import-type TokenSpelling from ClassTokenQueue
  *
  * @phpstan-type ClassMapType = array<array-key, class-string>
  * @phpstan-type ImportMapType = TypesImportMap
@@ -605,16 +610,9 @@ class MethodAnalysis
             $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
-        $wrapped = $this->wrappedEnumFqcns($name);
-        $models = $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns);
-        $resources = $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns);
+        $names = array_column($this->classSpellings($name), 1);
 
-        $names = [
-            ...array_map(class_basename(...), $models),
-            ...array_map(static fn (string $resource): string => TsNaming::resourceTypeName($resource), $resources),
-        ];
-
-        foreach ([...$held, ...$wrapped] as $enum) {
+        foreach ([...$held, ...$this->wrappedEnumFqcns($name)] as $enum) {
             array_push($names, ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum));
         }
 
@@ -911,8 +909,9 @@ class MethodAnalysis
      */
     public function rewritePropertyTypes(Closure $rewrite): void
     {
+        // An internal function's callable, such as `strtolower(...)`, throws on the row rewriteTypes() also passes.
         $this->rewriteTypes(
-            $rewrite,
+            static fn (string $type): string => $rewrite($type),
             fn (array $property): bool => ! isset($this->casts[$property['name']]) && ! ($property['keepsKeys'] ?? false),
         );
     }
@@ -937,6 +936,29 @@ class MethodAnalysis
         );
 
         DroppedUnionArms::stripped(array_values(array_unique($ids)));
+    }
+
+    /**
+     * Leave out every union arm a sibling admits from each key's type, body type and fill, except a key a cast types:
+     * `never[]` beside a list or `[]`, and a case literal beside the alias of an enum read but not wrapped. Alike arms
+     * then keep one, unless a name on the key spells two classes, a slot is declared or `$queuesLater` holds.
+     *
+     * @param  (Closure(string): bool)|null  $queuesLater  whether the caller still queues classes on a key, by its name
+     */
+    public function absorbRedundantArms(?Closure $queuesLater = null): void
+    {
+        /** @var array<array-key, AbsorbRules> $rulesByKey */
+        $rulesByKey = [];
+
+        $this->rewriteTypes(
+            function (string $type, array $property) use (&$rulesByKey, $queuesLater): string {
+                $name = $property['name'];
+                [$admitted, $dedupesAlike] = $rulesByKey[$name] ??= $this->absorbRules($name, $queuesLater);
+
+                return RedundantArms::absorbed($type, $admitted, $dedupesAlike);
+            },
+            fn (array $property): bool => ! isset($this->casts[$property['name']]),
+        );
     }
 
     /**
@@ -1017,6 +1039,46 @@ class MethodAnalysis
         }
 
         return array_values(array_unique($fqcns));
+    }
+
+    /**
+     * A property's rules for leaving out redundant arms, read off its enum, model and resource channels; a declaration
+     * slotting its tokens, an override's among them, keeps its token queue.
+     *
+     * @param  (Closure(string): bool)|null  $queuesLater  whether the caller still queues classes on a key, by its name
+     * @return AbsorbRules
+     */
+    private function absorbRules(string $name, ?Closure $queuesLater): array
+    {
+        $classes = $this->classSpellings($name);
+
+        return EnumValueTypes::absorbRules(
+            read: $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            wrapped: $this->wrappedEnumFqcns($name),
+            takenNames: array_column($classes, 1),
+            classes: $classes,
+            keepsTokens: ($this->declaredTokenFqcns[$name] ?? []) !== [],
+            queuesLater: $queuesLater === null ? null : static fn (): bool => $queuesLater($name),
+        );
+    }
+
+    /**
+     * Each model and then each resource on a property's channels, beside the name it prints.
+     *
+     * @return list<TokenSpelling>
+     */
+    private function classSpellings(string $name): array
+    {
+        return [
+            ...array_map(
+                static fn (string $model): array => [$model, class_basename($model)],
+                $this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
+            ),
+            ...array_map(
+                static fn (string $resource): array => [$resource, TsNaming::resourceTypeName($resource)],
+                $this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
+            ),
+        ];
     }
 
     /**
@@ -1104,7 +1166,7 @@ class MethodAnalysis
     /**
      * Rewrite the type, body type and fill of each property $takes takes.
      *
-     * @param  Closure(string): string  $rewrite
+     * @param  Closure(string, AnalyzedProperty): string  $rewrite  each text, beside the row it belongs to
      * @param  Closure(AnalyzedProperty): bool  $takes
      */
     private function rewriteTypes(Closure $rewrite, Closure $takes): void
@@ -1114,11 +1176,11 @@ class MethodAnalysis
                 continue;
             }
 
-            $property['type'] = $rewrite($property['type']);
+            $property['type'] = $rewrite($property['type'], $property);
 
             foreach (['bodyType', 'fillType'] as $field) {
                 if (isset($property[$field])) {
-                    $property[$field] = $rewrite($property[$field]);
+                    $property[$field] = $rewrite($property[$field], $property);
                 }
             }
         }

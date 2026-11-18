@@ -221,8 +221,9 @@ final class TsTypeShape
             }
 
             // `[]` is the empty tuple, not an array suffix, and a tuple has no single element type. `[]` binds tighter
-            // than `&` and `=>`, so `A & B[]` lists only `B` and `() => B[]` returns the list.
-            $element = $arm !== '[]' && str_ends_with($arm, '[]') ? trim(substr($arm, 0, -2)) : null;
+            // than `&`, `=>` and `keyof`: `A & B[]` lists only `B`, `() => B[]` returns the list, `keyof B[]` is keys.
+            $listable = $arm !== '[]' && ! str_starts_with($arm, 'keyof ');
+            $element = $listable && str_ends_with($arm, '[]') ? trim(substr($arm, 0, -2)) : null;
             $listed = $element !== null
                 && self::topLevelPosition($element, '&') === null
                 && self::topLevelPosition($element, '=') === null;

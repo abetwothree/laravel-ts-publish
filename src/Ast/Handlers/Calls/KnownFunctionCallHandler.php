@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Support\StringSerialization;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Enumerable;
@@ -320,7 +321,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             unset($result['keepsKeys'], $result['unnamedKeys']);
 
-            return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false, 'listKeys' => true];
+            return [...$result, 'type' => RedundantArms::joined($arms), 'optional' => false, 'listKeys' => true];
         });
     }
 

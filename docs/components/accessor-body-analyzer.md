@@ -51,6 +51,13 @@ a closure.
   publishes `User | User`, a member per class, and both aliases. Two same-named enums in one union still fold into one
   token and decline. A resource token declines too, because `ResultTypeInfoBridge` has no resource channel.
 
+## Redundant arms wait for the model
+
+A case literal beside its enum's alias, and a `never[]` nested beside a list, are still in the type `analyze()`
+returns. `ModelTransformer` absorbs them where the model publishes the attribute, and a resource or getter reading it
+absorbs them at its own publisher's pass. Only a top-level `never[]` beside a list is already gone, since
+`ValueResult::unionResults()` drops it. [AST engine § Redundant arms](ast-engine.md#redundant-arms) has the rule.
+
 ## The model is the subject
 
 `AstEngine::analyzeModelClosure()` seeds the scope with `bindingsFor()`, which binds the enclosing method's parameters
