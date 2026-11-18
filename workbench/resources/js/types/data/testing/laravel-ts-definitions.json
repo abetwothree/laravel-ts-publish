@@ -14328,6 +14328,26 @@
                     "optional": false
                 },
                 {
+                    "name": "collected_nullable",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null } | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_ternary",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null } | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_all",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null } | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_either",
+                    "type": "{ a: number } | { b: string }",
+                    "optional": false
+                },
+                {
                     "name": "spread",
                     "type": "{ pinned: boolean; v: string | null; x: number }",
                     "optional": false

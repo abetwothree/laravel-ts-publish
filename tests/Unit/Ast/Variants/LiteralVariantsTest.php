@@ -8,7 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Variants\DiscriminantValue;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\Variant;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantGroup;
+use Workbench\App\Http\Controllers\InertiaDiscriminatedController;
 use Workbench\App\Http\Resources\Discriminated\DiscriminantFormsResource;
+use Workbench\App\Http\Resources\Discriminated\ReadBackResource;
 
 /**
  * A literal writing each key once by its own item, typed as $types gives it, with the given groups read beside it.
@@ -99,6 +101,19 @@ it('publishes one object per value of a sibling key in a nested literal, and eac
         'same_arms_kept' => '{ pinned: boolean; v: number }',
         'untypable_arm_kept' => '{ pinned: boolean; v: null }',
     ]);
+});
+
+// GH-157: the null or second literal beside a split literal leaves its one-object copy behind, so collect() reads arms.
+it('collects a literal that splits beside a null or another literal as one item shape per arm', function () {
+    $arms = '{ pinned: true; v: string } | { pinned: false; v: null } | never[]';
+
+    expect(resourceProps(ReadBackResource::class))->toMatchArray([
+        'collected' => '{ pinned: boolean; v: string | null }',
+        'collected_nullable' => $arms,
+        'collected_ternary' => $arms,
+        'collected_all' => $arms,
+        'collected_either' => '{ a: number } | { b: string }',
+    ])->and(pageData(InertiaDiscriminatedController::class.'@readBack')['pageType'] ?? '')->toContain(", collected: {$arms} }");
 });
 
 it('replays the literal once per variant, a second group\'s variants inside each of the first\'s', function () {

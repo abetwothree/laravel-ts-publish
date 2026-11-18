@@ -31,9 +31,9 @@ class InertiaDiscriminatedController
     }
 
     /**
-     * Props read back as keys: a resource's `additional()` keys that follow a sibling key, and dotted keys written
-     * into a prop whose keys do, one beside its keys and one over a key it holds; an enum resource beside such keys;
-     * and dotted keys under a union holding an object, which Inertia replaces with `[]`.
+     * Props read back as keys: a resource's `additional()` keys that follow a sibling key, dotted keys written into a
+     * prop whose keys do, beside or over its keys; an enum resource beside such keys; dotted keys under a union holding
+     * an object, which Inertia replaces with `[]`; and a collection of such keys or of null.
      */
     public function readBack(Post $post): Response
     {
@@ -55,6 +55,21 @@ class InertiaDiscriminatedController
             'tracked.extra' => 1,
             'cast' => $post->is_pinned ? (object) ['a' => 1] : ['a' => 'x'],
             'cast.b' => 1,
+            'collected' => collect($this->pinnedMeta($post)),
         ]);
+    }
+
+    /**
+     * Whether the post is pinned, with its title only when it is, or null for a post not saved yet.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function pinnedMeta(Post $post): ?array
+    {
+        if ($post->id < 1) {
+            return null;
+        }
+
+        return ['pinned' => $post->is_pinned, 'v' => $post->is_pinned ? $post->title : null];
     }
 }
