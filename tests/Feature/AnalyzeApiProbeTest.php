@@ -16,6 +16,7 @@ use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\DiscriminatedPayload;
 use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
@@ -86,6 +87,8 @@ function analysisProbeCases(): array
         'RedundantArmsPayload' => [RedundantArmsPayload::class, 'toArray', null],
         // GH-166's own report: a branch rewrites an enum key with case values and empties a list property.
         'WidgetProps' => [WidgetProps::class, 'props', null],
+        // Keys that follow a sibling key's value: a boolean at the top level, an enum match nested (GH-157).
+        'DiscriminatedPayload' => [DiscriminatedPayload::class, 'toArray', null],
     ];
 }
 

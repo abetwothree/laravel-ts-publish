@@ -6234,6 +6234,78 @@ declare global {
             data: Store[];
         }
     }
+    export namespace workbench.app.http.resources.discriminated {
+        /**
+         * Nested literals whose keys follow a sibling key's value, one condition form per key (GH-157). Each `*_kept` key is
+         * a control that stays one object: its test reads no sibling with a finite set of values, or cannot be decided.
+         */
+        export interface DiscriminantFormsResource {
+            negated: { pinned: boolean; v: string | number | null };
+            strict_true: { pinned: boolean; v: string | null };
+            strict_false: { pinned: boolean; v: string | number | null };
+            case_compare: { status: workbench.app.enums.StatusType; v: string | null };
+            case_not_equal: { status: workbench.app.enums.StatusType; v: string | number };
+            value_read: { status: workbench.app.enums.StatusType; v: string | number | null };
+            unit_enum_default: { visibility: workbench.app.enums.VisibilityType | null; v: string | null };
+            match_true: { status: workbench.app.enums.StatusType; v: string | number | null };
+            when_dependent: { pinned: boolean; until?: string | null };
+            when_closure: { pinned: boolean; until?: number };
+            unless_default: { pinned: boolean; v: string | number | null };
+            two_dependents: { a: string | null; pinned: boolean; b: string | null };
+            nested_ternary: { pinned: boolean; v: string | number | null };
+            two_discriminants: { pinned: boolean; status: workbench.app.enums.StatusType; a: string | null; b: string | number | null };
+            throw_arm: { priority: workbench.app.enums.PriorityType | null; v: string | number };
+            shared_keys: { id: number; pinned: boolean; v: string | number; title: string };
+            cast_discriminant_kept: { pinned: boolean; v: string | null };
+            method_condition_kept: { featured: boolean; v: string | null };
+            unpublished_condition_kept: { id: number; v: string | null };
+            string_discriminant_kept: { title: string; v: number | null };
+            wrapped_discriminant_kept: { status: workbench.app.enums.StatusType; v: number | null };
+            optional_discriminant_kept: { pinned?: boolean; v: string | null };
+            undecidable_kept: { pinned: boolean; v: string | null };
+            same_arms_kept: { pinned: boolean; v: number };
+            untypable_arm_kept: { pinned: boolean; v: null };
+        }
+        /** The placement an unpinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
+        export interface FeedPlacementResource {
+            published_at: string | null;
+            rating: string | null;
+        }
+        /** The placement a pinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
+        export interface PinnedPlacementResource {
+            rank: workbench.app.enums.PriorityType | null;
+            pinned_at: string | null;
+        }
+        /**
+         * GH-157's own report: one key's resource follows a boolean the resource also sends, so `is_pinned` should narrow
+         * `placement`.
+         */
+        export interface PinnedPostResource {
+            id: number;
+            is_pinned: boolean;
+            placement: PinnedPlacementResource | FeedPlacementResource;
+        }
+        /**
+         * Keys a boolean the resource sends picks, whose arms need imports: an enum resource of two enums, two same-named
+         * enums and a resource only one arm sends (GH-157).
+         */
+        export interface PinnedWrapsResource {
+            is_pinned: boolean;
+            state: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
+            stage: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            author?: workbench.app.http.resources.UserResource;
+        }
+        /**
+         * A nullable enum the resource sends picks two keys: a `match` with grouped cases and a `null` arm, and a `when()`
+         * whose key is present for one case only (GH-157).
+         */
+        export interface PostPriorityResource {
+            id: number;
+            priority: workbench.app.enums.PriorityType | null;
+            badge: string | workbench.app.http.resources.UserResource | never[] | null;
+            escalated_at?: string | null;
+        }
+    }
     export namespace workbench.app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
         export interface AttributesPostResource {

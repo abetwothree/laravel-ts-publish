@@ -11,6 +11,7 @@ export { default as ExcludableController } from './excludable-controller';
 export { default as InertiaAddressController } from './inertia-address-controller';
 export { default as InertiaCallablePropsController } from './inertia-callable-props-controller';
 export { default as InertiaController } from './inertia-controller';
+export { default as InertiaDiscriminatedController } from './inertia-discriminated-controller';
 export { default as InertiaEnumCaseController } from './inertia-enum-case-controller';
 export { default as InertiaEnumResourceController } from './inertia-enum-resource-controller';
 export { default as InertiaFacilityController } from './inertia-facility-controller';

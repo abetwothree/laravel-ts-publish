@@ -14102,6 +14102,236 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\DiscriminantFormsResource": {
+            "name": "DiscriminantFormsResource",
+            "properties": [
+                {
+                    "name": "negated",
+                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "strict_true",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "strict_false",
+                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "case_compare",
+                    "type": "{ status: StatusType; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "case_not_equal",
+                    "type": "{ status: StatusType; v: string | number }",
+                    "optional": false
+                },
+                {
+                    "name": "value_read",
+                    "type": "{ status: StatusType; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "unit_enum_default",
+                    "type": "{ visibility: VisibilityType | null; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "match_true",
+                    "type": "{ status: StatusType; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "when_dependent",
+                    "type": "{ pinned: boolean; until?: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "when_closure",
+                    "type": "{ pinned: boolean; until?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "unless_default",
+                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_dependents",
+                    "type": "{ a: string | null; pinned: boolean; b: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_ternary",
+                    "type": "{ pinned: boolean; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_discriminants",
+                    "type": "{ pinned: boolean; status: StatusType; a: string | null; b: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "throw_arm",
+                    "type": "{ priority: PriorityType | null; v: string | number }",
+                    "optional": false
+                },
+                {
+                    "name": "shared_keys",
+                    "type": "{ id: number; pinned: boolean; v: string | number; title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "cast_discriminant_kept",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "method_condition_kept",
+                    "type": "{ featured: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "unpublished_condition_kept",
+                    "type": "{ id: number; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "string_discriminant_kept",
+                    "type": "{ title: string; v: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_discriminant_kept",
+                    "type": "{ status: AsEnum<typeof Status>; v: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "optional_discriminant_kept",
+                    "type": "{ pinned?: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "undecidable_kept",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "same_arms_kept",
+                    "type": "{ pinned: boolean; v: number }",
+                    "optional": false
+                },
+                {
+                    "name": "untypable_arm_kept",
+                    "type": "{ pinned: boolean; v: null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\FeedPlacementResource": {
+            "name": "FeedPlacementResource",
+            "properties": [
+                {
+                    "name": "published_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "rating",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedPlacementResource": {
+            "name": "PinnedPlacementResource",
+            "properties": [
+                {
+                    "name": "rank",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "pinned_at",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedPostResource": {
+            "name": "PinnedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "placement",
+                    "type": "PinnedPlacementResource | FeedPlacementResource",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedWrapsResource": {
+            "name": "PinnedWrapsResource",
+            "properties": [
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "state",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "stage",
+                    "type": "EnumsStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "author",
+                    "type": "UserResource",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PostPriorityResource": {
+            "name": "PostPriorityResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "badge",
+                    "type": "string | UserResource | never[] | null",
+                    "optional": false
+                },
+                {
+                    "name": "escalated_at",
+                    "type": "string | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [

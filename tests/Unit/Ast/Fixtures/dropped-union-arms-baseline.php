@@ -63,4 +63,5 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 50, 'expression' => '$this->opaqueValue()', 'site' => 'binding-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 59, 'expression' => '$this->opaqueValue()', 'site' => 'walk-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 67, 'expression' => '$this->opaqueValue()', 'site' => 'merge-branch-join'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\Discriminated\\DiscriminantFormsResource', 'line' => 102, 'expression' => 'json_decode($this->title)', 'site' => 'ternary-narrowed'],
 ];
