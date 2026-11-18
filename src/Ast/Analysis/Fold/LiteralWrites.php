@@ -98,7 +98,8 @@ final class LiteralWrites
      */
     public function record(MethodAnalysis $source, int $position, bool $fromMerge = false): void
     {
-        if ($source->holdsUnnamedKeys || $source->holdsUnreadKeys) {
+        // A merge of a value no rule reads is read as no key, though filter() lifts whatever keys it sends.
+        if ($source->holdsUnnamedKeys || $source->holdsUnreadKeys || ($fromMerge && ! $source->readsCompletely)) {
             $this->writeAnyKey($fromMerge);
         }
 

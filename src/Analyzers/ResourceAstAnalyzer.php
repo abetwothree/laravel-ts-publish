@@ -1825,7 +1825,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $analysis,
             $this->scope,
             fn (Expr $expr): ?ConditionalArms => $this->dispatcher()->conditionalArms($expr, $this->scope, $this),
-            fn (string $key, Closure $read): array => $this->reading->arrayValue($this->scope->readingKey($key, $read)),
+            $this->reading->arrayValue(...),
         );
 
         return $analysis;

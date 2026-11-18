@@ -16,9 +16,16 @@ use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\Assign;
+use PhpParser\Node\Expr\AssignOp;
+use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
+use PhpParser\Node\Expr\PostDec;
+use PhpParser\Node\Expr\PostInc;
+use PhpParser\Node\Expr\PreDec;
+use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Identifier;
@@ -38,7 +45,7 @@ use PhpParser\NodeFinder;
  * @phpstan-import-type RowFingerprint from VariantGroup
  *
  * @phpstan-type Discriminant = array{name: string, read: ReadPath, values: DiscriminantValueList}
- * @phpstan-type SoleKey = array{string, Expr}
+ * @phpstan-type SoleKey = array{string, Expr, int}
  * @phpstan-type Picks = array{arms: list<ConditionalArm>, drops: bool}
  *
  * @internal
@@ -56,13 +63,13 @@ final class VariantReader
      *
      * @param  Discriminant  $discriminant
      * @param  Closure(Expr): ?ConditionalArms  $armsOf
-     * @param  Closure(string, Closure(): ValueExpressionResult): ValueExpressionResult  $keyed
+     * @param  Closure(ValueExpressionResult): ValueExpressionResult  $arrayValue
      */
     private function __construct(
         private readonly array $discriminant,
         private readonly AnalysisScope $scope,
         private readonly Closure $armsOf,
-        private readonly Closure $keyed,
+        private readonly Closure $arrayValue,
     ) {}
 
     /**
@@ -75,8 +82,8 @@ final class VariantReader
      * @param  bool  $liftsMerges  whether `filter()` lifts the literal's merge calls, as the fold was told
      * @param  MethodAnalysis  $analysis  the literal's fold
      * @param  Closure(Expr): ?ConditionalArms  $armsOf  the arms the handler that typed an expression hands over
-     * @param  Closure(string, Closure(): ValueExpressionResult): ValueExpressionResult  $keyed  a key's value, read as
-     *                                                                                           the literal reads it
+     * @param  Closure(ValueExpressionResult): ValueExpressionResult  $arrayValue  what the literal's reading sends for
+     *                                                                             a value one of its keys holds
      */
     public static function read(
         Array_ $array,
@@ -86,7 +93,7 @@ final class VariantReader
         MethodAnalysis $analysis,
         AnalysisScope $scope,
         Closure $armsOf,
-        Closure $keyed,
+        Closure $arrayValue,
     ): ?LiteralVariants {
         if (! self::maySplit($array, $keyNames) || self::holdsSignature($analysis)) {
             return null;
@@ -97,14 +104,14 @@ final class VariantReader
         $owned = [];
 
         foreach (self::discriminants($keys, $writes, $analysis, $scope) as $discriminant) {
-            $reader = new self($discriminant, $scope, $armsOf, $keyed);
+            $reader = new self($discriminant, $scope, $armsOf, $arrayValue);
             // The flat rows already read every arm, so no drop, warning or audit entry of these reads outlives them.
             $group = DroppedUnionArms::provisional(
                 static fn (): ?VariantGroup => $reader->group($keys, $owned, $analysis),
                 static fn (): bool => false,
             );
 
-            if ($group !== null) {
+            if ($group !== null && ! self::rewritten($array, $keys, $group->keys, $discriminant['read'])) {
                 $groups[] = $group;
                 $owned += array_fill_keys($group->keys, true);
             }
@@ -152,7 +159,7 @@ final class VariantReader
     }
 
     /**
-     * Each key one keyed item writes and nothing else may, beside that item's value, in item order.
+     * Each key one keyed item writes and nothing else may, beside that item's value and index, in item order.
      *
      * @param  array<int, string>  $keyNames
      * @return list<SoleKey>
@@ -163,7 +170,7 @@ final class VariantReader
 
         foreach ($keyNames as $index => $name) {
             if ($writes->soleWriter($name) === $index) {
-                $keys[] = [$name, $array->items[$index]->value];
+                $keys[] = [$name, $array->items[$index]->value, $index];
             }
         }
 
@@ -231,6 +238,44 @@ final class VariantReader
     }
 
     /**
+     * Whether an item from the group's first key to its last assigns, increments or decrements the discriminant's read,
+     * or a read it is a member of, so a guard after it may test another value than the discriminant sent.
+     *
+     * @param  list<SoleKey>  $keys
+     * @param  list<string>  $grouped
+     */
+    private static function rewritten(Array_ $array, array $keys, array $grouped, ReadPath $read): bool
+    {
+        $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $grouped, true)), 2);
+
+        if ($at === []) {
+            return false;
+        }
+
+        $items = array_slice($array->items, min($at), max($at) - min($at) + 1);
+
+        return new NodeFinder()->findFirst($items, static function (Node $node) use ($read): bool {
+            $target = match (true) {
+                $node instanceof Assign, $node instanceof AssignOp, $node instanceof AssignRef, $node instanceof PreInc,
+                $node instanceof PreDec, $node instanceof PostInc, $node instanceof PostDec => ReadPath::of($node->var),
+                default => null,
+            };
+
+            return $target !== null && self::reachesThrough($read, $target);
+        }) !== null;
+    }
+
+    /**
+     * Whether a read is another, or a member of it at any depth.
+     */
+    private static function reachesThrough(ReadPath $read, ReadPath $other): bool
+    {
+        $parent = $read->parent();
+
+        return $read->same($other) || ($parent !== null && self::reachesThrough($parent, $other));
+    }
+
+    /**
      * The values no picked arm throws for, by their index: PHP sends nothing for a value an arm throws for.
      *
      * @param  DiscriminantValueList  $values
@@ -255,7 +300,7 @@ final class VariantReader
     private static function differs(array $picked, array $sent): bool
     {
         $taken = array_map(
-            static fn (int $index): string => serialize(self::fingerprint($picked['arms'][$index]->result)),
+            static fn (int $index): string => serialize(self::armFingerprint($picked['arms'][$index]->result)),
             array_keys($sent),
         );
 
@@ -291,7 +336,7 @@ final class VariantReader
 
         foreach ($sent as $index => $value) {
             $taken = array_map(static fn (array $picked): ?array => $picked['arms'][$index]->result, $dependents);
-            $key = serialize(array_map(self::fingerprint(...), $taken));
+            $key = serialize(array_map(self::armFingerprint(...), $taken));
             $values[$key][] = $value;
             $arms[$key] ??= $taken;
         }
@@ -305,7 +350,7 @@ final class VariantReader
      * @param  ValueExpressionResult|null  $result
      * @return RowFingerprint|null
      */
-    private static function fingerprint(?array $result): ?array
+    private static function armFingerprint(?array $result): ?array
     {
         return $result === null ? null : ['type' => $result['type'], 'optional' => $result['optional']];
     }
@@ -321,7 +366,7 @@ final class VariantReader
         $picks = [];
 
         foreach ($keys as [$name, $value]) {
-            $picked = isset($owned[$name]) || ! $this->mayFollow($value) ? null : $this->picks($name, $value);
+            $picked = isset($owned[$name]) || ! $this->mayFollow($value) ? null : $this->picks($value);
 
             if ($picked !== null) {
                 $picks[$name] = $picked;
@@ -363,12 +408,12 @@ final class VariantReader
     }
 
     /**
-     * The arm a key's value takes for each value the discriminant sends, its result read as the key reads its value,
+     * The arm a key's value takes for each value the discriminant sends, its result as the literal's reading sends it,
      * and whether reading them left an arm out; null where a value leaves the first guard undecided.
      *
      * @return Picks|null
      */
-    private function picks(string $name, Expr $value): ?array
+    private function picks(Expr $value): ?array
     {
         $dropped = DroppedUnionArms::dropped();
         $arms = [];
@@ -383,7 +428,7 @@ final class VariantReader
             $result = $arm->result;
             $arms[] = $result === null
                 ? $arm
-                : new ConditionalArm($arm->guard, $arm->body, ($this->keyed)($name, static fn (): array => $result), $arm->throws);
+                : new ConditionalArm($arm->guard, $arm->body, ($this->arrayValue)($result), $arm->throws);
         }
 
         return ['arms' => $arms, 'drops' => DroppedUnionArms::dropped() !== $dropped];

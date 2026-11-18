@@ -103,7 +103,7 @@ function readFixtureLiteral(string $method, array $types, Closure $armsOf): ?Lit
         $analysis,
         new AnalysisScope(new ReflectionClass(VariantFormsResource::class), Post::class),
         $armsOf,
-        static fn (string $key, Closure $read): array => $read(),
+        static fn (array $result): array => $result,
     );
 }
 
@@ -163,7 +163,18 @@ it('reads one variant per arm for each other condition form', function (string $
     ]]],
     'nested_ternary' => ['nested_ternary', ['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'string | number | null']]]]],
     'shared_keys' => ['shared_keys', ['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'number']]]]],
+    'a read assigned before the group' => ['mutate_before', ['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]],
 ]);
+
+// The first group spans the assignment, so it declines and leaves `v` to the second, which PHP reads after it.
+it('leaves a declined group\'s keys to a later discriminant', function () {
+    expect(variantsOf('owned_after_decline'))->toBe(['b' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
+});
+
+// Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
+it('selects a value through eight levels of arms at most', function () {
+    expect(variantsOf('nine_levels'))->toBe(['pinned' => [['true', ['v' => 'string | number']], ['false', ['v' => 'null']]]]);
+});
 
 it('makes no group for a control, or for a literal no variant can stand for', function (string $cell) {
     expect(variantsOf($cell))->toBe([]);
@@ -179,6 +190,8 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'untypable_arm_kept',
     'dropped_arm_kept',
     'scalar_local_kept',
+    'merge_parent_kept',
+    'mutate_between_kept',
     'index_signature',
     'spread_writes',
     'two_returns',

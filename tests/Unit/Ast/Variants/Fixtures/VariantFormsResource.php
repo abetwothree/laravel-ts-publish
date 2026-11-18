@@ -457,6 +457,70 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A merge of keys no rule reads before the keys, which filter() lifts over them.
+     *
+     * @return array<string, mixed>
+     */
+    public function mergeParentKept(Request $request): array
+    {
+        return [
+            $this->merge(parent::toArray($request)),
+            'status' => $this->status,
+            'published_at' => $this->status === Status::Published ? $this->published_at : null,
+        ];
+    }
+
+    /**
+     * A read assigned between the key that sends it and the key that tests it.
+     *
+     * @return array<string, mixed>
+     */
+    public function mutateBetweenKept(): array
+    {
+        return ['pinned' => $this->is_pinned, 'x' => $this->is_pinned = ! $this->is_pinned, 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A read assigned before the key that sends it.
+     *
+     * @return array<string, mixed>
+     */
+    public function mutateBefore(): array
+    {
+        return ['x' => $this->is_pinned = ! $this->is_pinned, 'pinned' => $this->is_pinned, 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * Two keys sending one read, the first before an assignment of it, the second after.
+     *
+     * @return array<string, mixed>
+     */
+    public function ownedAfterDecline(): array
+    {
+        return [
+            'a' => $this->is_pinned,
+            'x' => $this->is_pinned = ! $this->is_pinned,
+            'b' => $this->is_pinned,
+            'v' => $this->is_pinned ? $this->title : null,
+        ];
+    }
+
+    /**
+     * Nine ternaries on one read, each in the true arm of the one around it.
+     *
+     * @return array<string, mixed>
+     */
+    public function nineLevels(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned
+                ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? ($this->is_pinned ? $this->title : $this->id)
+                    : null) : null) : null) : null) : null) : null) : null) : null,
+        ];
+    }
+
+    /**
      * One keyed item, whose value picks between arms.
      *
      * @return array<string, mixed>

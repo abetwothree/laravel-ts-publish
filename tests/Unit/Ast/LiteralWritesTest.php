@@ -336,6 +336,7 @@ it('names no item for a key another item, a spread whose keys are unread or a me
     'a second keyed item' => [static fn (LiteralWrites $writes) => $writes->recordKey('k', ['type' => 'number', 'optional' => false], 1)],
     'a spread whose keys are unread' => [static fn (LiteralWrites $writes) => $writes->record(ResourceAnalysis::unreadAnalysis(), 1)],
     'a merge writing the key' => [static fn (LiteralWrites $writes) => $writes->record(sourceOf('k', ['type' => 'number']), 1, fromMerge: true)],
+    'a merge read only partly' => [static fn (LiteralWrites $writes) => $writes->record(partlyRead(), 1, fromMerge: true)],
     'a spread writing the key' => [static fn (LiteralWrites $writes) => $writes->recordKeys([['k', ['type' => 'string', 'optional' => false]]], ['type' => '{ k: string }', 'optional' => false], 1)],
     'a later key no name names' => [static fn (LiteralWrites $writes) => $writes->holdUnnamedKeys()],
     'a later printed arm' => [static fn (LiteralWrites $writes) => $writes->recordArm(['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null])],
@@ -348,10 +349,26 @@ it('names the item for a key written after an item that may write any key, unles
     $spread->holdUnnamedKeys();
     $spread->recordArm(['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null]);
     $spread->recordKey('k', ['type' => 'number', 'optional' => false], 3);
+    $spread->record(partlyRead(), 4);
     $merge = new LiteralWrites;
     $merge->record(ResourceAnalysis::unreadAnalysis(), 0, fromMerge: true);
     $merge->recordKey('k', ['type' => 'number', 'optional' => false], 1);
+    $partMerge = new LiteralWrites;
+    $partMerge->record(partlyRead(), 0, fromMerge: true);
+    $partMerge->recordKey('k', ['type' => 'number', 'optional' => false], 1);
 
     expect($spread->soleWriter('k'))->toBe(3)
-        ->and($merge->soleWriter('k'))->toBeNull();
+        ->and($merge->soleWriter('k'))->toBeNull()
+        ->and($partMerge->soleWriter('k'))->toBeNull();
 });
+
+/**
+ * An analysis of no key whose read was not followed through, as a merge of a value no rule reads leaves it.
+ */
+function partlyRead(): MethodAnalysis
+{
+    $analysis = new MethodAnalysis;
+    $analysis->readsCompletely = false;
+
+    return $analysis;
+}
