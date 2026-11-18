@@ -13,7 +13,6 @@ use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
-use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
@@ -187,8 +186,6 @@ class JsonWriter
                 continue;
             }
 
-            [$properties, $variants] = VariantRows::split($transformer->properties);
-
             $data[$transformer->fqcn()] = [
                 'name' => $transformer->resourceName,
                 'properties' => array_map(
@@ -197,10 +194,10 @@ class JsonWriter
                         'type' => $prop['type'],
                         'optional' => $prop['optional'],
                     ],
-                    $properties,
-                    array_keys($properties),
+                    $transformer->properties,
+                    array_keys($transformer->properties),
                 ),
-                ...($variants !== [] ? ['variants' => $variants] : []),
+                ...($transformer->variants !== [] ? ['variants' => $transformer->variants] : []),
             ];
         }
 

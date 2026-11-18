@@ -79,8 +79,11 @@ class ResourceTransformer extends CoreTransformer
     /** @var ReflectionClass<JsonResource> */
     public protected(set) ReflectionClass $reflectionResource;
 
-    /** @var PropertiesList */
+    /** @var PropertiesList the rows every arm shares, once transform() has moved the variant rows out */
     public protected(set) array $properties = [];
+
+    /** @var list<string> each group's union of one object per value of the key the group follows */
+    public protected(set) array $variants = [];
 
     /** @var TypesImportMap */
     public protected(set) array $typeImports = [];
@@ -204,7 +207,8 @@ class ResourceTransformer extends CoreTransformer
             ->keepWrittenInlineWraps()
             ->rewriteEnumResourceTypes()
             ->pruneUnspelledImports()
-            ->buildResolvedImports();
+            ->buildResolvedImports()
+            ->splitVariants();
 
         return $this;
     }
@@ -212,21 +216,19 @@ class ResourceTransformer extends CoreTransformer
     #[Override]
     public function data(): TsResourceDto
     {
-        [$properties, $variants] = VariantRows::split($this->properties);
-
         return new TsResourceDto(
             resourceName: $this->resourceName,
             description: $this->description,
             fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
-            properties: $properties,
+            properties: $this->properties,
             typeImports: $this->typeImports,
             valueImports: $this->valueImports,
             modelClass: $this->modelClass,
             tsExtends: $this->tsExtends,
             typeAlias: $this->typeAlias,
-            variants: $variants,
+            variants: $this->variants,
         );
     }
 
@@ -1017,6 +1019,17 @@ class ResourceTransformer extends CoreTransformer
 
         $this->typeImports = $this->deduplicateAndSortImports($typeImports);
         $this->valueImports = $this->deduplicateAndSortImports($valueImports);
+
+        return $this;
+    }
+
+    /**
+     * Move each variant row out of the properties into the variants, so no reader of the published rows, a template
+     * published before variants existed among them, meets a reserved row's name.
+     */
+    protected function splitVariants(): self
+    {
+        [$this->properties, $this->variants] = VariantRows::split($this->properties);
 
         return $this;
     }

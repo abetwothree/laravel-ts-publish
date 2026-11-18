@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
+use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostDeclaredResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostFlatResource;
@@ -45,6 +46,18 @@ it('publishes a key that follows a boolean the resource sends as one arm per val
 
     expect(variantsProps($data))->toBe(['id' => 'number'])
         ->and($data->variants)->toBe([
+            '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
+        ]);
+});
+
+// A template published before variants existed reads the transformer's rows, where a reserved row is no valid key.
+it('keeps a transformed resource\'s variants beside its properties, never as a reserved row', function () {
+    $transformer = new ResourceTransformer(PinnedPostResource::class);
+
+    expect(array_filter(array_keys($transformer->properties), static fn (int|string $name): bool => VariantRows::isKey((string) $name)))
+        ->toBe([])
+        ->and(array_keys($transformer->properties))->toBe(['id'])
+        ->and($transformer->variants)->toBe([
             '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
         ]);
 });

@@ -118,32 +118,31 @@ $references = $transformer->globalTypeReferenceMap();
         export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $references) !!};
 @else
 @php
-[$properties, $variants] = VariantRows::split($transformer->properties);
 $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
 @endphp
-@if(count($variants) === 1 && count($properties) === 0 && count($transformer->tsExtends) === 0)
+@if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0)
         export type {{ $transformer->resourceName }} =
-@foreach (VariantRows::arms($variants[0]) as $arm)
+@foreach (VariantRows::arms($transformer->variants[0]) as $arm)
             | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
-@if(count($variants) === 0)
+@if(count($transformer->variants) === 0)
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @else
-        export type {{ $transformer->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $transformer->tsExtends)) !!}{!! count($properties) > 0 ? '{' : '(' !!}
+        export type {{ $transformer->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $transformer->tsExtends)) !!}{!! count($transformer->properties) > 0 ? '{' : '(' !!}
 @endif
-@foreach ($properties as $name => $property)
+@foreach ($transformer->properties as $name => $property)
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
             {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $qualified($property['type']) !!};
 @endforeach
-@if(count($variants) === 0)
+@if(count($transformer->variants) === 0)
         }
-@elseif(count($properties) > 0)
+@elseif(count($transformer->properties) > 0)
         } & (
 @endif
-@foreach ($variants as $variant)
+@foreach ($transformer->variants as $variant)
 @foreach (VariantRows::arms($variant) as $arm)
             | {!! $qualified($arm) !!}
 @endforeach

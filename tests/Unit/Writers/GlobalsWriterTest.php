@@ -524,6 +524,8 @@ test('the globals template qualifies each name through its own transformer\'s ma
 
         public array $properties = ['widget' => ['type' => 'PropertyName', 'description' => '', 'optional' => false]];
 
+        public array $variants = [];
+
         public function globalTypeReferenceMap(): array
         {
             return ['PropertyName' => 'own.elsewhere.PropertyName'];
