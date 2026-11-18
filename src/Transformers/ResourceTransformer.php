@@ -386,13 +386,17 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Every name a clause spells, #104's reading: settleClauseImports() leaves to the file each name it binds itself.
+     * Every name a clause spells, #104's reading, beside the top-level arms base read, such as a global's name a clause
+     * is whole: settleClauseImports() leaves to the file each name it binds itself.
      *
      * @return list<string>
      */
     protected function clauseTypeNames(string $clause): array
     {
-        return TsTypeString::referencedTypeNames($clause);
+        return array_values(array_unique([
+            ...TsTypeString::extractImportableTypes($clause),
+            ...TsTypeString::referencedTypeNames($clause),
+        ]));
     }
 
     /**

@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesid
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideIntersectNestedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideMethodCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeBesideNestedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholeLibNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsWholePackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnEnumNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectBuiltOnTwoEnumsNameResource;
@@ -312,6 +313,9 @@ it('imports no global type TypeScript declares that a clause spells', function (
         "import type { Meta } from '@/types/meta';",
     ], '} & ({ meta: Meta; at: Date });'],
     'inside a generic' => [ExtendsLibGlobalResource::class, [], 'export interface ExtendsLibGlobalResource extends Record<string, Date>'],
+    'the whole clause, which imports it as before' => [ExtendsWholeLibNameResource::class, [
+        "import type { Date } from '@/types/date';",
+    ], 'export interface ExtendsWholeLibNameResource extends Date'],
 ]);
 
 // Two enums the file reads print one type name, both aliased, so the name binds neither and the clause imports it.
