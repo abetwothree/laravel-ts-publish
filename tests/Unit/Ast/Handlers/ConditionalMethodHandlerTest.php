@@ -1197,6 +1197,7 @@ it('drops an empty-array arm only where the other arm holds an array', function 
 })->with([
     'an empty value beside an array default' => ['never[]', 'string[]', 'string[]'],
     'an empty default beside an array value' => ['string[]', 'never[]', 'string[]'],
+    'an empty value beside the empty tuple' => ['never[]', '[]', '[]'],
     'an empty value beside a default that is no array' => ['never[]', 'string', 'never[] | string'],
 ]);
 

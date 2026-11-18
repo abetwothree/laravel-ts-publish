@@ -152,6 +152,7 @@ class InertiaSharedDataAnalyzer
             array_map(fn (array $override): string => $override['type'], $mergedOverrides),
             subject: $middlewareClass,
         );
+        $analysis->absorbRedundantArms();
 
         $castsInForce = $this->castsInForce($analysis, $mergedOverrides, $castPaths, $docblockByKey);
         resolve(CastChannels::class)->fit($analysis, $castsInForce);

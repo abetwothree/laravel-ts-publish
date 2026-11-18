@@ -500,9 +500,11 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   `value($default)` with no arguments, except `transform()`, whose helper calls `$default($value)`. A closure requiring
   more parameters would throw `ArgumentCountError`, so `InspectsAstNodes::closureRequiresArguments()` keeps it out of
   the union, and the key keeps the value arm's type and optionality.
-- **A `never[]` arm drops beside an array arm**: a literal `[]` is `never[]`, since `json_encode([])` is `[]`, and it
-  adds nothing to a real array type. So `whenLoaded('children', $this->children, [])` is `Category[]`. The drop is
-  sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would break it.
+- **A `never[]` arm drops beside a list or the empty tuple `[]`**: a literal `[]` is `never[]`, since `json_encode([])`
+  is `[]`, and a list already admits it. So `whenLoaded('children', $this->children, [])` is `Category[]`. Beside a
+  `Record`, an object or a non-empty tuple it stays, as [AST engine § Redundant arms](ast-engine.md#redundant-arms)
+  explains. The drop is sound only because `never[]` means provably empty; typing an empty literal as `unknown[]` would
+  break it.
 - **`whenNotNull()` and `whenNull()` test their value for `null`**: both call `when()` on `is_null($value)`.
   `whenNotNull()` strips the top-level `| null` from its value with `TsTypeString::withoutNullArm()`, which leaves a
   nested one. A closure or first-class callable is never `null`, so `whenNotNull()` always calls it, with nothing: the
@@ -1002,10 +1004,13 @@ the event, metadata and shared-data code that calls it resolves it there.
 ### The reverse direction: a result carried back into a `TypeScriptTypeInfo`
 
 [`ResultTypeInfoBridge::toTypeInfo()`](../../src/Ast/Values/ResultTypeInfoBridge.php) is the inverse, for a consumer such as
-`AccessorBodyAnalyzer` that needs an engine result in the model layer's `TypeScriptTypeInfo`. It reads only the five
-channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`, `embeddedModelFqcns` and
-`customImports`. It unions `customImports` rather than replacing them. Reading any other channel, such as a resource
-channel, changes behavior and needs its own audit.
+`AccessorBodyAnalyzer` that needs an engine result in the model layer's `TypeScriptTypeInfo`. It imports only through
+the five channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`, `embeddedModelFqcns` and
+`customImports`. It unions `customImports` rather than replacing them. It also copies two facts only the model reads,
+neither of which imports anything: the three wrap channels, `enumFqcn`, `multiEnumResourceFqcns` and
+`embeddedEnumResourceFqcns`, go into `wrappedEnumFqcns` for its absorbing, and `sendsEnumScalar` keeps the alias in its
+`…Resource` interfaces ([AST engine § Redundant arms](ast-engine.md#redundant-arms)). Reading any other channel, such as
+a resource channel, changes behavior and needs its own audit.
 
 The bridge merges the classes the result names, replaces the merged type with the result's, and drops the merge's
 `classTokenFqcns`, which queued the old type. Where the result spells one name for two classes, it sets the result's own

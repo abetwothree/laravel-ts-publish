@@ -33,7 +33,15 @@ final class PrintedKey
             return $key;
         }
 
-        return preg_match(self::QUOTED, $key, $quoted) === 1 ? self::unescaped($quoted[2]) : null;
+        return self::decodeQuoted($key);
+    }
+
+    /**
+     * The text one whole quoted string spells, unescaped; null for a bare name or any other text.
+     */
+    public static function decodeQuoted(string $printed): ?string
+    {
+        return preg_match(self::QUOTED, $printed, $quoted) === 1 ? self::unescaped($quoted[2]) : null;
     }
 
     /**

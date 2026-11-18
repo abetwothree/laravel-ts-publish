@@ -92,6 +92,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ForwardedMethodResource
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardOrderResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\GuardWritePostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HeldReceiversCommentResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HelperCaseProbe;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\HiddenFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ListTypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MagicPost;
@@ -129,6 +130,7 @@ use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\ClosureResourceRootResource;
 use Workbench\App\Http\Resources\CommentRelationFiltersResource;
 use Workbench\App\Http\Resources\CommentResource;
@@ -855,6 +857,67 @@ describe('ReceiverPropertyFetchHandler', function () {
             ->and($handler->resolve(receiverHandlerExpr('$post->data'), $scope, chainHandlersThrowingEngine()))->toBeNull()
             ->and($handler->resolve(receiverHandlerExpr('$post->kind'), $scope, chainHandlersThrowingEngine()))->toBeNull()
             ->and($handler->resolve(receiverHandlerExpr('(new '.Fluent::class.')->attributes'), $scope, chainHandlersThrowingEngine()))->toBeNull();
+    });
+
+    // GH-127: only a helper whose declaration names no class is read by the cases its body returns.
+    test('reads a member off the enum cases a helper returns where its declaration names no class', function (string $key, string $type) {
+        expect(array_column(resolve(AstEngine::class)->analyze(HelperCaseProbe::class)->properties, 'type', 'name')[$key] ?? null)
+            ->toBe($type);
+    })->with([
+        'a mixed helper\'s ->value' => ['mixed_value', '0'],
+        'a mixed helper\'s ->name' => ['mixed_name', "'Draft'"],
+        'an untyped helper\'s ->value' => ['untyped_value', '0'],
+        'a helper returning a ternary of cases' => ['either_value', '0 | 1'],
+        'a ?-> off a helper returning a case or null' => ['nullsafe_value', '0 | null'],
+        'static::' => ['static_value', '0'],
+        'self::' => ['self_value', '0'],
+        'parent::, past the override' => ['parent_value', '1'],
+        '$this::, the runtime class\'s' => ['this_static_value', '0'],
+        'a trait helper, by its own file\'s import' => ['trait_value', '2'],
+        'a trait helper\'s ->name' => ['trait_name', "'High'"],
+        'a trait helper\'s self::, the using class' => ['trait_self_constant', '1'],
+        'a parent\'s private helper beside a public namesake' => ['private_parent', '{ private_from_parent: 0 }'],
+        'a match with a throw default' => ['matched_value', '0 | 1'],
+        'a match with a throw default\'s ->name' => ['matched_name', "'Draft' | 'Published'"],
+        'a class constant holding a case' => ['constant_value', '1'],
+        'an untyped helper that can run off its end stays unknown' => ['falls_off_value', 'unknown'],
+        'a helper returning a property stays unknown' => ['property_value', 'unknown'],
+        'a helper declaring the enum keeps its alias' => ['typed_value', 'StatusType'],
+        'a -> off a helper returning a case or null leaves the null out' => ['null_arm_value', '0'],
+        'a helper whose @return tag names the enum keeps its alias' => ['doc_typed_value', 'StatusType'],
+    ]);
+
+    // PHP's own answer for the rows above, in each state the probe's flags reach.
+    test('the helper probe sends what each published member admits', function () {
+        $flipped = new HelperCaseProbe;
+        $flipped->c = true;
+        $flipped->n = 2;
+
+        expect(new HelperCaseProbe()->toArray())->toBe([
+            'mixed_value' => Status::Draft->value,
+            'mixed_name' => Status::Draft->name,
+            'untyped_value' => Status::Draft->value,
+            'either_value' => Status::Published->value,
+            'nullsafe_value' => null,
+            'static_value' => Status::Draft->value,
+            'self_value' => Status::Draft->value,
+            'parent_value' => Status::Published->value,
+            'this_static_value' => Status::Draft->value,
+            'trait_value' => Priority::High->value,
+            'trait_name' => Priority::High->name,
+            'trait_self_constant' => Status::Published->value,
+            'private_parent' => ['private_from_parent' => Status::Draft->value],
+            'matched_value' => Status::Draft->value,
+            'matched_name' => Status::Draft->name,
+            'constant_value' => Status::Published->value,
+            'falls_off_value' => Status::Draft->value,
+            'property_value' => Status::Draft->value,
+            'typed_value' => Status::Draft->value,
+            'null_arm_value' => Status::Draft->value,
+            'doc_typed_value' => Status::Draft->value,
+        ])
+            ->and([$flipped->either()->value, $flipped->maybeDraft()?->value, $flipped->matched()->name, $flipped->fallsOff()])
+            ->toBe([Status::Draft->value, Status::Draft->value, Status::Published->name, null]);
     });
 });
 

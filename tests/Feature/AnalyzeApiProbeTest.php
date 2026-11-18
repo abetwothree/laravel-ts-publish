@@ -20,9 +20,11 @@ use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
 use Workbench\App\ValueObjects\PanelPayload;
+use Workbench\App\ValueObjects\RedundantArmsPayload;
 use Workbench\App\ValueObjects\ReshapedListsPayload;
 use Workbench\App\ValueObjects\SameNamedKindsPayload;
 use Workbench\App\ValueObjects\TraitPanelPayload;
+use Workbench\App\ValueObjects\WidgetProps;
 
 /**
  * Renders `AstEngine::analyze()`'s three fields into real `.ts` modules, mechanically — no
@@ -80,6 +82,10 @@ function analysisProbeCases(): array
         'PanelPayload' => [PanelPayload::class, 'toArray', null],
         // A trait-supplied toArray() whose `self` and `parent` name the class that uses the trait and its parent.
         'TraitPanelPayload' => [TraitPanelPayload::class, 'toArray', null],
+        // Case values beside the enum alias that admits them, and an empty list beside a list, at every join (GH-166).
+        'RedundantArmsPayload' => [RedundantArmsPayload::class, 'toArray', null],
+        // GH-166's own report: a branch rewrites an enum key with case values and empties a list property.
+        'WidgetProps' => [WidgetProps::class, 'props', null],
     ];
 }
 
@@ -214,3 +220,43 @@ it('returns properties and imports that agree with each other', function (string
         expect([...$bound, ...$globals])->toContain($token);
     }
 })->with(array_keys(analysisProbeCases()));
+
+// A case value an enum's alias beside it admits, and an empty list beside a list, go; each `*_kept` arm stays (GH-166).
+it('publishes no arm another arm of its union admits', function (string $name, array $expected) {
+    [$class, $method, $modelClass] = analysisProbeCases()[$name];
+    $result = resolve(AstEngine::class)->analyze($class, $method, $modelClass, ANALYSIS_PROBE_PATH);
+
+    expect(array_column($result->properties, 'type', 'name'))->toBe($expected);
+})->with([
+    'the matrix' => ['RedundantArmsPayload', [
+        'case_beside_alias' => 'MediaTypeType',
+        'case_beside_nullable_alias' => 'MediaTypeType | null',
+        'coalesced_case' => 'MediaTypeType',
+        'matched_cases' => 'MediaTypeType',
+        'backed_name' => 'GradeKind',
+        'pure_name' => 'VisibilityType',
+        'int_case' => 'PriorityType',
+        'nested' => '{ inner: MediaTypeType }',
+        'listed' => 'MediaTypeType[]',
+        'helper_case_beside_alias' => 'StatusType',
+        'helper_case_value' => '0',
+        'helper_case_name' => "'Draft'",
+        'values_of_keyed' => 'string[]',
+        'name_beside_value_alias_kept' => "'Image' | MediaTypeType",
+        'other_enum_case_kept' => "'spring' | MediaTypeType",
+        'cases_without_alias_kept' => "'image' | 'video'",
+        'wrap_beside_case_kept' => "AsEnum<typeof MediaType> | 'image'",
+        'wrap_and_read_kept' => "{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }",
+        'emptied_list' => 'PriorityType[]',
+        'filled_list' => 'PriorityType[]',
+        'nullable_list' => 'PriorityType[] | null',
+        'record_beside_empty_kept' => 'never[] | Record<string, PriorityType>',
+        'object_beside_empty_kept' => 'never[] | { a: number }',
+        'folded_case' => 'MediaTypeType',
+    ]],
+    'GH-166\'s own report' => ['WidgetProps', [
+        'kind' => 'MediaTypeType | null',
+        'method' => 'string',
+        'modes' => 'PriorityType[]',
+    ]],
+]);

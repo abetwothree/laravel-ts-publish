@@ -193,17 +193,6 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...$value, 'optional' => $value['optional'] || $default['optional']];
         }
 
-        $valueMembers = TsTypeString::splitTopLevelUnion($value['type']);
-        $defaultMembers = TsTypeString::splitTopLevelUnion($default['type']);
-
-        // `[]` is assignable to every array type, so an empty-array arm beside a real one would only
-        // widen the property into a shape — `Category[] | Record<…>` — that no caller can consume. It is taken
-        // out of each arm, since unionResults() reads the members arm by arm where two classes share a name.
-        if (array_any([...$valueMembers, ...$defaultMembers], fn (string $m): bool => $m !== 'never[]' && str_ends_with($m, '[]'))) {
-            $value['type'] = implode(' | ', array_diff($valueMembers, ['never[]']));
-            $default['type'] = implode(' | ', array_diff($defaultMembers, ['never[]']));
-        }
-
         // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
         // which an inline array's member and Inertia shared data do not honour.
         return ValueResult::unionResults([$value, $default], countMembers: true);

@@ -22,6 +22,7 @@ export { default as InertiaNamedCollectionsController } from './inertia-named-co
 export { default as InertiaPaginationsController } from './inertia-paginations-controller';
 export { default as InertiaPaginatorKindsController } from './inertia-paginator-kinds-controller';
 export { default as InertiaPreserveKeysController } from './inertia-preserve-keys-controller';
+export { default as InertiaRedundantArmsController } from './inertia-redundant-arms-controller';
 export { default as InertiaResourceSharedTemplate } from './inertia-resource-shared-template';
 export { default as InertiaSameNamedEnumsController } from './inertia-same-named-enums-controller';
 export { default as InertiaShirtSizeController } from './inertia-shirt-size-controller';

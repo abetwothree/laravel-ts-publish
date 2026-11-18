@@ -6,7 +6,8 @@ type starts emitting `unknown`, and [`unimportable-token-gate.sh`](../../.github
 compiles the generated trees and fails when a token is emitted without its import or two imports collide. A green test
 suite does not prove the types are right, since a helper's unit test can pass while the pipeline emits a wrong type, so
 the gates read the output itself. They do not overlap, because a leaked token is a new property with a plausible type,
-which the regression gate cannot see. [`gap-gate.sh`](#gap-gatesh) proves the gap mode changes no published byte, and
+which the regression gate cannot see. [`redundant-arm-gate.py`](#redundant-arm-gatepy) fails when a union carries an
+arm a sibling admits, [`gap-gate.sh`](#gap-gatesh) proves the gap mode changes no published byte, and
 [Performance gate](performance-gate.md) covers speed.
 
 ## Running the gates
@@ -14,16 +15,17 @@ which the regression gate cannot see. [`gap-gate.sh`](#gap-gatesh) proves the ga
 The `type-inference-gates` job in [`run-tests.yml`](../../.github/workflows/run-tests.yml) regenerates the trees under
 `workbench/resources/js/types/data` and fails when `git diff` shows a committed file there changed. That check
 ignores untracked files, so a newly generated file that was never committed passes it. The job then runs both gates,
-plus the regression gate's `--parsetest` and the token gate's `--selftest`. CI never runs the regression gate's
-`--selftest` range, so run it yourself after changing that script.
+plus the regression gate's `--parsetest` and the token gate's `--selftest`, and the redundant-arm gate in all three
+modes. CI never runs the regression gate's `--selftest` range, so run it yourself after changing that script.
 
 Locally, the token gate runs `npx tsc`, so install the npm dependencies first with `npm ci`, as CI does. Then
-regenerate the trees and run both gates:
+regenerate the trees and run the gates:
 
 ```bash
 composer test
 .github/scripts/unimportable-token-gate.sh 0 0 0
 python3 .github/scripts/unknown-regression-gate.py "$(git merge-base origin/main HEAD)" HEAD   # after committing the trees
+python3 .github/scripts/redundant-arm-gate.py   # after committing the trees
 ```
 
 The token gate compiles the files on disk, so it checks the trees `composer test` wrote. The regression gate compares
@@ -289,6 +291,66 @@ A token reached the output without its import, or two names collided, and the ge
 Never add the import by hand. Make the type resolution that produced the token carry its FQCN through to the import
 machinery, or degrade to `unknown`. The usual cause is a `return` that fires before a guard, and the durable fix is one
 check over all fields that accepts or rejects them together, rather than two reordered branches.
+
+## `redundant-arm-gate.py`
+
+[`redundant-arm-gate.py`](../../.github/scripts/redundant-arm-gate.py) fails when a published union carries an arm a
+sibling arm already admits, an arm the package leaves out. It reads every `.ts` file in `HEAD`'s committed trees with
+the regression gate's property parser, walks every union at every depth (top level, object members, list elements,
+generic arguments, tuple elements, parenthesized groups and arrow returns), and reports three findings:
+
+- **`never[]` beside a list arm**: a single list, `X[]`, `Array<X>` or `ReadonlyArray<X>`, or the empty tuple `[]`.
+  A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection, an intersection and a conditional type
+  do not admit `never[]`, so it stays beside them.
+- **A literal beside its enum alias**: a string or number literal the alias's `export type X = …` lists. `'image'`
+  and `"image"` match, and `1` and `'1'` do not. A property that also wraps that enum in `AsEnum<typeof X>` keeps the
+  literal, as the package does, so `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }` passes. A property is
+  an interface's key, or a member of an inline type alias such as a page's props.
+- **Two arms spelled alike**.
+
+A name, an alias or an enum's const, resolves through the file's relative `import` to the one enum file in that
+directory that exports it. An enum file is one that calls `defineEnum(`. In `laravel-ts-global.ts`, a qualified name
+such as `app.enums.StatusType` resolves through the namespace that mirrors the enum directory.
+
+```bash
+python3 .github/scripts/redundant-arm-gate.py               # gate HEAD's committed trees
+python3 .github/scripts/redundant-arm-gate.py --parsetest   # one synthetic case per finding and per control
+python3 .github/scripts/redundant-arm-gate.py --selftest    # passes when the gate fails on the probe commit
+```
+
+It reads committed trees, so commit the regenerated trees before you run it. A failure lists the first 40 findings
+with the file, the interface or namespace path, the property, the arm and its union. It also fails when it reads no
+enum file, since it would then check no literal. CI runs all three modes.
+
+`--selftest` runs the gate over `ec7876ad2`, `develop`'s probe commit from before the fix, and inverts the exit code.
+The gate must fail there, report 13 named findings that cover each kind, top-level and nested-member keys, and both
+alias spellings, and report nothing on the probe's `_kept` keys; `--selftest` then prints `PASS - selftest` and exits 0.
+A gate `PASS` on that commit means the script is broken. `--parsetest` covers the other depths, including conditional
+types. Run both self-tests after changing it.
+
+### The baseline
+
+`BASELINE` excuses the findings the package publishes on purpose. Each entry names a file path suffix, a scope, a key
+and a kind, beside its reason, and excuses only that kind on that key, in a file whose path ends with the suffix. A
+scope may leave out its outer namespaces, such as `workbench.` in the testing tree.
+
+- `laravel-ts-global.ts` spells an enum resource by the enum's value type (#109), so
+  `EnumCollectionResource.wrapped_history_or_array` and `TeamStatusAuditResource.audit.status` print one arm twice in
+  each tree. Their entries excuse only that duplicate, so a `never[]` or a literal on either key still fails. Remove
+  them once #109 is fixed.
+- A module file takes an entry for another arm the package keeps by rule, such as a literal it keeps because another
+  enum of the same name is on the key, with a suffix such as `analysis-probe/same-named-kinds-payload.ts`.
+
+### What the redundant-arm gate does not cover
+
+- **An alias it cannot resolve**: a name no relative import or namespace reaches, one two enum files in a directory
+  export, one imported from a bare specifier or from a file that does not call `defineEnum(`, and an alias of an
+  alias (`Status = StatusType`) admit nothing, so a literal beside one passes.
+- **A property spread over several lines**: the parser reads one line per property, as the regression gate does.
+- **A wrap in the globals file**: through #109, `laravel-ts-global.ts` prints `AsEnum<typeof MediaType>` as
+  `…MediaTypeType`, so the gate cannot see that a key wraps the enum, and it fails a literal the key keeps beside the
+  alias. No fixture publishes such a key to the globals file today. One that does needs a `literal` entry in
+  `BASELINE` citing #109, not a wider rule.
 
 ## `gap-gate.sh`
 

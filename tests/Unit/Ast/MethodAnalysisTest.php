@@ -5,7 +5,13 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
+use Workbench\App\Enums\MediaType;
+use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 it('is the base class ResourceAnalysis now extends, as an empty subclass', function () {
     expect(new ResourceAnalysis)->toBeInstanceOf(MethodAnalysis::class)
@@ -759,4 +765,181 @@ it('refuses to merge a key the analysis already holds, which a literal\'s fold w
 
     expect(fn () => $target->merge($source))->toThrow(LogicException::class)
         ->and(array_column($signatures->properties, 'name'))->toBe(['[key: string]', '[key: string]']);
+});
+
+it('leaves out each arm a sibling admits in a key no cast types, by the enums on the key\'s own channels', function (
+    string $type,
+    array $channels,
+    string $absorbed,
+) {
+    $analysis = new MethodAnalysis(...[
+        'properties' => [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']],
+        ...$channels,
+    ]);
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0]['type'])->toBe($absorbed);
+})->with([
+    'a case literal beside its enum\'s alias' => [
+        "'image' | MediaTypeType | null", ['directEnumFqcns' => ['k' => MediaType::class]], 'MediaTypeType | null',
+    ],
+    'a case literal of an enum the key wraps in an EnumResource' => [
+        "'image' | MediaTypeType | null",
+        ['directEnumFqcns' => ['k' => MediaType::class], 'enumResources' => ['k' => MediaType::class]],
+        "'image' | MediaTypeType | null",
+    ],
+    'a case literal beside an alias no enum on the key admits it under' => [
+        "'image' | MediaTypeType | null", ['directEnumFqcns' => ['other' => MediaType::class]], "'image' | MediaTypeType | null",
+    ],
+    'a case literal in an inline object beside its enum\'s alias' => [
+        "{ v: 'image' | MediaTypeType }", ['inlineEnumFqcns' => ['k' => [MediaType::class]]], '{ v: MediaTypeType }',
+    ],
+    'a case literal in an inline object of an enum it also wraps' => [
+        "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
+        ['inlineEnumFqcns' => ['k' => [MediaType::class, MediaType::class]], 'inlineEnumResourceFqcns' => ['k' => [MediaType::class]]],
+        "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
+    ],
+    'an empty list beside a list, with no channel' => ['never[] | PriorityType[]', [], 'PriorityType[]'],
+    'a case literal of one of two same-named enums, the other wrapped' => [
+        "{ a: StatusKind; b: 'Draft' | StatusKind }",
+        ['inlineEnumFqcns' => ['k' => [Status::class, CrmStatus::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]]],
+        "{ a: StatusKind; b: 'Draft' | StatusKind }",
+    ],
+    'a case literal beside an alias a model on the key publishes under' => [
+        "'image' | MediaTypeType", ['directEnumFqcns' => ['k' => MediaType::class], 'modelFqcns' => ['k' => 'Some\\Models\\MediaTypeType']],
+        "'image' | MediaTypeType",
+    ],
+    'a case literal beside an alias a resource on the key publishes under' => [
+        "'image' | MediaTypeType",
+        ['directEnumFqcns' => ['k' => MediaType::class], 'nestedResources' => ['k' => 'Some\\Http\\Resources\\MediaTypeType']],
+        "'image' | MediaTypeType",
+    ],
+]);
+
+it('keeps one of two arms absorbing made alike, unless a name on the key spells two classes or a declaration slots it', function (
+    string $type,
+    array $channels,
+    string $absorbed,
+) {
+    $analysis = new MethodAnalysis(...[
+        'properties' => [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']],
+        ...array_diff_key($channels, ['declaredTokenFqcns' => true]),
+    ]);
+    $analysis->declaredTokenFqcns = $channels['declaredTokenFqcns'] ?? [];
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0]['type'])->toBe($absorbed);
+})->with([
+    'objects, one class per name' => [
+        '{ s: 0 | StatusType } | { s: StatusType }',
+        ['inlineEnumFqcns' => ['k' => [Status::class, Status::class]]],
+        '{ s: StatusType }',
+    ],
+    'lists, one class per name' => [
+        '(0 | StatusType)[] | StatusType[]', ['directEnumFqcns' => ['k' => Status::class]], 'StatusType[]',
+    ],
+    'objects of a model and an enum, one class per name' => [
+        '{ u: User; s: 0 | StatusType } | { u: User; s: StatusType }',
+        ['inlineEnumFqcns' => ['k' => [Status::class, Status::class]], 'inlineModelFqcns' => ['k' => [User::class, User::class]]],
+        '{ u: User; s: StatusType }',
+    ],
+    'two same-named enums on the inline enum queue' => [
+        '{ s: never[] | StatusType[] } | { s: StatusType[] }',
+        ['inlineEnumFqcns' => ['k' => [Status::class, CrmStatus::class]]],
+        '{ s: StatusType[] } | { s: StatusType[] }',
+    ],
+    'an enum read and a same-named enum wrapped' => [
+        '{ s: never[] | StatusType[] } | { s: StatusType[] }',
+        ['inlineEnumFqcns' => ['k' => [Status::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]]],
+        '{ s: StatusType[] } | { s: StatusType[] }',
+    ],
+    'a model printing an enum\'s alias' => [
+        '{ s: never[] | StatusType[] } | { s: StatusType[] }',
+        ['directEnumFqcns' => ['k' => Status::class], 'inlineModelFqcns' => ['k' => ['Some\\Models\\StatusType']]],
+        '{ s: StatusType[] } | { s: StatusType[] }',
+    ],
+    'two same-named models' => [
+        '{ u: never[] | User[] } | { u: User[] }',
+        ['inlineModelFqcns' => ['k' => [User::class, 'Some\\Models\\User']]],
+        '{ u: User[] } | { u: User[] }',
+    ],
+    'two same-named resources' => [
+        '{ r: never[] | PostResource[] } | { r: PostResource[] }',
+        ['inlineResourceFqcns' => ['k' => [PostResource::class, 'Some\\Http\\Resources\\PostResource']]],
+        '{ r: PostResource[] } | { r: PostResource[] }',
+    ],
+    'a declaration slotting the key\'s tokens' => [
+        '{ s: 0 | StatusType } | { s: StatusType }',
+        ['directEnumFqcns' => ['k' => Status::class], 'declaredTokenFqcns' => ['k' => [Status::class, null]]],
+        '{ s: StatusType } | { s: StatusType }',
+    ],
+]);
+
+it('keeps both alike arms of a key its publisher still queues classes on', function () {
+    $row = ['type' => '{ u: never[] | User[] } | { u: User[] }', 'optional' => false, 'description' => ''];
+    $analysis = new MethodAnalysis(properties: [['name' => 'later', ...$row], ['name' => 'done', ...$row]]);
+
+    $analysis->absorbRedundantArms(static fn (string $name): bool => $name === 'later');
+
+    expect(array_column($analysis->properties, 'type'))->toBe(['{ u: User[] } | { u: User[] }', '{ u: User[] }']);
+});
+
+it('keeps the text of a key a cast types', function () {
+    $type = "'image' | MediaTypeType | null";
+    $analysis = new MethodAnalysis(
+        properties: [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']],
+        directEnumFqcns: ['k' => MediaType::class],
+        casts: ['k' => ['type' => $type, 'import' => null]],
+    );
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0]['type'])->toBe($type);
+});
+
+it('reads a key\'s alias literals once for its type, body type and fill', function () {
+    LaravelTsPublish::partialMock()->shouldReceive('retypedEnumType')->once()->with(MediaType::class)->andReturnNull();
+    $analysis = new MethodAnalysis(
+        properties: [[
+            'name' => '[key: string]',
+            'type' => "'image' | MediaTypeType",
+            'optional' => false,
+            'description' => '',
+            'bodyType' => "'video' | MediaTypeType | undefined",
+            'fillType' => "'audio' | MediaTypeType",
+        ]],
+        directEnumFqcns: ['[key: string]' => MediaType::class],
+    );
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0])->toMatchArray([
+        'type' => 'MediaTypeType',
+        'bodyType' => 'MediaTypeType | undefined',
+        'fillType' => 'MediaTypeType',
+    ]);
+});
+
+it('leaves out each arm a sibling admits in a key\'s body type and fill too', function () {
+    $analysis = new MethodAnalysis(
+        properties: [[
+            'name' => '[key: string]',
+            'type' => "'image' | MediaTypeType",
+            'optional' => false,
+            'description' => '',
+            'bodyType' => "'video' | MediaTypeType | undefined",
+            'fillType' => 'never[] | string[]',
+        ]],
+        directEnumFqcns: ['[key: string]' => MediaType::class],
+    );
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0])->toMatchArray([
+        'type' => 'MediaTypeType',
+        'bodyType' => 'MediaTypeType | undefined',
+        'fillType' => 'string[]',
+    ]);
 });

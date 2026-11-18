@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\PostOwnJsonEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RedundantArmsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\StatusCodesDefaultEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\InjectedSignatureCastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AmbiguousSpellingBroadcastEvent;
@@ -841,4 +842,16 @@ test('an object holding two same-named models publishes each under its own alias
     expect($transformer->properties['roster'])->toBe(['type' => '{ members: AppUser[] | CrmUser[] }', 'optional' => false])
         ->and(array_merge(...array_values($transformer->typeImports)))->toContain('User as AppUser', 'User as CrmUser')
         ->and(json_encode(new PostOwnJsonEvent(new Post)->broadcastWith()['roster']))->toBe('{"members":[]}');
+});
+
+// `tags` is empty in one return only, so the publisher's own pass is what leaves its `never[]` out. A wrapped enum
+// admits no case value in its key, so `kept` keeps the `0` beside the wrap (GH-166).
+test('an event publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => RedundantArmsEvent::class]);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'status' => 'StatusType',
+        'tags' => '(PriorityType | null)[]',
+        'kept' => 'StatusType | 0',
+    ])->and($transformer->typeImports)->toBe(['../../../../../workbench/app/enums' => ['PriorityType', 'StatusType']]);
 });

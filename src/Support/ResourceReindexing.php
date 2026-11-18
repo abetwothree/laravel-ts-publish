@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
@@ -33,8 +34,8 @@ final class ResourceReindexing
         if (count($arms) > 1) {
             $rewritten = array_map(self::reindexedType(...), $arms);
 
-            // Two arrays a resource lists alike are one arm once re-indexed.
-            return $rewritten === $arms ? $type : implode(' | ', array_unique($rewritten));
+            // Two arrays a resource lists alike are one arm once re-indexed, and a list admits the `never[]` beside it.
+            return $rewritten === $arms ? $type : RedundantArms::joined($rewritten);
         }
 
         $parts = TsTypeShape::splitTopLevel($type, ['&']);

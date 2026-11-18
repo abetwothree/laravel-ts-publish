@@ -182,6 +182,67 @@ describe('arms', function () {
     ]);
 });
 
+describe('unions', function () {
+    it('hands each union position its arms once their insides are rewritten', function () {
+        $seen = [];
+
+        TypeRewriter::rewrite(
+            '{ a: A | B; b: (C | D)[] } | E | Record<string, F | G>',
+            union: static function (array $arms) use (&$seen): array {
+                $seen[] = $arms;
+
+                return $arms;
+            },
+        );
+
+        expect($seen)->toBe([
+            ['A', 'B'],
+            ['C', 'D'],
+            ['(C | D)[]'],
+            ['string'],
+            ['F', 'G'],
+            ['{ a: A | B; b: (C | D)[] }', 'E', 'Record<string, F | G>'],
+        ]);
+    });
+
+    it('leaves text no union callback changes byte for byte', function () {
+        $same = static fn (array $arms): array => $arms;
+        $changed = array_filter(
+            typeRewriterCorpus(),
+            static fn (string $type): bool => TypeRewriter::rewrite($type, union: $same) !== $type,
+        );
+
+        expect(TypeRewriter::rewrite('{ a:   A | B }', union: $same))->toBe('{ a:   A | B }')
+            ->and($changed)->toBe([]);
+    });
+
+    it('keeps the arms the union callback returns wherever the union stands', function (string $type, string $expected) {
+        $withoutY = static fn (array $arms): array => array_values(array_filter($arms, static fn (string $arm): bool => $arm !== 'Y'));
+
+        expect(TypeRewriter::rewrite($type, union: $withoutY))->toBe($expected);
+    })->with([
+        'the top level' => ['X | Y | null', 'X | null'],
+        'an object member\'s value' => ['{ a: X | Y; b: number }', '{ a: X; b: number }'],
+        'a list\'s element' => ['(X | Y)[]', 'X[]'],
+        'a parenthesized group' => ['(A | B | Y) & Z', '(A | B) & Z'],
+        'a tuple element' => ['[X | Y, number]', '[X, number]'],
+        'an optional tuple element' => ['[string, (number | Y)?]', '[string, number?]'],
+        'a rest element' => ['[string, ...(X | Y)[]]', '[string, ...X[]]'],
+        'a generic argument' => ['Record<string, X | Y>', 'Record<string, X>'],
+        'a deeply nested union' => ['{ a: { b: [Record<string, (X | Y)[]>] } }', '{ a: { b: [Record<string, X[]>] } }'],
+    ]);
+
+    it('keeps alike arms the union callback keeps, as two classes spelled alike may be', function (string $type, string $expected) {
+        $withoutY = static fn (array $arms): array => array_values(array_filter($arms, static fn (string $arm): bool => $arm !== 'Y'));
+
+        expect(TypeRewriter::rewrite($type, union: $withoutY))->toBe($expected);
+    })->with([
+        'in a list printed again' => ['(X | X | Y)[]', '(X | X)[]'],
+        'an arm made alike an earlier one' => ['{ a: X | Y } | { a: X }', '{ a: X } | { a: X }'],
+        'an arm made alike a later one' => ['{ a: X } | { a: X | Y }', '{ a: X } | { a: X }'],
+    ]);
+});
+
 describe('members', function () {
     test('passes each object member at every depth to the callback with its rewritten value', function () {
         $visited = [];

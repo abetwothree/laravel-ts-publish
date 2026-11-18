@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
@@ -15,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\DocumentedGetterPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumCaseGetterModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumValueAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
@@ -22,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use Workbench\Accounting\Models\Payment;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\BulletinArchive;
 use Workbench\App\Models\BulletinBoard;
@@ -314,6 +317,32 @@ describe('AccessorBodyAnalyzer declines a body type that names nothing it can pu
         'a list of shapes' => ['state_list', '{ id: number; state: StatusType }[]'],
         'a union with another arm' => ['state_or_none', 'StatusType | string'],
         'the enum alone' => ['plain_state', 'StatusType'],
+    ]);
+});
+
+describe('AccessorBodyAnalyzer hands its readers the body unsettled', function () {
+    // Each reader absorbs a case value into the alias at its own publisher's pass, where the key's channels are final.
+    test('a getter sending its enum\'s value or name says so, a case value beside it kept', function (string $model, string $attribute, string $type) {
+        $info = resolve(AccessorBodyAnalyzer::class)->analyze($model, $attribute);
+
+        expect($info['type'] ?? null)->toBe($type)
+            ->and($info['sendsEnumScalar'] ?? false)->toBeTrue();
+    })->with([
+        'the value' => [EnumValueAccessorPost::class, 'status_value', 'StatusType'],
+        'the name' => [EnumValueAccessorPost::class, 'status_name', 'StatusKind'],
+        'the value or a case\'s value' => [EnumValueAccessorPost::class, 'status_or_draft', 'StatusType | 0'],
+        'the value or a string case value' => [Payment::class, 'status_or_pending', "'pending' | PaymentStatusType"],
+    ]);
+
+    test('a getter that may return the enum itself does not say it sends the enum\'s scalar', function (string $model, string $attribute, string $type) {
+        $info = resolve(AccessorBodyAnalyzer::class)->analyze($model, $attribute);
+
+        expect($info['type'] ?? null)->toBe($type)
+            ->and($info)->not->toHaveKey('sendsEnumScalar');
+    })->with([
+        'the enum itself' => [EnumShapePost::class, 'plain_state', 'StatusType'],
+        'the enum itself or the value' => [EnumValueAccessorPost::class, 'status_case_or_value', 'StatusType'],
+        'the enum itself or a case\'s value' => [EnumValueAccessorPost::class, 'status_case_or_draft', 'StatusType | 0'],
     ]);
 });
 

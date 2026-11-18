@@ -695,7 +695,7 @@ it('publishes the list a resource sends a copy of an untyped array a whole write
     expect(analyzedKeyTypes(CopiedTagsResource::class))->toBe([
         'source' => '{ "0": string; "1": number; n: number }',
         'copied' => '{ "0": string; "1": number; n?: number } | (string | number)[]',
-        'blank' => 'never[] | { "0": string; "1": number; n?: number } | (string | number)[]',
+        'blank' => '{ "0": string; "1": number; n?: number } | (string | number)[]',
         'fetched' => '{ "0": string; "1": number; n?: number } | (string | number)[]',
     ])->and(json_encode($resource()->resolve(request())))->toBe(
         '{"source":{"0":"x","1":5,"n":1},"copied":{"0":"x","1":5,"n":1},"blank":[],"fetched":{"0":"x","1":5,"n":1}}',

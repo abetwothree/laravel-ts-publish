@@ -71,6 +71,8 @@ declare global {
             created_at: string | null;
             updated_at: string | null;
             // Mutators
+            /** The status, or Pending's value until the payment is paid (GH-166). */
+            status_or_pending: accounting.enums.PaymentStatusType;
             due_notice: accounting.enums.DueAtNoticeType;
             // Relations
             invoice: Invoice;
@@ -4694,7 +4696,7 @@ declare global {
         }
         /** Placeholders a dropped arm leaves: an empty list, and a null among out-of-order int keys (GH-154). */
         export interface PlaceholderReadingsResource {
-            fills: { f: never[] | number[] }[];
+            fills: { f: number[] }[];
             pairs: [string | null, number][];
         }
         /**
@@ -5206,6 +5208,18 @@ declare global {
          */
         export interface RecipientSettingsResource {
             recipients: { name: string | null; settings: { digest: boolean } | null }[];
+        }
+        /** A `@return` that types an arm the body cannot, beside a case value its enum's alias admits (GH-166). */
+        export interface RedundantArmsDocblockResource {
+            status: app.enums.StatusType | number;
+            media: app.enums.MediaTypeType;
+        }
+        /** Case values a branch writes over the enum's alias, and an empty list over a list (GH-166). */
+        export interface RedundantArmsResource {
+            status: app.enums.StatusType;
+            priorities: (app.enums.PriorityType | null)[];
+            status_or_draft: app.enums.StatusType;
+            priority_name: app.enums.PriorityKind;
         }
         /**
          * Regression fixture: analyzeThisMethodCall() spread a reflected TypeScriptTypeInfo straight into its

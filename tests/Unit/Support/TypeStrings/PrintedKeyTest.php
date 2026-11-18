@@ -119,6 +119,19 @@ describe('decode', function () {
     });
 });
 
+test('decodeQuoted() reads a quoted string and nothing else', function (string $printed, ?string $text) {
+    expect(PrintedKey::decodeQuoted($printed))->toBe($text);
+})->with([
+    'a single-quoted string' => ["'it\\'s'", "it's"],
+    'a double-quoted string' => ['"a\/b"', 'a/b'],
+    'the empty string' => ["''", ''],
+    'a bare name' => ['name', null],
+    'a list index' => ['0', null],
+    'an optional quoted key' => ['"a"?', null],
+    'an escape JSON does not read' => ['"\x41"', null],
+    'a template literal' => ['`a`', null],
+]);
+
 test('names() says whether a printed key names a key', function (string $printed, string $key, bool $names) {
     expect(PrintedKey::names($printed, $key))->toBe($names);
 })->with([

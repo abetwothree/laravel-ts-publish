@@ -4321,6 +4321,10 @@
                     "type": "string | null"
                 },
                 {
+                    "name": "status_or_pending",
+                    "type": "PaymentStatusType"
+                },
+                {
                     "name": "due_notice",
                     "type": "DueAtNoticeType"
                 },
@@ -17691,7 +17695,7 @@
             "properties": [
                 {
                     "name": "fills",
-                    "type": "{ f: never[] | number[] }[]",
+                    "type": "{ f: number[] }[]",
                     "optional": false
                 },
                 {
@@ -19409,6 +19413,46 @@
                 {
                     "name": "recipients",
                     "type": "{ name: string | null; settings: { digest: boolean } | null }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\RedundantArmsDocblockResource": {
+            "name": "RedundantArmsDocblockResource",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "StatusType | number",
+                    "optional": false
+                },
+                {
+                    "name": "media",
+                    "type": "MediaTypeType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\RedundantArmsResource": {
+            "name": "RedundantArmsResource",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "priorities",
+                    "type": "(PriorityType | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "status_or_draft",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "priority_name",
+                    "type": "PriorityKind",
                     "optional": false
                 }
             ]

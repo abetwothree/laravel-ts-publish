@@ -40,6 +40,14 @@ class Payment extends Model
         ];
     }
 
+    /**
+     * The status, or Pending's value until the payment is paid (GH-166).
+     */
+    protected function statusOrPending(): Attribute
+    {
+        return Attribute::get(fn () => $this->paid_at === null ? PaymentStatus::Pending->value : $this->status->value);
+    }
+
     protected function dueNotice(): Attribute
     {
         return Attribute::get(

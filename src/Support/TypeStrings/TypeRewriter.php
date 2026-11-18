@@ -8,17 +8,19 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use Closure;
 
 /**
- * Rewrite a TypeScript type string arm by arm and member by member, at every depth: through unions, intersections,
- * parentheses, `T[]`, tuples, object members, `keyof` and every generic argument. Literal text, an arrow type and an
- * indexed access are read whole.
+ * Rewrite a TypeScript type string arm by arm, member by member and union by union, at every depth: through unions,
+ * intersections, parentheses, `T[]`, tuples, object members, `keyof` and every generic argument. Literal text, an arrow
+ * type and an indexed access are read whole.
  *
  * Text no callback changes comes back byte for byte. An object or an intersection keeps every part a callback left
- * alone, its separators and its padding as written; a changed list prints through TsTypeShape::listType().
+ * alone, its separators and its padding as written; a changed list prints through TsTypeShape::listType(), unless a
+ * union callback chose its arms.
  *
  * @phpstan-import-type TupleElement from TsTypeShape
  *
  * @phpstan-type ArmRewrite = Closure(string): ?string
  * @phpstan-type MemberRewrite = Closure(string, string): ?array{string, string}
+ * @phpstan-type UnionRewrite = Closure(list<string>): list<string>
  * @phpstan-type Part = array{string, int, int}
  *
  * @internal
@@ -33,17 +35,24 @@ final class TypeRewriter
 
     /**
      * The type with each union arm at every depth passed to $arm once its inside is rewritten, and each object member
-     * passed to $member once its value is; a null drops the arm or the member.
+     * passed to $member once its value is; a null drops the arm or the member. Each union position, a lone arm too,
+     * then passes its arms to $union, inner positions first, and keeps the arms it returns.
      *
-     * A union left with no arm reads `unknown`. An arm whose rewritten text equals an earlier arm's is dropped when
-     * either was changed, so two arms spelled alike that the rewrite left alone, two classes, both stay.
+     * A union left with no arm reads `unknown`. Without $union, an arm whose rewritten text equals an earlier arm's is
+     * dropped when either was changed, so two arms spelled alike that the rewrite left alone, two classes, both stay.
+     * With it, $union alone chooses: two arms spelled alike stay unless it drops one, as they may name two classes.
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    public static function rewrite(string $type, ?Closure $arm = null, ?Closure $member = null): string
-    {
-        return $arm === null && $member === null ? $type : self::union($type, $arm, $member);
+    public static function rewrite(
+        string $type,
+        ?Closure $arm = null,
+        ?Closure $member = null,
+        ?Closure $union = null,
+    ): string {
+        return $arm === null && $member === null && $union === null ? $type : self::union($type, $arm, $member, $union);
     }
 
     /**
@@ -51,33 +60,35 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function union(string $type, ?Closure $arm, ?Closure $member): string
+    private static function union(string $type, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
-        $arms = self::unionArms($type, $arm, $member);
+        $arms = self::unionArms($type, $arm, $member, $union);
 
         return $arms === null ? $type : self::joined($arms);
     }
 
     /**
-     * A union's arms once rewritten, or null when the rewrite changed none.
+     * A union's arms once rewritten and chosen, or null when the rewrite changed none and the choice kept every one.
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      * @return list<string>|null
      */
-    private static function unionArms(string $type, ?Closure $arm, ?Closure $member): ?array
+    private static function unionArms(string $type, ?Closure $arm, ?Closure $member, ?Closure $union): ?array
     {
         $kept = [];
         $changed = false;
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $original) {
-            $inside = self::armInside($original, $arm, $member);
+            $inside = self::armInside($original, $arm, $member, $union);
             $rewritten = $arm === null ? $inside : $arm($inside);
             $differs = $rewritten !== $original;
             $changed = $changed || $differs;
 
-            $alike = $rewritten !== null && array_any(
+            $alike = $union === null && $rewritten !== null && array_any(
                 $kept,
                 static fn (array $earlier): bool => $earlier[0] === $rewritten && ($differs || $earlier[1]),
             );
@@ -87,7 +98,14 @@ final class TypeRewriter
             }
         }
 
-        return $changed ? array_column($kept, 0) : null;
+        if ($union === null) {
+            return $changed ? array_column($kept, 0) : null;
+        }
+
+        $arms = array_column($kept, 0);
+        $chosen = $union($arms);
+
+        return $changed || $chosen !== $arms ? $chosen : null;
     }
 
     /**
@@ -112,8 +130,9 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function armInside(string $text, ?Closure $arm, ?Closure $member): string
+    private static function armInside(string $text, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
         // An arrow's return type takes in every `|` and `&` after it, so its signature is never split.
         if (TsTypeShape::unionArm($text) !== $text) {
@@ -123,11 +142,11 @@ final class TypeRewriter
         $parts = self::parts($text, ['&']);
 
         if (count($parts) < 2) {
-            return self::operand($text, $arm, $member);
+            return self::operand($text, $arm, $member, $union);
         }
 
-        $rewritten = array_map(static function (array $part) use ($arm, $member): ?string {
-            $operand = self::operand($part[0], $arm, $member);
+        $rewritten = array_map(static function (array $part) use ($arm, $member, $union): ?string {
+            $operand = self::operand($part[0], $arm, $member, $union);
 
             return $operand === '{}' && $part[0] !== '{}' ? null : $operand;
         }, $parts);
@@ -144,40 +163,46 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function operand(string $text, ?Closure $arm, ?Closure $member): string
+    private static function operand(string $text, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
         $code = TypeScanner::maskLiterals($text);
 
         if (preg_match(self::PREFIX, $code, $prefix) === 1) {
             $operand = substr($text, strlen($prefix[0]));
-            $rewritten = self::operand($operand, $arm, $member);
+            $rewritten = self::operand($operand, $arm, $member, $union);
 
             return $rewritten === $operand ? $text : $prefix[0].$rewritten;
         }
 
         return match (true) {
-            $text !== '[]' && str_ends_with($code, '[]') => self::listed($text, $arm, $member),
-            TsTypeShape::isWrapped($text, '(', ')') => self::grouped($text, $arm, $member),
-            TsTypeShape::isWrapped($text, '[', ']') => self::tuple($text, $arm, $member),
-            str_starts_with($code, '{') => self::object($text, $arm, $member),
-            default => self::generic($text, $code, $arm, $member),
+            $text !== '[]' && str_ends_with($code, '[]') => self::listed($text, $arm, $member, $union),
+            TsTypeShape::isWrapped($text, '(', ')') => self::grouped($text, $arm, $member, $union),
+            TsTypeShape::isWrapped($text, '[', ']') => self::tuple($text, $arm, $member, $union),
+            str_starts_with($code, '{') => self::object($text, $arm, $member, $union),
+            default => self::generic($text, $code, $arm, $member, $union),
         };
     }
 
     /**
-     * A `T[]` whose element union changed, printed again as a list of the arms left.
+     * A `T[]` whose element union changed, printed again as the arms left, each once unless $union chose them.
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function listed(string $list, ?Closure $arm, ?Closure $member): string
+    private static function listed(string $list, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
         $element = trim(substr($list, 0, -2));
-        $union = TsTypeShape::isWrapped($element, '(', ')') ? trim(substr($element, 1, -1)) : $element;
-        $arms = self::unionArms($union, $arm, $member);
+        $inner = TsTypeShape::isWrapped($element, '(', ')') ? trim(substr($element, 1, -1)) : $element;
+        $arms = self::unionArms($inner, $arm, $member, $union);
 
-        return $arms === null ? $list : TsTypeShape::listType($arms === [] ? ['unknown'] : $arms);
+        return match (true) {
+            $arms === null => $list,
+            $union !== null => TsTypeShape::postfixOperand(self::joined($arms)).'[]',
+            default => TsTypeShape::listType($arms === [] ? ['unknown'] : $arms),
+        };
     }
 
     /**
@@ -185,10 +210,11 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function grouped(string $group, ?Closure $arm, ?Closure $member): string
+    private static function grouped(string $group, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
-        $arms = self::unionArms(trim(substr($group, 1, -1)), $arm, $member);
+        $arms = self::unionArms(trim(substr($group, 1, -1)), $arm, $member, $union);
 
         return $arms === null ? $group : TsTypeShape::postfixOperand(self::joined($arms));
     }
@@ -198,12 +224,13 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function tuple(string $tuple, ?Closure $arm, ?Closure $member): string
+    private static function tuple(string $tuple, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
         $elements = TsTypeShape::splitTopLevel(substr($tuple, 1, -1), [',']);
         $rewritten = array_map(
-            static fn (string $element, array $read): string => self::element($element, $read, $arm, $member),
+            static fn (string $element, array $read): string => self::element($element, $read, $arm, $member, $union),
             $elements,
             TsTypeShape::tupleElements($tuple),
         );
@@ -217,19 +244,25 @@ final class TypeRewriter
      * @param  TupleElement  $read
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function element(string $element, array $read, ?Closure $arm, ?Closure $member): string
-    {
+    private static function element(
+        string $element,
+        array $read,
+        ?Closure $arm,
+        ?Closure $member,
+        ?Closure $union,
+    ): string {
         [$type, $optional] = $read;
 
         if (str_starts_with($type, '...')) {
             $rest = substr($type, 3);
-            $rewritten = self::union($rest, $arm, $member);
+            $rewritten = self::union($rest, $arm, $member, $union);
 
             return $rewritten === $rest ? $element : '...'.$rewritten;
         }
 
-        $arms = self::unionArms($type, $arm, $member);
+        $arms = self::unionArms($type, $arm, $member, $union);
 
         if ($arms === null) {
             return $element;
@@ -243,8 +276,9 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function object(string $object, ?Closure $arm, ?Closure $member): string
+    private static function object(string $object, ?Closure $arm, ?Closure $member, ?Closure $union): string
     {
         $members = TsTypeShape::members($object);
         $inner = substr($object, 1, -1);
@@ -257,7 +291,7 @@ final class TypeRewriter
         $rewritten = [];
 
         foreach ($members as $index => [$key, $value]) {
-            $rewritten[] = self::member($parts[$index][0], $key, $value, $arm, $member);
+            $rewritten[] = self::member($parts[$index][0], $key, $value, $arm, $member, $union);
         }
 
         return match (true) {
@@ -272,10 +306,17 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function member(string $text, string $key, string $value, ?Closure $arm, ?Closure $member): ?string
-    {
-        $rewritten = self::union($value, $arm, $member);
+    private static function member(
+        string $text,
+        string $key,
+        string $value,
+        ?Closure $arm,
+        ?Closure $member,
+        ?Closure $union,
+    ): ?string {
+        $rewritten = self::union($value, $arm, $member, $union);
         $kept = $member === null ? [$key, $rewritten] : $member($key, $rewritten);
 
         if ($kept === null || $kept === [$key, $value]) {
@@ -291,9 +332,15 @@ final class TypeRewriter
      *
      * @param  ArmRewrite|null  $arm
      * @param  MemberRewrite|null  $member
+     * @param  UnionRewrite|null  $union
      */
-    private static function generic(string $text, string $code, ?Closure $arm, ?Closure $member): string
-    {
+    private static function generic(
+        string $text,
+        string $code,
+        ?Closure $arm,
+        ?Closure $member,
+        ?Closure $union,
+    ): string {
         $open = strpos($code, '<');
 
         if ($open === false
@@ -304,7 +351,7 @@ final class TypeRewriter
 
         $arguments = TsTypeShape::splitTopLevel(substr($text, $open + 1, -1), [',']);
         $rewritten = array_map(
-            static fn (string $argument): string => self::union($argument, $arm, $member),
+            static fn (string $argument): string => self::union($argument, $arm, $member, $union),
             $arguments,
         );
 
