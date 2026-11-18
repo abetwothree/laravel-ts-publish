@@ -197,6 +197,38 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * The first of four untyped helpers, each returning the next one's result; only the last returns a label.
+     */
+    private function untypedOne()
+    {
+        return $this->untypedTwo();
+    }
+
+    /**
+     * The second of four untyped helpers.
+     */
+    private function untypedTwo()
+    {
+        return $this->untypedThree();
+    }
+
+    /**
+     * The third of four untyped helpers.
+     */
+    private function untypedThree()
+    {
+        return $this->untypedFour();
+    }
+
+    /**
+     * The last of four untyped helpers, which returns a label.
+     */
+    private function untypedFour()
+    {
+        return 'label';
+    }
+
+    /**
      * Returns a label once it has called itself down to zero, its signature typing nothing.
      */
     private function untypedCountDown(int $from)

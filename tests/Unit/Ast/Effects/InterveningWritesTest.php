@@ -118,6 +118,9 @@ function interveningCalls(): array
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
         'a writer named by [Ancestor::class, …]' => ['array_map([InterveningBase::class, \'baseWriter\'], [1])', true],
         'a writer named by [\'Fqcn\', …]' => ['array_map([\''.InterveningResource::class.'\', \'writer\'], [1])', true],
+        'a model reader\'s name on a class that lacks it' => ['array_map([PinWriter::class, \'getKey\'], [1])', true],
+        'a coalescing assignment of a value to a local callback' => ["\$this->when(true, \$callback ??= 'none')", true],
+        'Closure::fromCallable() of a local callback' => ['$this->when(true, Closure::fromCallable($callback))', true],
         'a writer named by \'Fqcn::m\'' => ['array_map(\''.InterveningResource::class.'::writer\', [1])', true],
         'a writer named by self::class.\'::m\'' => ['array_map(self::class.\'::writer\', [1])', true],
         'a writer named by a computed self::class callable' => ['array_map(self::class.\'::\'.$name, [1])', true],
@@ -237,6 +240,14 @@ it('tells whether a call between the keys may change the discriminant', function
 ) {
     expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
 })->with(interveningCalls());
+
+// The window's first item reads untypedTwo() to the end; the returns of untypedOne() start a level further down.
+it('reads what a helper returns as deep as the scan reads a body, whatever an earlier item read', function () {
+    expect(windowReach(['$this->untypedTwo()', '$this->when(true, $this->untypedOne())', '$this->is_pinned ? 1 : null']))
+        ->toBeTrue()
+        ->and(windowReach(['$this->when(true, $this->untypedOne())', '$this->is_pinned ? 1 : null']))->toBeTrue()
+        ->and(windowReach(['$this->when(true, $this->untypedTwo())', '$this->is_pinned ? 1 : null']))->toBeFalse();
+});
 
 it('reads a scope that is no API resource without forwarding to its model', function (string $call, bool $mayWrite) {
     expect(windowReach([$call, '$this->is_pinned ? 1 : null'], '$this->is_pinned', InterveningSubject::class))->toBe($mayWrite);
