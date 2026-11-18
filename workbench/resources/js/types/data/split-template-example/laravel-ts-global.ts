@@ -6351,6 +6351,17 @@ declare global {
             read_v: string | null;
         }
         /**
+         * Literals whose read an item between its keys writes where the literal cannot see it: a helper's body, the model
+         * through `$this->resource`, and a `->` write of a `?->` read. Each stays flat, while a helper writing nothing keeps
+         * its literal split (GH-157).
+         */
+        export interface UnseenWritesResource {
+            by_helper: { is_pinned: boolean; reset: boolean; title: string | null };
+            by_proxy: { is_pinned: boolean; reset: boolean; title: string | null };
+            by_arrow: { enabled: boolean | null; off: boolean; title: string | null };
+            by_reader: { is_pinned: true; label: string; title: string } | { is_pinned: false; label: string; title: null };
+        }
+        /**
          * Enum resources inside literals that print one object per arm (GH-157): beside a group, as a group's arm, two in its
          * arms, beside a same-named enum read directly, and in a ternary of two literals. Each wrap keeps its value import.
          */

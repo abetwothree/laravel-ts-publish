@@ -7,5 +7,6 @@ export * from './pinned-post-resource';
 export * from './pinned-wraps-resource';
 export * from './post-priority-resource';
 export * from './read-back-resource';
+export * from './unseen-writes-resource';
 export * from './wrap-arms-resource';
 export * from './wrap-or-read-resource';

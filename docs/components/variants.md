@@ -18,6 +18,7 @@ before, and only the print changes. Users read
 | [`ConditionTruth`] | Whether a guard holds for one value of one read |
 | [`SplitsOnCondition`], [`ConditionalArms`], [`ConditionalArm`] | The arms `TernaryHandler`, `MatchHandler` and `ConditionalMethodHandler` hand over, each typed by the code that types the whole expression, through `ExpressionDispatcher::conditionalArms()` |
 | [`VariantReader`] | A literal's groups, read once its fold is written |
+| [`InterveningWrites`] | Whether an item between a group's keys may write its discriminant's read |
 | [`VariantGroup`], [`Variant`], [`LiteralVariants`] | One discriminant with its dependents and variants, and one literal's groups with its replayed objects |
 | [`VariantUnions`] | A resource's top level, each group replaced by one variant row |
 | [`VariantRows`] | The reserved row name, and a resource's rows split into shared keys and variants |
@@ -77,8 +78,10 @@ and a group where:
 
 - an arm a sent value takes is `unknown`, holds a [visible gap](ast-engine.md#visible-gaps), or left an arm out,
   since `DroppedUnionArms::dropped()` grew while it was read ([Dropped union arms](ast-engine.md#dropped-union-arms));
-- an item from the group's first key to its last assigns, increments or decrements the discriminant's read, or a
-  read it is a member of.
+- an item from the group's first key to its last may write the discriminant's read, or a read it is a member of,
+  whatever operator reads it ([`InterveningWrites`]): a write it spells, `$this->resource->x` standing for `$this->x`;
+  outside the group's own items, a `$this` call whose body writes one or cannot be read, a closure call, or a call on
+  a read holding it. Laravel's `JsonResource` and `ConditionallyLoadsAttributes` helpers only read.
 
 A group stays unprinted where its rows changed after the fold. Each group fingerprints its rows
 (`VariantGroup::holdsFor()`), and a nested literal its whole fold (`LiteralVariants::holdsFor()`), so a `@return`
@@ -120,6 +123,7 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`ConditionalArms`]: ../../src/Ast/Variants/ConditionalArms.php
 [`DiscriminantValue`]: ../../src/Ast/Variants/DiscriminantValue.php
 [`DiscriminantValues`]: ../../src/Ast/Variants/DiscriminantValues.php
+[`InterveningWrites`]: ../../src/Ast/Variants/InterveningWrites.php
 [`LiteralVariants`]: ../../src/Ast/Variants/LiteralVariants.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`ReadPath`]: ../../src/Ast/Parsing/ReadPath.php

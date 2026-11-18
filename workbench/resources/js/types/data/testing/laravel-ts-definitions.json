@@ -14378,6 +14378,31 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\UnseenWritesResource": {
+            "name": "UnseenWritesResource",
+            "properties": [
+                {
+                    "name": "by_helper",
+                    "type": "{ is_pinned: boolean; reset: boolean; title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_proxy",
+                    "type": "{ is_pinned: boolean; reset: boolean; title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_arrow",
+                    "type": "{ enabled: boolean | null; off: boolean; title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_reader",
+                    "type": "{ is_pinned: true; label: string; title: string } | { is_pinned: false; label: string; title: null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Discriminated\\WrapArmsResource": {
             "name": "WrapArmsResource",
             "properties": [

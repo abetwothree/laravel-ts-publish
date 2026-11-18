@@ -14,6 +14,7 @@ use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
+use Workbench\App\ValueObjects\PinSettings;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
@@ -24,6 +25,8 @@ use Workbench\Crm\Enums\Status as CrmStatus;
  */
 final class VariantFormsResource extends JsonResource
 {
+    public ?PinSettings $settings = null;
+
     /**
      * The keys.
      *
@@ -493,6 +496,101 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A `?->` read written through `->` between the key that sends it and the key that tests it.
+     *
+     * @return array<string, mixed>
+     */
+    public function nullsafeWriteKept(): array
+    {
+        return [
+            'enabled' => $this->settings?->enabled,
+            'off' => $this->settings->enabled = false,
+            'v' => $this->settings?->enabled ? $this->title : null,
+        ];
+    }
+
+    /**
+     * A read written through `$this->resource`, which `$this->is_pinned` reads, between the keys.
+     *
+     * @return array<string, mixed>
+     */
+    public function resourceWriteKept(): array
+    {
+        return ['pinned' => $this->is_pinned, 'x' => $this->resource->is_pinned = false, 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A helper whose body writes the read, called between the keys.
+     *
+     * @return array<string, mixed>
+     */
+    public function callWriteKept(): array
+    {
+        return ['pinned' => $this->is_pinned, 'x' => $this->clearPin(), 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A static-syntax call of a helper whose body writes the read, between the keys.
+     *
+     * @return array<string, mixed>
+     */
+    public function staticCallWriteKept(): array
+    {
+        return ['pinned' => $this->is_pinned, 'x' => self::clearPin(), 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A call the model answers through JsonResource::__call(), whose body no class of the resource holds.
+     *
+     * @return array<string, mixed>
+     */
+    public function forwardedCallKept(): array
+    {
+        return ['pinned' => $this->is_pinned, 'x' => $this->isFeatured(), 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A call on the object whose member the read is.
+     *
+     * @return array<string, mixed>
+     */
+    public function receiverCallKept(): array
+    {
+        return ['pinned' => $this->is_pinned, 'x' => $this->resource->touch(), 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A closure called between the keys, whose body may write the read through the `$this` it binds.
+     *
+     * @return array<string, mixed>
+     */
+    public function closureCallKept(): array
+    {
+        $clear = fn (): bool => $this->clearPin();
+
+        return ['pinned' => $this->is_pinned, 'x' => $clear(), 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * Calls between the keys that write no read: a helper, a static helper, a call on another read, a conditional
+     * helper of Laravel's and a `new`.
+     *
+     * @return array<string, mixed>
+     */
+    public function harmlessCalls(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'a' => $this->label(),
+            'b' => self::label(),
+            'c' => $this->published_at?->format('Y'),
+            'd' => $this->whenLoaded('author'),
+            'e' => new UserResource($this->author),
+            'v' => $this->is_pinned ? $this->title : null,
+        ];
+    }
+
+    /**
      * A read assigned before the key that sends it.
      *
      * @return array<string, mixed>
@@ -604,6 +702,24 @@ final class VariantFormsResource extends JsonResource
     public function plainKeys(): array
     {
         return ['pinned' => $this->is_pinned, 'title' => $this->title];
+    }
+
+    /**
+     * Clears the pin, writing the read the pinned keys send.
+     */
+    private function clearPin(): bool
+    {
+        $this->resource->is_pinned = false;
+
+        return true;
+    }
+
+    /**
+     * A label that reads the resource and writes nothing.
+     */
+    private function label(): string
+    {
+        return (string) $this->title;
     }
 
     /**

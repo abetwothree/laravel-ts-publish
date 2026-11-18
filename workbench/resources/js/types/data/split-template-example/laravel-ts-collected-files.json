@@ -187,6 +187,7 @@
     "app\/Http\/Resources\/Discriminated\/PinnedWrapsResource.php",
     "app\/Http\/Resources\/Discriminated\/PostPriorityResource.php",
     "app\/Http\/Resources\/Discriminated\/ReadBackResource.php",
+    "app\/Http\/Resources\/Discriminated\/UnseenWritesResource.php",
     "app\/Http\/Resources\/Discriminated\/WrapArmsResource.php",
     "app\/Http\/Resources\/Discriminated\/WrapOrReadResource.php",
     "app\/Http\/Resources\/DocumentedRecipientsResource.php",

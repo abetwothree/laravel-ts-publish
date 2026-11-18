@@ -175,6 +175,11 @@ it('leaves a declined group\'s keys to a later discriminant', function () {
     expect(variantsOf('owned_after_decline'))->toBe(['b' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
 });
 
+// A call writes the read only through a body it runs, so one whose body the reader reads and finds no write in keeps it.
+it('keeps a group past calls that write no read it holds', function () {
+    expect(variantsOf('harmless_calls'))->toBe(['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
+});
+
 // Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
 it('selects a value through eight levels of arms at most', function () {
     expect(variantsOf('nine_levels'))->toBe(['pinned' => [['true', ['v' => 'string | number']], ['false', ['v' => 'null']]]]);
@@ -196,6 +201,13 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'scalar_local_kept',
     'merge_parent_kept',
     'mutate_between_kept',
+    'a `?->` read written through `->`' => 'nullsafe_write_kept',
+    'a read written through `$this->resource`' => 'resource_write_kept',
+    'a helper writing the read' => 'call_write_kept',
+    'a static-syntax helper writing the read' => 'static_call_write_kept',
+    'a call no class of the resource declares' => 'forwarded_call_kept',
+    'a call on the object holding the read' => 'receiver_call_kept',
+    'a closure call' => 'closure_call_kept',
     'index_signature',
     'spread_writes',
     'two_returns',

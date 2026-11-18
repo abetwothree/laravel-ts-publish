@@ -17,16 +17,9 @@ use Illuminate\Support\Facades\Config;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\Assign;
-use PhpParser\Node\Expr\AssignOp;
-use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
-use PhpParser\Node\Expr\PostDec;
-use PhpParser\Node\Expr\PostInc;
-use PhpParser\Node\Expr\PreDec;
-use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Identifier;
@@ -112,7 +105,7 @@ final class VariantReader
                 static fn (): bool => false,
             );
 
-            if ($group !== null && ! self::rewritten($array, $keys, $group->keys, $discriminant['read'])) {
+            if ($group !== null && ! self::rewritten($array, $keys, $group->keys, $discriminant['read'], $scope)) {
                 $groups[] = $group;
                 $owned += array_fill_keys($group->keys, true);
             }
@@ -239,13 +232,13 @@ final class VariantReader
     }
 
     /**
-     * Whether an item from the group's first key to its last assigns, increments or decrements the discriminant's read,
-     * or a read it is a member of, so a guard after it may test another value than the discriminant sent.
+     * Whether an item from the group's first key to its last may write the discriminant's read, or a read it is a
+     * member of, so a guard after it may test another value than the discriminant sent (InterveningWrites).
      *
      * @param  list<SoleKey>  $keys
      * @param  list<string>  $grouped
      */
-    private static function rewritten(Array_ $array, array $keys, array $grouped, ReadPath $read): bool
+    private static function rewritten(Array_ $array, array $keys, array $grouped, ReadPath $read, AnalysisScope $scope): bool
     {
         $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $grouped, true)), 2);
 
@@ -253,27 +246,14 @@ final class VariantReader
             return false;
         }
 
-        $items = array_slice($array->items, min($at), max($at) - min($at) + 1);
+        $items = array_slice($array->items, min($at), max($at) - min($at) + 1, preserve_keys: true);
 
-        return new NodeFinder()->findFirst($items, static function (Node $node) use ($read): bool {
-            $target = match (true) {
-                $node instanceof Assign, $node instanceof AssignOp, $node instanceof AssignRef, $node instanceof PreInc,
-                $node instanceof PreDec, $node instanceof PostInc, $node instanceof PostDec => ReadPath::of($node->var),
-                default => null,
-            };
-
-            return $target !== null && self::reachesThrough($read, $target);
-        }) !== null;
-    }
-
-    /**
-     * Whether a read is another, or a member of it at any depth.
-     */
-    private static function reachesThrough(ReadPath $read, ReadPath $other): bool
-    {
-        $parent = $read->parent();
-
-        return $read->same($other) || ($parent !== null && self::reachesThrough($parent, $other));
+        return InterveningWrites::reach(
+            array_values($items),
+            array_values(array_diff_key($items, array_flip($at))),
+            $read,
+            $scope,
+        );
     }
 
     /**

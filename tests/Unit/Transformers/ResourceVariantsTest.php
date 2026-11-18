@@ -18,6 +18,7 @@ use Workbench\App\Http\Resources\Discriminated\NumericKeysResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+use Workbench\App\Http\Resources\Discriminated\UnseenWritesResource;
 use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
 
 /**
@@ -165,5 +166,15 @@ it('keeps a numeric key\'s name as the discriminant or a dependent, at the top l
     ])->and($data->variants)->toBe([
         '{ is_pinned: true; "0": string } | { is_pinned: false; "0": null }',
         '{ "7": 0; note: string } | { "7": 1; note: number }',
+    ]);
+});
+
+// A guard after a write may test another value than the discriminant sent, wherever the literal spells that write.
+it('publishes flat a literal whose read a helper, the model or a `->` write rewrites between its keys', function () {
+    expect(variantsProps(variantsData(UnseenWritesResource::class)))->toBe([
+        'by_helper' => '{ is_pinned: boolean; reset: boolean; title: string | null }',
+        'by_proxy' => '{ is_pinned: boolean; reset: boolean; title: string | null }',
+        'by_arrow' => '{ enabled: boolean | null; off: boolean; title: string | null }',
+        'by_reader' => '{ is_pinned: true; label: string; title: string } | { is_pinned: false; label: string; title: null }',
     ]);
 });
