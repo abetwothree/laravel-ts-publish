@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
@@ -72,9 +71,6 @@ final class ClosureReach
     /** The return types, lowercased, that may hold a closure, alone or in a union or intersection. */
     private const array CLOSURE_HOLDERS = ['mixed', 'callable', 'closure', 'object', 'iterable'];
 
-    /** @var array<string, true> the `$this` methods whose `return` expressions are read, or being read */
-    private array $returns = [];
-
     /**
      * A judge for one scan.
      *
@@ -85,7 +81,7 @@ final class ClosureReach
      */
     public function __construct(
         private readonly CallableTargets $targets,
-        private readonly MethodLocator $locator,
+        private readonly BodyReads $reads,
         private readonly bool $proxied,
         private readonly Closure $methodMayWrite,
         private readonly Closure $holdsRead,
@@ -326,34 +322,21 @@ final class ClosureReach
     }
 
     /**
-     * Whether what a method run on `$this` returns may change the read, read as deep as the scan reads a body; a body
-     * any deeper, or one the locator cannot read, may. One read already, or being read, counts where it is read, since
-     * a value that may change the read ends the whole scan.
+     * Whether what a method run on `$this` returns may change the read, as BodyReads reads its body.
      *
      * @param  ReflectionClass<object>  $class
      */
     private function returnsMayWrite(ReflectionClass $class, string $method, int $depth): bool
     {
-        $key = $class->getName().'::'.strtolower($method);
-
-        if (isset($this->returns[$key])) {
-            return false;
-        }
-
-        $body = $depth < InterveningWrites::DEPTH
-            ? $this->locator->locate($class->getName(), $method)?->method->stmts
-            : null;
-
-        if ($body === null) {
-            return true;
-        }
-
-        $this->returns[$key] = true;
-        $declaring = $class->getMethod($method)->getDeclaringClass();
-
-        return array_any(
-            self::returnedValues($body),
-            fn (Expr $returned): bool => $this->mayWrite($returned, $declaring, $depth + 1),
+        return $this->reads->mayWrite(
+            'returns',
+            $class,
+            $method,
+            $depth,
+            fn (array $body, ReflectionClass $declaring, int $inner): bool => array_any(
+                self::returnedValues($body),
+                fn (Expr $returned): bool => $this->mayWrite($returned, $declaring, $inner),
+            ),
         );
     }
 }

@@ -54,21 +54,15 @@ use ReflectionClass;
  */
 final class InterveningWrites
 {
-    /** How many levels of `$this` method bodies one scan reads; a body any deeper may write. */
-    public const int DEPTH = 3;
-
     /** The built-ins that call the callable they are given first. */
     private const array CALLERS = ['call_user_func', 'call_user_func_array'];
-
-    /** @var array<string, true> the `$this` method bodies read, or being read, by class and lowercased name */
-    private array $bodies = [];
 
     /** @var list<string> the read's steps, as steps() spells them */
     private readonly array $readSteps;
 
     private readonly ByReferenceArguments $references;
 
-    private readonly MethodLocator $locator;
+    private readonly BodyReads $reads;
 
     private readonly CallableTargets $targets;
 
@@ -86,11 +80,11 @@ final class InterveningWrites
     ) {
         $this->readSteps = $this->steps($read);
         $this->references = resolve(ByReferenceArguments::class);
-        $this->locator = resolve(MethodLocator::class);
+        $this->reads = new BodyReads(resolve(MethodLocator::class));
         $this->targets = new CallableTargets($runtime);
         $this->closures = new ClosureReach(
             $this->targets,
-            $this->locator,
+            $this->reads,
             $proxied,
             $this->methodMayWrite(...),
             $this->holdsObject(...),
@@ -316,29 +310,24 @@ final class InterveningWrites
     }
 
     /**
-     * Whether the body of a method run on `$this` may change the read, read DEPTH levels down at most; a body any
-     * deeper, or one the locator cannot read, may. A body read already, or being read, counts where it is read, since
-     * a body that may change the read ends the whole scan: no caller may drop that answer.
+     * Whether the body of a method run on `$this` may change the read, as BodyReads reads it.
      *
      * @param  ReflectionClass<object>  $class
      */
     private function bodyMayWrite(ReflectionClass $class, string $method, int $depth): bool
     {
-        $key = $class->getName().'::'.strtolower($method);
-
-        if (isset($this->bodies[$key])) {
-            return false;
-        }
-
-        $body = $depth < self::DEPTH ? $this->locator->locate($class->getName(), $method)?->method->stmts : null;
-
-        if ($body === null) {
-            return true;
-        }
-
-        $this->bodies[$key] = true;
-
-        return $this->mayChange($body, $class->getMethod($method)->getDeclaringClass(), $depth + 1, true);
+        return $this->reads->mayWrite(
+            'body',
+            $class,
+            $method,
+            $depth,
+            fn (array $body, ReflectionClass $declaring, int $inner): bool => $this->mayChange(
+                $body,
+                $declaring,
+                $inner,
+                true,
+            ),
+        );
     }
 
     /**
