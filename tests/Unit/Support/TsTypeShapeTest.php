@@ -174,6 +174,8 @@ describe('elementType', function () {
         'a list of an arrow' => ['(() => B)[]', '() => B'],
         'a list of a parenthesized arrow beside one' => ['((() => A) | (() => B))[]', '(() => A) | (() => B)'],
         'a list arm after an intersection arm' => ['A & B[] | C[]', 'C'],
+        'the keys of a list' => ['keyof Foo[]', null],
+        'a list of keys' => ['(keyof Foo)[]', 'keyof Foo'],
     ]);
 
     test('returns null for non-arrays', function () {

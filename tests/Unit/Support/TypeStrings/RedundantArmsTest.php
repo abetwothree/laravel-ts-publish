@@ -123,6 +123,7 @@ describe('never[]', function () {
         'alone' => ['never[]'],
         'beside itself' => ['never[] | never[]'],
         'beside an arrow returning a list' => ['(() => string[]) | never[]'],
+        'beside the keys of a list' => ['never[] | keyof string[]'],
     ]);
 });
 
