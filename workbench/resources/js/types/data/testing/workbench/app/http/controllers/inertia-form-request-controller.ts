@@ -5,7 +5,7 @@ import type { StorePostRequest } from '../requests/store-post-request';
 export type CreatePageProps = Inertia.SharedData;
 
 /** Show the form for creating a new post. */
-export const create = annotatePageProps<CreatePageProps>()(defineRoute({
+export const create = /* @__PURE__ */ annotatePageProps<CreatePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia-form-request.create',
     url: '/inertia-form-request/create',
     methods: ['get', 'head'] as const,
@@ -15,7 +15,7 @@ export const create = annotatePageProps<CreatePageProps>()(defineRoute({
 export type StorePageProps = Inertia.SharedData & { title: string };
 
 /** Store a new post validated via StorePostRequest. */
-export const store = annotateRequestPayload<StorePostRequest>()(annotatePageProps<StorePageProps>()(defineRoute({
+export const store = /* @__PURE__ */ annotateRequestPayload<StorePostRequest>()(/* @__PURE__ */ annotatePageProps<StorePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia-form-request.store',
     url: '/inertia-form-request',
     methods: ['post'] as const,

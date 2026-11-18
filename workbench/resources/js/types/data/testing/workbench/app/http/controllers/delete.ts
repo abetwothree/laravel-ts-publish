@@ -1,6 +1,6 @@
 import { defineRoute } from '@tolki/ts';
 
-export const index = defineRoute({
+export const index = /* @__PURE__ */ defineRoute({
     name: 'delete-items.index',
     url: '/delete-items',
     methods: ['get', 'head'] as const,

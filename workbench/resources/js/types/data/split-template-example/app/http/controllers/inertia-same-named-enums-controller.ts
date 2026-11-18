@@ -5,7 +5,7 @@ import type { StatusKind as EnumsStatusKind, StatusType as EnumsStatusType } fro
 
 export type PairPageProps = Inertia.SharedData & { app: EnumsStatusType, crm: CrmStatusType, app_cast: EnumsStatusType, crm_cast: CrmStatusType };
 
-export const pair = annotatePageProps<PairPageProps>()(defineRoute({
+export const pair = /* @__PURE__ */ annotatePageProps<PairPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'deals.same-named-enums',
     url: '/deals/{deal}/same-named-enums',
     methods: ['get', 'head'] as const,
@@ -15,7 +15,7 @@ export const pair = annotatePageProps<PairPageProps>()(defineRoute({
 
 export type NamesPageProps = Inertia.SharedData & { app_name: EnumsStatusKind, crm_name: CrmStatusKind };
 
-export const names = annotatePageProps<NamesPageProps>()(defineRoute({
+export const names = /* @__PURE__ */ annotatePageProps<NamesPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'deals.same-named-enum-names',
     url: '/deals/{deal}/same-named-enum-names',
     methods: ['get', 'head'] as const,

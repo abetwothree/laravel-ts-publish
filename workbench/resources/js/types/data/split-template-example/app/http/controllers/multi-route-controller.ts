@@ -1,6 +1,6 @@
 import { defineRoute } from '@tolki/ts';
 
-export const action = defineRoute({
+export const action = /* @__PURE__ */ defineRoute({
     name: 'multi.action',
     url: '/multi-2',
     methods: ['get', 'head'] as const,

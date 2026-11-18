@@ -6,7 +6,7 @@ import type { AuditTrail } from '../../packages/audit/models';
 export type ShowPageProps = Inertia.SharedData & { facility: Facility, trail: AuditTrail | null, record: unknown };
 
 /** Passes a model published on demand and a model that is never published. */
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'facilities.show',
     url: '/facilities/{facility}',
     methods: ['get', 'head'] as const,

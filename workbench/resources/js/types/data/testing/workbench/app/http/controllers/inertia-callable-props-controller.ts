@@ -5,7 +5,7 @@ import type { User } from '../../models';
 export type ShowPageProps = Inertia.SharedData & { stamp: string, label: string, viewer: User | null, closure_label: string };
 
 /** Passes first-class callables as props, which Inertia calls before it sends them, like a closure prop. */
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'facilities.callables',
     url: '/facilities/{facility}/callables',
     methods: ['get', 'head'] as const,

@@ -12,7 +12,7 @@ export type IndexPageProps = Inertia.SharedData & { count: string, meta: PageMet
  * not among the inferred props, so TsCasts adds it with an import from
  * a custom package.
  */
-export const index = annotatePageProps<IndexPageProps>()(defineRoute({
+export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'ts-casts.index',
     url: '/ts-casts',
     methods: ['get', 'head'] as const,

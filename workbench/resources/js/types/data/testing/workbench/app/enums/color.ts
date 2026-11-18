@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Color
  */
-export const Color = defineEnum({
+export const Color = /* @__PURE__ */ defineEnum({
     /** Primary red color */
     Red: 'red',
     /** Primary green color */

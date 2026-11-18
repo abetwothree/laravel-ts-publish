@@ -1,6 +1,6 @@
 import { defineRoute } from '@tolki/ts';
 
-export const show = defineRoute({
+export const show = /* @__PURE__ */ defineRoute({
     name: 'attribute-route-key-posts.show',
     url: '/attribute-route-key-posts/{post}',
     methods: ['get', 'head'] as const,

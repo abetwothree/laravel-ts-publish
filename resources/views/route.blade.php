@@ -44,6 +44,7 @@ export type {!! Str::studly($action['methodName']) !!}PageProps = {!! $action['p
 @php
 $hasRequest = isset($action['requestFqcn']);
 $needExtraSpacing = $action['shouldAnnotate'] || $action['hasFormRequest'] || $hasRequest;
+// Every call is marked pure, inner ones too: a bundler keeps an unmarked argument call even when the outer call goes.
 @endphp
 @if(!isset($action['pageType']))
 
@@ -52,13 +53,13 @@ $needExtraSpacing = $action['shouldAnnotate'] || $action['hasFormRequest'] || $h
 {!! JsEmitter::formatJsDoc($action['description']) !!}
 @endif
 @if($action['shouldAnnotate'] && $hasRequest)
-export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = /* @__PURE__ */ annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(/* @__PURE__ */ annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(/* @__PURE__ */ defineRoute({
 @elseif($action['shouldAnnotate'])
-export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(defineRoute({
+export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = /* @__PURE__ */ annotatePageProps<{!! $action['pageTypeAnnotation'] !!}>()(/* @__PURE__ */ defineRoute({
 @elseif($hasRequest)
-export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(defineRoute({
+export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = /* @__PURE__ */ annotateRequestPayload<{!! $action['requestTypeAlias'] !!}>()(/* @__PURE__ */ defineRoute({
 @else
-export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = defineRoute({
+export const {!! JsEmitter::validJsObjectKey($action['methodName']) !!} = /* @__PURE__ */ defineRoute({
 @endif
 @if($action['name'] !== null)
     name: {!! JsEmitter::toJsLiteral($action['name']) !!},
@@ -112,9 +113,10 @@ foreach ($data->actions as $routeAction) {
         ];
     }
 }
+// Pure though it mutates invoke: without the default export a bundle drops the extras, which invoke's type lacks.
 @endphp
 @if(count($extraMethods) > 0)
-const {!! $controllerName !!} = Object.assign({!! JsEmitter::validJsObjectKey($invokeMethodName) !!}, {
+const {!! $controllerName !!} = /* @__PURE__ */ Object.assign({!! JsEmitter::validJsObjectKey($invokeMethodName) !!}, {
 @foreach($extraMethods as $extraAction)
 @if($extraAction['originalMethodName'] === $extraAction['methodName'])
     {!! JsEmitter::validJsObjectKey($extraAction['methodName']) !!},

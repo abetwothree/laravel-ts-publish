@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Grade
  */
-export const Grade = defineEnum({
+export const Grade = /* @__PURE__ */ defineEnum({
     Pass: 'pass',
     Fail: 'fail',
     backed: true,

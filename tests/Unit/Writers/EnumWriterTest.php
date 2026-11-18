@@ -169,3 +169,24 @@ describe('a renamed case\'s instance-method values', function () {
         ->not->toContain('Amber:')
         ->not->toContain('Gray:'));
 });
+
+describe('the pure annotation on the enum const', function () {
+    beforeEach(fn () => config()->set('ts-publish.output_to_files', false));
+
+    test('marks the defineEnum call so a bundler can drop an unused enum', function () {
+        config()->set('ts-publish.enums.metadata_enabled', true);
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        expect((new EnumWriter(new Filesystem))->write(new EnumTransformer(Status::class)))
+            ->toContain('export const Status = /* @__PURE__ */ defineEnum({');
+    });
+
+    test('leaves a plain object literal unmarked', function (bool $metadata, bool $tolki) {
+        config()->set('ts-publish.enums.metadata_enabled', $metadata);
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        expect((new EnumWriter(new Filesystem))->write(new EnumTransformer(Status::class)))
+            ->toContain('export const Status = {')
+            ->not->toContain('__PURE__');
+    })->with([[true, false], [false, true], [false, false]]);
+});

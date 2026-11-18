@@ -7,7 +7,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\WeekDays
  */
-export const WeekDays = defineEnum({
+export const WeekDays = /* @__PURE__ */ defineEnum({
     Monday: 'monday',
     Tuesday: 'tuesday',
     Wednesday: 'wednesday',

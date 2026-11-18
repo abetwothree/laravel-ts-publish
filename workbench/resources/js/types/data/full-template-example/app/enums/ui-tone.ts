@@ -6,7 +6,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\UiTone
  */
-export const UiTone = defineEnum({
+export const UiTone = /* @__PURE__ */ defineEnum({
     Bright: 'bright',
     Dim: 'dim',
     backed: true,

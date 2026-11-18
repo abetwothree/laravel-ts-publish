@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Clearance
  */
-export const Clearance = defineEnum({
+export const Clearance = /* @__PURE__ */ defineEnum({
     Open: 'open',
     Restricted: 'restricted',
     backed: true,

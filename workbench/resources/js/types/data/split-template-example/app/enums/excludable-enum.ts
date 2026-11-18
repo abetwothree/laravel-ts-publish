@@ -6,7 +6,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\ExcludableEnum
  */
-export const ExcludableEnum = defineEnum({
+export const ExcludableEnum = /* @__PURE__ */ defineEnum({
     Alpha: 'alpha',
     Beta: 'beta',
     backed: true,

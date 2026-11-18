@@ -280,13 +280,15 @@ Every routed controller action gets a helper that builds its URL, binds its para
 import { defineRoute, annotateRequestPayload } from '@tolki/ts';
 import type { UpdatePostRequest } from '../requests/update-post-request';
 
-export const update = annotateRequestPayload<UpdatePostRequest>()(defineRoute({
+export const update = /* @__PURE__ */ annotateRequestPayload<UpdatePostRequest>()(/* @__PURE__ */ defineRoute({
     name: 'posts.update',
     url: '/posts/{post}',
     methods: ['put'] as const,
     args: [{ name: 'post', required: true, _routeKey: 'id' }] as const,
 }));
 ```
+
+Each call is marked `/* @__PURE__ */`, so a controller or route your app never references drops out of the production bundle. See [Bundling and Tree-Shaking](https://tolki.abe.dev/tree-shaking.html).
 
 Your frontend calls the helper:
 

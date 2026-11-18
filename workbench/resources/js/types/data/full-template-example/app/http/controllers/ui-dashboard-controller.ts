@@ -6,7 +6,7 @@ import type { ChartType } from '../../packages/ui';
 
 export type IndexPageProps = Inertia.SharedData & { chart: UiNode, widgets: UiNode[], maybe: UiNode | null, coll: UiNode[], composed: ChartType, gauge: UiGauge, pennies: UiAmount, deferred?: UiGauge, optional?: ChartType, shaped: { chart: ChartType; panel: UiNode; gauges: UiGauge[] }, untyped: { panel: UiNode; chart: ChartType }, uploader: User | null, gauge_from_docblock: UiGauge };
 
-export const index = annotatePageProps<IndexPageProps>()(defineRoute({
+export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'ui.dashboard',
     url: '/ui/dashboard',
     methods: ['get', 'head'] as const,

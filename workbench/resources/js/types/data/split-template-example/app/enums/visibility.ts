@@ -6,7 +6,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Visibility
  */
-export const Visibility = defineEnum({
+export const Visibility = /* @__PURE__ */ defineEnum({
     Public: 'Public',
     Private: 'Private',
     Protected: 'Protected',

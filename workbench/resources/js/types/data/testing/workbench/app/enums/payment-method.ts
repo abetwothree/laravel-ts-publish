@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\PaymentMethod
  */
-export const PaymentMethod = defineEnum({
+export const PaymentMethod = /* @__PURE__ */ defineEnum({
     CreditCard: 'credit_card',
     DebitCard: 'debit_card',
     PayPal: 'paypal',

@@ -4,7 +4,7 @@ import type { PriorityType, StatusType } from '../../enums';
 
 export type ShowPageProps = Inertia.SharedData & { priorities: (PriorityType | null)[], status: StatusType, status_or_draft?: StatusType };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts.redundant-arms',
     url: '/posts/{post}/redundant-arms',
     methods: ['get', 'head'] as const,

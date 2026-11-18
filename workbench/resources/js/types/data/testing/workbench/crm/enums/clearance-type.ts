@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\Crm\Enums\ClearanceType
  */
-export const ClearanceType = defineEnum({
+export const ClearanceType = /* @__PURE__ */ defineEnum({
     Temporary: 'temporary',
     Permanent: 'permanent',
     backed: true,

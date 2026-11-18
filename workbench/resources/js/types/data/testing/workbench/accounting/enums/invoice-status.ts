@@ -1,7 +1,7 @@
 import { defineEnum } from '@tolki/ts';
 
 /** @see Workbench\Accounting\Enums\InvoiceStatus */
-export const InvoiceStatus = defineEnum({
+export const InvoiceStatus = /* @__PURE__ */ defineEnum({
     Draft: 'draft',
     Sent: 'sent',
     Paid: 'paid',

@@ -12,7 +12,7 @@ export type NamedPageProps = Inertia.SharedData & { simple: PostCollection & Res
  * cursor: PostCollection & ResourceCursorPagination, either: PostCollection & (ResourceSimplePagination |
  * ResourcePagination), sometimes: PostCollection | (PostCollection & ResourcePagination) }
  */
-export const named = annotatePageProps<NamedPageProps>()(defineRoute({
+export const named = /* @__PURE__ */ annotatePageProps<NamedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'paginator-kinds.named',
     url: '/paginator-kinds/named',
     methods: ['get', 'head'] as const,
@@ -28,7 +28,7 @@ export type AnonymousPageProps = Inertia.SharedData & { simple: JsonResourceSimp
  * cursor: JsonResourceCursorPaginator<PostResource>,
  * sometimes: AnonymousResourceCollection<PostResource> | JsonResourceSimplePaginator<PostResource> }
  */
-export const anonymous = annotatePageProps<AnonymousPageProps>()(defineRoute({
+export const anonymous = /* @__PURE__ */ annotatePageProps<AnonymousPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'paginator-kinds.anonymous',
     url: '/paginator-kinds/anonymous',
     methods: ['get', 'head'] as const,
@@ -44,7 +44,7 @@ export type FlatPageProps = Inertia.SharedData & { simple: JsonResourceSimplePag
  * cursor: JsonResourceCursorPaginator<PostResource>,
  * keyed: Omit<JsonResourceCursorPaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } }
  */
-export const flat = annotatePageProps<FlatPageProps>()(defineRoute({
+export const flat = /* @__PURE__ */ annotatePageProps<FlatPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'paginator-kinds.flat',
     url: '/paginator-kinds/flat',
     methods: ['get', 'head'] as const,
@@ -61,7 +61,7 @@ export type GuessedPageProps = Inertia.SharedData & { named: PostCollection & Re
  * anonymous: JsonResourceCursorPaginator<WarehouseResource>, explicit: JsonResourcePaginator<WarehouseResource>,
  * unpaged: PostCollection }
  */
-export const guessed = annotatePageProps<GuessedPageProps>()(defineRoute({
+export const guessed = /* @__PURE__ */ annotatePageProps<GuessedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'paginator-kinds.guessed',
     url: '/paginator-kinds/guessed',
     methods: ['get', 'head'] as const,
@@ -76,7 +76,7 @@ export type StubPagePageProps = Inertia.SharedData & { posts: PostStubCollection
  *
  * Result should be { posts: PostStubCollection & ResourceSimplePagination }
  */
-export const stubPage = annotatePageProps<StubPagePageProps>()(defineRoute({
+export const stubPage = /* @__PURE__ */ annotatePageProps<StubPagePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'paginator-kinds.stub-page',
     url: '/paginator-kinds/stub-page',
     methods: ['get', 'head'] as const,

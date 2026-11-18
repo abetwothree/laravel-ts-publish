@@ -6,7 +6,7 @@ import type { PreserveKeysCollection, PreserveKeysTeamResource, TeamResource } f
 export type NamedPageProps = Inertia.SharedData & { teams: PreserveKeysCollection };
 
 /** Result should be { teams: PreserveKeysCollection } */
-export const named = annotatePageProps<NamedPageProps>()(defineRoute({
+export const named = /* @__PURE__ */ annotatePageProps<NamedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'preserve-keys.named',
     url: '/preserve-keys/named',
     methods: ['get', 'head'] as const,
@@ -16,7 +16,7 @@ export const named = annotatePageProps<NamedPageProps>()(defineRoute({
 export type NamedPaginatedPageProps = Inertia.SharedData & { teams: PreserveKeysCollection & ResourcePagination };
 
 /** Result should be { teams: PreserveKeysCollection & ResourcePagination } */
-export const namedPaginated = annotatePageProps<NamedPaginatedPageProps>()(defineRoute({
+export const namedPaginated = /* @__PURE__ */ annotatePageProps<NamedPaginatedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'preserve-keys.named-paginated',
     url: '/preserve-keys/named-paginated',
     methods: ['get', 'head'] as const,
@@ -26,7 +26,7 @@ export const namedPaginated = annotatePageProps<NamedPaginatedPageProps>()(defin
 export type FlatPaginatedPageProps = Inertia.SharedData & { teams: Omit<JsonResourcePaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } };
 
 /** Result should be { teams: Omit<JsonResourcePaginator<TeamResource>, 'data'> & { data: Record<string, TeamResource> } } */
-export const flatPaginated = annotatePageProps<FlatPaginatedPageProps>()(defineRoute({
+export const flatPaginated = /* @__PURE__ */ annotatePageProps<FlatPaginatedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'preserve-keys.flat-paginated',
     url: '/preserve-keys/flat-paginated',
     methods: ['get', 'head'] as const,
@@ -36,7 +36,7 @@ export const flatPaginated = annotatePageProps<FlatPaginatedPageProps>()(defineR
 export type AnonymousPaginatedPageProps = Inertia.SharedData & { teams: Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> } };
 
 /** Result should be { teams: Omit<JsonResourcePaginator<PreserveKeysTeamResource>, 'data'> & { data: Record<string, PreserveKeysTeamResource> } } */
-export const anonymousPaginated = annotatePageProps<AnonymousPaginatedPageProps>()(defineRoute({
+export const anonymousPaginated = /* @__PURE__ */ annotatePageProps<AnonymousPaginatedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'preserve-keys.anonymous-paginated',
     url: '/preserve-keys/anonymous-paginated',
     methods: ['get', 'head'] as const,
@@ -49,7 +49,7 @@ export type InlinePaginatedPageProps = Inertia.SharedData & { teams: PreserveKey
  * Paginates inline inside the render array with no intermediate variable — pins that the
  * paginator is still detected, so the prop types as a paginator and not a bare collection.
  */
-export const inlinePaginated = annotatePageProps<InlinePaginatedPageProps>()(defineRoute({
+export const inlinePaginated = /* @__PURE__ */ annotatePageProps<InlinePaginatedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'preserve-keys.inline-paginated',
     url: '/preserve-keys/inline-paginated',
     methods: ['get', 'head'] as const,
@@ -63,7 +63,7 @@ export type AnonymousInlinePaginatedPageProps = Inertia.SharedData & { teams: Om
  * pins that resolveStaticCollectionProps() also resolves the inline form, not just the
  * resource-constructor form inlinePaginated() above exercises.
  */
-export const anonymousInlinePaginated = annotatePageProps<AnonymousInlinePaginatedPageProps>()(defineRoute({
+export const anonymousInlinePaginated = /* @__PURE__ */ annotatePageProps<AnonymousInlinePaginatedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'preserve-keys.anonymous-inline-paginated',
     url: '/preserve-keys/anonymous-inline-paginated',
     methods: ['get', 'head'] as const,
