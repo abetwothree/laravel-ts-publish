@@ -185,6 +185,11 @@ it('keeps a group past calls that write no read it holds', function () {
     expect(variantsOf('harmless_calls'))->toBe(['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
 });
 
+// Eloquent's reading methods change nothing on the model, and no call on an enum case rebinds the read holding it.
+it('keeps a group past calls that only read the model or the read itself', function () {
+    expect(variantsOf('model_readers'))->toBe(['status' => [['0', ['v' => 'null']], ['1', ['v' => 'string']]]]);
+});
+
 // Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
 it('selects a value through eight levels of arms at most', function () {
     expect(variantsOf('nine_levels'))->toBe(['pinned' => [['true', ['v' => 'string | number']], ['false', ['v' => 'null']]]]);

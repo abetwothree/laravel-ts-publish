@@ -10,11 +10,13 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollectio
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\PrettyPrinter\Standard;
+use Workbench\App\Http\Resources\UserResource;
 
 it('names a helper the framework lists, run on $this', function (
     string $call,
@@ -41,6 +43,20 @@ it('names a helper the framework lists, run on $this', function (
     'a JsonResource method the framework does not list' => ['$this->resolve()', null],
     'a static JsonResource method the framework does not list' => ['self::collection($items)', null],
     'preserveQuery() on a collection' => ['$this->preserveQuery()', null, MergedResourceCollection::class],
+]);
+
+it('names the helper a method of a class runs, where the framework declares it', function (
+    string $method,
+    ?string $helper,
+    string $class = PostCardResource::class,
+) {
+    expect(ReadOnlyCalls::helperOn(new ReflectionClass($class), $method)?->getName())->toBe($helper);
+})->with([
+    'when()' => ['when', 'when'],
+    'whenLoaded(), in another case' => ['WHENLOADED', 'whenLoaded'],
+    'a method the framework does not list' => ['additional', null],
+    'a method the class lacks' => ['missing', null],
+    'a helper the class overrides' => ['when', null, OwnWhenResource::class],
 ]);
 
 it('gives the arguments a helper calls, as its value and default', function (string $call, array $callbacks) {
@@ -97,6 +113,16 @@ it('knows Laravel\'s auth() helper', function (string $call, bool $helper) {
     'another Laravel helper' => ['now()', false],
 ]);
 
+it('knows a resource built with JsonResource\'s own constructor', function (string $class, bool $builds) {
+    expect(ReadOnlyCalls::buildsResource($class))->toBe($builds);
+})->with([
+    'a resource' => [UserResource::class, true],
+    'JsonResource itself' => [JsonResource::class, true],
+    'a collection, with its own constructor' => [AnonymousResourceCollection::class, false],
+    'another class' => [Model::class, false],
+    'a class no file declares' => ['Missing\\Resource', false],
+]);
+
 it('knows the Gate facade\'s checks', function (string $call, bool $check) {
     $expr = runtimeClassCall($call);
     assert($expr instanceof StaticCall);
@@ -114,6 +140,7 @@ it('knows the model methods that only read, whatever their case', function (stri
 })->with([
     'getKey()' => ['getKey', true],
     'getkey()' => ['getkey', true],
+    'hasAppended()' => ['hasAppended', true],
     'save()' => ['save', false],
 ]);
 

@@ -609,6 +609,23 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * Calls between the keys that only read the model or the read itself: a key the resource forwards, a relation
+     * check on the model, and a method of the read's own enum.
+     *
+     * @return array<string, mixed>
+     */
+    public function modelReaders(): array
+    {
+        return [
+            'status' => $this->status,
+            'a' => $this->getKey(),
+            'b' => $this->resource->relationLoaded('author'),
+            'c' => $this->status->color(),
+            'v' => $this->status === Status::Published ? $this->title : null,
+        ];
+    }
+
+    /**
      * A read assigned before the key that sends it.
      *
      * @return array<string, mixed>

@@ -255,11 +255,8 @@ final class VariantReader
             return false;
         }
 
-        $items = array_slice($array->items, min($at), max($at) - min($at) + 1, preserve_keys: true);
-
         return InterveningWrites::reach(
-            array_values($items),
-            array_values(array_diff_key($items, array_flip($at))),
+            array_values(array_slice($array->items, min($at), max($at) - min($at) + 1)),
             $read,
             $scope,
         );

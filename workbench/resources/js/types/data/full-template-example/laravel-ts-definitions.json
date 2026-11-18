@@ -14238,17 +14238,17 @@
             "properties": [
                 {
                     "name": "by_reference",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "by_reference_in_helper",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "callable_in_when",
-                    "type": "{ is_pinned: true; cleared?: boolean; detail: string } | { is_pinned: false; cleared?: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; cleared?: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
@@ -14263,7 +14263,7 @@
                 },
                 {
                     "name": "call_in_arm",
-                    "type": "{ is_pinned: true; changed: string; detail: string } | { is_pinned: false; changed: null; detail: null }",
+                    "type": "{ is_pinned: boolean; changed: string | null; detail: string | null }",
                     "optional": false
                 },
                 {
@@ -14273,17 +14273,27 @@
                 },
                 {
                     "name": "handed_model",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "two_helpers_down",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "helper_fills_model",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "closure_in_when",
+                    "type": "{ is_pinned: boolean; cleared?: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_writer",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 }
             ]
@@ -14438,12 +14448,12 @@
             "properties": [
                 {
                     "name": "enum_method",
-                    "type": "{ status: StatusType; color: string; detail: string | null }",
+                    "type": "{ status: 0; color: string; detail: null } | { status: 1; color: string; detail: string }",
                     "optional": false
                 },
                 {
                     "name": "forwarded_key",
-                    "type": "{ is_pinned: boolean; key: number; detail: string | null }",
+                    "type": "{ is_pinned: true; key: number; detail: string } | { is_pinned: false; key: number; detail: null }",
                     "optional": false
                 },
                 {
@@ -14453,12 +14463,12 @@
                 },
                 {
                     "name": "relation_check",
-                    "type": "{ is_pinned: boolean; loaded: boolean; detail: string | null }",
+                    "type": "{ is_pinned: true; loaded: boolean; detail: string } | { is_pinned: false; loaded: boolean; detail: null }",
                     "optional": false
                 },
                 {
                     "name": "forwarded_check_in_when",
-                    "type": "{ is_pinned: boolean; author_title?: string; detail: string | null }",
+                    "type": "{ is_pinned: true; author_title?: string; detail: string } | { is_pinned: false; author_title?: string; detail: null }",
                     "optional": false
                 },
                 {
@@ -14479,6 +14489,31 @@
                 {
                     "name": "reading_call_in_arm",
                     "type": "{ is_pinned: true; label: string; detail: string } | { is_pinned: false; label: null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_helper",
+                    "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "url_of_model",
+                    "type": "{ is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "gate_on_model",
+                    "type": "{ is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "resource_of_model",
+                    "type": "{ is_pinned: true; card: UserResource; detail: string } | { is_pinned: false; card: UserResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_reader",
+                    "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
                     "optional": false
                 }
             ]

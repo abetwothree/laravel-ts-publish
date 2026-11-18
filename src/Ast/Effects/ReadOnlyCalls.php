@@ -24,12 +24,14 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use ReflectionClass;
 use ReflectionFunction;
 use ReflectionMethod;
 
 /**
  * The framework calls known only to read what they are handed: Laravel's resource helpers, which call at most the
- * callbacks they are given, its URL helpers, the Gate facade's checks and Eloquent's reading methods.
+ * callbacks they are given, its URL helpers, the Gate facade's checks, a resource's own constructor and Eloquent's
+ * reading methods.
  *
  * @internal
  */
@@ -66,7 +68,7 @@ final class ReadOnlyCalls
         'getKey', 'getKeyName', 'getKeyType', 'getRouteKey', 'getRouteKeyName', 'getTable', 'getForeignKey',
         'getMorphClass', 'getQualifiedKeyName', 'qualifyColumn',
         'getAttribute', 'getAttributes', 'getRawOriginal', 'getOriginal', 'getDirty', 'getChanges', 'isDirty',
-        'isClean', 'wasChanged', 'originalIsEquivalent',
+        'isClean', 'wasChanged', 'originalIsEquivalent', 'hasAppended',
         'relationLoaded', 'getRelation', 'getRelations', 'getRelationValue',
         'is', 'isNot', 'trashed', 'usesTimestamps', 'getConnectionName',
     ];
@@ -92,13 +94,24 @@ final class ReadOnlyCalls
             default => null,
         };
 
-        if ($class === null || ! $class->hasMethod($name)) {
+        return $class === null ? null : self::helperOn($class, $name);
+    }
+
+    /**
+     * The helper RESOURCE_HELPERS lists that a method of a class names, where the framework's resource classes
+     * declare it rather than the class overriding it.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    public static function helperOn(ReflectionClass $class, string $method): ?ReflectionMethod
+    {
+        if (! in_array(strtolower($method), self::RESOURCE_HELPERS, true) || ! $class->hasMethod($method)) {
             return null;
         }
 
-        $method = $class->getMethod($name);
+        $helper = $class->getMethod($method);
 
-        return in_array(DeclaringFile::ofMethod($method)->getName(), self::READING_DECLARERS, true) ? $method : null;
+        return in_array(DeclaringFile::ofMethod($helper)->getName(), self::READING_DECLARERS, true) ? $helper : null;
     }
 
     /**
@@ -156,6 +169,16 @@ final class ReadOnlyCalls
     {
         return $call->class instanceof Name && in_array($call->class->toString(), [Gate::class, 'Gate'], true)
             && $call->name instanceof Identifier && in_array($call->name->toLowerString(), self::GATE_CHECKS, true);
+    }
+
+    /**
+     * Whether `new` of a class builds a resource with JsonResource's own constructor, which only holds what it is
+     * handed: the resource's toArray() runs once the literal holding it is built.
+     */
+    public static function buildsResource(string $class): bool
+    {
+        return is_a($class, JsonResource::class, true)
+            && new ReflectionMethod($class, '__construct')->getDeclaringClass()->getName() === JsonResource::class;
     }
 
     /**
