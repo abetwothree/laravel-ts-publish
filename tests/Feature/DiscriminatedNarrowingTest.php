@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
+use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
 
 /**
@@ -20,7 +21,8 @@ function renderedAlias(string $resource): string
     config()->set('ts-publish.output_to_files', false);
 
     $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
-    preg_match('/^export type '.class_basename($resource).' = (.*);$/ms', $content, $match);
+    // The bare-arms form breaks the line after `=`, so the type starts at the first non-space after it.
+    preg_match('/^export type '.class_basename($resource).' =\s*(.*);$/ms', $content, $match);
 
     return $match[1] ?? '';
 }
@@ -55,14 +57,21 @@ it('narrows each key a resource\'s arms hold by the value of the key they follow
     $pinned = renderedAlias(PinnedPostResource::class);
     $priority = renderedAlias(PostPriorityResource::class);
     $both = renderedAlias(PinnedPriorityResource::class);
+    $wraps = renderedAlias(PinnedWrapsResource::class);
     $snippet = <<<TS
         export {};
         type PinnedPlacementResource = { pinned_at: string | null };
         type FeedPlacementResource = { published_at: string | null };
         type UserResource = { id: number; name: string };
+        type AsEnum<T> = { enum: T };
+        declare const WorkbenchStatus: { readonly Draft: 'draft' };
+        declare const Visibility: { readonly Public: 'public' };
+        type WorkbenchStatusType = 0 | 1;
+        type CrmStatusType = 'lead' | 'churned';
         type P = {$pinned};
         type Q = {$priority};
         type R = {$both};
+        type W = {$wraps};
 
         declare const p: P;
         if (p.is_pinned) { const a: PinnedPlacementResource = p.placement; }
@@ -83,6 +92,12 @@ it('narrows each key a resource\'s arms hold by the value of the key they follow
         // @ts-expect-error each group narrows apart, so escalated_at is missing until priority narrows it
         const k: string | null = r.escalated_at;
 
+        declare const w: W;
+        if (w.is_pinned) { const s: WorkbenchStatusType = w.stage; const t: AsEnum<typeof WorkbenchStatus> = w.state; const a: UserResource = w.author; }
+        else { const s: CrmStatusType = w.stage; const t: AsEnum<typeof Visibility> | null = w.state; }
+        // @ts-expect-error stage is either enum's until is_pinned narrows it
+        const x: WorkbenchStatusType = w.stage;
+
         TS;
     $unchecked = implode("\n", array_filter(
         explode("\n", $snippet),
@@ -94,5 +109,5 @@ it('narrows each key a resource\'s arms hold by the value of the key they follow
 
     expect([$status, $output])->toBe([0, ''])
         ->and($uncheckedStatus)->not->toBe(0)
-        ->and(substr_count($uncheckedOutput, 'error TS2322'))->toBe(4);
+        ->and(substr_count($uncheckedOutput, 'error TS2322'))->toBe(5);
 });

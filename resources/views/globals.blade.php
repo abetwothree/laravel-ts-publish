@@ -1,6 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
-@use('AbeTwoThree\LaravelTsPublish\Support\VariantRows')
 /* eslint-disable */
 // biome-ignore lint: disable
 // oxlint-disable
@@ -122,7 +121,7 @@ $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsType
 @endphp
 @if(count($transformer->variants) === 1 && count($transformer->properties) === 0 && count($transformer->tsExtends) === 0)
         export type {{ $transformer->resourceName }} =
-@foreach (VariantRows::arms($transformer->variants[0]) as $arm)
+@foreach (TsTypeString::splitTopLevelUnion($transformer->variants[0]) as $arm)
             | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
@@ -143,7 +142,7 @@ $qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsType
         } & (
 @endif
 @foreach ($transformer->variants as $variant)
-@foreach (VariantRows::arms($variant) as $arm)
+@foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
             | {!! $qualified($arm) !!}
 @endforeach
         ){!! $loop->last ? ';' : ' & (' !!}

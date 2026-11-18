@@ -697,7 +697,7 @@ it('reads each key once, as its last write where its first stood, and every entr
 });
 
 // A per-key map one of these methods forgets would keep a moved key's classes, cast or readings under the old name.
-it('moves every per-key map with its key, through every method that moves, slices or forgets keys', function () {
+it('moves every per-key map with its key, through every method that moves, slices, forgets or drops keys', function () {
     $wide = ['properties', 'customImports', 'carried'];
     $maps = array_values(array_filter(
         array_map(
@@ -730,6 +730,8 @@ it('moves every per-key map with its key, through every method that moves, slice
     $replaced->replaceWith($filled());
     $forgotten = $filled();
     $forgotten->forgetChannels('k');
+    $dropped = $filled();
+    $dropped->dropKeys(['k']);
     // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
     $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
 
@@ -741,8 +743,11 @@ it('moves every per-key map with its key, through every method that moves, slice
             ->and($appended->{$map})->toBe(['k' => ['K']], $map)
             ->and($merged->{$map})->toBe($map === 'heldObjectKeys' ? [] : ['k' => ['K']], $map)
             ->and($replaced->{$map})->toBe(['k' => ['K'], 'other' => ['O']], $map)
-            ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map);
+            ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map)
+            ->and($dropped->{$map})->toBe(['other' => ['O']], $map);
     }
+
+    expect(array_column($dropped->properties, 'name'))->toBe(['other']);
 });
 
 it('slices one row of a named key, its last, and every row of a signature', function () {

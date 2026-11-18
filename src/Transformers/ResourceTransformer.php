@@ -97,6 +97,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
     public protected(set) ?string $typeAlias = null;
 
+    /** Whether the resource's own #[TsResource] turns its variants on or off; null leaves it to the config. */
+    protected ?bool $discriminated = null;
+
     /** @var array<array-key, string> property name => custom type override */
     protected array $tsTypeOverrides = [];
 
@@ -340,6 +343,7 @@ class ResourceTransformer extends CoreTransformer
             $this->description = $tsResourceInstance->description !== ''
                 ? $tsResourceInstance->description
                 : JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
+            $this->discriminated = $tsResourceInstance->discriminated;
         } else {
             $this->resourceName = $this->reflectionResource->getShortName();
             $this->description = JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
@@ -556,10 +560,7 @@ class ResourceTransformer extends CoreTransformer
      */
     protected function publishesVariants(): bool
     {
-        $attribute = $this->reflectionResource->getAttributes(TsResource::class)[0] ?? null;
-
-        return $attribute?->newInstance()->discriminated
-            ?? Config::boolean('ts-publish.resources.discriminated_unions', true);
+        return $this->discriminated ?? Config::boolean('ts-publish.resources.discriminated_unions', true);
     }
 
     /**

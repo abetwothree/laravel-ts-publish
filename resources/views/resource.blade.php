@@ -1,5 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
-@use('AbeTwoThree\LaravelTsPublish\Support\VariantRows')
+@use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
 @if($usesTolkiPackage && count($data->valueImports) > 0)
 import { type AsEnum } from '@tolki/ts';
 
@@ -25,7 +25,7 @@ $description .= "@see {$data->fqcn}";
 export type {{ $data->resourceName }} = {!! $data->typeAlias !!};
 @elseif(count($data->variants) === 1 && count($data->properties) === 0 && count($data->tsExtends) === 0)
 export type {{ $data->resourceName }} =
-@foreach (VariantRows::arms($data->variants[0]) as $arm)
+@foreach (TsTypeString::splitTopLevelUnion($data->variants[0]) as $arm)
     | {!! $arm !!}{!! $loop->last ? ';' : '' !!}
 @endforeach
 @else
@@ -47,7 +47,7 @@ export type {{ $data->resourceName }} = {!! implode('', array_map(fn (string $ex
 } & (
 @endif
 @foreach ($data->variants as $variant)
-@foreach (VariantRows::arms($variant) as $arm)
+@foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
     | {!! $arm !!}
 @endforeach
 ){!! $loop->last ? ';' : ' & (' !!}

@@ -35,14 +35,7 @@ final class VariantUnions
             $objects = array_map(static fn (Variant $variant): MethodAnalysis => self::object($group, $variant), $group->variants);
             $union = ValueResult::unionResults(array_map(resolve(InlineObjectResult::class)->of(...), $objects));
 
-            foreach ($group->keys as $key) {
-                $analysis->forgetChannels($key);
-            }
-
-            $analysis->properties = array_values(array_filter(
-                $analysis->properties,
-                static fn (array $row): bool => ! in_array($row['name'], $group->keys, true),
-            ));
+            $analysis->dropKeys($group->keys);
             $analysis->addProperty(VariantRows::key($group->discriminant), $union);
         }
     }

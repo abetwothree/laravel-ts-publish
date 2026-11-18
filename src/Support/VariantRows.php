@@ -12,6 +12,8 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
  *
  * @phpstan-import-type PropertiesList from TsResourceDto
  *
+ * @phpstan-type SplitRows = array{0: PropertiesList, 1: list<string>}
+ *
  * @internal
  */
 final class VariantRows
@@ -39,7 +41,7 @@ final class VariantRows
      * A resource's rows split into the keys every arm shares and each variant row's union, in row order.
      *
      * @param  PropertiesList  $properties
-     * @return array{0: PropertiesList, 1: list<string>}
+     * @return SplitRows
      */
     public static function split(array $properties): array
     {
@@ -55,15 +57,5 @@ final class VariantRows
         }
 
         return [$shared, $variants];
-    }
-
-    /**
-     * The top-level arms of a variant row's union, each one object a value of its discriminant sends.
-     *
-     * @return list<string>
-     */
-    public static function arms(string $union): array
-    {
-        return TsTypeShape::splitTopLevel($union, ['|']);
     }
 }

@@ -819,23 +819,36 @@ class MethodAnalysis
     }
 
     /**
-     * Drop each named key another analysis already holds, with its import channels and cast; signature entries stay.
+     * Drop each named key another analysis already holds; signature entries stay.
      *
      * PHP's `+` and Laravel's mergeData() keep a key already set, while a signature entry is one more runtime key.
      */
     public function dropKeysHeldBy(self $held): void
     {
-        $names = array_flip(array_column($held->properties, 'name'));
+        $this->dropKeys(array_column($held->properties, 'name'));
+    }
+
+    /**
+     * Drop each named key's rows with every map renameKeys() rekeys under its name; signature entries stay.
+     *
+     * @param  list<string>  $names
+     */
+    public function dropKeys(array $names): void
+    {
+        $names = array_flip($names);
         $kept = [];
 
         foreach ($this->properties as $property) {
-            if (isset($names[$property['name']]) && ! JsEmitter::isIndexSignatureKey($property['name'])) {
-                $this->forgetChannels($property['name']);
+            $name = $property['name'];
+
+            if (! isset($names[$name]) || JsEmitter::isIndexSignatureKey($name)) {
+                $kept[] = $property;
 
                 continue;
             }
 
-            $kept[] = $property;
+            $this->forgetChannels($name);
+            unset($this->heldObjectKeys[$name], $this->closedToDottedKeys[$name]);
         }
 
         $this->properties = $kept;
