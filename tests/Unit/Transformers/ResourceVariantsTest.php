@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostDeclaredResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostFlatResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostRetypedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostSplitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapOrReadPinnedResource;
@@ -103,6 +105,8 @@ it('publishes the keys flat where a cast, the attribute or the config rules the 
     ])->and($data->variants)->toBe([]);
 })->with([
     'a class cast on the discriminant' => fn (): TsResourceDto => variantsData(PinnedPostCastResource::class),
+    'a toArray() cast on a dependent' => fn (): TsResourceDto => variantsData(PinnedPostMethodCastResource::class),
+    'a model cast on the discriminant' => fn (): TsResourceDto => variantsData(PinnedPostModelCastResource::class),
     'the attribute off' => fn (): TsResourceDto => variantsData(PinnedPostFlatResource::class),
     'the config off' => function (): TsResourceDto {
         config(['ts-publish.resources.discriminated_unions' => false]);
