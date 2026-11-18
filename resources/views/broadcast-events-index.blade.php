@@ -11,7 +11,7 @@ export type BroadcastEvent =
     | {!! JsEmitter::toJsLiteral($event['broadcastName']) !!}{{ $loop->last ? ';' : '' }}
 @endforeach
 
-export const BroadcastEvents = Object.freeze({
+export const BroadcastEvents = /* @__PURE__ */ Object.freeze({
 @foreach($events as $event)
     {!! $event['constKey'] !!}: {!! JsEmitter::toJsLiteral($event['broadcastName']) !!},
 @endforeach
