@@ -9,6 +9,8 @@ parser of unknown-regression-gate.py, and walks every union at every depth for t
             unless the property also wraps that enum in `AsEnum<typeof X>`, as the package keeps it
   duplicate two arms of one union spelled exactly alike
 
+Each arm of a resource split into arms reads in a scope of its own, `X[i]`, as an interface would.
+
 A name, an alias or an enum's const, resolves through the file's `import ... from './dir'` lines to
 the enum file of that directory that exports it, or, spelled qualified in laravel-ts-global.ts,
 through its namespace. A name that two enum files in one directory export, or that resolves nowhere,
@@ -284,7 +286,8 @@ def find_redundant(files: dict[str, str]) -> list[Finding]:
     found: list[Finding] = []
     for path, body in files.items():
         resolve = resolver(path, body, enums)
-        props = parse_source(body)
+        # Joined, two arms' values would read as one union no published type carries.
+        props = parse_source(body, per_arm=True)
         keys: dict[str, set[str]] = defaultdict(set)
         for scope, key in props:
             keys[scope].add(key)
@@ -537,6 +540,32 @@ MODULE_CASES = [
     ("control: arms alike only in part", "a: { x: number } | { x: string };", []),
 ]
 
+# (label, path, file body, expected findings) for a resource split into arms, each read apart from the others.
+SPLIT_CASES = [
+    ("literal its alias lists, inside an arm", MODULE,
+     MODULE_HEAD + "export type ProbeResource = {\n    id: number;\n} & (\n"
+     "    | { k: true; v: 'image' | MediaTypeType }\n    | { k: false; v: StatusType }\n);\n",
+     [("v", "literal", "'image'")]),
+    ("never[] beside a list, inside an arm with no shared rows", MODULE,
+     MODULE_HEAD + "export type ProbeResource =\n    | { k: true; v: never[] | number[] }\n"
+     "    | { k: false; v: null };\n",
+     [("v", "never", "never[]")]),
+    ("literal beside a qualified alias, inside an arm", GLOBALS,
+     "export {}\n\ndeclare global {\n    export namespace app.http.resources {\n"
+     "        export type ProbeResource = {\n            id: number;\n        } & (\n"
+     "            | { k: true; v: 'image' | app.enums.MediaTypeType }\n            | { k: false; v: null }\n"
+     "        );\n    }\n}\n",
+     [("v", "literal", "'image'")]),
+    ("control: a literal in one arm beside its alias in another", MODULE,
+     MODULE_HEAD + "export type ProbeResource =\n    | { k: true; v: 'image' }\n"
+     "    | { k: false; v: MediaTypeType };\n",
+     []),
+    ("control: one union arm in two arms", MODULE,
+     MODULE_HEAD + "export type ProbeResource =\n    | { k: 0; v: string | null }\n    | { k: 1; v: number | null }\n"
+     "    | { k: 2; v?: never }\n    | { k: 3; v?: never };\n",
+     []),
+]
+
 # (label, scope, property line in laravel-ts-global.ts, expected findings, how many of them fail the gate); a scope
 # without a namespace sits in app.http.resources.
 GLOBAL_CASES = [
@@ -618,6 +647,9 @@ def run_parsetest() -> int:
 
     for label, line, want in MODULE_CASES:
         check(label, MODULE, module_body(line), want, len(want))
+
+    for label, path, body, want in SPLIT_CASES:
+        check(label, path, body, want, len(want))
 
     for label, path, line, want, fails in BASELINE_CASES:
         check(label, path, module_body(line), want, fails, PROBE_BASELINE)

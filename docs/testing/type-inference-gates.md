@@ -60,6 +60,11 @@ skips the parent when all its head members existed at the base, so a regression 
 head has no base key, so an object that gains an `unknown` member fails on its parent. Treat that as a real question,
 not noise. A `Pick<Model, K>` value has no `{` to split and stays one key, and the model's own file checks its members.
 
+A resource split into arms, `export type X = { … } & ( | { … } | { … } );` or bare `| { … }` arms after
+`export type X =`, keys its shared rows under `X` as an interface does. A key several arms send is keyed once, its
+arms' distinct values joined with ` | ` in arm order, so it compares with the flat key the resource published before
+the split, and an inline object in that value splits as any other.
+
 ### Self-tests
 
 Run both after any change to the script:
@@ -305,7 +310,8 @@ generic arguments, tuple elements, parenthesized groups and arrow returns), and 
 - **A literal beside its enum alias**: a string or number literal the alias's `export type X = …` lists. `'image'`
   and `"image"` match, and `1` and `'1'` do not. A property that also wraps that enum in `AsEnum<typeof X>` keeps the
   literal, as the package does, so `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }` passes. A property is
-  an interface's key, or a member of an inline type alias such as a page's props.
+  an interface's key, a member of an inline type alias such as a page's props, or a member of one arm of a split
+  resource, read in a scope of its own, `X[i]`, since two arms' values joined would form a union nothing publishes.
 - **Two arms spelled alike**.
 
 A name, an alias or an enum's const, resolves through the file's relative `import` to the one enum file in that
