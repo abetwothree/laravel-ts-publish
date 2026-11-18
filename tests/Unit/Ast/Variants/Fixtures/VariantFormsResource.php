@@ -14,6 +14,7 @@ use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
  * One method per DiscriminantFormsResource cell, named for it, each returning that cell's literal at its top level,
@@ -319,6 +320,16 @@ final class VariantFormsResource extends JsonResource
     public function sameArmsKept(): array
     {
         return ['pinned' => $this->is_pinned, 'v' => $this->is_pinned ? $this->id : $this->user_id];
+    }
+
+    /**
+     * A test whose arms spell one name for two enums, which a file imports under two aliases.
+     *
+     * @return array<string, mixed>
+     */
+    public function sameNameArms(): array
+    {
+        return ['pinned' => $this->is_pinned, 'v' => $this->is_pinned ? $this->status : CrmStatus::Lead];
     }
 
     /**

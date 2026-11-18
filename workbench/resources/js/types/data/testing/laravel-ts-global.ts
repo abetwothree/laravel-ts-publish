@@ -2805,17 +2805,18 @@ declare global {
          * Declares no toArray() of its own — pins that the analyzer walks up to the nearest ancestor
          * that does, rather than emitting an empty interface. Carries its own @mixin.
          */
-        export interface BodylessTeamResource {
+        export type BodylessTeamResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
-            is_active: boolean;
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /** Exercises comparison and boolean operator expressions. */
         export interface BooleanExprResource {
             is_recent: boolean;
@@ -3049,13 +3050,11 @@ declare global {
          * Exercises: self-referencing Resource::make and Resource::collection,
          * when conditional, whenCounted, cross-resource PostResource::collection.
          */
-        export interface CategoryResource {
+        export type CategoryResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
             sort_order: number;
-            is_active: boolean;
             parent?: CategoryResource | null;
             children?: CategoryResource[];
             posts?: PostResource[];
@@ -3073,7 +3072,10 @@ declare global {
             parent_when_resource_self?: CategoryResource | null;
             children_with_default: workbench.app.models.Category[];
             posts_with_default: PostResource[];
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /**
          * Regression fixture, two-sided:
          *
@@ -4966,17 +4968,18 @@ declare global {
          * Singular resource whose ::collection() preserves keys via $preserveKeys — exercises the
          * anonymous (static-collection) Inertia path. Delegates to TeamResource's toArray() shape.
          */
-        export interface PreserveKeysTeamResource {
+        export type PreserveKeysTeamResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
-            is_active: boolean;
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /** Aggregates whose alias the parent model casts: `decimal:2` writes a string, and `timestamp` the Unix integer. */
         export interface ProductAggregateCastResource {
             first_sold_ts?: number | null;
@@ -5806,17 +5809,18 @@ declare global {
          * Exercises: when, whenLoaded + Resource::make, Resource::collection,
          * whenCounted, mergeWhen.
          */
-        export interface TeamResource {
+        export type TeamResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
-            is_active: boolean;
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /**
          * A mixed EnumResource/direct-access ternary nested one level down, where both arms read the same
          * list-shaped accessor: they render the same string and the union merge collapses them, so only
@@ -6280,31 +6284,31 @@ declare global {
          * GH-157's own report: one key's resource follows a boolean the resource also sends, so `is_pinned` should narrow
          * `placement`.
          */
-        export interface PinnedPostResource {
+        export type PinnedPostResource = {
             id: number;
-            is_pinned: boolean;
-            placement: PinnedPlacementResource | FeedPlacementResource;
-        }
+        } & (
+            | { is_pinned: true; placement: PinnedPlacementResource }
+            | { is_pinned: false; placement: FeedPlacementResource }
+        );
         /**
          * Keys a boolean the resource sends picks, whose arms need imports: an enum resource of two enums, two same-named
          * enums and a resource only one arm sends (GH-157).
          */
-        export interface PinnedWrapsResource {
-            is_pinned: boolean;
-            state: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
-            stage: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
-            author?: workbench.app.http.resources.UserResource;
-        }
+        export type PinnedWrapsResource =
+            | { is_pinned: true; state: workbench.app.enums.StatusType; stage: workbench.app.enums.StatusType; author: workbench.app.http.resources.UserResource }
+            | { is_pinned: false; state: workbench.app.enums.VisibilityType | null; stage: workbench.crm.enums.StatusType; author?: never };
         /**
          * A nullable enum the resource sends picks two keys: a `match` with grouped cases and a `null` arm, and a `when()`
          * whose key is present for one case only (GH-157).
          */
-        export interface PostPriorityResource {
+        export type PostPriorityResource = {
             id: number;
-            priority: workbench.app.enums.PriorityType | null;
-            badge: string | workbench.app.http.resources.UserResource | never[] | null;
-            escalated_at?: string | null;
-        }
+        } & (
+            | { priority: 0 | 1; badge: null; escalated_at?: never }
+            | { priority: 2; badge: string; escalated_at?: never }
+            | { priority: 3; badge: workbench.app.http.resources.UserResource; escalated_at: string | null }
+            | { priority: null; badge: never[]; escalated_at?: never }
+        );
         /**
          * Literals whose keys follow a sibling key's value, read back as keys (GH-157): a helper that writes into one, a
          * collection, a spread and a key read. Each reads the literal as one object, as it did before the literal split.
@@ -6488,7 +6492,7 @@ declare global {
          * whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted,
          * whenAggregated, when conditional with direct property.
          */
-        export interface ArticleResource {
+        export type ArticleResource = {
             id: number;
             title: string;
             slug: string;
@@ -6496,15 +6500,16 @@ declare global {
             body: string;
             status: workbench.blog.enums.ArticleStatusType;
             content_type: workbench.blog.enums.ContentTypeType;
-            is_featured: boolean;
-            featured_image?: string | null;
             meta_description?: string;
             published_at?: string;
             author?: workbench.app.models.User;
             reactions?: ReactionResource[];
             reactions_count?: number;
             reactions_avg?: number;
-        }
+        } & (
+            | { is_featured: true; featured_image: string | null }
+            | { is_featured: false; featured_image?: never }
+        );
         /**
          * Exercises: multiple whenLoaded bare — both same-module (Article)
          * and cross-module (App\User) model type resolution.
@@ -6542,21 +6547,22 @@ declare global {
          * resource wrapping with colliding resource names, dual EnumResource::make,
          * both same-named consts wrapped again inside one inline object (status_pair).
          */
-        export interface DealResource {
+        export type DealResource = {
             id: number;
             title: string;
             value: string;
             status: workbench.app.enums.StatusType;
             status_enum: workbench.app.enums.StatusType;
-            crm_status: workbench.crm.enums.StatusType;
             crm_enum: workbench.crm.enums.StatusType;
             status_pair: { app: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType };
             customer?: workbench.crm.models.User;
             admin?: workbench.app.models.User;
             customer_resource?: UserResource;
             admin_resource?: workbench.app.http.resources.UserResource;
-            closed_at?: string | null;
-        }
+        } & (
+            | { crm_status: 'lead' | 'prospect' | 'active'; closed_at?: never }
+            | { crm_status: 'churned'; closed_at: string | null }
+        );
         export interface UserResource {
             id: number;
             name: string;

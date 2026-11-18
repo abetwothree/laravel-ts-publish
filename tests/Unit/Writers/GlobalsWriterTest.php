@@ -655,3 +655,28 @@ test('reads two composed classes of one name as the first in the globals file, a
         ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[UiTwoChartsResource::class] ?? '')
         ->toContain('reads them all as ['.Chart::class.']');
 });
+
+test('the globals file publishes a resource\'s arms as a type, each arm qualified as a property is', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = new GlobalsWriter(new Filesystem)->write($runner);
+
+    expect($content)->toContain(<<<'TS'
+                export type PinnedPostResource = {
+                    id: number;
+                } & (
+                    | { is_pinned: true; placement: PinnedPlacementResource }
+                    | { is_pinned: false; placement: FeedPlacementResource }
+                );
+        TS)
+        ->toContain(<<<'TS'
+                export type PinnedWrapsResource =
+                    | { is_pinned: true; state: workbench.app.enums.StatusType; stage: workbench.app.enums.StatusType; author: workbench.app.http.resources.UserResource }
+                    | { is_pinned: false; state: workbench.app.enums.VisibilityType | null; stage: workbench.crm.enums.StatusType; author?: never };
+        TS)
+        ->not->toContain('export interface PinnedPostResource');
+});

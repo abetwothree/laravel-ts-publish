@@ -1,4 +1,3 @@
-import type { PriorityType } from '../../../enums';
 import type { UserResource } from '..';
 
 /**
@@ -7,10 +6,11 @@ import type { UserResource } from '..';
  *
  * @see Workbench\App\Http\Resources\Discriminated\PostPriorityResource
  */
-export interface PostPriorityResource
-{
+export type PostPriorityResource = {
     id: number;
-    priority: PriorityType | null;
-    badge: string | UserResource | never[] | null;
-    escalated_at?: string | null;
-}
+} & (
+    | { priority: 0 | 1; badge: null; escalated_at?: never }
+    | { priority: 2; badge: string; escalated_at?: never }
+    | { priority: 3; badge: UserResource; escalated_at: string | null }
+    | { priority: null; badge: never[]; escalated_at?: never }
+);

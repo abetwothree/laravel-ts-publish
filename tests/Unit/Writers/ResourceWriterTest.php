@@ -38,11 +38,16 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastW
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsArrayResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPriorityResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
+use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
+use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\NestedSignatureResource;
 use Workbench\App\Http\Resources\OptionalSignatureCastResource;
 use Workbench\App\Http\Resources\PostResource;
@@ -449,3 +454,75 @@ it('keeps a resource template published before this release compiling', function
         ->and($content)->toContain('    [key: `${string}_note`]: number | undefined;')
         ->and($content)->not->toContain(']?:');
 });
+
+it('publishes a resource with arms as a type of its shared keys and one arm per value', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedPostResource::class));
+
+    expect($content)->toBe(<<<'TS'
+        import type { FeedPlacementResource, PinnedPlacementResource } from '.';
+
+        /**
+         * GH-157's own report: one key's resource follows a boolean the resource also sends, so `is_pinned` should narrow
+         * `placement`.
+         *
+         * @see Workbench\App\Http\Resources\Discriminated\PinnedPostResource
+         */
+        export type PinnedPostResource = {
+            id: number;
+        } & (
+            | { is_pinned: true; placement: PinnedPlacementResource }
+            | { is_pinned: false; placement: FeedPlacementResource }
+        );
+
+        TS);
+});
+
+it('publishes a resource with arms and no shared key as its arms alone', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedWrapsResource::class));
+
+    expect($content)->toEndWith(<<<'TS'
+        export type PinnedWrapsResource =
+            | { is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource }
+            | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never };
+
+        TS)
+        ->toStartWith("import { type AsEnum } from '@tolki/ts';");
+});
+
+it('publishes a resource with arms beside an extends clause as an intersection that leads with it', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedPostExtendsResource::class));
+
+    expect($content)
+        ->toContain("import type { HasTimestamps } from '@/types/common';")
+        ->toContain("export type PinnedPostExtendsResource = HasTimestamps & {\n    id: number;\n} & (\n");
+});
+
+it('publishes each group of arms in its own parentheses, after an extends clause and with no shared key', function (string $resource, string $declaration) {
+    config()->set('ts-publish.output_to_files', false);
+
+    expect(new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource)))->toEndWith($declaration);
+})->with([
+    'two groups' => [PinnedPriorityResource::class, <<<'TS'
+        export type PinnedPriorityResource = (
+            | { is_pinned: true; placement: PinnedPlacementResource }
+            | { is_pinned: false; placement: FeedPlacementResource }
+        ) & (
+            | { priority: 0 | 1 | 2 | null; escalated_at?: never }
+            | { priority: 3; escalated_at: string | null }
+        );
+
+        TS],
+    'an extends clause' => [PinnedWrapsExtendsResource::class, <<<'TS'
+        export type PinnedWrapsExtendsResource = HasTimestamps & (
+            | { is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource }
+            | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never }
+        );
+
+        TS],
+]);

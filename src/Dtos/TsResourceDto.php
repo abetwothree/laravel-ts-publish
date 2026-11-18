@@ -27,6 +27,7 @@ use JsonSerializable;
  *     modelClass: class-string|null,
  *     tsExtends: list<string>,
  *     typeAlias: string|null,
+ *     variants: list<string>,
  * }
  *
  * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|list<string>|null>
@@ -39,6 +40,7 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
      * @param  ValuesImportMap  $valueImports
      * @param  class-string|null  $modelClass
      * @param  list<string>  $tsExtends
+     * @param  list<string>  $variants  each group's union of one object per value of the key the group follows
      */
     public function __construct(
         public string $resourceName,
@@ -52,6 +54,7 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
         public ?string $modelClass = null,
         public array $tsExtends = [],
         public ?string $typeAlias = null,
+        public array $variants = [],
     ) {}
 
     /** @return ResourceData */
@@ -69,6 +72,7 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
             'modelClass' => $this->modelClass,
             'tsExtends' => $this->tsExtends,
             'typeAlias' => $this->typeAlias,
+            'variants' => $this->variants,
         ];
     }
 

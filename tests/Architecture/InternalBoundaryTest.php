@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ScanDialect;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 
@@ -91,6 +92,7 @@ it('tags every class under src/Ast except the two the engine exposes', function 
         TopLevelRenumbering::class,
         TypeRewriter::class,
         TypeScanner::class,
+        VariantRows::class,
         VisibleGaps::class,
     ];
     $untagged = [];

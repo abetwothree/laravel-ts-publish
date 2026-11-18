@@ -11373,16 +11373,6 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "owner",
                     "type": "UserResource",
                     "optional": true
@@ -11402,6 +11392,9 @@
                     "type": "Record<string, unknown> | null",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\BooleanExprResource": {
@@ -12188,18 +12181,8 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
                     "name": "sort_order",
                     "type": "number",
-                    "optional": false
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
                     "optional": false
                 },
                 {
@@ -12287,6 +12270,9 @@
                     "type": "PostResource[]",
                     "optional": false
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\ChildInlineFqcnResource": {
@@ -14269,42 +14255,17 @@
                     "name": "id",
                     "type": "number",
                     "optional": false
-                },
-                {
-                    "name": "is_pinned",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "placement",
-                    "type": "PinnedPlacementResource | FeedPlacementResource",
-                    "optional": false
                 }
+            ],
+            "variants": [
+                "{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedWrapsResource": {
             "name": "PinnedWrapsResource",
-            "properties": [
-                {
-                    "name": "is_pinned",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "state",
-                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Visibility> | null",
-                    "optional": false
-                },
-                {
-                    "name": "stage",
-                    "type": "WorkbenchStatusType | CrmStatusType",
-                    "optional": false
-                },
-                {
-                    "name": "author",
-                    "type": "UserResource",
-                    "optional": true
-                }
+            "properties": [],
+            "variants": [
+                "{ is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource } | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\PostPriorityResource": {
@@ -14314,22 +14275,10 @@
                     "name": "id",
                     "type": "number",
                     "optional": false
-                },
-                {
-                    "name": "priority",
-                    "type": "PriorityType | null",
-                    "optional": false
-                },
-                {
-                    "name": "badge",
-                    "type": "string | UserResource | never[] | null",
-                    "optional": false
-                },
-                {
-                    "name": "escalated_at",
-                    "type": "string | null",
-                    "optional": true
                 }
+            ],
+            "variants": [
+                "{ priority: 0 | 1; badge: null; escalated_at?: never } | { priority: 2; badge: string; escalated_at?: never } | { priority: 3; badge: UserResource; escalated_at: string | null } | { priority: null; badge: never[]; escalated_at?: never }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\ReadBackResource": {
@@ -18811,16 +18760,6 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "owner",
                     "type": "UserResource",
                     "optional": true
@@ -18840,6 +18779,9 @@
                     "type": "Record<string, unknown> | null",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\ProductAggregateCastResource": {
@@ -21655,16 +21597,6 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "owner",
                     "type": "UserResource",
                     "optional": true
@@ -21684,6 +21616,9 @@
                     "type": "Record<string, unknown> | null",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\TeamStatusAuditResource": {
@@ -23120,16 +23055,6 @@
                     "optional": false
                 },
                 {
-                    "name": "is_featured",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "featured_image",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
                     "name": "meta_description",
                     "type": "string",
                     "optional": true
@@ -23159,6 +23084,9 @@
                     "type": "number",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ is_featured: true; featured_image: string | null } | { is_featured: false; featured_image?: never }"
             ]
         },
         "Workbench\\Blog\\Http\\Resources\\ReactionResource": {
@@ -23250,11 +23178,6 @@
                     "optional": false
                 },
                 {
-                    "name": "crm_status",
-                    "type": "CrmStatusType",
-                    "optional": false
-                },
-                {
                     "name": "crm_enum",
                     "type": "AsEnum<typeof CrmStatus>",
                     "optional": false
@@ -23283,12 +23206,10 @@
                     "name": "admin_resource",
                     "type": "WorkbenchUserResource",
                     "optional": true
-                },
-                {
-                    "name": "closed_at",
-                    "type": "string | null",
-                    "optional": true
                 }
+            ],
+            "variants": [
+                "{ crm_status: 'lead' | 'prospect' | 'active'; closed_at?: never } | { crm_status: 'churned'; closed_at: string | null }"
             ]
         },
         "Workbench\\Crm\\Http\\Resources\\UserResource": {

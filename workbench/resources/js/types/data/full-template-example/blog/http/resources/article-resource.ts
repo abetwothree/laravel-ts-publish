@@ -11,8 +11,7 @@ import type { ReactionResource } from '.';
  *
  * @see Workbench\Blog\Http\Resources\ArticleResource
  */
-export interface ArticleResource
-{
+export type ArticleResource = {
     id: number;
     title: string;
     slug: string;
@@ -20,12 +19,13 @@ export interface ArticleResource
     body: string;
     status: AsEnum<typeof ArticleStatus>;
     content_type: AsEnum<typeof ContentType>;
-    is_featured: boolean;
-    featured_image?: string | null;
     meta_description?: string;
     published_at?: string;
     author?: User;
     reactions?: ReactionResource[];
     reactions_count?: number;
     reactions_avg?: number;
-}
+} & (
+    | { is_featured: true; featured_image: string | null }
+    | { is_featured: false; featured_image?: never }
+);

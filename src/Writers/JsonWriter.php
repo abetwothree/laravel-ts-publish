@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\FormRequestGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ModelGenerator;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
+use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use AbeTwoThree\LaravelTsPublish\Transformers\EnumTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
@@ -165,9 +166,12 @@ class JsonWriter
     }
 
     /**
+     * Each resource's name beside its flat type alias, or its shared keys and, where it has any, its variants.
+     *
      * @return array<class-string, array{name: string, typeAlias: string}|array{
      *  name: string,
-     *  properties: list<array{name: string, type: string, optional: bool}>
+     *  properties: list<array{name: string, type: string, optional: bool}>,
+     *  variants?: list<string>
      * }>
      */
     protected function createJsonForResources(Runner $runner): array
@@ -179,20 +183,25 @@ class JsonWriter
         foreach ($transformers as $transformer) {
             if ($transformer->typeAlias !== null) {
                 $data[$transformer->fqcn()] = ['name' => $transformer->resourceName, 'typeAlias' => $transformer->typeAlias];
-            } else {
-                $data[$transformer->fqcn()] = [
-                    'name' => $transformer->resourceName,
-                    'properties' => array_map(
-                        fn (array $prop, string $name) => [
-                            'name' => $name,
-                            'type' => $prop['type'],
-                            'optional' => $prop['optional'],
-                        ],
-                        $transformer->properties,
-                        array_keys($transformer->properties),
-                    ),
-                ];
+
+                continue;
             }
+
+            [$properties, $variants] = VariantRows::split($transformer->properties);
+
+            $data[$transformer->fqcn()] = [
+                'name' => $transformer->resourceName,
+                'properties' => array_map(
+                    fn (array $prop, string $name) => [
+                        'name' => $name,
+                        'type' => $prop['type'],
+                        'optional' => $prop['optional'],
+                    ],
+                    $properties,
+                    array_keys($properties),
+                ),
+                ...($variants !== [] ? ['variants' => $variants] : []),
+            ];
         }
 
         return $data;

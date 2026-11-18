@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantUnions;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
@@ -24,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -210,18 +212,21 @@ class ResourceTransformer extends CoreTransformer
     #[Override]
     public function data(): TsResourceDto
     {
+        [$properties, $variants] = VariantRows::split($this->properties);
+
         return new TsResourceDto(
             resourceName: $this->resourceName,
             description: $this->description,
             fqcn: $this->fqcn(),
             filePath: $this->filePath,
             filename: $this->filename(),
-            properties: $this->properties,
+            properties: $properties,
             typeImports: $this->typeImports,
             valueImports: $this->valueImports,
             modelClass: $this->modelClass,
             tsExtends: $this->tsExtends,
             typeAlias: $this->typeAlias,
+            variants: $variants,
         );
     }
 
@@ -432,6 +437,10 @@ class ResourceTransformer extends CoreTransformer
         $castKeys = $this->castKeys($analysis);
         $this->castsInForce = $this->collectCastsInForce($castKeys, $analysis);
 
+        if ($this->publishesVariants()) {
+            VariantUnions::apply($analysis, array_map(strval(...), array_keys($this->castsInForce)));
+        }
+
         // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees. A method
         // cast counts too, since CastChannels::fit() settles its key's import channels only after the reconcile.
         resolve(IndexSignatureReconciler::class)->reconcile(
@@ -537,6 +546,18 @@ class ResourceTransformer extends CoreTransformer
         $this->analysisCustomImports = $analysis->customImports;
 
         return $this;
+    }
+
+    /**
+     * Whether the resource publishes each group of keys that follow a key it sends as one arm per value: its own
+     * #[TsResource] says, else the config.
+     */
+    protected function publishesVariants(): bool
+    {
+        $attribute = $this->reflectionResource->getAttributes(TsResource::class)[0] ?? null;
+
+        return $attribute?->newInstance()->discriminated
+            ?? Config::boolean('ts-publish.resources.discriminated_unions', true);
     }
 
     /**

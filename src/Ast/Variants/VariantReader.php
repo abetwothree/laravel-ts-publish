@@ -42,11 +42,11 @@ use PhpParser\NodeFinder;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type DiscriminantValueList from DiscriminantValue
- * @phpstan-import-type RowFingerprint from VariantGroup
  *
  * @phpstan-type Discriminant = array{name: string, read: ReadPath, values: DiscriminantValueList}
  * @phpstan-type SoleKey = array{string, Expr, int}
  * @phpstan-type Picks = array{arms: list<ConditionalArm>, drops: bool}
+ * @phpstan-type ArmFingerprint = array{type: string, optional: bool, classes: list<string>}
  *
  * @internal
  */
@@ -292,7 +292,7 @@ final class VariantReader
     }
 
     /**
-     * Whether two sent values take arms that differ in type text or presence.
+     * Whether two sent values take arms that differ in type text, presence or the classes their tokens name.
      *
      * @param  Picks  $picked
      * @param  array<int, DiscriminantValue>  $sent
@@ -345,14 +345,32 @@ final class VariantReader
     }
 
     /**
-     * What an arm sends, as a row's fingerprint, or null where it removes its key.
+     * What an arm sends, as a row's fingerprint beside the classes its tokens name, or null where it removes its key:
+     * two arms spelling one name for two classes publish apart once the file aliases them.
      *
      * @param  ValueExpressionResult|null  $result
-     * @return RowFingerprint|null
+     * @return ArmFingerprint|null
      */
     private static function armFingerprint(?array $result): ?array
     {
-        return $result === null ? null : ['type' => $result['type'], 'optional' => $result['optional']];
+        if ($result === null) {
+            return null;
+        }
+
+        $classes = array_values(array_unique(array_filter([
+            $result['enumFqcn'] ?? null,
+            $result['directEnumFqcn'] ?? null,
+            $result['resourceFqcn'] ?? null,
+            $result['modelFqcn'] ?? null,
+            ...$result['embeddedEnumFqcns'] ?? [],
+            ...$result['embeddedEnumResourceFqcns'] ?? [],
+            ...$result['embeddedModelFqcns'] ?? [],
+            ...$result['embeddedResourceFqcns'] ?? [],
+            ...$result['multiEnumResourceFqcns'] ?? [],
+        ])));
+        sort($classes);
+
+        return ['type' => $result['type'], 'optional' => $result['optional'], 'classes' => $classes];
     }
 
     /**

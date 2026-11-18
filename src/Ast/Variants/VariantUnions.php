@@ -1,0 +1,65 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
+
+/**
+ * A top-level analysis with each group of keys that follow a discriminant published as one row: the union of one
+ * object per variant, holding the discriminant's literal and each dependent's arm in item order.
+ *
+ * @internal
+ */
+final class VariantUnions
+{
+    /**
+     * Replace the rows of each group that still holds for the analysis, and none of whose keys a cast the publisher
+     * lays over it retypes, with one variant row after every other row.
+     *
+     * @param  list<string>  $declinedKeys  the keys a later cast retypes, whose arms would describe rows not published
+     */
+    public static function apply(MethodAnalysis $analysis, array $declinedKeys): void
+    {
+        $groups = array_filter(
+            $analysis->variants->groups ?? [],
+            static fn (VariantGroup $group): bool => $group->holdsFor($analysis)
+                && array_intersect($group->keys, $declinedKeys) === [],
+        );
+
+        foreach ($groups as $group) {
+            $objects = array_map(static fn (Variant $variant): MethodAnalysis => self::object($group, $variant), $group->variants);
+            $union = ValueResult::unionResults(array_map(resolve(InlineObjectResult::class)->of(...), $objects));
+
+            foreach ($group->keys as $key) {
+                $analysis->forgetChannels($key);
+            }
+
+            $analysis->properties = array_values(array_filter(
+                $analysis->properties,
+                static fn (array $row): bool => ! in_array($row['name'], $group->keys, true),
+            ));
+            $analysis->addProperty(VariantRows::key($group->discriminant), $union);
+        }
+    }
+
+    /**
+     * One variant's object: the discriminant's literal and each dependent's arm, in item order, a removed one never.
+     */
+    private static function object(VariantGroup $group, Variant $variant): MethodAnalysis
+    {
+        $object = new MethodAnalysis;
+
+        foreach ($group->keys as $key) {
+            $object->addProperty($key, $key === $group->discriminant
+                ? ['type' => $variant->literal(), 'optional' => false]
+                : $variant->dependents[$key] ?? ['type' => 'never', 'optional' => true, 'removed' => true]);
+        }
+
+        return $object;
+    }
+}

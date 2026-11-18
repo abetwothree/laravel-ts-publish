@@ -164,6 +164,10 @@ it('reads one variant per arm for each other condition form', function (string $
     'nested_ternary' => ['nested_ternary', ['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'string | number | null']]]]],
     'shared_keys' => ['shared_keys', ['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'number']]]]],
     'a read assigned before the group' => ['mutate_before', ['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]],
+    'arms that spell one name for two enums' => ['same_name_arms', ['pinned' => [
+        ['true', ['v' => 'StatusType']],
+        ['false', ['v' => 'StatusType']],
+    ]]],
 ]);
 
 // The first group spans the assignment, so it declines and leaves `v` to the second, which PHP reads after it.

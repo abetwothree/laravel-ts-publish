@@ -35,6 +35,7 @@ class ResourceWriter extends CoreWriter
         $usesAsEnum = Config::boolean('ts-publish.enums.use_tolki_package') && TsTypeString::typeNameOccursIn(
             'AsEnum',
             ...array_column($data->properties, 'type'),
+            ...$data->variants,
             ...$data->tsExtends,
             ...array_filter([$data->typeAlias]),
         );

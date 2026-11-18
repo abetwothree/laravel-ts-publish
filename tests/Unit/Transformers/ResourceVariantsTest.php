@@ -1,0 +1,123 @@
+<?php
+
+declare(strict_types=1);
+
+use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostDeclaredResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostFlatResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostRetypedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostSplitResource;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
+use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
+use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+
+/**
+ * The data a resource publishes.
+ *
+ * @param  class-string<JsonResource>  $class
+ */
+function variantsData(string $class): TsResourceDto
+{
+    return new ResourceTransformer($class)->data();
+}
+
+/**
+ * Each property a resource's data publishes, as `name => type`, `?` marking an optional key.
+ *
+ * @return array<string, string>
+ */
+function variantsProps(TsResourceDto $data): array
+{
+    $props = [];
+
+    foreach ($data->properties as $name => $property) {
+        $props[$name.($property['optional'] ? '?' : '')] = $property['type'];
+    }
+
+    return $props;
+}
+
+it('publishes a key that follows a boolean the resource sends as one arm per value', function () {
+    $data = variantsData(PinnedPostResource::class);
+
+    expect(variantsProps($data))->toBe(['id' => 'number'])
+        ->and($data->variants)->toBe([
+            '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
+        ]);
+});
+
+it('publishes a nullable enum\'s values as the literals each arm sends, importing no alias no arm spells', function () {
+    $data = variantsData(PostPriorityResource::class);
+
+    expect(variantsProps($data))->toBe(['id' => 'number'])
+        ->and($data->variants)->toBe([
+            '{ priority: 0 | 1; badge: null; escalated_at?: never } | { priority: 2; badge: string; escalated_at?: never }'
+            .' | { priority: 3; badge: UserResource; escalated_at: string | null }'
+            .' | { priority: null; badge: never[]; escalated_at?: never }',
+        ])
+        ->and($data->typeImports)->toBe(['..' => ['UserResource']]);
+});
+
+it('keeps each arm\'s own wraps, aliases and resources, importing what the flat keys import', function () {
+    $data = variantsData(PinnedWrapsResource::class);
+
+    expect($data->properties)->toBe([])
+        ->and($data->variants)->toBe([
+            '{ is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource }'
+            .' | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never }',
+        ])
+        ->and($data->valueImports)->toBe(['../../../enums' => ['Status as WorkbenchStatus', 'Visibility']])
+        ->and($data->typeImports)->toBe([
+            '../../../../crm/enums' => ['StatusType as CrmStatusType'],
+            '../../../enums' => ['StatusType as WorkbenchStatusType'],
+            '..' => ['UserResource'],
+        ]);
+});
+
+it('publishes the keys flat where a cast, the attribute or the config rules the arms out', function (Closure $publish) {
+    $data = $publish();
+
+    expect(variantsProps($data))->toBe([
+        'id' => 'number',
+        'is_pinned' => 'boolean',
+        'placement' => 'PinnedPlacementResource | FeedPlacementResource',
+    ])->and($data->variants)->toBe([]);
+})->with([
+    'a class cast on the discriminant' => fn (): TsResourceDto => variantsData(PinnedPostCastResource::class),
+    'the attribute off' => fn (): TsResourceDto => variantsData(PinnedPostFlatResource::class),
+    'the config off' => function (): TsResourceDto {
+        config(['ts-publish.resources.discriminated_unions' => false]);
+
+        return variantsData(PinnedPostResource::class);
+    },
+]);
+
+it('publishes the arms of a resource whose attribute turns them on while the config is off', function () {
+    config(['ts-publish.resources.discriminated_unions' => false]);
+
+    $data = variantsData(PinnedPostSplitResource::class);
+
+    expect(variantsProps($data))->toBe(['id' => 'number'])
+        ->and($data->variants)->toBe([
+            '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
+        ]);
+});
+
+// D2: a declared type stands beside the arms the body proves, so only a `@return` that changes a grouped row ends it.
+it('publishes the keys flat under a `@return` that changes a row they follow, and arms under one that leaves it', function () {
+    $retyped = variantsData(PinnedPostRetypedResource::class);
+    $declared = variantsData(PinnedPostDeclaredResource::class);
+
+    expect(variantsProps($retyped))->toBe([
+        'id' => 'number',
+        'is_pinned' => 'boolean',
+        'placement?' => 'PinnedPlacementResource | FeedPlacementResource',
+    ])->and($retyped->variants)->toBe([])
+        ->and(variantsProps($declared))->toBe(['id' => 'number'])
+        ->and($declared->variants)->toBe([
+            '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
+        ]);
+});

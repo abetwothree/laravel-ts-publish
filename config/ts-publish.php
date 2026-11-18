@@ -259,12 +259,18 @@ return [
     |--------------------------------------------------------------------------
     |
     | Settings for API resource publishing.
+    |
+    | 'discriminated_unions': When enabled, a resource whose keys follow the value of a key it also sends,
+    | such as a boolean or an enum, publishes as a type with one arm per value, so checking that key narrows
+    | the others. Turn it off, or use #[TsResource(discriminated: false)] on one resource, to publish an
+    | interface instead.
     */
 
     'resources' => [
         'enabled' => true,
         'namespace' => 'resources',
         'template' => 'laravel-ts-publish::resource',
+        'discriminated_unions' => true,
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],

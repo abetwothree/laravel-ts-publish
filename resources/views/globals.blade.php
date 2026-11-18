@@ -1,5 +1,6 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
+@use('AbeTwoThree\LaravelTsPublish\Support\VariantRows')
 /* eslint-disable */
 // biome-ignore lint: disable
 // oxlint-disable
@@ -116,14 +117,39 @@ $references = $transformer->globalTypeReferenceMap();
 @if($transformer->typeAlias !== null)
         export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $references) !!};
 @else
+@php
+[$properties, $variants] = VariantRows::split($transformer->properties);
+$qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
+@endphp
+@if(count($variants) === 1 && count($properties) === 0 && count($transformer->tsExtends) === 0)
+        export type {{ $transformer->resourceName }} =
+@foreach (VariantRows::arms($variants[0]) as $arm)
+            | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}
+@endforeach
+@else
+@if(count($variants) === 0)
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
-@foreach ($transformer->properties as $name => $property)
+@else
+        export type {{ $transformer->resourceName }} = {!! implode('', array_map(fn (string $extends): string => $extends.' & ', $transformer->tsExtends)) !!}{!! count($properties) > 0 ? '{' : '(' !!}
+@endif
+@foreach ($properties as $name => $property)
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $qualified($property['type']) !!};
 @endforeach
+@if(count($variants) === 0)
         }
+@elseif(count($properties) > 0)
+        } & (
+@endif
+@foreach ($variants as $variant)
+@foreach (VariantRows::arms($variant) as $arm)
+            | {!! $qualified($arm) !!}
+@endforeach
+        ){!! $loop->last ? ';' : ' & (' !!}
+@endforeach
+@endif
 @endif
 @endforeach
     }
