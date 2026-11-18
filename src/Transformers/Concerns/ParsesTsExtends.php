@@ -94,15 +94,15 @@ trait ParsesTsExtends
 
     /**
      * Deduplicate the clauses and alias each name two import paths bring, leaving out each name a clause only builds on
-     * that the file binds by other means: another import, or the one package class that takes it. A name the clause
-     * lists, its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it.
+     * that the file binds by other means: another import, or the package's own import of it. A name the clause lists,
+     * its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it.
      *
      * @param  list<ClauseEntry>  $entries
      * @param  TypesImportMap  $imports  the file's other imports, path => names
-     * @param  list<string>  $classes  the names each of which one class of the package the file imports takes
+     * @param  list<string>  $packageNames  the names the package's own imports bind in the file
      * @return ClauseSets
      */
-    protected function settleClauses(array $entries, array $imports = [], array $classes = []): array
+    protected function settleClauses(array $entries, array $imports = [], array $packageNames = []): array
     {
         $paths = [];
 
@@ -119,7 +119,7 @@ trait ParsesTsExtends
                 $entry['types'],
                 static fn (string $name): bool => in_array($name, $entry['listed'], true)
                     ? ! in_array($entry['import'], $paths[$name] ?? [], true)
-                    : ! isset($paths[$name]) && ! in_array($name, $classes, true),
+                    : ! isset($paths[$name]) && ! in_array($name, $packageNames, true),
             ))];
         }
 

@@ -399,7 +399,7 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Settle the clauses once every other import and the package's classes are known: a name the file binds by those
+     * Settle the clauses once every other import and the package's own are known: a name the file binds by those
      * keeps that binding, and every other name imports from its clause's path, aliased across both attributes.
      */
     protected function settleClauseImports(): self
@@ -413,7 +413,9 @@ class ResourceTransformer extends CoreTransformer
         ];
         // Two classes of one name are both aliased, so that name binds neither.
         $classes = array_keys(array_filter(array_count_values($names), static fn (int $count): bool => $count === 1));
-        $result = $this->settleClauses($this->clauseEntries, $this->customImports, array_map(strval(...), $classes));
+        // The template imports `AsEnum` from the package beside an enum's const; a clause spelling it reads that one.
+        $packageNames = [...array_map(strval(...), $classes), ...($consts === [] ? [] : ['AsEnum'])];
+        $result = $this->settleClauses($this->clauseEntries, $this->customImports, $packageNames);
         $this->tsExtends = $result['clauses'][TsExtends::class];
         $this->intersections = $result['clauses'][TsIntersect::class];
 

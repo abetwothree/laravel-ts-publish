@@ -38,7 +38,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastW
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsArrayResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAsEnumFromPathBesideTypeofCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectAsEnumBesideTypeofCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectAsEnumFromPathBesideTypeofCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPriorityResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsExtendsResource;
@@ -332,6 +334,26 @@ test('imports AsEnum for an intersection that alone spells it, beside a cast tha
         "import { Status } from '../../../../../../workbench/app/enums';",
     ])->and($content)->toContain('} & ({ hint?: AsEnum<typeof Status> });');
 });
+
+// The template imports `AsEnum` from the package once the file imports an enum's const, so a clause spelling it binds
+// that import: importing it from the clause's own path too would declare it twice (TS2300).
+test('binds the AsEnum a clause with an import path spells to the package\'s import', function (string $resource, string $declaration) {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status } from '../../../../../../workbench/app/enums';",
+    ])->and($content)->toContain($declaration);
+})->with([
+    'an extends clause' => [
+        ExtendsAsEnumFromPathBesideTypeofCastResource::class,
+        'export interface ExtendsAsEnumFromPathBesideTypeofCastResource extends Partial<Record<"hint", AsEnum<typeof Status>>>',
+    ],
+    'an intersection' => [IntersectAsEnumFromPathBesideTypeofCastResource::class, '} & ({ hint?: AsEnum<typeof Status> });'],
+]);
 
 // A cast that holds the enum's type name publishes as written and imports that type, and a key beside a cast key
 // keeps its wrap.
