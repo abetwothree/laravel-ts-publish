@@ -370,7 +370,12 @@ class LaravelTsPublish
                     ComposedClassTypes::register($override['class']);
                 }
 
-                return [...$result, 'type' => $override['type'], 'customImports' => $override['customImports'], 'typedByClass' => true];
+                return [
+                    ...$result,
+                    'type' => $override['type'],
+                    'customImports' => $override['customImports'],
+                    'typedByClass' => true,
+                ];
             }
         }
 

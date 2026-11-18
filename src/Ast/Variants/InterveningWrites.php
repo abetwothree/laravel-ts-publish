@@ -94,8 +94,12 @@ final class InterveningWrites
         $receiver = ReadPath::of($call->var);
 
         if ($receiver?->root === 'this' && $receiver->segments === []) {
-            return ! $call->name instanceof Identifier
-                || self::bodyMayWrite($scope->thisMemberClass($call->name->toString(), true), $call->name, $read, $proxied);
+            return ! $call->name instanceof Identifier || self::bodyMayWrite(
+                $scope->thisMemberClass($call->name->toString(), true),
+                $call->name,
+                $read,
+                $proxied,
+            );
         }
 
         return $receiver !== null && self::reaches($read, $receiver, $proxied);
@@ -107,24 +111,33 @@ final class InterveningWrites
      *
      * @param  ReflectionClass<object>  $class
      */
-    private static function bodyMayWrite(ReflectionClass $class, Identifier|Expr $name, ReadPath $read, bool $proxied): bool
-    {
+    private static function bodyMayWrite(
+        ReflectionClass $class,
+        Identifier|Expr $name,
+        ReadPath $read,
+        bool $proxied,
+    ): bool {
         if (! $name instanceof Identifier || ! $class->hasMethod($name->toString())) {
             return true;
         }
 
         $file = $class->getMethod($name->toString())->getFileName();
 
-        if (array_any(self::READING_HELPERS, static fn (string $helper): bool => new ReflectionClass($helper)->getFileName() === $file)) {
+        if (array_any(
+            self::READING_HELPERS,
+            static fn (string $helper): bool => new ReflectionClass($helper)->getFileName() === $file,
+        )) {
             return false;
         }
 
         $body = resolve(MethodLocator::class)->locate($class->getName(), $name->toString())?->method->stmts;
+        $writesThis = static fn (ReadPath $written): bool => $written->root === 'this'
+            && self::reaches($read, $written, $proxied);
 
-        return $body === null || new NodeFinder()->findFirst($body, static fn (Node $node): bool => array_any(
-            self::writtenPaths($node),
-            static fn (ReadPath $written): bool => $written->root === 'this' && self::reaches($read, $written, $proxied),
-        )) !== null;
+        return $body === null || new NodeFinder()->findFirst(
+            $body,
+            static fn (Node $node): bool => array_any(self::writtenPaths($node), $writesThis),
+        ) !== null;
     }
 
     /**

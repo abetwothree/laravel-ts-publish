@@ -173,8 +173,8 @@ final class VariantReader
     }
 
     /**
-     * Each sole key that may be a discriminant, in item order: its row required, its value a plain read holding what its
-     * row prints rather than a class-declared type, and two or more values it may send.
+     * Each sole key that may be a discriminant, in item order: its row required, its value a plain read holding what
+     * its row prints rather than a class-declared type, and two or more values it may send.
      *
      * @param  list<SoleKey>  $keys
      * @return list<Discriminant>
@@ -241,8 +241,13 @@ final class VariantReader
      * @param  list<SoleKey>  $keys
      * @param  list<string>  $grouped
      */
-    private static function rewritten(Array_ $array, array $keys, array $grouped, ReadPath $read, AnalysisScope $scope): bool
-    {
+    private static function rewritten(
+        Array_ $array,
+        array $keys,
+        array $grouped,
+        ReadPath $read,
+        AnalysisScope $scope,
+    ): bool {
         $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $grouped, true)), 2);
 
         if ($at === []) {

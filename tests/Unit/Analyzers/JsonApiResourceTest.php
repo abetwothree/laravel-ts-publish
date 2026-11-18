@@ -167,8 +167,8 @@ test('a model #[TsCasts] key lays over the attributes member', function () {
     ]);
 });
 
-// GH-157: the attributes' objects are replayed from the fold, which no cast laid after it reaches, so a cast that keeps a
-// member's text would lose its import and class there.
+// GH-157: the attributes' objects are replayed from the fold, which no cast laid after it reaches, so a cast that keeps
+// a member's text would lose its import and class there.
 test('a class cast on an attribute publishes the attributes flat, with the cast\'s import', function (string $class, string $attributes, array $imports) {
     $data = new ResourceTransformer($class)->data();
 

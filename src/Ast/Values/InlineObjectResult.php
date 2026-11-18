@@ -85,7 +85,8 @@ final class InlineObjectResult
 
         return ! array_any($nested, static fn (string $enum): bool => array_any(
             $held,
-            static fn (string $other): bool => $other !== $enum && ValueResult::enumTypeName($other) === ValueResult::enumTypeName($enum),
+            static fn (string $other): bool => $other !== $enum
+                && ValueResult::enumTypeName($other) === ValueResult::enumTypeName($enum),
         ));
     }
 

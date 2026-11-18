@@ -180,7 +180,7 @@ it('leaves a declined group\'s keys to a later discriminant', function () {
     expect(variantsOf('owned_after_decline'))->toBe(['b' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
 });
 
-// A call writes the read only through a body it runs, so one whose body the reader reads and finds no write in keeps it.
+// A call writes the read only through a body it runs, so one whose body holds no write of it keeps the group.
 it('keeps a group past calls that write no read it holds', function () {
     expect(variantsOf('harmless_calls'))->toBe(['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
 });
