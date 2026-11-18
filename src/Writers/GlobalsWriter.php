@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\Runner;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\EnsuresDirectoryExists;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WarnsOfTemplatesWithoutVariants;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Config;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Config;
 class GlobalsWriter
 {
     use EnsuresDirectoryExists;
+    use WarnsOfTemplatesWithoutVariants;
     use WritesGeneratedFiles;
 
     public function __construct(
@@ -186,6 +188,10 @@ class GlobalsWriter
             ->sortKeys();
 
         $content = view($template, $viewData)->render();
+
+        if ($resources->contains(fn (ResourceGenerator $generator): bool => $this->printsVariants($generator->transformer))) {
+            $this->warnOfTemplateWithoutVariants($template);
+        }
 
         if (Config::boolean('ts-publish.output_to_files')) {
             $globalDir = Config::string('ts-publish.globals.output_directory');

@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostResource;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
 use Workbench\App\Enums\Status;
@@ -704,3 +705,46 @@ test('the globals file publishes a resource intersected with a type as a type, t
         TS)
         ->not->toContain('export interface IntersectedPostResource');
 });
+
+test('the globals file warns once of a published template that prints no variants, and still publishes through it', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    $published = publishPackageView('globals', __DIR__.'/../../views/globals-published-before-variants.blade.php');
+
+    try {
+        $runner = resolve(Runner::class);
+        $runner->run();
+        $content = new GlobalsWriter(new Filesystem)->write($runner);
+    } finally {
+        File::deleteDirectory(dirname($published));
+    }
+
+    $warnings = array_values(array_filter(AnalysisWarnings::all(), fn (array $warning): bool => $warning['subject'] === $published));
+
+    expect($warnings)->toHaveCount(1)
+        ->and($warnings[0]['message'])->toContain('variants')->toContain('--tag=laravel-ts-publish-views')
+        ->and($content)->toContain("        export interface PinnedPostResource {\n            id: number;\n        }\n");
+});
+
+test('the globals file does not warn of the package\'s own template, or of a published copy that prints variants', function (bool $publish) {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    $published = $publish ? publishPackageView('globals', __DIR__.'/../../../resources/views/globals.blade.php') : null;
+
+    try {
+        $runner = resolve(Runner::class);
+        $runner->run();
+        $content = new GlobalsWriter(new Filesystem)->write($runner);
+    } finally {
+        if ($published !== null) {
+            File::deleteDirectory(dirname($published));
+        }
+    }
+
+    expect(array_filter(array_column(AnalysisWarnings::all(), 'subject'), fn (string $subject): bool => str_ends_with($subject, '.blade.php')))
+        ->toBe([])
+        ->and($content)->toContain('        export type PinnedPostResource = {');
+})->with([
+    'the package\'s own' => false,
+    'a published copy' => true,
+]);

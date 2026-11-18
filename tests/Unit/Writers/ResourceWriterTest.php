@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsCastClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsCastWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsClosureResource;
@@ -49,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
+use Workbench\App\Http\Resources\Discriminated\IntersectedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\NestedSignatureResource;
@@ -561,4 +563,60 @@ it('publishes each group of arms in its own parentheses, after an extends clause
         );
 
         TS],
+]);
+
+// Laravel finds a published copy before the package's own, so a copy made before variants silently drops their keys.
+it('warns once of a published template that prints no variants, and still publishes through it', function (string $resource, string $declaration) {
+    $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        $writer = new ResourceWriter(new Filesystem);
+        $content = $writer->write(new ResourceTransformer($resource));
+        $writer->write(new ResourceTransformer(PinnedPriorityResource::class));
+    } finally {
+        File::deleteDirectory(dirname($published));
+    }
+
+    $warnings = array_values(array_filter(AnalysisWarnings::all(), fn (array $warning): bool => $warning['subject'] === $published));
+
+    expect($warnings)->toHaveCount(1)
+        ->and($warnings[0]['message'])->toContain('variants')->toContain('--tag=laravel-ts-publish-views')
+        ->and($content)->toContain($declaration);
+})->with([
+    'variants' => [PinnedPostResource::class, "export interface PinnedPostResource\n{\n    id: number;\n}\n"],
+    'an intersection' => [IntersectedPostResource::class, "export interface IntersectedPostResource\n{\n    id: number;\n"],
+]);
+
+it('does not warn of a published template that prints no variants for a resource with none', function () {
+    $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PostResource::class));
+    } finally {
+        File::deleteDirectory(dirname($published));
+    }
+
+    expect(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain($published);
+});
+
+it('does not warn of the package\'s own resource template, or of a published copy that prints variants', function (bool $publish) {
+    $published = $publish ? publishPackageView('resource', __DIR__.'/../../../resources/views/resource.blade.php') : null;
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedPostResource::class));
+    } finally {
+        if ($published !== null) {
+            File::deleteDirectory(dirname($published));
+        }
+    }
+
+    expect(array_filter(array_column(AnalysisWarnings::all(), 'subject'), fn (string $subject): bool => str_ends_with($subject, '.blade.php')))
+        ->toBe([])
+        ->and($content)->toContain('export type PinnedPostResource = {');
+})->with([
+    'the package\'s own' => false,
+    'a published copy' => true,
 ]);

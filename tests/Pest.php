@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\View;
 use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -262,4 +263,20 @@ function gappedValue(string $php, string $resource, ?string $model = null): arra
     };
 
     return $analyzer->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr);
+}
+
+/**
+ * Publish a copy of a source file as one of the package's views, found ahead of the package's own as
+ * `vendor:publish` places it, and return the copy's resolved path. The caller deletes its directory.
+ */
+function publishPackageView(string $view, string $source): string
+{
+    $directory = sys_get_temp_dir().'/ts-publish-views-'.uniqid();
+    mkdir($directory);
+    copy($source, $directory.'/'.$view.'.blade.php');
+    View::prependNamespace('laravel-ts-publish', $directory);
+    View::getFinder()->flush();
+
+    // The view finder resolves symlinks, and macOS links /var to /private/var.
+    return (string) realpath($directory.'/'.$view.'.blade.php');
 }

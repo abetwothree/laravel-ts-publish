@@ -53,7 +53,9 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    [`VariantUnions`] replaces each group with one variant row while `publishesVariants()` holds: the class's own
    `#[TsResource(discriminated:)]`, which PHP never hands to a subclass, else `resources.discriminated_unions`.
    `splitVariants()` moves the row into `$variants` last, so a template published before variants existed never
-   meets its reserved name ([`VariantRows`]). A key an arm removes prints `key?: never`, so an unnarrowed read
+   meets its reserved name ([`VariantRows`]). Such a template prints only the shared keys, so the resource and
+   globals writers warn once of a template outside the package's views that never mentions `variants`
+   ([`WarnsOfTemplatesWithoutVariants`]). A key an arm removes prints `key?: never`, so an unnarrowed read
    still compiles.
 8. **Where the top level stays flat.** Only `ResourceTransformer` applies a group at the top level. Page props
    and shared data stay one object because Vue's `defineProps<T>()` needs an object type, a broadcast event keeps
@@ -125,3 +127,4 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`VariantReader`]: ../../src/Ast/Variants/VariantReader.php
 [`VariantRows`]: ../../src/Support/VariantRows.php
 [`VariantUnions`]: ../../src/Ast/Variants/VariantUnions.php
+[`WarnsOfTemplatesWithoutVariants`]: ../../src/Writers/Concerns/WarnsOfTemplatesWithoutVariants.php
