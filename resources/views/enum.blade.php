@@ -15,7 +15,7 @@ import { defineEnum } from '@tolki/ts';
 @endphp
 {!! JsEmitter::formatJsDoc($description) !!}
 @if($metadataEnabled && $usesTolkiPackage)
-export const {{ $data->enumName }} = defineEnum({
+export const {{ $data->enumName }} = /* @__PURE__ */ defineEnum({
 @else
 export const {{ $data->enumName }} = {
 @endif

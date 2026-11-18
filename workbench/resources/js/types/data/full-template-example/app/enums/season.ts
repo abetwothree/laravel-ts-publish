@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Season
  */
-export const Season = defineEnum({
+export const Season = /* @__PURE__ */ defineEnum({
     Spring: 'spring',
     Summer: 'summer',
     Autumn: 'autumn',

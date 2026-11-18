@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\MediaType
  */
-export const MediaType = defineEnum({
+export const MediaType = /* @__PURE__ */ defineEnum({
     Image: 'image',
     Video: 'video',
     Audio: 'audio',

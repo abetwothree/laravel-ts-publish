@@ -1,7 +1,7 @@
 import { defineEnum } from '@tolki/ts';
 
 /** @see Workbench\Shipping\Enums\Carrier */
-export const Carrier = defineEnum({
+export const Carrier = /* @__PURE__ */ defineEnum({
     Ups: 'ups',
     FedEx: 'fedex',
     Usps: 'usps',

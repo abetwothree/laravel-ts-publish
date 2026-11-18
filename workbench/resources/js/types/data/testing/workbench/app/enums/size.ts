@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\ShirtSize
  */
-export const Size = defineEnum({
+export const Size = /* @__PURE__ */ defineEnum({
     Small: 's',
     Large: 'l',
     backed: true,

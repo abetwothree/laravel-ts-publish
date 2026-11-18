@@ -1,7 +1,7 @@
 import { defineEnum } from '@tolki/ts';
 
 /** @see Workbench\Shipping\Enums\Status */
-export const ShipmentStatus = defineEnum({
+export const ShipmentStatus = /* @__PURE__ */ defineEnum({
     Pending: 'pending',
     LabelCreated: 'label_created',
     PickedUp: 'picked_up',
