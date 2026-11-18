@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use Illuminate\Database\Eloquent\Model;
@@ -32,6 +33,8 @@ it('names a helper the framework lists, run on $this', function (
     'whenLoaded() on a collection' => ["\$this->whenLoaded('author')", 'whenLoaded', MergedResourceCollection::class],
     'a method the subject declares' => ['$this->header()', null],
     'a self:: method the subject declares' => ['self::header()', null],
+    'a helper the subject overrides' => ['$this->when($c, 1)', null, OwnWhenResource::class],
+    'parent::when() past the override' => ['parent::when($c, 1)', 'when', OwnWhenResource::class],
     'a method no class declares' => ['$this->missing()', null],
     'a helper\'s name on another receiver' => ['$this->resource->when($c, 1)', null],
     'a JsonResource method the framework does not list' => ['$this->resolve()', null],
