@@ -12,3 +12,4 @@ export * from './swapped-resources-resource';
 export * from './unseen-writes-resource';
 export * from './wrap-arms-resource';
 export * from './wrap-or-read-resource';
+export * from './wrapped-flag-resource';

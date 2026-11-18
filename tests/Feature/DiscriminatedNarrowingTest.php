@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPriorityResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedFlagCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedFlagPost;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
@@ -13,8 +15,11 @@ use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
 use Workbench\App\Http\Resources\Discriminated\SwappedResourcesResource;
 use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
+use Workbench\App\Http\Resources\Discriminated\WrappedFlagResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\WrappedFlag;
+use Workbench\App\ValueObjects\WrappedMode;
 
 /**
  * The type a resource's file declares, as the writer renders it.
@@ -215,6 +220,30 @@ it('compiles what PHP sends for each priority against arms binding same-named re
         const mislabelled: SwappedResourcesResource = {$mislabelled};
 
         TS;
+
+    expect(compileStrict($tsc, $snippet))->toBe([0, '']);
+});
+
+// GH-157: PHP tests the object a read typed by a class override holds, so what it sends compiles against the flat keys.
+it('compiles what PHP sends for reads typed by a class override or a custom cast', function () {
+    $tsc = dirname(__DIR__, 2).'/node_modules/.bin/tsc';
+
+    if (! is_executable($tsc)) {
+        $this->markTestSkipped('tsc is not installed');
+    }
+
+    $properties = new WrappedFlagResource(new Post(['title' => 'T']));
+    $properties->flag = new WrappedFlag(false);
+    $properties->mode = new WrappedMode('on');
+    $post = new WrappedFlagPost;
+    $post->forceFill(['title' => 'T', 'is_pinned' => false, 'status' => false]);
+    $snippet = implode("\n", [
+        renderedDeclaration(WrappedFlagResource::class),
+        renderedDeclaration(WrappedFlagCastResource::class),
+        'const properties: WrappedFlagResource = '.sentJson($properties).';',
+        'const casts: WrappedFlagCastResource = '.sentJson(new WrappedFlagCastResource($post)).';',
+        '',
+    ]);
 
     expect(compileStrict($tsc, $snippet))->toBe([0, '']);
 });

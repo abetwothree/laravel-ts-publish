@@ -192,6 +192,7 @@
     "app\/Http\/Resources\/Discriminated\/UnseenWritesResource.php",
     "app\/Http\/Resources\/Discriminated\/WrapArmsResource.php",
     "app\/Http\/Resources\/Discriminated\/WrapOrReadResource.php",
+    "app\/Http\/Resources\/Discriminated\/WrappedFlagResource.php",
     "app\/Http\/Resources\/DocumentedRecipientsResource.php",
     "app\/Http\/Resources\/DuplicateKeyCastResource.php",
     "app\/Http\/Resources\/EmptyResource.php",

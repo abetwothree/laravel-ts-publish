@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostModelCa
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostRetypedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostSplitResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapOrReadPinnedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedFlagCastResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Http\Resources\Discriminated\NumericKeysResource;
@@ -22,6 +23,7 @@ use Workbench\App\Http\Resources\Discriminated\SwappedEnumsResource;
 use Workbench\App\Http\Resources\Discriminated\SwappedResourcesResource;
 use Workbench\App\Http\Resources\Discriminated\UnseenWritesResource;
 use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
+use Workbench\App\Http\Resources\Discriminated\WrappedFlagResource;
 
 /**
  * The data a resource publishes.
@@ -197,6 +199,23 @@ it('publishes flat each literal whose objects hold two same-named enums, one of 
             .' | { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } | null }',
         'shared' => '{ status: WorkbenchStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }',
     ])->and($data->variants)->toBe([]);
+});
+
+// PHP tests the object a guard reads, while the override types what json_encode() writes, so no such read decides arms.
+it('publishes flat the keys a read typed by a class override or a custom cast picks', function () {
+    expect(variantsProps(variantsData(WrappedFlagResource::class)))->toBe([
+        'flag' => 'boolean',
+        'flag_title' => 'string | null',
+        'mode' => "'on' | 'off'",
+        'mode_title' => 'string | null',
+    ])->and(variantsProps(variantsData(WrappedFlagCastResource::class)))->toBe([
+        'is_pinned' => 'boolean',
+        'pinned_title' => 'string | null',
+        'status' => 'boolean',
+        'status_title' => 'string | null',
+    ])->and(variantsData(WrappedFlagResource::class)->variants)->toBe([])
+        ->and(variantsData(WrappedFlagCastResource::class)->variants)->toBe([])
+        ->and(variantsData(PinnedPostResource::class)->variants)->not->toBe([]);
 });
 
 // A guard after a write may test another value than the discriminant sent, wherever the literal spells that write.

@@ -14485,6 +14485,31 @@
                 "{ is_pinned: true; stage: AsEnum<typeof Status> } | { is_pinned: false; stage: StatusType }"
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\WrappedFlagResource": {
+            "name": "WrappedFlagResource",
+            "properties": [
+                {
+                    "name": "flag",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "flag_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "mode",
+                    "type": "'on' | 'off'",
+                    "optional": false
+                },
+                {
+                    "name": "mode_title",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [

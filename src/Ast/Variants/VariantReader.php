@@ -173,8 +173,8 @@ final class VariantReader
     }
 
     /**
-     * Each sole key that may be a discriminant, in item order: its row required, its value a plain read, and two or
-     * more values it may send.
+     * Each sole key that may be a discriminant, in item order: its row required, its value a plain read holding what its
+     * row prints rather than a class-declared type, and two or more values it may send.
      *
      * @param  list<SoleKey>  $keys
      * @return list<Discriminant>
@@ -188,9 +188,11 @@ final class VariantReader
         $discriminants = [];
 
         foreach ($keys as [$name, $value]) {
-            $read = self::readOf($value, $writes->soleValue($name)['sendsEnumScalar'] ?? false);
+            $sole = $writes->soleValue($name);
+            $read = self::readOf($value, $sole['sendsEnumScalar'] ?? false);
 
-            if ($read === null || ! self::required($analysis, $name)) {
+            // A guard tests the value PHP holds, which a class-declared type does not describe.
+            if ($read === null || ($sole['typedByClass'] ?? false) || ! self::required($analysis, $name)) {
                 continue;
             }
 

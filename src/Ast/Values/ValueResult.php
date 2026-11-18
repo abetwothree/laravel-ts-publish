@@ -40,7 +40,8 @@ use ReflectionClass;
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
- *      keepsKeys?: bool
+ *      keepsKeys?: bool,
+ *      typedByClass?: true
  * }
  *
  * @internal
@@ -240,6 +241,10 @@ final class ValueResult
 
         if ($attribute['keepsKeys'] ?? false) {
             $result['keepsKeys'] = true;
+        }
+
+        if ($attribute['typedByClass'] ?? false) {
+            $result['typedByClass'] = true;
         }
 
         return $result;

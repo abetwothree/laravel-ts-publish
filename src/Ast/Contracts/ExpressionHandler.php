@@ -50,7 +50,8 @@ use PhpParser\Node\Expr;
  *      returnsCallable?: bool,
  *      closedToDottedKeys?: string,
  *      resolvedFqcn?: class-string<JsonResource>,
- *      unsplit?: array{of: string, print: ObjectPrint}
+ *      unsplit?: array{of: string, print: ObjectPrint},
+ *      typedByClass?: true
  * }
  * @phpstan-type ObjectPrint = array{
  *      type: string,
@@ -104,6 +105,9 @@ use PhpParser\Node\Expr;
  * `unsplit` holds, beside a literal printed one object per variant (LiteralVariants), the one object its rows print
  * and the union it was printed beside: a reader that takes the value's keys back reads that object through
  * ValueResult::unsplit(), only while `type` is still that union.
+ *
+ * `typedByClass` says `type` is what a class's `#[TsType]` or a custom cast declares the value writes, while PHP holds
+ * the object or whatever the cast's get() returns, so no guard on the value can be decided by `type`.
  *
  * @internal
  */

@@ -6409,6 +6409,16 @@ declare global {
             | { is_pinned: true; stage: app.enums.StatusType }
             | { is_pinned: false; stage: app.enums.StatusType }
         );
+        /**
+         * Typed properties PHP holds as objects whose override types them as scalars: a guard tests the object, not what
+         * json_encode() writes, so neither is a discriminant and every key publishes flat (GH-157).
+         */
+        export interface WrappedFlagResource {
+            flag: boolean;
+            flag_title: string | null;
+            mode: 'on' | 'off';
+            mode_title: string | null;
+        }
     }
     export namespace app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */

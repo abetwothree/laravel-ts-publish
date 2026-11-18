@@ -44,7 +44,8 @@ use ReflectionMethod;
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports: TypesImportMap,
- *      keepsKeys?: bool
+ *      keepsKeys?: bool,
+ *      typedByClass?: true
  * }
  *
  * @internal
@@ -253,6 +254,7 @@ trait ResolvesEnumPropertyArgTypes
             ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ...(($tsInfo['typedByClass'] ?? false) ? ['typedByClass' => true] : []),
         ];
     }
 

@@ -33,6 +33,7 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    is a plain read ([`ReadPath`]) or an enum read's `->value` or `->name`, and whose row has a finite set of values
    ([`DiscriminantValues`]). A wrapped enum has none. A scalar literal arm may stand for a case, so on a key that
    reads an enum, or under `AnalysisScope::$casesAsLiterals`, it leaves the row with none.
+   A read whose type a class's `#[TsType]` or a custom cast declares (`typedByClass`) is none, as PHP tests the object.
 2. **Guards.** [`ConditionTruth`] decides a guard with PHP's own operators on the value the read sends. A guard that
    reads anything but that read and constants stays undecided.
 3. **Arms.** A ternary with a middle operand, a `match`, and `$this->when()` or `unless()`, with or without a
