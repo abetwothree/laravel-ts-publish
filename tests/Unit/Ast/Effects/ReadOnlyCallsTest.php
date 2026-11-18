@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
@@ -48,7 +49,7 @@ it('gives the arguments a helper calls, as its value and default', function (str
 
     expect(array_map(
         new Standard()->prettyPrintExpr(...),
-        ReadOnlyCalls::callbacks($expr, new ReflectionMethod(JsonResource::class, 'when')),
+        ReadOnlyCalls::callbacks(CallArguments::for($expr, new ReflectionMethod(JsonResource::class, 'when'))),
     ))->toBe($callbacks);
 })->with([
     'positional' => ['$this->when($c, $v, $d)', ['$v', '$d']],
@@ -83,6 +84,16 @@ it('knows Laravel\'s URL helpers', function (string $call, bool $helper) {
 })->with([
     'route()' => ["route('posts.show', \$this->resource)", true],
     'url()' => ["url('/posts')", true],
+    'another Laravel helper' => ['now()', false],
+]);
+
+it('knows Laravel\'s auth() helper', function (string $call, bool $helper) {
+    $expr = runtimeClassCall($call);
+    assert($expr instanceof FuncCall);
+
+    expect(ReadOnlyCalls::authHelper($expr))->toBe($helper);
+})->with([
+    'auth()' => ['auth()', true],
     'another Laravel helper' => ['now()', false],
 ]);
 

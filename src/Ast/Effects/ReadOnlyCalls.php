@@ -58,6 +58,9 @@ final class ReadOnlyCalls
     /** The helpers that only read a model to build a URL. */
     public const array URL_HELPERS = ['route', 'url'];
 
+    /** The helpers that return the authentication guard. */
+    public const array AUTH_HELPERS = ['auth'];
+
     /** Eloquent's methods that read a model and change nothing on it; `trashed()` is the SoftDeletes trait's. */
     public const array MODEL_READERS = [
         'getKey', 'getKeyName', 'getKeyType', 'getRouteKey', 'getRouteKeyName', 'getTable', 'getForeignKey',
@@ -99,14 +102,12 @@ final class ReadOnlyCalls
     }
 
     /**
-     * The arguments a resource helper may call, bound to its callback parameters.
+     * The arguments of a resource helper's call that the helper may call, bound to its callback parameters.
      *
      * @return list<Expr>
      */
-    public static function callbacks(MethodCall|NullsafeMethodCall $call, ReflectionMethod $helper): array
+    public static function callbacks(CallArguments $arguments): array
     {
-        $arguments = CallArguments::for($call, $helper);
-
         return array_values(array_filter(
             array_map(static fn (string $name): ?Expr => $arguments->named($name)?->value, self::CALLBACK_PARAMETERS),
             static fn (?Expr $callback): bool => $callback !== null,
@@ -141,6 +142,14 @@ final class ReadOnlyCalls
     }
 
     /**
+     * Whether a function call runs Laravel's `auth()`.
+     */
+    public static function authHelper(FuncCall $call): bool
+    {
+        return $call->name instanceof Name && self::runsLaravelHelper($call->name, self::AUTH_HELPERS);
+    }
+
+    /**
      * Whether a static call runs one of the Gate facade's checks.
      */
     public static function gateCheck(StaticCall $call): bool
@@ -158,12 +167,20 @@ final class ReadOnlyCalls
     }
 
     /**
+     * Whether an expression is a `::class` name.
+     */
+    public static function isClassName(?Expr $expr): bool
+    {
+        return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
+    }
+
+    /**
      * Whether a name runs one of Laravel's global helpers: no namespaced function of that name shadows it, and the
      * global one is the framework's.
      *
      * @param  list<string>  $helpers
      */
-    public static function runsLaravelHelper(Name $name, array $helpers): bool
+    private static function runsLaravelHelper(Name $name, array $helpers): bool
     {
         $namespaced = $name->getAttribute('namespacedName');
 
@@ -177,13 +194,5 @@ final class ReadOnlyCalls
         $file = str_replace('\\', '/', (string) new ReflectionFunction($name->toString())->getFileName());
 
         return str_ends_with($file, '/Illuminate/Foundation/helpers.php');
-    }
-
-    /**
-     * Whether an expression is a `::class` name.
-     */
-    public static function isClassName(?Expr $expr): bool
-    {
-        return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
     }
 }

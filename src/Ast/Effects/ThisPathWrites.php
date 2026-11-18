@@ -474,8 +474,8 @@ final class ThisPathWrites
         }
 
         $arguments = CallArguments::for($call, $helper);
-        $callbacks = ReadOnlyCalls::callbacks($call, $helper);
-        [$handedTo, $member] = $this->handedMember($call, $helper) ?? [null, null];
+        $callbacks = ReadOnlyCalls::callbacks($arguments);
+        [$handedTo, $member] = $this->handedMember($helper, $arguments) ?? [null, null];
 
         return ! $arguments->hasUnpack() && array_all($call->getArgs(), fn (Node\Arg $arg): bool => match (true) {
             in_array($arg->value, $callbacks, true) && ReadOnlyCalls::namesCallable($arg->value) => false,
@@ -492,10 +492,9 @@ final class ThisPathWrites
      *
      * @return array{Expr, list<string>|false}|null
      */
-    private function handedMember(MethodCall|NullsafeMethodCall $call, ReflectionMethod $helper): ?array
+    private function handedMember(ReflectionMethod $helper, CallArguments $arguments): ?array
     {
         $name = strtolower($helper->getName());
-        $arguments = CallArguments::for($call, $helper);
         $callback = $arguments->named('value')?->value;
 
         if ($callback === null || ! in_array($name, ReadOnlyCalls::HANDING_HELPERS, true)) {
@@ -691,8 +690,7 @@ final class ThisPathWrites
         $holder = $receiver->var;
 
         return match (true) {
-            $holder instanceof FuncCall => $holder->name instanceof Name
-                && ReadOnlyCalls::runsLaravelHelper($holder->name, ['auth']),
+            $holder instanceof FuncCall => ReadOnlyCalls::authHelper($holder),
             $holder instanceof Variable && is_string($holder->name) => $this->holdsRequestParameter($holder->name, $call),
             default => false,
         };
@@ -805,7 +803,8 @@ final class ThisPathWrites
             && in_array($call->name->toLowerString(), ReadOnlyCalls::HANDING_HELPERS, true)
             ? ReadOnlyCalls::resourceHelper($call, $this->scope)
             : null;
-        [$callback, $member] = ($helper === null ? null : $this->handedMember($call, $helper)) ?? [null, false];
+        [$callback, $member] = ($helper === null ? null : $this->handedMember($helper, CallArguments::for($call, $helper)))
+            ?? [null, false];
 
         return $callback instanceof ClosureExpr || $callback instanceof ArrowFunction ? [spl_object_id($callback) => $member] : [];
     }
