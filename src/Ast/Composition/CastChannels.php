@@ -37,22 +37,22 @@ final class CastChannels
     public static function brings(array $cast): array
     {
         return [
-            ...($cast['import'] !== null ? self::importedNames($cast['type'], $cast['resolved'] ?? []) : []),
+            ...($cast['import'] !== null ? self::importNames($cast) : []),
             ...ImportMaps::localNames($cast['customImports'] ?? []),
         ];
     }
 
     /**
-     * The names a cast's import brings for its text: each name the text spells, but a name it builds on that a class on
-     * its key's channels prints, which keeps the package's import. A name the text is whole stays the cast's, as the
-     * app's own type for its key.
+     * The names a cast's import brings for its text, where its publisher keeps the package's import for a name the text
+     * only builds on: each name the text spells, but such a name a class on its key's channels prints. A name the text
+     * is whole stays the cast's, as the app's own type for its key.
      *
      * @param  list<string>  $resolved  the names the classes on the cast's key print, MethodAnalysis::channelNames()
      * @return list<string>
      */
     public static function importedNames(string $type, array $resolved): array
     {
-        $names = TsTypeString::extractImportableTypes($type);
+        $names = TsTypeString::referencedTypeNames($type);
 
         if ($resolved === []) {
             return $names;
@@ -230,6 +230,20 @@ final class CastChannels
     }
 
     /**
+     * The names a cast's import brings for its text: importedNames() where its entry carries the names its key resolves,
+     * else the text's top-level arms, as a publisher that never keeps the package's import reads them.
+     *
+     * @param  CastInForce  $cast
+     * @return list<string>
+     */
+    private static function importNames(array $cast): array
+    {
+        return array_key_exists('resolved', $cast)
+            ? self::importedNames($cast['type'], $cast['resolved'])
+            : TsTypeString::extractImportableTypes($cast['type']);
+    }
+
+    /**
      * The enums whose type names a key's value carried, in the order its import channels queue them.
      *
      * @return list<class-string>
@@ -374,10 +388,7 @@ final class CastChannels
 
         foreach ($casts as $cast) {
             if ($cast['import'] !== null) {
-                $bound[$cast['import']] = [
-                    ...$bound[$cast['import']] ?? [],
-                    ...self::importedNames($cast['type'], $cast['resolved'] ?? []),
-                ];
+                $bound[$cast['import']] = [...$bound[$cast['import']] ?? [], ...self::importNames($cast)];
             }
 
             foreach ($cast['customImports'] ?? [] as $path => $names) {

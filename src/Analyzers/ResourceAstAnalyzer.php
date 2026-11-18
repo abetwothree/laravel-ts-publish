@@ -2504,7 +2504,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 'type' => $type,
                 'import' => $import,
                 ...($optional === null ? [] : ['optional' => $optional]),
-                ...($resolved === [] ? [] : ['resolved' => $resolved]),
+                ...($import === null ? [] : ['resolved' => $resolved]),
             ];
 
             if ($import !== null) {

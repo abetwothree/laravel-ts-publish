@@ -550,7 +550,7 @@ describe('extractImportableTypes', function () {
             ->toBe(['Foo']);
     });
 
-    // A type operator is read past, and a qualified name imports its first segment, the one a file binds.
+    // An import specifier is one identifier, so a type operator is read past and anything else is not imported.
     test('extractImportableTypes reads the name after a type operator', function (string $type, array $names) {
         expect($this->service->extractImportableTypes($type))->toBe($names);
     })->with([
@@ -558,22 +558,18 @@ describe('extractImportableTypes', function () {
         'readonly array' => ['readonly Tag[] | null', ['Tag']],
         'a nested array' => ['Grid[][]', ['Grid']],
         'an array written with a space' => ['Foo []', ['Foo']],
-        'an indexed access' => ['(typeof Status)[keyof typeof Status]', ['Status']],
+        'an indexed access' => ['(typeof Status)[keyof typeof Status]', []],
         'a template literal' => ['`${string}-tag`', []],
-        'a qualified name' => ['Geo.Point', ['Geo']],
+        'a qualified name' => ['Geo.Point', []],
     ]);
 
-    // #104: a clause with an import and no `types` imports each name it spells, in a generic, a record or an object.
-    test('extractImportableTypes reads every name a clause spells', function (string $type, array $names) {
+    // A publisher that never keeps the package's import for a name a type only builds on imports no such name.
+    test('extractImportableTypes reads no name a generic, a record or an object only builds on', function (string $type, array $names) {
         expect($this->service->extractImportableTypes($type))->toBe($names);
     })->with([
-        'a generic with a union inside' => ['Pick<Base, "a" | "b">', ['Base']],
-        'a record' => ['Record<string, Foo>', ['Foo']],
-        'an object beside a name' => ['{ a: Foo; b: Bar[] } | Baz', ['Foo', 'Bar', 'Baz']],
-        'a typeof operand' => ['typeof Status', ['Status']],
-        'a name' => ['HasTimestamps', ['HasTimestamps']],
-        'primitives' => ['string | null', []],
-        'a quoted key' => ["{ 'k-1': Foo }", ['Foo']],
+        'a generic with a union inside' => ['Pick<Base, "a" | "b">', []],
+        'a record' => ['Record<string, Foo>', []],
+        'an object beside a name' => ['{ a: Foo; b: Bar[] } | Baz', ['Baz']],
     ]);
 
     test('extractImportableTypes returns empty for all primitives', function () {
@@ -588,6 +584,24 @@ describe('extractImportableTypes', function () {
 });
 
 describe('referencedTypeNames', function () {
+    // #104: a clause with an import and no `types` imports each name it spells, in a generic, a record or an object.
+    test('reads every name a clause spells', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'a generic with a union inside' => ['Pick<Base, "a" | "b">', ['Base']],
+        'a record' => ['Record<string, Foo>', ['Foo']],
+        'an object beside a name' => ['{ a: Foo; b: Bar[] } | Baz', ['Foo', 'Bar', 'Baz']],
+        'a typeof operand' => ['typeof Status', ['Status']],
+        'a name' => ['HasTimestamps', ['HasTimestamps']],
+        'primitives' => ['string | null', []],
+        'a quoted key' => ["{ 'k-1': Foo }", ['Foo']],
+    ]);
+
+    test('reads no gap arm as a name', function () {
+        expect($this->service->referencedTypeNames('string | $gap1'))->toBe([])
+            ->and($this->service->referencedTypeNames('User | $gap1 | null'))->toBe(['User']);
+    });
+
     test('reads no name a member, label or parameter binds, and every name a type follows it with', function (string $type, array $names) {
         expect($this->service->referencedTypeNames($type))->toBe($names);
     })->with([
@@ -677,7 +691,7 @@ describe('referencedTypeNames', function () {
         $seen = [];
 
         foreach (referencedTypeNameCases(157, 400) as $case => [$type, $names, $features]) {
-            $read = $this->service->extractImportableTypes($type);
+            $read = $this->service->referencedTypeNames($type);
 
             expect($read)->toBe($names, "case {$case}: {$type}");
 

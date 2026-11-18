@@ -95,7 +95,7 @@ trait ParsesTsExtends
             } else {
                 /** @var array{extends: string, import?: string, types?: list<string>} $entry */
                 $typeNames = isset($entry['import'])
-                    ? ($entry['types'] ?? TsTypeString::extractImportableTypes($entry['extends']))
+                    ? ($entry['types'] ?? $this->clauseTypeNames($entry['extends']))
                     : [];
                 $rawEntries[] = [
                     'extends' => $entry['extends'],
@@ -107,6 +107,17 @@ trait ParsesTsExtends
         }
 
         return $this->deduplicateAndResolveExtendsConflicts($rawEntries);
+    }
+
+    /**
+     * The names a clause with an import and no `types` imports: its top-level arms, as extractImportableTypes() reads
+     * them. A publisher that keeps the package's import for a name a clause only builds on reads every name instead.
+     *
+     * @return list<string>
+     */
+    protected function clauseTypeNames(string $clause): array
+    {
+        return TsTypeString::extractImportableTypes($clause);
     }
 
     /**
@@ -124,7 +135,7 @@ trait ParsesTsExtends
             $instance = $attr->newInstance();
             $clause = $instance instanceof TsIntersect ? $instance->type : $instance->extends;
             $typeNames = $instance->import !== null
-                ? ($instance->types ?? TsTypeString::extractImportableTypes($clause))
+                ? ($instance->types ?? $this->clauseTypeNames($clause))
                 : [];
             $entries[] = [
                 'extends' => $clause,

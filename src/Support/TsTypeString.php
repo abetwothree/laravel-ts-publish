@@ -160,14 +160,39 @@ class TsTypeString
     }
 
     /**
-     * The type names an import would bring for a TypeScript type string: the names it references, as
-     * referencedTypeNames() reads them.
+     * Extract the importable type names from a TypeScript type string: each union part, read past a leading `keyof`,
+     * `typeof`, `readonly` or `unique` and its trailing `[]`s, counts only when one non-primitive identifier is left
+     * that is no gap arm.
+     *
+     * The reading of a publisher that never keeps the package's import for a name a type only builds on, so such a
+     * name imports from no path; one that does reads every name through referencedTypeNames().
      *
      * @return list<string>
      */
     public function extractImportableTypes(string $typeString): array
     {
-        return $this->referencedTypeNames($typeString);
+        $parts = explode('|', $typeString);
+        $importable = [];
+        // A digit or a combining mark continues an identifier but cannot start one.
+        $identifier = '/^(?![\p{Nd}\p{Mn}\p{Mc}])'.$this->identifierCharacter().'+$/u';
+
+        foreach ($parts as $part) {
+            $name = (string) preg_replace(
+                ['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\s*\[\s*\])+$/'],
+                '',
+                trim($part),
+            );
+
+            $named = ! in_array($name, self::TS_PRIMITIVES, true) && ! VisibleGaps::isGap($name);
+
+            if (! $named || preg_match($identifier, $name) !== 1) {
+                continue;
+            }
+
+            $importable[] = $name;
+        }
+
+        return array_values(array_unique($importable));
     }
 
     /**

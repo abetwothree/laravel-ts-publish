@@ -413,6 +413,17 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
+     * Every name a clause spells, #104's reading: importNestedClauseNames() keeps the package's import for a name the
+     * clause only builds on.
+     *
+     * @return list<string>
+     */
+    protected function clauseTypeNames(string $clause): array
+    {
+        return TsTypeString::referencedTypeNames($clause);
+    }
+
+    /**
      * Import each name a clause only builds on from the clause's path, unless the file imports a class the package
      * publishes under that name, whose import then binds the clause's name too.
      */
@@ -674,7 +685,7 @@ class ResourceTransformer extends CoreTransformer
                 ? ($this->tsCastsImportPaths[$property] ?? null)
                 : ($this->modelTsCastsImportPaths[$property] ?? null);
             $resolved = $import === null ? [] : $analysis->channelNames((string) $property);
-            $casts[$property] = ['type' => $type, 'import' => $import, ...($resolved === [] ? [] : ['resolved' => $resolved])];
+            $casts[$property] = ['type' => $type, 'import' => $import, ...($import === null ? [] : ['resolved' => $resolved])];
         }
 
         return $casts;

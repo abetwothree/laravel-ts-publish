@@ -227,7 +227,8 @@ class ModelMetadataAnalyzer
                     continue;
                 }
 
-                $names = TsTypeString::extractImportableTypes($value['type']);
+                // Every name the text spells covers each that applyTsCastsFromMethod() read, keeping the package's import.
+                $names = TsTypeString::referencedTypeNames($value['type']);
                 $analysis->customImports[$value['import']] = array_values(array_diff(
                     $analysis->customImports[$value['import']] ?? [],
                     $names,

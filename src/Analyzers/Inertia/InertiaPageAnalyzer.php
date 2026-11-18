@@ -781,8 +781,8 @@ class InertiaPageAnalyzer
         $inForce = $analysis->casts;
 
         foreach ($casts as $key => $type) {
-            $names = $resolved[$key] ?? [];
-            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null, ...($names === [] ? [] : ['resolved' => $names])];
+            $import = $paths[$key] ?? null;
+            $inForce[$key] = ['type' => $type, 'import' => $import, ...($import === null ? [] : ['resolved' => $resolved[$key] ?? []])];
         }
 
         return $inForce;

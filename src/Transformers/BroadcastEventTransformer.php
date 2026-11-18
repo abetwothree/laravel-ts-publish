@@ -486,7 +486,7 @@ class BroadcastEventTransformer extends CoreTransformer
             $import = $this->tsCastsImportPaths[$name] ?? null;
             $resolved = $import === null ? [] : $analysis->channelNames((string) $name);
             $this->castResolvedNames[$name] = $resolved;
-            $casts[$name] = ['type' => $type, 'import' => $import, ...($resolved === [] ? [] : ['resolved' => $resolved])];
+            $casts[$name] = ['type' => $type, 'import' => $import, ...($import === null ? [] : ['resolved' => $resolved])];
         }
 
         return $casts;
