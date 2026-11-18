@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
@@ -314,3 +315,43 @@ it('keeps a gap in the gap mode where a key\'s later source may write a value no
     expect(VisibleGaps::stripped($type)[0])->toBe('string')
         ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0);
 })->with([false, true]);
+
+it('names the one keyed item that writes a key', function () {
+    $writes = new LiteralWrites;
+    $writes->recordKey('a', ['type' => 'number', 'optional' => false], 0);
+    $writes->recordKey('k', ['type' => 'number', 'optional' => false], 1);
+
+    expect($writes->soleWriter('k'))->toBe(1)
+        ->and($writes->soleWriter('a'))->toBe(0)
+        ->and($writes->soleWriter('missing'))->toBeNull();
+});
+
+it('names no item for a key another item, a spread whose keys are unread or a merge may also write', function (Closure $after) {
+    $writes = new LiteralWrites;
+    $writes->recordKey('k', ['type' => 'number', 'optional' => false], 0);
+    $after($writes);
+
+    expect($writes->soleWriter('k'))->toBeNull();
+})->with([
+    'a second keyed item' => [static fn (LiteralWrites $writes) => $writes->recordKey('k', ['type' => 'number', 'optional' => false], 1)],
+    'a spread whose keys are unread' => [static fn (LiteralWrites $writes) => $writes->record(ResourceAnalysis::unreadAnalysis(), 1)],
+    'a merge writing the key' => [static fn (LiteralWrites $writes) => $writes->record(sourceOf('k', ['type' => 'number']), 1, fromMerge: true)],
+    'a spread writing the key' => [static fn (LiteralWrites $writes) => $writes->recordKeys([['k', ['type' => 'string', 'optional' => false]]], ['type' => '{ k: string }', 'optional' => false], 1)],
+    'a later key no name names' => [static fn (LiteralWrites $writes) => $writes->holdUnnamedKeys()],
+    'a later printed arm' => [static fn (LiteralWrites $writes) => $writes->recordArm(['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null])],
+]);
+
+// PHP writes the later key over whatever an earlier item wrote, but filter() lifts a merge call over every key after it.
+it('names the item for a key written after an item that may write any key, unless that item is a merge', function () {
+    $spread = new LiteralWrites;
+    $spread->record(ResourceAnalysis::unreadAnalysis(), 0);
+    $spread->holdUnnamedKeys();
+    $spread->recordArm(['arm' => ['fqcn' => User::class, 'isModel' => true, 'isCollection' => false], 'map' => null]);
+    $spread->recordKey('k', ['type' => 'number', 'optional' => false], 3);
+    $merge = new LiteralWrites;
+    $merge->record(ResourceAnalysis::unreadAnalysis(), 0, fromMerge: true);
+    $merge->recordKey('k', ['type' => 'number', 'optional' => false], 1);
+
+    expect($spread->soleWriter('k'))->toBe(3)
+        ->and($merge->soleWriter('k'))->toBeNull();
+});

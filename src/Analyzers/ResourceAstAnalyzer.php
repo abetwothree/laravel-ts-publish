@@ -57,6 +57,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionalArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantReader;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -1599,6 +1601,7 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     private function analyzeReturnArrayItems(Array_ $array, bool $topLevel, bool $readsAttributeNames, bool $printsArms): ResourceAnalysis
     {
         $writes = new LiteralWrites($array, $this->scope);
+        $keyNames = [];
         $arms = $printsArms && array_any($array->items, static fn (ArrayItem $item): bool => $item->unpack)
             ? new InlineArrayHandler()->planArms($array->items, $this->scope, $this)
             : null;
@@ -1769,8 +1772,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
 
                 $merged = $item->value;
                 $mergeResult = $this->scope->readingLevel(fn (): ResourceAnalysis => $this->analyzeMergeExpression($merged));
-                $mergeResult->holdsUnnamedKeys = $mergeResult->holdsUnnamedKeys || ($spread !== null && ! $this->spreadsClosedShape($spread));
                 $writes->record($mergeResult, $index, fromMerge: true);
+
+                // A spread's keys stand where it does; only a merge call's are lifted over the keys after it.
+                if ($spread !== null && ! $this->spreadsClosedShape($spread)) {
+                    $writes->holdUnnamedKeys();
+                }
 
                 continue;
             }
@@ -1804,10 +1811,22 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             }
 
             $writes->recordKey($keyName, $result, $index);
+            $keyNames[$index] = $keyName;
         }
 
         $analysis = new ResourceAnalysis;
-        $writes->applyTo($analysis, $this->reading->filtersBodyOf($this->scope));
+        $liftsMerges = $this->reading->filtersBodyOf($this->scope);
+        $writes->applyTo($analysis, $liftsMerges);
+        $analysis->variants = VariantReader::read(
+            $items === $array->items ? $array : new Array_($items, $array->getAttributes()),
+            $keyNames,
+            $writes,
+            $liftsMerges,
+            $analysis,
+            $this->scope,
+            fn (Expr $expr): ?ConditionalArms => $this->dispatcher()->conditionalArms($expr, $this->scope, $this),
+            fn (string $key, Closure $read): array => $this->reading->arrayValue($this->scope->readingKey($key, $read)),
+        );
 
         return $analysis;
     }

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr\Variable;
 use Workbench\App\Models\User;
@@ -148,4 +150,21 @@ test('joinInto() keeps a gap in the mode where a method return\'s fill another b
     expect($joined(false))->toBe('User')
         ->and(VisibleGaps::aside($joined(true)))->toMatchArray([0 => 'User'])
         ->and(VisibleGaps::ids($joined(true)))->toHaveCount(1);
+});
+
+test('joinInto() keeps the groups of the one analysis it joins, and none of two', function () {
+    $branch = static function (): MethodAnalysis {
+        $analysis = new MethodAnalysis(properties: [['name' => 'a', 'type' => 'string', 'optional' => false, 'description' => '']]);
+        $analysis->variants = new LiteralVariants([], new LiteralWrites, true, []);
+
+        return $analysis;
+    };
+    $sole = $branch();
+    $one = new MethodAnalysis;
+    BranchJoin::joinInto($one, [$sole]);
+    $two = new MethodAnalysis;
+    BranchJoin::joinInto($two, [$branch(), $branch()]);
+
+    expect($one->variants)->toBe($sole->variants)
+        ->and($two->variants)->toBeNull();
 });

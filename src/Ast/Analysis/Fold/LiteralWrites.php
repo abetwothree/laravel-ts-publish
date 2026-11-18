@@ -69,6 +69,15 @@ final class LiteralWrites
     /** @var array<string, true> each source index and signature name already ordered, as `index:name` */
     private array $orderedSignatures = [];
 
+    /** @var array<int, true> the sources a keyed item wrote under its own name */
+    private array $keyedSources = [];
+
+    /** How many of the first writes an item after them may overwrite with a key no name names. */
+    private int $exposedWrites = 0;
+
+    /** Whether a merge call may write a key no name names, which filter() lifts over every key after it. */
+    private bool $mergeWritesAnyKey = false;
+
     /** Every source's analysis-wide data: custom imports, carried classes and the read flags. */
     private MethodAnalysis $wide;
 
@@ -89,6 +98,10 @@ final class LiteralWrites
      */
     public function record(MethodAnalysis $source, int $position, bool $fromMerge = false): void
     {
+        if ($source->holdsUnnamedKeys || $source->holdsUnreadKeys) {
+            $this->writeAnyKey($fromMerge);
+        }
+
         $index = $this->addSource(['analysis' => $source]);
         $this->carryWide($source->customImports, $source->carried);
         $this->wide->readsCompletely = $this->wide->readsCompletely && $source->readsCompletely;
@@ -117,7 +130,9 @@ final class LiteralWrites
     {
         $this->carryWide($result['customImports'] ?? [], $result['carriedFqcns'] ?? []);
         [$absent, $removed] = self::valueFacts($result);
-        $this->addWrite($name, $position, false, $absent, $removed, $this->addSource(['value' => $result]));
+        $source = $this->addSource(['value' => $result]);
+        $this->keyedSources[$source] = true;
+        $this->addWrite($name, $position, false, $absent, $removed, $source);
     }
 
     /**
@@ -182,6 +197,7 @@ final class LiteralWrites
      */
     public function recordArm(array $arm): void
     {
+        $this->writeAnyKey();
         $this->arms[] = $arm;
     }
 
@@ -190,7 +206,29 @@ final class LiteralWrites
      */
     public function holdUnnamedKeys(): void
     {
+        $this->writeAnyKey();
         $this->wide->holdsUnnamedKeys = true;
+    }
+
+    /**
+     * The item index of the one keyed item that writes a key under its own name; null where another item, a merge, a
+     * spread or a printed arm may write it too.
+     */
+    public function soleWriter(string $name): ?int
+    {
+        return $this->soleWrite($name)?->position;
+    }
+
+    /**
+     * The value the one keyed item soleWriter() names writes; null where it names none.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function soleValue(string $name): ?array
+    {
+        $write = $this->soleWrite($name);
+
+        return $write === null ? null : $this->sources[$write->source]['value'] ?? null;
     }
 
     /**
@@ -430,6 +468,31 @@ final class LiteralWrites
         $carrier = new MethodAnalysis(customImports: $customImports);
         $carrier->carry($carried);
         $this->wide->merge($carrier);
+    }
+
+    /**
+     * Mark that the item being recorded may write any key: over every key written before it, or with a merge call's
+     * lift, over every key.
+     */
+    private function writeAnyKey(bool $fromMerge = false): void
+    {
+        $this->exposedWrites = count($this->writes);
+        $this->mergeWritesAnyKey = $this->mergeWritesAnyKey || $fromMerge;
+    }
+
+    /**
+     * A key's one write, where a keyed item writes it under its own name and nothing else may write it.
+     */
+    private function soleWrite(string $name): ?KeyWrite
+    {
+        $writes = array_filter($this->writes, static fn (KeyWrite $write): bool => $write->name === $name);
+        $at = array_key_first($writes);
+
+        if ($at === null || count($writes) > 1 || $at < $this->exposedWrites || $this->mergeWritesAnyKey) {
+            return null;
+        }
+
+        return isset($this->keyedSources[$writes[$at]->source]) ? $writes[$at] : null;
     }
 
     /**

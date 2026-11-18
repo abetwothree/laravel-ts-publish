@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -132,6 +133,12 @@ class MethodAnalysis
      * @var array<array-key, true>
      */
     public array $closedToDottedKeys = [];
+
+    /**
+     * The groups of keys that follow a sibling key's value, as the literal's fold read them (VariantReader). A merge
+     * or a join of two analyses drops them; a join of one keeps them, and each group says whether its rows still hold.
+     */
+    public ?LiteralVariants $variants = null;
 
     /**
      * The spreads a nested literal's print intersects with its keys, in item order, as its fold left them. They print
@@ -340,7 +347,7 @@ class MethodAnalysis
      * The class maps, `casts`, `declaredTokenFqcns` and `closedToDottedKeys` replace-merge, the source winning, a key
      * it sets with none losing its own; the inline maps append undeduped, as read by position.
      *
-     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR.
+     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR; `variants` goes, as no fold read the whole.
      */
     public function merge(self $source): void
     {
@@ -349,6 +356,7 @@ class MethodAnalysis
         }
 
         $this->properties = [...$this->properties, ...$source->properties];
+        $this->variants = null;
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
         $this->holdsUnnamedKeys = $this->holdsUnnamedKeys || $source->holdsUnnamedKeys;
@@ -429,6 +437,7 @@ class MethodAnalysis
         $this->closedToDottedKeys = $source->closedToDottedKeys;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
+        $this->variants = $source->variants;
     }
 
     /**
