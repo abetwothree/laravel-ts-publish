@@ -21,7 +21,9 @@ use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\BinaryOp\Coalesce;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Eval_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Include_;
@@ -37,12 +39,13 @@ use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\StaticPropertyFetch;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
@@ -58,6 +61,8 @@ use ReflectionMethod;
  * callee the subject or an object holding the read, runs a `$this` method whose body may write, calls a model method
  * not known to read, or runs code no scan follows. On an API resource `$this->x` reads `$this->resource->x`.
  *
+ * @phpstan-type CallableTarget = array{ReflectionClass<object>, string}
+ *
  * @internal
  */
 final class InterveningWrites
@@ -68,14 +73,14 @@ final class InterveningWrites
     /** The built-ins that call the callable they are given first. */
     private const array CALLERS = ['call_user_func', 'call_user_func_array'];
 
+    /** The return types, lowercased, that may hold a closure, alone or in a union or intersection. */
+    private const array CLOSURE_HOLDERS = ['mixed', 'callable', 'closure', 'object', 'iterable'];
+
     /** @var array<string, true> the `$this` method bodies read, or being read, by class and lowercased name */
     private array $bodies = [];
 
     /** @var list<string> the read's steps, as steps() spells them */
     private readonly array $readSteps;
-
-    /** Whether the read is a member of `$this`, so whatever `$this` is handed to may write it. */
-    private readonly bool $readsThis;
 
     private readonly ByReferenceArguments $references;
 
@@ -92,7 +97,6 @@ final class InterveningWrites
         private readonly ReflectionClass $runtime,
     ) {
         $this->readSteps = $this->steps($read);
-        $this->readsThis = $this->readSteps[0] === 'this' && count($this->readSteps) > 1;
         $this->references = resolve(ByReferenceArguments::class);
         $this->locator = resolve(MethodLocator::class);
     }
@@ -192,6 +196,18 @@ final class InterveningWrites
     }
 
     /**
+     * Whether a value can hold no closure: a scalar, a constant, an array literal, a `new`, `$this` or a property read.
+     */
+    private static function holdsNoClosure(Expr $value): bool
+    {
+        return $value instanceof Scalar || $value instanceof ConstFetch || $value instanceof ClassConstFetch
+            || $value instanceof Array_ || $value instanceof New_ || self::isThis($value)
+            // A property is taken to hold data: following a closure one holds needs every write to it, a known gap.
+            || (($value instanceof PropertyFetch || $value instanceof NullsafePropertyFetch)
+                && ReadPath::of($value) !== null);
+    }
+
+    /**
      * Whether nodes may change the read through a write they spell or an argument they bind by reference, or, where
      * $calls holds, through code they run.
      *
@@ -256,13 +272,14 @@ final class InterveningWrites
         }
 
         return ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && $call->name instanceof Identifier
-            ? $this->objectCallMayWrite($call, $call->name->toString(), $depth)
-            : ! $this->knownToRead($call, $declaring) && $this->handsSubject($call, $depth);
+            ? $this->objectCallMayWrite($call, $call->name->toString(), $declaring, $depth)
+            : ! $this->knownToRead($call, $declaring) && $this->handsSubject($call, $declaring, $depth);
     }
 
     /**
      * Whether a node runs code no scan follows: `eval`, `include`, a call of a value or by a name the source does not
-     * spell, or call_user_func() handed anything but a closure written there.
+     * spell, `__invoke()` of anything but a first-class callable, or call_user_func() handed anything but a closure
+     * written there.
      */
     private function runsUnseen(Node $node): bool
     {
@@ -272,7 +289,9 @@ final class InterveningWrites
             $node instanceof FuncCall => ! $node->name instanceof Name
                 || (in_array($node->name->toLowerString(), self::CALLERS, true)
                     && ! self::isClosure($node->getArgs()[0]->value ?? null)),
-            $node instanceof MethodCall, $node instanceof NullsafeMethodCall => ! $node->name instanceof Identifier,
+            $node instanceof MethodCall, $node instanceof NullsafeMethodCall => ! $node->name instanceof Identifier
+                || ($node->name->toLowerString() === '__invoke'
+                    && ! ($node->var instanceof CallLike && $node->var->isFirstClassCallable())),
             $node instanceof StaticCall => ! $node->name instanceof Identifier
                 || ! ($node->class instanceof Name || self::isThis($node->class)),
             default => false,
@@ -280,9 +299,8 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a call PHP runs on `$this` may change the read: a resource helper through the callbacks it calls, a
-     * method the class lacks as the model's method it forwards to, and any other through what it is handed and its
-     * body.
+     * Whether a call PHP runs on `$this` may change the read: a resource helper through the callbacks it calls, and
+     * any other through what it is handed and the method it runs.
      *
      * @param  ReflectionClass<object>  $class  the class whose method the call runs
      * @param  ReflectionClass<object>  $declaring
@@ -298,14 +316,28 @@ final class InterveningWrites
 
         return match (true) {
             $helper !== null => $this->callbacksMayWrite(CallArguments::for($call, $helper), $declaring, $depth),
-            ! $class->hasMethod($method) => ! $this->proxied || $this->modelCallMayWrite($method),
-            default => $this->handsSubject($call, $depth) || $this->bodyMayWrite($class, $method, $depth),
+            $class->hasMethod($method) && $this->handsSubject($call, $declaring, $depth) => true,
+            default => $this->methodMayWrite($class, $method, $depth),
         };
     }
 
     /**
+     * Whether running a method on `$this` may change the read: through its body, or, where the class lacks it, as the
+     * model's method an API resource forwards it to.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private function methodMayWrite(ReflectionClass $class, string $method, int $depth): bool
+    {
+        return $class->hasMethod($method)
+            ? $this->bodyMayWrite($class, $method, $depth)
+            : ! $this->proxied || $this->modelCallMayWrite($method);
+    }
+
+    /**
      * Whether the body of a method run on `$this` may change the read, read DEPTH levels down at most; a body any
-     * deeper, or one the locator cannot read, may. A body read already, or being read, counts where it is read.
+     * deeper, or one the locator cannot read, may. A body read already, or being read, counts where it is read, since
+     * a body that may change the read ends the whole scan: no caller may drop that answer.
      *
      * @param  ReflectionClass<object>  $class
      */
@@ -329,9 +361,8 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a callback a resource helper calls may change the read: a closure written there through its body, which
-     * the scan reads in place, a first-class callable of a `$this` method through that method, and any other value
-     * that may hold a closure may; the helper only reads its other arguments.
+     * Whether a callback a resource helper calls may change the read; the helper only reads its other arguments, and
+     * calls a callback only where it holds a closure.
      *
      * @param  ReflectionClass<object>  $declaring
      */
@@ -344,51 +375,102 @@ final class InterveningWrites
     }
 
     /**
-     * Whether one callback a helper calls may change the read; see callbacksMayWrite().
+     * Whether one callback a helper calls may change the read. It is safe only where it holds no closure, is a closure
+     * the scan reads in place, a first-class callable of a method whose body may not change the read, or a call whose
+     * callee's return type holds no closure, or yields only such values; anything else may.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function callbackMayWrite(Expr $callback, ReflectionClass $declaring, int $depth): bool
     {
+        $yields = fn (Expr $value): bool => $this->callbackMayWrite($value, $declaring, $depth);
+
         return match (true) {
+            self::holdsNoClosure($callback), self::isClosure($callback) => false,
             $callback instanceof CallLike => $callback->isFirstClassCallable()
-                && $this->callableMayWrite($callback, $declaring, $depth),
-            $callback instanceof Variable => ! self::isThis($callback),
-            $callback instanceof StaticPropertyFetch => true,
-            $callback instanceof Ternary => $this->callbackMayWrite($callback->if ?? $callback->cond, $declaring, $depth)
-                || $this->callbackMayWrite($callback->else, $declaring, $depth),
-            $callback instanceof Coalesce => $this->callbackMayWrite($callback->left, $declaring, $depth)
-                || $this->callbackMayWrite($callback->right, $declaring, $depth),
-            $callback instanceof Match_ => array_any(
-                $callback->arms,
-                fn (MatchArm $arm): bool => $this->callbackMayWrite($arm->body, $declaring, $depth),
-            ),
-            default => false,
+                ? $this->methodCallableMayWrite($callback, $declaring, $depth)
+                : $this->mayReturnClosure($callback, $declaring),
+            $callback instanceof Assign, $callback instanceof AssignRef => $yields($callback->expr),
+            $callback instanceof Ternary => $yields($callback->if ?? $callback->cond) || $yields($callback->else),
+            $callback instanceof Coalesce => $yields($callback->left) || $yields($callback->right),
+            $callback instanceof Match_ => array_any($callback->arms, fn (MatchArm $arm): bool => $yields($arm->body)),
+            default => true,
         };
     }
 
     /**
-     * Whether calling a first-class callable may change the read: one of a method run on `$this` as a call of that
-     * method, any other may.
+     * Whether calling a first-class callable may change the read where only a method it names is read: through that
+     * method's body, and any other may.
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function callableMayWrite(CallLike $callable, ReflectionClass $declaring, int $depth): bool
+    private function methodCallableMayWrite(CallLike $callable, ReflectionClass $declaring, int $depth): bool
     {
-        $onThis = $this->thisMethod($callable, $declaring);
+        $target = $this->callableTarget($callable, $declaring);
 
-        return $onThis === null || $this->thisCallMayWrite($callable, $onThis[0], $onThis[1], $declaring, $depth);
+        return ! is_array($target) || $this->methodMayWrite($target[0], $target[1], $depth);
     }
 
     /**
-     * Whether a method call on an object may change the read: on one holding the read, as the model's method, and on
-     * the read itself or anything else only through what it is handed.
+     * Whether calling a callable value may change the read: one naming a method run on `$this`, or another class's
+     * static method, through that method (one it cannot name may), one bound to an object holding the read as the
+     * model's method; any other binds nothing of the subject.
+     *
+     * @param  ReflectionClass<object>  $declaring
      */
-    private function objectCallMayWrite(MethodCall|NullsafeMethodCall $call, string $method, int $depth): bool
+    private function runMayWrite(Expr $callable, ReflectionClass $declaring, int $depth): bool
     {
+        $target = $this->callableTarget($callable, $declaring);
+
+        return match (true) {
+            is_array($target) => $this->methodMayWrite($target[0], $target[1], $depth),
+            $target === false => true,
+            default => ($callable instanceof MethodCall || $callable instanceof NullsafeMethodCall)
+                && $this->holdsRead(self::objectPath($callable->var), $depth)
+                && (! $callable->name instanceof Identifier || $this->modelCallMayWrite($callable->name->toString())),
+        };
+    }
+
+    /**
+     * Whether a call's callee may return a closure: one this cannot name, or whose return type is none or one
+     * CLOSURE_HOLDERS lists.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function mayReturnClosure(CallLike $call, ReflectionClass $declaring): bool
+    {
+        $onThis = $this->thisMethod($call, $declaring);
+        $callee = $onThis === null
+            ? $this->references->callee($call, $declaring, $this->runtime)
+            : ($onThis[0]->hasMethod($onThis[1]) ? $onThis[0]->getMethod($onThis[1]) : null);
+        $type = $callee?->getReturnType();
+
+        return $type === null || array_intersect(
+            self::CLOSURE_HOLDERS,
+            preg_split('/[|&()?\s]+/', strtolower((string) $type), flags: PREG_SPLIT_NO_EMPTY) ?: [],
+        ) !== [];
+    }
+
+    /**
+     * Whether a method call on an object may change the read: on a first-class callable, as a call of that callable;
+     * on one holding the read, as the model's method; on the read itself or anything else only through what it is
+     * handed.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function objectCallMayWrite(
+        MethodCall|NullsafeMethodCall $call,
+        string $method,
+        ReflectionClass $declaring,
+        int $depth,
+    ): bool {
+        if ($call->var instanceof CallLike && $call->var->isFirstClassCallable()) {
+            return $this->runMayWrite($call->var, $declaring, $depth) || $this->handsSubject($call, $declaring, $depth);
+        }
+
         return $this->holdsRead(self::objectPath($call->var), $depth)
             ? $this->modelCallMayWrite($method)
-            : $this->handsSubject($call, $depth);
+            : $this->handsSubject($call, $declaring, $depth);
     }
 
     /**
@@ -422,46 +504,104 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a call hands its callee the subject, or an object the read is a member of, in one of its arguments.
+     * Whether a call hands its callee the subject, an object the read is a member of, or a callable that may change
+     * the read, in one of its arguments.
+     *
+     * @param  ReflectionClass<object>  $declaring
      */
-    private function handsSubject(CallLike $call, int $depth): bool
+    private function handsSubject(CallLike $call, ReflectionClass $declaring, int $depth): bool
     {
         return ! $call->isFirstClassCallable()
-            && array_any($call->getArgs(), fn (Arg $arg): bool => $this->hands($arg->value, $depth));
+            && array_any($call->getArgs(), fn (Arg $arg): bool => $this->hands($arg->value, $declaring, $depth));
     }
 
     /**
-     * Whether a value may be the subject or an object the read is a member of: such a path, a callable bound to one,
-     * or an array, a branch, an assignment or a closure's return that may hold one.
+     * Whether a value may be the subject or an object the read is a member of, or a callable that may change the read
+     * when the callee calls it: such a path or callable, or an array, a branch, an assignment or a closure's return
+     * that may hold one.
+     *
+     * @param  ReflectionClass<object>  $declaring
      */
-    private function hands(?Expr $value, int $depth): bool
+    private function hands(?Expr $value, ReflectionClass $declaring, int $depth): bool
     {
+        if ($value === null) {
+            return false;
+        }
+
+        if (($value instanceof CallLike && $value->isFirstClassCallable())
+            || $this->callableTarget($value, $declaring) !== null
+        ) {
+            return $this->runMayWrite($value, $declaring, $depth);
+        }
+
+        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $depth);
+
         return match (true) {
-            $value instanceof Variable, $value instanceof PropertyFetch, $value instanceof NullsafePropertyFetch => $this->holdsRead(self::objectPath($value), $depth),
-            $value instanceof MethodCall, $value instanceof NullsafeMethodCall => $value->isFirstClassCallable()
-                && $this->hands($value->var, $depth),
-            $value instanceof StaticCall => $value->isFirstClassCallable() && ($value->class instanceof Name
-                ? $value->class->isSpecialClassName() && $this->readsThis
-                : $this->hands($value->class, $depth)),
-            $value instanceof Array_ => array_any(
-                $value->items,
-                fn (ArrayItem $item): bool => $this->hands($item->value, $depth),
-            ),
-            $value instanceof Ternary => $this->hands($value->if ?? $value->cond, $depth)
-                || $this->hands($value->else, $depth),
-            $value instanceof Coalesce => $this->hands($value->left, $depth) || $this->hands($value->right, $depth),
-            $value instanceof Assign, $value instanceof AssignRef => $this->hands($value->expr, $depth),
-            $value instanceof Match_ => array_any(
-                $value->arms,
-                fn (MatchArm $arm): bool => $this->hands($arm->body, $depth),
-            ),
-            $value instanceof ArrowFunction => $this->hands($value->expr, $depth),
+            $value instanceof Variable, $value instanceof PropertyFetch,
+            $value instanceof NullsafePropertyFetch => $this->holdsRead(self::objectPath($value), $depth),
+            $value instanceof Array_ => array_any($value->items, fn (ArrayItem $item): bool => $holds($item->value)),
+            $value instanceof Ternary => $holds($value->if ?? $value->cond) || $holds($value->else),
+            $value instanceof Coalesce => $holds($value->left) || $holds($value->right),
+            $value instanceof Assign, $value instanceof AssignRef => $holds($value->expr),
+            $value instanceof Match_ => array_any($value->arms, fn (MatchArm $arm): bool => $holds($arm->body)),
+            $value instanceof ArrowFunction => $holds($value->expr),
             $value instanceof ClosureExpr => array_any(
                 new NodeFinder()->findInstanceOf($value->stmts, Return_::class),
-                fn (Return_ $return): bool => $this->hands($return->expr, $depth),
+                fn (Return_ $return): bool => $holds($return->expr),
             ),
             default => false,
         };
+    }
+
+    /**
+     * The class and method a callable value names: a first-class callable of a method run on `$this` or of another
+     * class's static method, `[$this, 'm']`, or `'static::m'` and its kin; false where it names one by a name the
+     * source does not spell or no class here declares; null where it names no method of this kind.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return CallableTarget|false|null
+     */
+    private function callableTarget(Expr $callable, ReflectionClass $declaring): array|false|null
+    {
+        $relative = ReadOnlyCalls::relativeCallable($callable);
+
+        if ($relative !== null) {
+            $class = AnalysisScope::relativeClassOf(new Name($relative[0]), $declaring, $this->runtime);
+
+            return $class === null || $relative[1] === null ? false : [$class, $relative[1]];
+        }
+
+        if ($callable instanceof Array_) {
+            $method = count($callable->items) === 2 && self::isThis($callable->items[0]->value)
+                ? $callable->items[1]->value
+                : null;
+
+            return match (true) {
+                $method instanceof String_ => [
+                    AnalysisScope::memberClassOf($declaring, $this->runtime, $method->value, true),
+                    $method->value,
+                ],
+                $method === null => null,
+                default => false,
+            };
+        }
+
+        if (! $callable instanceof CallLike || ! $callable->isFirstClassCallable() || $callable instanceof FuncCall
+            || (($callable instanceof MethodCall || $callable instanceof NullsafeMethodCall)
+                && ! self::isThis($callable->var))
+        ) {
+            return null;
+        }
+
+        [$class, $method] = $callable instanceof StaticCall && $callable->class instanceof Name
+            && $callable->name instanceof Identifier
+            ? [$callable->class->toString(), $callable->name->toString()]
+            : ['', ''];
+
+        return $this->thisMethod($callable, $declaring)
+            ?? (class_exists($class) && method_exists($class, $method)
+                ? [new ReflectionClass($class), $method]
+                : false);
     }
 
     /**
@@ -469,7 +609,7 @@ final class InterveningWrites
      * `parent::`, or an ancestor's name for a method PHP runs on `$this`; null for any other call.
      *
      * @param  ReflectionClass<object>  $declaring
-     * @return array{ReflectionClass<object>, string}|null
+     * @return CallableTarget|null
      */
     private function thisMethod(CallLike $call, ReflectionClass $declaring): ?array
     {

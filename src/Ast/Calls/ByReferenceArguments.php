@@ -187,11 +187,12 @@ final class ByReferenceArguments
      * The function or method a call names, or null when its receiver or name is computed or cannot be loaded.
      *
      * A method PHP cannot find goes to `__call()` or `__callStatic()`, which take their arguments by value.
+     * InterveningWrites reads the return type of the callee a callback's call names through it.
      *
      * @param  ReflectionClass<object>|null  $declaring
      * @param  ReflectionClass<object>|null  $runtime
      */
-    private function callee(
+    public function callee(
         CallLike $call,
         ?ReflectionClass $declaring,
         ?ReflectionClass $runtime,

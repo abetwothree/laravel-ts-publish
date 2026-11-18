@@ -289,18 +289,6 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a value spells a callable relative to the subject, which runs on `$this`: `'static::m'` or
-     * `['parent', 'm']`.
-     */
-    private static function namesRelativeCallable(Node $node): bool
-    {
-        $class = $node instanceof Array_ && count($node->items) === 2 ? $node->items[0]->value : null;
-
-        return ($node instanceof String_ && preg_match('/^(self|static|parent)::/i', $node->value) === 1)
-            || ($class instanceof String_ && in_array(strtolower($class->value), ['self', 'static', 'parent'], true));
-    }
-
-    /**
      * Whether a value may be a closure, which a helper calls: anything but a literal, an array or a named class's
      * new instance.
      */
@@ -616,7 +604,7 @@ final class ThisPathWrites
 
         return match (true) {
             $node instanceof ClosureExpr, $node instanceof ArrowFunction => $this->safeClosure($node, $path, $parameters),
-            $node instanceof ClassLike, self::namesRelativeCallable($node) => false,
+            $node instanceof ClassLike, ReadOnlyCalls::namesRelativeCallable($node) => false,
             ($node instanceof ClassConstFetch || $node instanceof StaticPropertyFetch || $node instanceof StaticCall
                 || $node instanceof New_) && ! ($node->class instanceof Name && ! $node->class->isSpecialClassName()) => false,
             default => $this->safeChildren($node, $path, $parameters, $acrossCalls),

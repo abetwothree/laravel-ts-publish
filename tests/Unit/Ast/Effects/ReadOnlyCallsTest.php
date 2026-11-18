@@ -84,6 +84,19 @@ it('tells a callable a value names from a closure written there', function (stri
     'an arrow function' => ['fn () => 1', false],
 ]);
 
+it('reads a callable relative to the subject, which runs on $this', function (string $value, ?array $target) {
+    expect(ReadOnlyCalls::relativeCallable(runtimeClassCall($value)))->toBe($target)
+        ->and(ReadOnlyCalls::namesRelativeCallable(runtimeClassCall($value)))->toBe($target !== null);
+})->with([
+    'static::m' => ["'static::writer'", ['static', 'writer']],
+    'SELF::m, in another case' => ["'SELF::reader'", ['self', 'reader']],
+    '[parent, m]' => ["['parent', 'baseWriter']", ['parent', 'baseWriter']],
+    '[parent, a computed name]' => ["['parent', \$name]", ['parent', null]],
+    'a relative class and no method' => ["'self::'", ['self', null]],
+    'a named class' => ["'Foo::bar'", null],
+    '[$this, m]' => ["[\$this, 'writer']", null],
+]);
+
 it('tells a `::class` name from another class constant', function (string $value, bool $named) {
     expect(ReadOnlyCalls::isClassName(runtimeClassCall($value)))->toBe($named);
 })->with([

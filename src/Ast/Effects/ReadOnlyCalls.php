@@ -12,6 +12,7 @@ use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\CallLike;
@@ -161,6 +162,38 @@ final class ReadOnlyCalls
     }
 
     /**
+     * Whether a value spells a callable relative to the subject, which runs on `$this`: `'static::m'` or
+     * `['parent', 'm']`.
+     */
+    public static function namesRelativeCallable(Node $node): bool
+    {
+        return self::relativeCallable($node) !== null;
+    }
+
+    /**
+     * The class keyword, lowercased, and the method of a callable relative to the subject, the method null where the
+     * source spells none; null for any other value.
+     *
+     * @return array{string, string|null}|null
+     */
+    public static function relativeCallable(Node $node): ?array
+    {
+        if ($node instanceof String_) {
+            return preg_match('/^(self|static|parent)::(.*)$/is', $node->value, $parts) === 1
+                ? [strtolower($parts[1]), $parts[2] === '' ? null : $parts[2]]
+                : null;
+        }
+
+        $items = $node instanceof Array_ && count($node->items) === 2 ? $node->items : [];
+        $class = isset($items[0]) ? $items[0]->value : null;
+        $method = isset($items[1]) ? $items[1]->value : null;
+
+        return $class instanceof String_ && in_array(strtolower($class->value), ['self', 'static', 'parent'], true)
+            ? [strtolower($class->value), $method instanceof String_ ? $method->value : null]
+            : null;
+    }
+
+    /**
      * Whether a function call runs Laravel's `auth()`.
      */
     public static function authHelper(FuncCall $call): bool
@@ -194,7 +227,9 @@ final class ReadOnlyCalls
     public static function buildsResourceStatically(StaticCall $call): bool
     {
         $class = $call->class instanceof Name && ! $call->class->isSpecialClassName() ? $call->class->toString() : null;
-        $runs = $call->name instanceof Identifier ? self::RESOURCE_BUILDERS[$call->name->toLowerString()] ?? null : null;
+        $runs = $call->name instanceof Identifier
+            ? self::RESOURCE_BUILDERS[$call->name->toLowerString()] ?? null
+            : null;
 
         return $class !== null && $runs !== null && self::buildsResource($class) && array_all(
             $runs,

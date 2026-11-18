@@ -4,18 +4,20 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
 
+use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\Post;
 
 /**
  * The helpers InterveningWritesTest calls between a discriminant's keys: ones that write the pin or only read, ones
- * that call themselves or each other, and a chain four levels deep.
+ * that call themselves or each other, a chain four levels deep, and ones that return a callback.
  *
  * @mixin Post
  */
-class InterveningResource extends JsonResource
+class InterveningResource extends InterveningBase
 {
+    public static ?Closure $callback = null;
+
     public bool $pinned = true;
 
     /**
@@ -138,5 +140,80 @@ class InterveningResource extends JsonResource
     private function depthFour(): string
     {
         return (string) $this->title;
+    }
+
+    /**
+     * Returns the writer as a closure.
+     */
+    private function writerCallback(): Closure
+    {
+        return $this->writer(...);
+    }
+
+    /**
+     * Returns a value its signature does not type.
+     */
+    private function untypedCallback()
+    {
+        return 'label';
+    }
+
+    /**
+     * Reads the title through middle(), then through deepOne(), which reaches middle() again, spelled in capitals.
+     */
+    private function middleTwice(): string
+    {
+        return $this->middle().$this->deepOne();
+    }
+
+    /**
+     * Reads the title one level further down.
+     */
+    private function middle(): string
+    {
+        return $this->leaf();
+    }
+
+    /**
+     * Reads the title.
+     */
+    private function leaf(): string
+    {
+        return (string) $this->title;
+    }
+
+    /**
+     * Calls deepTwo().
+     */
+    private function deepOne(): string
+    {
+        return $this->deepTwo();
+    }
+
+    /**
+     * Calls middle() again, spelled in capitals.
+     */
+    private function deepTwo(): string
+    {
+        return $this->MIDDLE();
+    }
+
+    /**
+     * Clears the pin of a post of its own, a local that shares only its name with a read.
+     */
+    private function clearsOwnPost(): bool
+    {
+        $post = new Post;
+        $post->is_pinned = false;
+
+        return true;
+    }
+
+    /**
+     * Reads nothing, where the parent's pick() writes.
+     */
+    private function pick(): bool
+    {
+        return true;
     }
 }

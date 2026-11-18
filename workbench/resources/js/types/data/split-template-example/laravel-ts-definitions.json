@@ -14517,6 +14517,11 @@
                     "optional": false
                 },
                 {
+                    "name": "callable_to_map",
+                    "type": "{ is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null }",
+                    "optional": false
+                },
+                {
                     "name": "static_reader",
                     "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
                     "optional": false

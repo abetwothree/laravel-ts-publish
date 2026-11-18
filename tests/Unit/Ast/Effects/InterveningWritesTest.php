@@ -7,17 +7,19 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\NodeFinder;
 use Workbench\App\Models\Post;
 
 /**
- * reach()'s answer for the window of a literal written in InterveningResource's namespace and scope: its first item
- * sends $read, and each later item holds one source of $items.
+ * reach()'s answer for the window of a literal written in InterveningResource's namespace and in $subject's scope: its
+ * first item sends $read, and each later item holds one source of $items.
  *
  * @param  list<string>  $items
+ * @param  class-string  $subject
  */
-function windowReach(array $items, string $read = '$this->is_pinned'): bool
+function windowReach(array $items, string $read = '$this->is_pinned', string $subject = InterveningResource::class): bool
 {
     $values = implode(', ', array_map(
         static fn (int $index, string $item): string => "'k{$index}' => {$item}",
@@ -34,7 +36,7 @@ function windowReach(array $items, string $read = '$this->is_pinned'): bool
     return InterveningWrites::reach(
         $array->items,
         $sent,
-        new AnalysisScope(new ReflectionClass(InterveningResource::class), Post::class),
+        new AnalysisScope(new ReflectionClass($subject), Post::class),
     );
 }
 
@@ -80,6 +82,39 @@ function interveningCalls(): array
         'the parent constructor' => ['parent::__construct($this->resource)', true],
         'a dynamic method name' => ['$this->{$name}()', true],
         'eval' => ["eval('')", true],
+        'include' => ["include 'missing.php'", true],
+        'call_user_func() handed a function\'s name' => ["call_user_func('strtoupper', 'a')", true],
+        'call_user_func() handed a callable array' => ["call_user_func([\$this, 'reader'])", true],
+        'a static method of a class held in a local' => ['$class::make()', true],
+        'a dynamic method name through ?->' => ['$this?->{$name}()', true],
+        'a method of an object a computed member holds' => ['$this->{$name}->save()', true],
+        'an unpacked argument to when()' => ['$this->when(true, ...$callbacks)', true],
+        'a ternary callback, one branch a writer' => ['$this->when(true, $flag ? $this->reader(...) : $this->writer(...))', true],
+        'a coalesce callback, one side a local' => ['$this->when(true, $callback ?? $this->reader(...))', true],
+        'a match callback, one arm a writer' => ['$this->when(true, match ($flag) { 1 => $this->writer(...), default => null })', true],
+        'a static property callback' => ['$this->when(true, self::$callback)', true],
+        'an assignment callback of a writer' => ['$this->when(true, $f = $this->writer(...))', true],
+        'a callback a helper returns, typed Closure' => ['$this->when(true, $this->writerCallback())', true],
+        'a callback a helper returns, untyped' => ['$this->when(true, $this->untypedCallback())', true],
+        'a function\'s callable when() calls' => ['$this->when(true, strtoupper(...))', true],
+        'an array holding the model' => ['collect([$this->resource])', true],
+        'a ternary yielding the model' => ['collect($flag ? $this->resource : null)', true],
+        'a coalesce yielding the model' => ['collect($this->resource ?? null)', true],
+        'an assignment of the model' => ['collect($model = $this->resource)', true],
+        'a match yielding the model' => ['collect(match (true) { default => $this->resource })', true],
+        'an arrow function returning the model' => ['collect(fn () => $this->resource)', true],
+        'a closure returning the model' => ['collect(function () { return $this->resource; })', true],
+        'a writer\'s callable handed to array_map()' => ['array_map($this->writer(...), [1])', true],
+        'a self:: writer\'s callable handed to array_map()' => ['array_map(self::writer(...), [1])', true],
+        'a writer\'s callable invoked' => ['$this->writer(...)->__invoke()', true],
+        'a local invoked' => ['$callback->__invoke()', true],
+        'a writer named by \'static::\'' => ["array_map('static::writer', [1])", true],
+        'a writer named by [\'parent\', …]' => ["array_map(['parent', 'baseWriter'], [1])", true],
+        'a writer named by [$this, …]' => ["array_map([\$this, 'writer'], [1])", true],
+        'a method of $this named by a local' => ['array_map([$this, $name], [1])', true],
+        'a named ancestor\'s writer' => ['InterveningBase::baseWriter()', true],
+        'a parent:: writer' => ['parent::baseWriter()', true],
+        'a parent body whose self:: names the parent' => ['$this->viaSelf()', true],
         'a reading helper' => ['$this->reader()', false],
         'a self-recursive helper that reads' => ['$this->countDown(3)', false],
         'helpers that call each other and read' => ['$this->ping(3)', false],
@@ -101,6 +136,26 @@ function interveningCalls(): array
         'a static helper that reads' => ['self::shout($this->title)', false],
         'whenAppended(), read through its body' => ["\$this->whenAppended('flag')", false],
         'additional(), writing another member' => ["\$this->additional(['a' => 1])", false],
+        'call_user_func() handed a closure' => ['call_user_func(fn () => $this->reader())', false],
+        'a ternary callback of readers and values' => ["\$this->when(true, \$flag ? \$this->reader(...) : 'none')", false],
+        'a coalesce callback of a read and a reader' => ['$this->when(true, $this->title ?? $this->reader(...))', false],
+        'a match callback of readers' => ['$this->when(true, match ($flag) { 1 => $this->reader(...), default => PHP_EOL })', false],
+        'an assignment callback of a reader' => ['$this->when(true, $f = $this->reader(...))', false],
+        'a callback a helper returns, typed string' => ['$this->when(true, $this->reader())', false],
+        'a static reader\'s callable when() calls' => ['$this->when(true, self::shout(...))', false],
+        'a read, an array and a resource handed to when()' => ['$this->when(true, [$this->title, new UserResource($this->resource)])', false],
+        'a reader\'s callable handed to array_map()' => ["array_map(\$this->reader(...), ['a'])", false],
+        'a reader\'s callable handed to a collection\'s map()' => ["collect(['a'])->map(\$this->reader(...))->all()", false],
+        'a static reader\'s callable handed to array_map()' => ["array_map(self::shout(...), ['a'])", false],
+        'a function\'s callable handed to array_map()' => ["array_map(strtoupper(...), ['a'])", false],
+        'a reader\'s callable invoked' => ['$this->reader(...)->__invoke()', false],
+        'a reader named by \'self::\'' => ["array_map('self::reader', ['a'])", false],
+        'a reader named by [$this, …]' => ["array_map([\$this, 'reader'], ['a'])", false],
+        'a named ancestor\'s reader' => ['InterveningBase::baseReader()', false],
+        'a parent:: reader' => ['parent::baseReader()', false],
+        'new self of the subject' => ['new self($this->resource)', false],
+        'new static of the subject' => ['new static($this->resource)', false],
+        'a helper read once per scan, whatever its case' => ['$this->middleTwice()', false],
     ];
 }
 
@@ -111,6 +166,22 @@ it('tells whether a call between the keys may change the discriminant', function
 ) {
     expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
 })->with(interveningCalls());
+
+it('reads a scope that is no API resource without forwarding to its model', function (string $call, bool $mayWrite) {
+    expect(windowReach([$call, '$this->is_pinned ? 1 : null'], '$this->is_pinned', InterveningSubject::class))->toBe($mayWrite);
+})->with([
+    'a method the subject lacks' => ['$this->getKey()', true],
+    'a write to its own resource property' => ['$this->resource->is_pinned = false', false],
+]);
+
+it('reads a discriminant held by a local, which only the window can write', function (string $call, bool $mayWrite) {
+    expect(windowReach([$call, '$post->is_pinned ? 1 : null'], '$post->is_pinned'))->toBe($mayWrite);
+})->with([
+    'a helper writing $this' => ['$this->writer()', false],
+    'a helper writing a local of the same name' => ['$this->clearsOwnPost()', false],
+    'the local handed to a writer' => ['PinWriter::unpin($post)', true],
+    'a write through the local' => ['$post->is_pinned = false', true],
+]);
 
 it('reads the last item for its writes and the arguments it binds by reference, not its calls', function (
     string $last,
