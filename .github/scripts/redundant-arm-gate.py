@@ -53,7 +53,9 @@ NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 NAME_PATH = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*")
 IMPORT = re.compile(r"^\s*import\s+(?:type\s+)?\{(?P<names>[^}]*)\}\s*from\s*['\"](?P<spec>[^'\"]+)['\"]", re.M)
 ENUM_ALIAS = re.compile(r"^export\s+type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<value>.+?);\s*$", re.M)
-ENUM_CONST = re.compile(r"^export\s+const\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*defineEnum\(", re.M)
+ENUM_CONST = re.compile(
+    r"^export\s+const\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?:/\*\s*[@#]__PURE__\s*\*/\s*)?defineEnum\(", re.M
+)
 WRAP = re.compile(rf"AsEnum<\s*typeof\s+(?P<name>{NAME_PATH.pattern})\s*>")
 ESCAPE = re.compile(r"\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])")
 SIMPLE_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
@@ -439,7 +441,7 @@ ENUM_FILES = {
         "export type MediaTypeKind = 'Image' | 'Video';\n\nexport type MediaType = MediaTypeType;\n"
     ),
     f"{PROBE}/app/enums/status.ts": (
-        "import { defineEnum } from '@tolki/ts';\n\nexport const Status = defineEnum({\n    Draft: 0,\n"
+        "import { defineEnum } from '@tolki/ts';\n\nexport const Status = /* @__PURE__ */ defineEnum({\n    Draft: 0,\n"
         "    Published: 1,\n    backed: true,\n});\n\nexport type StatusType = 0 | 1;\n"
     ),
     f"{PROBE}/app/enums/twin-a.ts": "export const TwinA = defineEnum({ A: 'a' });\nexport type TwinType = 'a' | 'b';\n",
