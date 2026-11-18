@@ -173,7 +173,12 @@ def wrapped(text: str, opener: str) -> bool:
 
 
 def unions(text: str) -> Iterator[list[str]]:
-    """Each union's arms in a type: top level, members, elements, arguments, tuples, groups and arrow returns."""
+    """Each union's arms in a type: top level, members, elements, arguments, tuples, groups, returns and branches."""
+    conditional = branches(text)
+    if conditional is not None:
+        for part in conditional:
+            yield from unions(part.strip())
+        return
     arrow = top_level(text, "=>")
     if arrow is not None:
         yield from inner_unions(text[:arrow])
@@ -191,7 +196,27 @@ def inner_unions(text: str) -> Iterator[list[str]]:
     for start, end in groups(text):
         for item in split_top(text[start + 1:end], ",;"):
             colon = top_level(item, ":")
-            yield from unions((item[colon + 1:] if colon is not None else item).strip().removeprefix("..."))
+            labelled = colon is not None and top_level(item[:colon], " extends ") is None
+            yield from unions((item[colon + 1:] if labelled else item).strip().removeprefix("..."))
+
+
+def branches(text: str) -> tuple[str, str, str] | None:
+    """A top-level conditional type's check and its two branches, or none for any other type."""
+    if top_level(text, " extends ") is None:
+        return None
+    depths = char_depths(text)
+    question, pending = None, 0
+    for i, ch in enumerate(text):
+        if depths[i] != 0 or ch not in "?:":
+            continue
+        if ch == "?":
+            question = i if question is None else question
+            pending += 1
+        elif question is not None:
+            pending -= 1
+            if pending == 0:
+                return text[:question], text[question + 1:i], text[i + 1:]
+    return None
 
 
 def is_list_arm(arm: str) -> bool:
@@ -200,7 +225,10 @@ def is_list_arm(arm: str) -> bool:
         arm = arm[1:-1].strip()
     if arm == EMPTY_TUPLE:
         return True
-    if arm == EMPTY_LIST or any(top_level(arm, token) is not None for token in ("|", "&", "=>", "?")):
+    # `keyof` binds looser than `[]`: `keyof T[]` is the list's keys, not a list.
+    if arm == EMPTY_LIST or arm.startswith("keyof ") or any(
+        top_level(arm, token) is not None for token in ("|", "&", "=>", "?")
+    ):
         return False
     for name in ("Array", "ReadonlyArray"):
         if arm.startswith(name) and wrapped(arm[len(name):], "<"):
@@ -475,6 +503,12 @@ MODULE_CASES = [
      [("PageProps.v", "literal", "'image'")]),
     ("never[] in a property that wraps an enum", "a: { w: AsEnum<typeof MediaType>; v: never[] | MediaTypeType[] };",
      [("a.v", "never", "never[]")]),
+    ("never[] in a conditional's true branch", "a: (true extends true ? (never[] | number[]) : string[]);",
+     [("a", "never", "never[]")]),
+    ("never[] in an unparenthesized conditional branch", "a: T extends U ? never[] | number[] : string[];",
+     [("a", "never", "never[]")]),
+    ("never[] in a conditional's false branch", "a: T extends U ? string : never[] | number[];",
+     [("a", "never", "never[]")]),
     ("two arms spelled alike","a: string[] | string[];", [("a", "duplicate", "string[]")]),
     ("two arms spelled alike in a member", "a: { s: StatusType | StatusType };", [("a.s", "duplicate", "StatusType")]),
     # R7: none of these admits never[].
@@ -488,6 +522,8 @@ MODULE_CASES = [
     ("control: never[] | null", "a: never[] | null;", []),
     ("control: arrow returning a list beside never[]", "a: never[] | (() => number[]);", []),
     ("control: conditional type beside never[]", "a: never[] | (T extends U ? X[] : Y[]);", []),
+    ("control: conditional type choosing never[] or a list", "a: (true extends true ? never[] : number[]);", []),
+    ("control: keyof a list beside never[]", "a: never[] | keyof number[];", []),
     ("control: a string spelled like a redundant union", "a: 'never[] | number[]' | null;", []),
     ("control: literal the alias does not list", "a: 'Image' | MediaTypeType;", []),
     ("control: string '1' beside a number alias", "a: '1' | StatusType;", []),

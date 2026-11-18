@@ -315,17 +315,18 @@ such as `app.enums.StatusType` resolves through the namespace that mirrors the e
 ```bash
 python3 .github/scripts/redundant-arm-gate.py               # gate HEAD's committed trees
 python3 .github/scripts/redundant-arm-gate.py --parsetest   # one synthetic case per finding and per control
-python3 .github/scripts/redundant-arm-gate.py --selftest    # must fail on the probe commit's trees
+python3 .github/scripts/redundant-arm-gate.py --selftest    # passes when the gate fails on the probe commit
 ```
 
 It reads committed trees, so commit the regenerated trees before you run it. A failure lists the first 40 findings
 with the file, the interface or namespace path, the property, the arm and its union. It also fails when it reads no
 enum file, since it would then check no literal. CI runs all three modes.
 
-`--selftest` runs over `ec7876ad2`, `develop`'s probe commit from before the fix, and inverts the exit code. It must
-fail there, report 13 named findings that cover each kind, top-level and nested-member keys, and both alias spellings,
-and report nothing on the probe's `_kept` keys. `--parsetest` covers the other depths. A `PASS` on that commit means
-the script is broken. Run both self-tests after changing it.
+`--selftest` runs the gate over `ec7876ad2`, `develop`'s probe commit from before the fix, and inverts the exit code.
+The gate must fail there, report 13 named findings that cover each kind, top-level and nested-member keys, and both
+alias spellings, and report nothing on the probe's `_kept` keys; `--selftest` then prints `PASS - selftest` and exits 0.
+A gate `PASS` on that commit means the script is broken. `--parsetest` covers the other depths, including conditional
+types. Run both self-tests after changing it.
 
 ### The baseline
 
