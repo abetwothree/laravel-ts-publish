@@ -19,10 +19,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\SplitsOnCondition;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionalArm;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionalArms;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -36,6 +39,7 @@ use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\BinaryOp;
+use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -60,7 +64,7 @@ use ReflectionMethod;
  *
  * @internal
  */
-final class ConditionalMethodHandler implements ExpressionHandler
+final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondition
 {
     use InspectsAstNodes;
     use InspectsResourceCalls;
@@ -150,6 +154,45 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
+     * A `when()` value guarded by its condition, or an `unless()` one by its negation, then the arm its default gives:
+     * what the default sends, an arm that throws for a closure Laravel cannot call, or else what a MissingValue sends.
+     */
+    public function conditionalArms(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?ConditionalArms
+    {
+        if (! $expr instanceof MethodCall) {
+            return null;
+        }
+
+        $method = match (true) {
+            $this->isThisMethodCall($expr, 'when') => 'when',
+            $this->isThisMethodCall($expr, 'unless') => 'unless',
+            default => null,
+        };
+
+        if ($method === null) {
+            return null;
+        }
+
+        $args = $this->arguments($expr, $method);
+        $condition = $args->named('condition')?->value;
+        $value = $args->named('value')?->value;
+
+        if ($condition === null || $value === null) {
+            return null; // @codeCoverageIgnore
+        }
+
+        $guard = $method === 'when' ? $condition : new BooleanNot($condition);
+        $valueArm = new ConditionalArm($guard, $value, $this->whenValue($condition, $value, $method, $scope, $engine));
+        $default = $this->explicitDefault($args);
+        $sent = $default === null
+            ? $this->missingValueSent($engine)
+            : $this->resolveConditionalDefault($default, 0, null, $scope, $engine);
+        $defaultArm = new ConditionalArm(null, $default, $sent, throws: $default !== null && $sent === null);
+
+        return new ConditionalArms([$valueArm, $defaultArm]);
+    }
+
+    /**
      * Fold an explicit default into the value arm: it makes the key required, unless either arm can itself be a
      * MissingValue, and unions in when it resolves. It is invoked with $defaultArgCount arguments, 0 for
      * value($default) and 1 for transform()'s $default($value), whose one argument is $passedToDefault.
@@ -166,21 +209,19 @@ final class ConditionalMethodHandler implements ExpressionHandler
         int $defaultArgCount = 0,
         ?array $passedToDefault = null,
     ): array {
-        $defaultArg = $args->named('default');
+        $defaultExpr = $this->explicitDefault($args);
 
-        if ($defaultArg === null || ! $this->hasExplicitDefaultArg($args)) {
+        if ($defaultExpr === null) {
             return $this->leftOut($value, $engine);
         }
 
-        $defaultExpr = $defaultArg->value;
+        $default = $this->resolveConditionalDefault($defaultExpr, $defaultArgCount, $passedToDefault, $scope, $engine);
 
         // A default closure requiring more parameters than Laravel supplies it can never run, so its
         // arm is unreachable — the value arm stands alone, optional only as its own value is.
-        if ($this->closureRequiresArguments($defaultExpr, $defaultArgCount)) {
+        if ($default === null) {
             return $value;
         }
-
-        $default = $this->resolveConditionalDefault($defaultExpr, $passedToDefault, $scope, $engine);
 
         // An `unknown` on either arm carries no type to union: an unresolved default leaves the value arm
         // standing, and an unresolved value arm already admits whatever the default could produce.
@@ -209,15 +250,15 @@ final class ConditionalMethodHandler implements ExpressionHandler
      */
     protected function leftOut(array $value, ExpressionEngine $engine): array
     {
-        if ($engine->reading() !== Reading::EncodedUnfiltered) {
+        $sent = $this->missingValueSent($engine);
+
+        if ($sent === null) {
             return ValueResult::missable($value);
         }
 
         unset($value['absentReadsNull']);
 
-        return $value['type'] === 'unknown'
-            ? $value
-            : ValueResult::unionResults([$value, ['type' => 'never[]', 'optional' => false]], countMembers: true);
+        return $value['type'] === 'unknown' ? $value : ValueResult::unionResults([$value, $sent], countMembers: true);
     }
 
     /**
@@ -235,20 +276,7 @@ final class ConditionalMethodHandler implements ExpressionHandler
             return [...ValueResult::unknown(), 'optional' => true]; // @codeCoverageIgnore
         }
 
-        if ($this->closureRequiresArguments($valueArg->value)) {
-            $this->warnOfUnpassedArgument($method, $valueArg->value, $scope);
-        }
-
-        $inner = $scope->readClaimedClosure(
-            $valueArg->value,
-            0,
-            $engine,
-            fn (): array => $engine->resolve(CallableForms::invokedCall(CallableForms::heldCallable($valueArg->value, $scope))),
-            bind: fn () => $this->bindClosureParamsFromCondition($condition->value, $valueArg->value, $scope, $engine),
-            // The value runs only where when()'s condition holds, or unless()'s fails. Proven before the claim, so a
-            // closure parameter named like a proven read drops its proof.
-            beforeClaim: fn () => $this->proveNonNull($this->nonNullReads($condition->value, $method === 'when'), $scope),
-        );
+        $inner = $this->whenValue($condition->value, $valueArg->value, $method, $scope, $engine);
 
         return $this->applyConditionalDefault($inner, $args, $scope, $engine);
     }
@@ -735,14 +763,53 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Resolve a conditional default with its parameters bound as Laravel calls it: transform() passes the value, which
-     * a blank-value default holds with its null arm, and the rest of the family pass nothing.
+     * The value `when()` sends where its condition holds, or `unless()` where it fails, read with what that outcome
+     * proves non-null.
      *
-     * @param  PassedValue|null  $passed
      * @return ValueExpressionResult
      */
-    private function resolveConditionalDefault(Expr $default, ?array $passed, AnalysisScope $scope, ExpressionEngine $engine): array
+    private function whenValue(Expr $condition, Expr $value, string $method, AnalysisScope $scope, ExpressionEngine $engine): array
     {
+        if ($this->closureRequiresArguments($value)) {
+            $this->warnOfUnpassedArgument($method, $value, $scope);
+        }
+
+        return $scope->readClaimedClosure(
+            $value,
+            0,
+            $engine,
+            fn (): array => $engine->resolve(CallableForms::invokedCall(CallableForms::heldCallable($value, $scope))),
+            bind: fn () => $this->bindClosureParamsFromCondition($condition, $value, $scope, $engine),
+            // The value runs only where when()'s condition holds, or unless()'s fails. Proven before the claim, so a
+            // closure parameter named like a proven read drops its proof.
+            beforeClaim: fn () => $this->proveNonNull($this->nonNullReads($condition, $method === 'when'), $scope),
+        );
+    }
+
+    /**
+     * What a MissingValue sends: nothing, since `filter()` removes its key, or `[]` where nothing filters it.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function missingValueSent(ExpressionEngine $engine): ?array
+    {
+        return $engine->reading() === Reading::EncodedUnfiltered ? ['type' => 'never[]', 'optional' => false] : null;
+    }
+
+    /**
+     * Resolve a conditional default with its parameters bound as Laravel calls it: transform() passes the value, which
+     * a blank-value default holds with its null arm, and the rest of the family pass nothing. Null for a closure that
+     * requires more than the $argCount arguments it is passed, which throws.
+     *
+     * @param  PassedValue|null  $passed
+     * @return ValueExpressionResult|null
+     */
+    private function resolveConditionalDefault(Expr $default, int $argCount, ?array $passed, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        if ($this->closureRequiresArguments($default, $argCount)) {
+            return null;
+        }
+
         if ($passed === null) {
             return $this->callbackValue($default, [], $scope, $engine);
         }
@@ -768,15 +835,17 @@ final class ConditionalMethodHandler implements ExpressionHandler
     }
 
     /**
-     * Whether an explicit default was passed, as Laravel's func_num_args() sees it: `default` counts as
-     * passed once passedCount() exceeds its declared position, whether it was written there or by name
-     * (a named argument implies every earlier position). A spread makes the count unknowable, so it bails.
+     * The default, where one was passed as Laravel's func_num_args() sees it: `default` counts as passed once
+     * passedCount() exceeds its declared position, whether it was written there or by name (a named argument
+     * implies every earlier position). A spread makes the count unknowable, so it bails.
      */
-    private function hasExplicitDefaultArg(CallArguments $args): bool
+    private function explicitDefault(CallArguments $args): ?Expr
     {
         $position = $args->positionOf('default');
 
-        return ! $args->hasUnpack() && $position !== null && $args->passedCount() > $position;
+        return ! $args->hasUnpack() && $position !== null && $args->passedCount() > $position
+            ? $args->named('default')?->value
+            : null;
     }
 
     /**

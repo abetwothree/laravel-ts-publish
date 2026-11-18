@@ -9,8 +9,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
+use AbeTwoThree\LaravelTsPublish\Ast\Contracts\SplitsOnCondition;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionalArm;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionalArms;
 use PhpParser\Node\Expr;
+use WeakMap;
 
 /**
  * Tries registered handlers, in registration order, for an expression's concrete class, returning
@@ -28,10 +32,16 @@ final class ExpressionDispatcher
     /** @var array<class-string<Expr>, list<ExpressionHandler>> Per-concrete-class memo; misses cached too. */
     private array $candidatesByClass = [];
 
+    /** @var WeakMap<Expr, ExpressionHandler> the handler that answered each node, the only one asked for its arms */
+    private WeakMap $answeredBy;
+
     /**
      * @param  list<ExpressionHandler>  $handlers  Registration order is dispatch order.
      */
-    public function __construct(protected array $handlers) {}
+    public function __construct(protected array $handlers)
+    {
+        $this->answeredBy = new WeakMap;
+    }
 
     /**
      * Dispatch to the first candidate handler that resolves the expression, or null if none do.
@@ -66,6 +76,7 @@ final class ExpressionDispatcher
             }
 
             DroppedUnionArms::consumed($gaps, $result['type']);
+            $this->answeredBy[$expr] = $handler;
 
             // A value a handler reads from a held object, as `when()` calls a closure, is not that object itself.
             return $handler instanceof KeepsHeldObjects ? $result : ValueResult::withoutHeldObject($result);
@@ -74,5 +85,34 @@ final class ExpressionDispatcher
         DroppedUnionArms::consumed($gaps, 'unknown');
 
         return null;
+    }
+
+    /**
+     * The arms of a node from the handler that answered it in dispatch(), so each arm is typed by the code that typed
+     * the node; null where that handler splits on no condition, or no handler answered.
+     */
+    public function conditionalArms(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?ConditionalArms
+    {
+        $handler = $this->answeredBy[$expr] ?? null;
+
+        if (! $handler instanceof SplitsOnCondition) {
+            return null;
+        }
+
+        if ($handler instanceof KeepsHeldObjects) {
+            return $handler->conditionalArms($expr, $scope, $engine);
+        }
+
+        // As dispatch() reads such a handler: apart from a closure's returned value, and no arm is the object it reads.
+        $arms = $scope->readsCallableReturn
+            ? $scope->apartFromReturn(fn (): ?ConditionalArms => $handler->conditionalArms($expr, $scope, $engine))
+            : $handler->conditionalArms($expr, $scope, $engine);
+
+        return $arms === null ? null : new ConditionalArms(array_map(
+            static fn (ConditionalArm $arm): ConditionalArm => $arm->result === null
+                ? $arm
+                : new ConditionalArm($arm->guard, $arm->body, ValueResult::withoutHeldObject($arm->result), $arm->throws),
+            $arms->arms,
+        ));
     }
 }
