@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
@@ -2493,15 +2494,21 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 ];
             }
 
+            // A name the text builds on that the key's own value resolves keeps the package's import.
+            $resolved = $import === null ? [] : $analysis->channelNames($property);
+
             // The publisher fits the key's import channels to this text once it knows which cast is in force; the slots
             // a fill declared described the value this text replaces.
             unset($analysis->declaredTokenFqcns[$property]);
-            $analysis->casts[$property] = $optional === null
-                ? ['type' => $type, 'import' => $import]
-                : ['type' => $type, 'import' => $import, 'optional' => $optional];
+            $analysis->casts[$property] = [
+                'type' => $type,
+                'import' => $import,
+                ...($optional === null ? [] : ['optional' => $optional]),
+                ...($resolved === [] ? [] : ['resolved' => $resolved]),
+            ];
 
             if ($import !== null) {
-                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
+                foreach (CastChannels::importedNames($type, $resolved) as $importName) {
                     $analysis->customImports[$import][] = $importName;
                 }
             }

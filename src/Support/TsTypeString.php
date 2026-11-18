@@ -175,8 +175,8 @@ class TsTypeString
      * file must bind for the type to compile.
      *
      * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
-     * arm, a name after a `.`, a binder `infer` or a mapped type declares, a predicate's parameter, or the head of one
-     * of TypeScript's own generics. The operand of `typeof` is one.
+     * arm, a name after a `.`, a binder `infer`, a mapped type or a type parameter list declares, a predicate's
+     * parameter, or the head of one of TypeScript's own generics. The operand of `typeof` is one.
      *
      * @return list<string>
      */
@@ -184,6 +184,7 @@ class TsTypeString
     {
         $tokens = $this->typeTokens($type);
         $keywords = [...self::TS_PRIMITIVES, ...self::KEYWORD_TYPES, ...self::TYPE_OPERATORS];
+        $parameterLists = $this->typeParameterLists($tokens);
         $names = [];
         $binders = [];
         $opened = [];
@@ -191,7 +192,7 @@ class TsTypeString
         foreach ($tokens as $index => [$token, $isName]) {
             if (! $isName) {
                 match ($token) {
-                    '{', '[', '(', '<' => $opened[] = $token,
+                    '{', '[', '(', '<' => $opened[] = $index,
                     '}', ']', ')', '>' => array_pop($opened),
                     default => null,
                 };
@@ -203,12 +204,17 @@ class TsTypeString
             $after = $tokens[$index + 1][0] ?? '';
             $afterNext = $tokens[$index + 2][0] ?? '';
             $leads = in_array($before, self::TYPE_LEADS, true);
+            $enclosing = $opened === [] ? null : $opened[array_key_last($opened)];
+            $enclosedBy = $enclosing === null ? '' : $tokens[$enclosing][0];
 
             if ($before === '.' || in_array($token, $keywords, true)) {
                 continue;
             }
 
-            if ($before === 'infer' || ($after === 'in' && end($opened) === '[')) {
+            $declared = $enclosing !== null && isset($parameterLists[$enclosing])
+                && in_array($before, ['<', ',', 'const', 'in', 'out'], true);
+
+            if ($declared || $before === 'infer' || ($after === 'in' && $enclosedBy === '[')) {
                 $binders[] = $token;
 
                 continue;
@@ -217,7 +223,8 @@ class TsTypeString
             // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
             // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
             $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
-            $method = $after === '(' && end($opened) === '{' && ! $leads && $before !== ':';
+            $method = ($after === '(' || ($after === '<' && isset($parameterLists[$index + 1])))
+                && $enclosedBy === '{' && ! $leads && $before !== ':';
             $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
                 && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
             $libHead = $after === '<' && in_array($token, self::LIB_GENERICS, true);
@@ -228,6 +235,27 @@ class TsTypeString
         }
 
         return array_values(array_unique(array_diff($names, $binders)));
+    }
+
+    /**
+     * The names that make up a whole top-level union arm of a type string, read past a leading type operator and
+     * trailing `[]`s: `User | Paginated<Post>` has `User`, while `Post` is a name it only builds on.
+     *
+     * @return list<string>
+     */
+    public function armNames(string $type): array
+    {
+        $names = [];
+
+        foreach ($this->splitTopLevelUnion($type) as $arm) {
+            $name = (string) preg_replace(['/^(?:(?:keyof|typeof|readonly|unique)\s+)+/', '/(?:\s*\[\s*\])+$/'], '', $arm);
+
+            if ($this->referencedTypeNames($arm) === [$name]) {
+                $names[] = $name;
+            }
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**
@@ -775,6 +803,30 @@ class TsTypeString
             // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
+    }
+
+    /**
+     * The token index of each `<` that opens a type parameter list, the one a `(` follows once it closes: `<T>(x: T)`.
+     *
+     * @param  list<TypeToken>  $tokens
+     * @return array<int, true>
+     */
+    private function typeParameterLists(array $tokens): array
+    {
+        $lists = [];
+        $angles = [];
+
+        foreach ($tokens as $index => [$token]) {
+            if ($token === '<') {
+                $angles[] = $index;
+            } elseif ($token === '>' && $angles !== [] && ($tokens[$index + 1][0] ?? '') === '(') {
+                $lists[(int) array_pop($angles)] = true;
+            } elseif ($token === '>') {
+                array_pop($angles);
+            }
+        }
+
+        return $lists;
     }
 
     /**

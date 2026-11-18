@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastBuildsOnModelEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastCarriedModelEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastCarriedSpelledEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\CastModelEvent;
@@ -20,6 +21,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchCastsOption
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BranchOptionalCastOverRequiredModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CarriedSpelledResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastBareBesideWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastBuildsOnResourceBesideArmResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastBuildsOnResourceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDisplacedOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDroppedEnumBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastKeyofTypeofImportResource;
@@ -42,6 +45,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastWrapResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastBuildsOnResourceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastDisplacedOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMixedTernaryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
@@ -284,6 +288,44 @@ describe('a cast over a key whose classes it displaces', function () {
             '    k: string;',
             '    crm: StatusType | null;',
         ]);
+    });
+});
+
+// A name a cast builds on keeps the package's import where its key's value resolves it; one only the cast spells comes
+// from the cast's path, and a name the cast is whole stays the app's own, as ts-casts.md § Imports has it.
+describe('a cast that builds on a class its key\'s value resolves', function () {
+    it('keeps the package\'s import of that class and imports only the rest from its path', function (string $resource) {
+        expect(castInForceLines($resource))->toBe([
+            "import type { Meta } from '@/types/meta';",
+            "import type { Paginated } from '@/types/paginated';",
+            "import type { UserResource } from '../../../../../../workbench/app/http/resources';",
+            '    mixed: { owner: UserResource; meta: Meta };',
+            '    paginated: Paginated<UserResource>;',
+        ]);
+    })->with([
+        'a class-level cast' => [CastBuildsOnResourceResource::class],
+        'a method-level cast' => [MethodCastBuildsOnResourceResource::class],
+    ]);
+
+    it('aliases the package\'s class apart from the app\'s own type a union arm of another cast names', function () {
+        expect(castInForceLines(CastBuildsOnResourceBesideArmResource::class))->toBe([
+            "import type { Meta, UserResource } from '@/types/meta';",
+            "import type { Paginated } from '@/types/paginated';",
+            "import type { UserResource as WorkbenchUserResource } from '../../../../../../workbench/app/http/resources';",
+            '    mixed: { owner: WorkbenchUserResource; meta: Meta };',
+            '    paginated: Paginated<WorkbenchUserResource>;',
+            '    union: UserResource | Meta;',
+        ]);
+    });
+
+    it('keeps an event\'s model import for the model a cast builds on', function () {
+        $transformer = app(BroadcastEventTransformer::class, ['findable' => CastBuildsOnModelEvent::class]);
+
+        expect(array_column($transformer->properties, 'type'))->toBe(['{ owner: User; meta: Meta }'])
+            ->and($transformer->typeImports)->toBe([
+                '@/types/meta' => ['Meta'],
+                '../../../../../workbench/app/models' => ['User'],
+            ]);
     });
 });
 
@@ -702,6 +744,30 @@ describe('CastChannels', function () {
         'an aliased import of the name' => [['@ui' => ['UiGauge as Gauge']], ['@acme' => ['Gauge']], []],
         'an alias binding another name' => [['@ui' => ['Gauge']], ['@acme' => ['Gauge as AcmeGauge']], ['@ui' => ['Gauge']]],
     ]);
+
+    it('brings a name a cast builds on only where no class on its key prints it, and every name the cast is whole', function (string $type, array $resolved, array $names) {
+        expect(CastChannels::importedNames($type, $resolved))->toBe($names);
+    })->with([
+        'a name built on, resolved' => ['Paginated<UserResource> | Meta', ['UserResource'], ['Paginated', 'Meta']],
+        'a name built on, unresolved' => ['Paginated<UserResource> | Meta', [], ['Paginated', 'UserResource', 'Meta']],
+        'a name the cast is whole' => ['UserResource | Meta', ['UserResource'], ['UserResource', 'Meta']],
+        'a name both whole and built on' => ['UserResource | Paginated<UserResource>', ['UserResource'], ['UserResource', 'Paginated']],
+    ]);
+
+    it('keeps the class a cast builds on where its key resolves the name, never bringing it over', function () {
+        $analysis = new MethodAnalysis(
+            properties: [['name' => 'k', 'type' => 'User', 'optional' => false, 'description' => '']],
+            modelFqcns: ['k' => User::class],
+        );
+
+        resolve(CastChannels::class)->fit($analysis, [
+            'k' => ['type' => '{ owner: User; meta: Meta }', 'import' => '@js/types/meta', 'resolved' => ['User']],
+        ]);
+
+        expect($analysis->inlineModelFqcns)->toBe(['k' => [User::class]])
+            ->and($analysis->modelFqcns)->toBe([User::class => User::class])
+            ->and($analysis->carried)->toBe([]);
+    });
 
     it('fits a numeric cast key, which PHP stores as an int', function () {
         $analysis = new MethodAnalysis(

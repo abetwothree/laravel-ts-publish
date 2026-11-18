@@ -399,12 +399,14 @@ class InertiaPageAnalyzer
                 $targets,
             );
             $castImports = [];
+            $resolved = [];
 
             // A losing spelling's import goes with its type.
             foreach ($paths as $key => $path) {
+                $resolved[$key] = $analysis->channelNames((string) $key);
                 $castImports[$path] = [
                     ...$castImports[$path] ?? [],
-                    ...TsTypeString::extractImportableTypes($casts[$key] ?? ''),
+                    ...CastChannels::importedNames($casts[$key] ?? '', $resolved[$key]),
                 ];
             }
 
@@ -413,7 +415,7 @@ class InertiaPageAnalyzer
             // Each props literal was reconciled alone, and the controller's own casts are laid over the props below.
             resolve(IndexSignatureReconciler::class)->reconcile($analysis, $casts, subject: $subject);
             $analysis->absorbRedundantArms();
-            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
+            resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths, $resolved));
 
             $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
             $members = $this->buildMembersWithOverrides(
@@ -771,14 +773,16 @@ class InertiaPageAnalyzer
      *
      * @param  array<array-key, string>  $casts  the action's casts, by the key each retypes
      * @param  array<array-key, string>  $paths  each of those casts' import path, by its key
+     * @param  array<array-key, list<string>>  $resolved  the names the classes each key with a path carried print
      * @return CastMap
      */
-    private function castsInForce(MethodAnalysis $analysis, array $casts, array $paths): array
+    private function castsInForce(MethodAnalysis $analysis, array $casts, array $paths, array $resolved): array
     {
         $inForce = $analysis->casts;
 
         foreach ($casts as $key => $type) {
-            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null];
+            $names = $resolved[$key] ?? [];
+            $inForce[$key] = ['type' => $type, 'import' => $paths[$key] ?? null, ...($names === [] ? [] : ['resolved' => $names])];
         }
 
         return $inForce;

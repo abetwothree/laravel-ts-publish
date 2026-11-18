@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\BuildsOnModelCastController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeBranchedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\DocShapeFoldedPageController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\EmbeddedCastController;
@@ -1123,6 +1124,17 @@ it('imports the model an import-less cast spells over the key whose value embeds
     expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { meta: { author: User | null } }')
         ->and($transformer->typeImports)->toBe(['../../../../../../app/models' => ['User']])
         ->and(inertiaProps(new EmbeddedCastController()->show($post))->meta->author->name)->toBe('Ada');
+});
+
+it('keeps the model import a page cast builds on, and imports only the rest from its path', function () {
+    app(Router::class)->get('/builds-on-model-cast/{post}', [BuildsOnModelCastController::class, 'show']);
+    $transformer = new RouteTransformer(BuildsOnModelCastController::class);
+
+    expect($transformer->actions[0]['pageType'])->toBe('Inertia.SharedData & { meta: { author: User | null; tag: Tag } }')
+        ->and($transformer->typeImports)->toBe([
+            '@/types/tag' => ['Tag'],
+            '../../../../../../app/models' => ['User'],
+        ]);
 });
 
 it('leaves the string literals a page cast writes as written, beside a model another page aliases', function () {

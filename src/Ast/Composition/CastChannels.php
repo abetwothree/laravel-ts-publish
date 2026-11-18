@@ -37,9 +37,33 @@ final class CastChannels
     public static function brings(array $cast): array
     {
         return [
-            ...($cast['import'] !== null ? TsTypeString::extractImportableTypes($cast['type']) : []),
+            ...($cast['import'] !== null ? self::importedNames($cast['type'], $cast['resolved'] ?? []) : []),
             ...ImportMaps::localNames($cast['customImports'] ?? []),
         ];
+    }
+
+    /**
+     * The names a cast's import brings for its text: each name the text spells, but a name it builds on that a class on
+     * its key's channels prints, which keeps the package's import. A name the text is whole stays the cast's, as the
+     * app's own type for its key.
+     *
+     * @param  list<string>  $resolved  the names the classes on the cast's key print, MethodAnalysis::channelNames()
+     * @return list<string>
+     */
+    public static function importedNames(string $type, array $resolved): array
+    {
+        $names = TsTypeString::extractImportableTypes($type);
+
+        if ($resolved === []) {
+            return $names;
+        }
+
+        $whole = TsTypeString::armNames($type);
+
+        return array_values(array_filter(
+            $names,
+            static fn (string $name): bool => ! in_array($name, $resolved, true) || in_array($name, $whole, true),
+        ));
     }
 
     /**
@@ -352,7 +376,7 @@ final class CastChannels
             if ($cast['import'] !== null) {
                 $bound[$cast['import']] = [
                     ...$bound[$cast['import']] ?? [],
-                    ...TsTypeString::extractImportableTypes($cast['type']),
+                    ...self::importedNames($cast['type'], $cast['resolved'] ?? []),
                 ];
             }
 

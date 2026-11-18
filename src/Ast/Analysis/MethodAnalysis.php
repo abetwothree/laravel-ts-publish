@@ -53,6 +53,7 @@ use LogicException;
  *     optional?: bool,
  *     customImports?: TypesImportMap,
  *     tokenFqcns?: Slots,
+ *     resolved?: list<string>,
  * }
  * @phpstan-type CastMap = array<array-key, CastInForce>
  * @phpstan-type CarriedMap = array{

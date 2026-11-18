@@ -18,10 +18,11 @@ use ReflectionClass;
  * A type name reachable from two different import paths is aliased with that path's last segment
  * (`Routable` from `@/types/routing` → `RoutingRoutable`), and its extends clause is rewritten.
  *
- * @phpstan-type RawEntry = array{extends: string, import: string|null, types: list<string>}
+ * @phpstan-type RawEntry = array{extends: string, import: string|null, types: list<string>, read: bool}
  * @phpstan-type TsExtendsResult = array{
  *     extends: list<string>,
  *     imports: array<string, list<string>>,
+ *     nested: array<string, list<string>>,
  * }
  */
 trait ParsesTsExtends
@@ -90,7 +91,7 @@ trait ParsesTsExtends
 
         foreach ($configEntries as $entry) {
             if (is_string($entry)) {
-                $rawEntries[] = ['extends' => $entry, 'import' => null, 'types' => []];
+                $rawEntries[] = ['extends' => $entry, 'import' => null, 'types' => [], 'read' => false];
             } else {
                 /** @var array{extends: string, import?: string, types?: list<string>} $entry */
                 $typeNames = isset($entry['import'])
@@ -100,6 +101,7 @@ trait ParsesTsExtends
                     'extends' => $entry['extends'],
                     'import' => $entry['import'] ?? null,
                     'types' => $typeNames,
+                    'read' => isset($entry['import']) && ! isset($entry['types']),
                 ];
             }
         }
@@ -128,12 +130,14 @@ trait ParsesTsExtends
                 'extends' => $clause,
                 'import' => $instance->import,
                 'types' => $typeNames,
+                'read' => $instance->import !== null && $instance->types === null,
             ];
         }
     }
 
     /**
-     * Deduplicate entries and resolve type name conflicts across import paths.
+     * Deduplicate entries and resolve type name conflicts across import paths, and list apart each name read from a
+     * clause that only builds on it, as `UserResource` in `Pick<UserResource, "id">`, while it keeps its spelling.
      *
      * @param  list<RawEntry>  $rawEntries
      * @return TsExtendsResult
@@ -180,12 +184,18 @@ trait ParsesTsExtends
         $extendsClauses = [];
         /** @var array<string, list<string>> $imports */
         $imports = [];
+        /** @var array<string, list<string>> $nested */
+        $nested = [];
+        /** @var array<string, list<string>> $claimed  the names an entry imports whole or lists in its `types` */
+        $claimed = [];
 
         foreach ($deduped as $entry) {
             $extendsClause = $entry['extends'];
 
             if ($entry['import'] !== null) {
                 $typeNamesToImport = [];
+                $builtOn = $entry['read'] ? array_diff($entry['types'], TsTypeString::armNames($extendsClause)) : [];
+
                 foreach ($entry['types'] as $typeName) {
                     $aliasKey = $typeName."\0".$entry['import'];
                     if (isset($aliasMap[$aliasKey])) {
@@ -198,6 +208,12 @@ trait ParsesTsExtends
                         $typeNamesToImport[] = $typeName.' as '.$alias;
                     } else {
                         $typeNamesToImport[] = $typeName;
+
+                        if (in_array($typeName, $builtOn, true)) {
+                            $nested[$entry['import']][] = $typeName;
+                        } else {
+                            $claimed[$entry['import']][] = $typeName;
+                        }
                     }
                 }
 
@@ -216,6 +232,10 @@ trait ParsesTsExtends
             $extendsClauses[] = $extendsClause;
         }
 
-        return ['extends' => $extendsClauses, 'imports' => $imports];
+        foreach ($nested as $path => $names) {
+            $nested[$path] = array_values(array_unique(array_diff($names, $claimed[$path] ?? [])));
+        }
+
+        return ['extends' => $extendsClauses, 'imports' => $imports, 'nested' => array_filter($nested)];
     }
 }

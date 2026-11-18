@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedEmptyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPackageNameTypesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedPostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedTwiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PickBaseExtendsResource;
@@ -116,3 +119,39 @@ it('imports the name a generic extends clause with a union inside spells', funct
         ->toContain("import type { Base } from '@/types/base';")
         ->toContain('export interface PickBaseExtendsResource extends Pick<Base, "a" | "b">');
 });
+
+// A name a clause builds on keeps the import of the class the package publishes under it; one `types` lists stays the
+// clause's, so the package's class is aliased apart.
+it('keeps the package\'s import of a class a clause builds on, and imports from the clause\'s path only what it lists', function (string $resource, array $imports, string $declaration) {
+    $content = intersectedResourceFile($resource);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe($imports)
+        ->and($content)->toEndWith($declaration);
+})->with([
+    'an intersection with no `types`' => [IntersectedPackageNameResource::class, [
+        "import type { UserResource } from '../../../../../../workbench/app/http/resources';",
+    ], <<<'TS'
+        export type IntersectedPackageNameResource = {
+            owner: UserResource;
+        } & (Pick<UserResource, "id">);
+
+        TS],
+    'an extends clause with no `types`' => [ExtendsPackageNameResource::class, [
+        "import type { UserResource } from '../../../../../../workbench/app/http/resources';",
+    ], <<<'TS'
+        export interface ExtendsPackageNameResource extends Pick<UserResource, "id">
+        {
+            owner: UserResource;
+        }
+
+        TS],
+    'an intersection that lists the name in its `types`' => [IntersectedPackageNameTypesResource::class, [
+        "import type { UserResource } from '@/types/user';",
+        "import type { UserResource as WorkbenchUserResource } from '../../../../../../workbench/app/http/resources';",
+    ], <<<'TS'
+        export type IntersectedPackageNameTypesResource = {
+            owner: WorkbenchUserResource;
+        } & (Pick<UserResource, "id">);
+
+        TS],
+]);

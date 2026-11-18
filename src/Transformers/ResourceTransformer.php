@@ -114,6 +114,9 @@ class ResourceTransformer extends CoreTransformer
     /** @var ImportMapType custom imports the AST analysis carried, kept apart until overrides have replaced types */
     protected array $analysisCustomImports = [];
 
+    /** @var ImportMapType the names a clause only builds on, kept apart until the classes the file imports are known */
+    protected array $nestedClauseImports = [];
+
     /** @var array<array-key, bool> property name => optional override */
     protected array $optionalOverrides = [];
 
@@ -212,6 +215,7 @@ class ResourceTransformer extends CoreTransformer
             ->pruneOverriddenAnalysisImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
+            ->importNestedClauseNames()
             ->resolveImportConflicts()
             ->keepWrittenInlineWraps()
             ->rewriteEnumResourceTypes()
@@ -384,7 +388,8 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Register the imports one clause attribute brings, and return its clauses.
+     * Register the imports one clause attribute brings, setting apart each name a clause only builds on, and return its
+     * clauses.
      *
      * @param  TsExtendsResult  $result
      * @return list<string>
@@ -392,10 +397,40 @@ class ResourceTransformer extends CoreTransformer
     protected function registerClauses(array $result): array
     {
         foreach ($result['imports'] as $importPath => $typeNames) {
-            $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
+            $nested = $result['nested'][$importPath] ?? [];
+            $whole = array_values(array_diff($typeNames, $nested));
+
+            if ($whole !== []) {
+                $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$whole];
+            }
+
+            if ($nested !== []) {
+                $this->nestedClauseImports[$importPath] = [...($this->nestedClauseImports[$importPath] ?? []), ...$nested];
+            }
         }
 
         return $result['extends'];
+    }
+
+    /**
+     * Import each name a clause only builds on from the clause's path, unless the file imports a class the package
+     * publishes under that name, whose import then binds the clause's name too.
+     */
+    protected function importNestedClauseNames(): self
+    {
+        $published = [
+            ...array_values($this->resourceFqcnMap),
+            ...array_values($this->modelFqcnMap),
+            ...array_merge([], ...array_map(ValueResult::enumNames(...), array_keys($this->enumFqcnMap))),
+        ];
+
+        foreach ($this->nestedClauseImports as $importPath => $names) {
+            foreach (array_diff($names, $published) as $name) {
+                $this->customImports[$importPath][] = $name;
+            }
+        }
+
+        return $this;
     }
 
     /**
@@ -485,6 +520,12 @@ class ResourceTransformer extends CoreTransformer
 
         $castKeys = $this->castKeys($analysis);
         $this->castsInForce = $this->collectCastsInForce($castKeys, $analysis);
+
+        foreach ($this->tsCastsImportPaths as $property => $importPath) {
+            foreach ($this->castImports($property, $this->tsTypeOverrides[$property] ?? '') as $importName) {
+                $this->customImports[$importPath][] = $importName;
+            }
+        }
 
         if ($this->publishesVariants()) {
             VariantUnions::apply($analysis, array_map(strval(...), array_keys($this->castsInForce)));
@@ -632,10 +673,21 @@ class ResourceTransformer extends CoreTransformer
             $import = isset($this->tsTypeOverrides[$property])
                 ? ($this->tsCastsImportPaths[$property] ?? null)
                 : ($this->modelTsCastsImportPaths[$property] ?? null);
-            $casts[$property] = ['type' => $type, 'import' => $import];
+            $resolved = $import === null ? [] : $analysis->channelNames((string) $property);
+            $casts[$property] = ['type' => $type, 'import' => $import, ...($resolved === [] ? [] : ['resolved' => $resolved])];
         }
 
         return $casts;
+    }
+
+    /**
+     * The names a cast key's own import brings for the text it publishes.
+     *
+     * @return list<string>
+     */
+    protected function castImports(int|string $property, string $type): array
+    {
+        return CastChannels::importedNames($type, $this->castsInForce[$property]['resolved'] ?? []);
     }
 
     /**
@@ -667,8 +719,8 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Re-key each #[TsCasts] source to the analysis's spelling of the keys it retypes, each location deciding alone
-     * so a later one outranks an earlier one, then import what the resource's own surviving casts name. One decision
-     * per source moves its type, optional and import entries together; a key no attribute names decides last.
+     * so a later one outranks an earlier one. One decision per source moves its type, optional and import entries
+     * together; a key no attribute names decides last.
      *
      * @param  list<string>  $keys
      */
@@ -694,12 +746,6 @@ class ResourceTransformer extends CoreTransformer
         $this->modelTsCastsOverrides = JsEmitter::retargetCasts($this->modelTsCastsOverrides, $model);
         $this->modelTsCastsImportPaths = JsEmitter::retargetCasts($this->modelTsCastsImportPaths, $model);
         $this->modelTsCastsOptionalOverrides = JsEmitter::retargetCasts($this->modelTsCastsOptionalOverrides, $model);
-
-        foreach ($this->tsCastsImportPaths as $property => $importPath) {
-            foreach (TsTypeString::extractImportableTypes($this->tsTypeOverrides[$property] ?? '') as $importName) {
-                $this->customImports[$importPath][] = $importName;
-            }
-        }
     }
 
     /**
@@ -736,7 +782,7 @@ class ResourceTransformer extends CoreTransformer
             $this->properties[$property] = [...$this->properties[$property], 'type' => $type];
 
             if (isset($this->modelTsCastsImportPaths[$property])) {
-                foreach (TsTypeString::extractImportableTypes($type) as $importName) {
+                foreach ($this->castImports($property, $type) as $importName) {
                     $this->customImports[$this->modelTsCastsImportPaths[$property]][] = $importName;
                 }
             }

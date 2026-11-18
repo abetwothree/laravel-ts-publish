@@ -84,7 +84,8 @@ function undecodableTsTypeString(): TsTypeString
 /**
  * Seeded type strings, each beside the names it references in a type position in order of first reference, and the
  * forms it holds: keys, labels and parameters spelled like names, literal text that spells names, TypeScript's own
- * generics, binders, predicates, methods, qualified names, gaps and members on lines of their own, three deep.
+ * generics, binders, type parameters, predicates, methods, qualified names, gaps and members on lines of their own,
+ * three deep.
  *
  * @return list<array{string, list<string>, list<string>}>
  */
@@ -205,6 +206,13 @@ function referencedTypeNameCases(int $seed, int $cases): array
                 [$a, $first] = $type($depth - 1);
                 [$b, $second] = $type($depth - 1);
                 [$c, $third] = $child();
+
+                if ($random->getInt(0, 2) === 0) {
+                    $features[] = 'type parameter';
+                    [$bound, $bounds] = $child();
+
+                    return ['<P extends '.$bound.'>('.$pick($keys).': P, '.$pick($keys).'?: '.$a.') => '.$c, [...$bounds, ...$first, ...$third], false];
+                }
 
                 return ['('.$pick($keys).': '.$a.', '.$pick($keys).'?: '.$b.') => '.$c, [...$first, ...$second, ...$third], false];
             case 16:
@@ -611,6 +619,10 @@ describe('referencedTypeNames', function () {
         expect($this->service->referencedTypeNames($type))->toBe($names);
     })->with([
         'an infer binder' => ['Foo extends Array<infer Item> ? Item : never', ['Foo']],
+        'a type parameter' => ['<T>(value: T) => T[]', []],
+        'a constrained type parameter and a default' => ['<T extends Base, U = Fallback>(value: T) => U', ['Base', 'Fallback']],
+        'a generic method\'s type parameter' => ['{ each<Item>(value: Item): Out }', ['Out']],
+        'a generic call signature\'s type parameter' => ['{ <Row>(value: Row): Row[] }', []],
         'a mapped binder' => ['{ readonly [K in keyof Foo]-?: Bar<K> }', ['Foo', 'Bar']],
         'a predicate' => ['(value: unknown) => value is Foo', ['Foo']],
         'an assertion' => ['(value: unknown) => asserts value is Foo', ['Foo']],
@@ -642,6 +654,17 @@ describe('referencedTypeNames', function () {
         'a bare name TypeScript also declares' => ['Map<string, Foo> | Map | Set[]', ['Foo', 'Map', 'Set']],
     ]);
 
+    test('reads the names a type is whole, one per top-level arm, apart from the names it is built from', function (string $type, array $names) {
+        expect($this->service->armNames($type))->toBe($names);
+    })->with([
+        'names' => ['User | Post[] | null', ['User', 'Post']],
+        'a name after a type operator' => ['keyof typeof Status | readonly Tag[]', ['Status', 'Tag']],
+        'a generic and an object' => ['Paginated<User> | { a: Post } | Meta', ['Meta']],
+        'a qualified name' => ['Geo.Point', []],
+        'a union inside a generic' => ['Pick<Base, "a" | "b">', []],
+        'primitives and a gap' => ['string | $gap1 | null', []],
+    ]);
+
     test('reads each name once, in the order a type first spells it', function () {
         expect($this->service->referencedTypeNames('Foo | { a: Bar; b: Foo } | Bar[] | Baz'))->toBe(['Foo', 'Bar', 'Baz']);
     });
@@ -671,7 +694,7 @@ describe('referencedTypeNames', function () {
 
         expect(array_keys($seen))->toBe([
             'binder', 'gap', 'key spelled like a name', 'lib', 'literal', 'members on lines of their own', 'method',
-            'predicate', 'qualified',
+            'predicate', 'qualified', 'type parameter',
         ])->and(min($seen))->toBeGreaterThanOrEqual(20);
     });
 });
