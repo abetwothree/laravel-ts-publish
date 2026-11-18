@@ -366,17 +366,14 @@ final class VariantReader
     }
 
     /**
-     * The classes named, each once, sorted.
+     * The classes named, in token order and as often as named, since that order binds each token to its class.
      *
      * @param  list<class-string|null>  $fqcns
      * @return list<class-string>
      */
     private static function classList(array $fqcns): array
     {
-        $named = array_values(array_unique(array_filter($fqcns)));
-        sort($named);
-
-        return $named;
+        return array_values(array_filter($fqcns));
     }
 
     /**

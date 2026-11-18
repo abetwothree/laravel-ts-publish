@@ -7,10 +7,14 @@ use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Enums\Priority;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+use Workbench\App\Http\Resources\Discriminated\SwappedResourcesResource;
 use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 /**
  * The type a resource's file declares, as the writer renders it.
@@ -26,6 +30,26 @@ function renderedAlias(string $resource): string
     preg_match('/^export type '.class_basename($resource).' =\s*(.*);$/ms', $content, $match);
 
     return $match[1] ?? '';
+}
+
+/**
+ * The declarations a resource's file holds, as the writer renders it, without its imports.
+ *
+ * @param  class-string<JsonResource>  $resource
+ */
+function renderedDeclaration(string $resource): string
+{
+    config()->set('ts-publish.output_to_files', false);
+
+    return (string) preg_replace('/^import .+\n/m', '', new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource)));
+}
+
+/**
+ * What PHP sends for a resource, as JSON.
+ */
+function sentJson(JsonResource $resource): string
+{
+    return (string) json_encode($resource->resolve(request()));
 }
 
 /**
@@ -157,4 +181,40 @@ it('keeps an arm wrapping an enum apart from one reading the same enum directly'
     expect([$status, $output])->toBe([0, ''])
         ->and($uncheckedStatus)->not->toBe(0)
         ->and(substr_count($uncheckedOutput, 'error TS2322'))->toBe(2);
+});
+
+// GH-157: arms that spell one text for two same-named resources in swapped order bind each class apart, so what PHP
+// sends for each priority compiles, and Medium's pair under Low's literal does not.
+it('compiles what PHP sends for each priority against arms binding same-named resources in swapped order', function () {
+    $tsc = dirname(__DIR__, 2).'/node_modules/.bin/tsc';
+
+    if (! is_executable($tsc)) {
+        $this->markTestSkipped('tsc is not installed');
+    }
+
+    $user = new User(['name' => 'Ann', 'email' => 'ann@example.com']);
+    $user->id = 7;
+    $sent = static function (Priority $priority) use ($user): string {
+        $post = new Post(['title' => 'T']);
+        $post->priority = $priority;
+        $post->setRelation('author', $user);
+
+        return sentJson(new SwappedResourcesResource($post));
+    };
+    $medium = $sent(Priority::Medium);
+    $mislabelled = str_replace('"priority":1', '"priority":0', $medium);
+    $declaration = renderedDeclaration(SwappedResourcesResource::class);
+    $snippet = <<<TS
+        type WorkbenchUserResource = { role: unknown; [key: string]: unknown };
+        type CrmUserResource = { company: unknown; status: unknown; [key: string]: unknown };
+        {$declaration}
+        const low: SwappedResourcesResource = {$sent(Priority::Low)};
+        const medium: SwappedResourcesResource = {$medium};
+        const high: SwappedResourcesResource = {$sent(Priority::High)};
+        // @ts-expect-error Low's arm binds the workbench resource first
+        const mislabelled: SwappedResourcesResource = {$mislabelled};
+
+        TS;
+
+    expect(compileStrict($tsc, $snippet))->toBe([0, '']);
 });

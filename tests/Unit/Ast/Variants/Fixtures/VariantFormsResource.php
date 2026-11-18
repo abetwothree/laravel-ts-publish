@@ -16,6 +16,7 @@ use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 use Workbench\App\ValueObjects\PinSettings;
 use Workbench\Crm\Enums\Status as CrmStatus;
+use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 
 /**
  * One method per DiscriminantFormsResource cell, named for it, each returning that cell's literal at its top level,
@@ -343,6 +344,23 @@ final class VariantFormsResource extends JsonResource
     public function untypableArmKept(): array
     {
         return ['pinned' => $this->is_pinned, 'v' => $this->is_pinned ? json_decode($this->title) : null];
+    }
+
+    /**
+     * Two values whose arms spell one text, each binding the two same-named resources in the other order.
+     *
+     * @return array<string, mixed>
+     */
+    public function swappedResources(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'pair' => match ($this->priority) {
+                Priority::Low => ['primary' => new UserResource($this->author), 'secondary' => new CrmUserResource($this->author)],
+                Priority::Medium => ['primary' => new CrmUserResource($this->author), 'secondary' => new UserResource($this->author)],
+                default => null,
+            },
+        ];
     }
 
     /**

@@ -168,6 +168,11 @@ it('reads one variant per arm for each other condition form', function (string $
         ['true', ['v' => 'StatusType']],
         ['false', ['v' => 'StatusType']],
     ]]],
+    'arms that bind two same-named resources in swapped order' => ['swapped_resources', ['priority' => [
+        ['0', ['pair' => '{ primary: UserResource; secondary: UserResource }']],
+        ['1', ['pair' => '{ primary: UserResource; secondary: UserResource }']],
+        ['2 | 3 | null', ['pair' => 'null']],
+    ]]],
 ]);
 
 // The first group spans the assignment, so it declines and leaves `v` to the second, which PHP reads after it.

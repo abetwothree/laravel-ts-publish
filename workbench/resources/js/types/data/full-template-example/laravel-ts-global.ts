@@ -6351,6 +6351,28 @@ declare global {
             read_v: string | null;
         }
         /**
+         * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
+         * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
+         * another text, and a shared key beside a dependent's nested enum (GH-157).
+         */
+        export interface SwappedEnumsResource {
+            priority: app.enums.PriorityType | null;
+            stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } | { primary: crm.enums.StatusType; secondary: app.enums.StatusType } | null;
+            meta: { priority: app.enums.PriorityType | null; stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } | { primary: crm.enums.StatusType; secondary: app.enums.StatusType; extra: boolean } | null };
+            shared: { status: app.enums.StatusType; is_pinned: boolean; lead: { stage: crm.enums.StatusType } | null };
+        }
+        /**
+         * Arms that spell one text, each binding the two same-named resources in the other order: Low and Medium stay apart,
+         * at the top level and nested (GH-157).
+         */
+        export type SwappedResourcesResource = {
+            meta: { priority: 0; pair: { primary: app.http.resources.UserResource; secondary: crm.http.resources.UserResource } } | { priority: 1; pair: { primary: crm.http.resources.UserResource; secondary: app.http.resources.UserResource } } | { priority: 2 | 3 | null; pair: null };
+        } & (
+            | { priority: 0; pair: { primary: app.http.resources.UserResource; secondary: crm.http.resources.UserResource } }
+            | { priority: 1; pair: { primary: crm.http.resources.UserResource; secondary: app.http.resources.UserResource } }
+            | { priority: 2 | 3 | null; pair: null }
+        );
+        /**
          * Literals whose read an item between its keys writes where the literal cannot see it: a helper's body, the model
          * through `$this->resource`, and a `->` write of a `?->` read. Each stays flat, while a helper writing nothing keeps
          * its literal split (GH-157).

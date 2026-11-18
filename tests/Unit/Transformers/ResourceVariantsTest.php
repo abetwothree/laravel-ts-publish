@@ -18,6 +18,8 @@ use Workbench\App\Http\Resources\Discriminated\NumericKeysResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+use Workbench\App\Http\Resources\Discriminated\SwappedEnumsResource;
+use Workbench\App\Http\Resources\Discriminated\SwappedResourcesResource;
 use Workbench\App\Http\Resources\Discriminated\UnseenWritesResource;
 use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
 
@@ -167,6 +169,34 @@ it('keeps a numeric key\'s name as the discriminant or a dependent, at the top l
         '{ is_pinned: true; "0": string } | { is_pinned: false; "0": null }',
         '{ "7": 0; note: string } | { "7": 1; note: number }',
     ]);
+});
+
+// Order and multiplicity bind each token to its class, so arms spelling one text for swapped classes stay apart.
+it('keeps arms that bind two same-named resources in swapped order apart, at the top level and nested', function () {
+    $data = variantsData(SwappedResourcesResource::class);
+    $low = '{ primary: WorkbenchUserResource; secondary: CrmUserResource }';
+    $medium = '{ primary: CrmUserResource; secondary: WorkbenchUserResource }';
+
+    expect(variantsProps($data))->toBe([
+        'meta' => "{ priority: 0; pair: {$low} } | { priority: 1; pair: {$medium} } | { priority: 2 | 3 | null; pair: null }",
+    ])->and($data->variants)->toBe([
+        "{ priority: 0; pair: {$low} } | { priority: 1; pair: {$medium} } | { priority: 2 | 3 | null; pair: null }",
+    ]);
+});
+
+// An enum nested in a value is queued again after the object's members, which a union of objects reads as the next
+// object's token wherever two enums print one name.
+it('publishes flat each literal whose objects hold two same-named enums, one of them nested', function () {
+    $data = variantsData(SwappedEnumsResource::class);
+    $swapped = '{ primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType }';
+
+    expect(variantsProps($data))->toBe([
+        'priority' => 'PriorityType | null',
+        'stages' => "{$swapped} | null",
+        'meta' => '{ priority: PriorityType | null; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType }'
+            .' | { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } | null }',
+        'shared' => '{ status: WorkbenchStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }',
+    ])->and($data->variants)->toBe([]);
 });
 
 // A guard after a write may test another value than the discriminant sent, wherever the literal spells that write.

@@ -68,6 +68,28 @@ final class InlineObjectResult
     }
 
     /**
+     * Whether a union of an object with others reads each enum token of it from its own place in the queue: no enum a
+     * member nests shares its name with another enum the object holds, as memberEnumFqcns() queues a nested enum
+     * again after the members, where such a union reads it as the next object's token.
+     */
+    public static function queuesEnumsApart(MethodAnalysis $object): bool
+    {
+        $held = [
+            ...array_values($object->directEnumFqcns),
+            ...array_values($object->enumResources),
+            ...array_merge(...array_values($object->inlineEnumFqcns)),
+            ...array_merge(...array_values($object->multiEnumResourceFqcns)),
+            ...array_merge(...array_values($object->inlineEnumResourceFqcns)),
+        ];
+        $nested = array_diff_key($object->directEnumFqcns, array_flip(array_column($object->properties, 'name')));
+
+        return ! array_any($nested, static fn (string $enum): bool => array_any(
+            $held,
+            static fn (string $other): bool => $other !== $enum && ValueResult::enumTypeName($other) === ValueResult::enumTypeName($enum),
+        ));
+    }
+
+    /**
      * An analysis as the inline object type it publishes, carrying the import channels of every class it names: one
      * object per variant where the literal's rows still hold its groups (LiteralVariants), else one object.
      *
@@ -81,7 +103,7 @@ final class InlineObjectResult
         $variants = $analysis->variants;
         $objects = $variants !== null && $variants->holdsFor($analysis) ? $variants->objects() : [];
 
-        if ($objects === []) {
+        if ($objects === [] || ! array_all($objects, self::queuesEnumsApart(...))) {
             return $this->oneObject($analysis, $spreadArms);
         }
 

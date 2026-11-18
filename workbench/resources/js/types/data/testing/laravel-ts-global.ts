@@ -6351,6 +6351,28 @@ declare global {
             read_v: string | null;
         }
         /**
+         * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
+         * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
+         * another text, and a shared key beside a dependent's nested enum (GH-157).
+         */
+        export interface SwappedEnumsResource {
+            priority: workbench.app.enums.PriorityType | null;
+            stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } | { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType } | null;
+            meta: { priority: workbench.app.enums.PriorityType | null; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } | { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType; extra: boolean } | null };
+            shared: { status: workbench.app.enums.StatusType; is_pinned: boolean; lead: { stage: workbench.crm.enums.StatusType } | null };
+        }
+        /**
+         * Arms that spell one text, each binding the two same-named resources in the other order: Low and Medium stay apart,
+         * at the top level and nested (GH-157).
+         */
+        export type SwappedResourcesResource = {
+            meta: { priority: 0; pair: { primary: workbench.app.http.resources.UserResource; secondary: workbench.crm.http.resources.UserResource } } | { priority: 1; pair: { primary: workbench.crm.http.resources.UserResource; secondary: workbench.app.http.resources.UserResource } } | { priority: 2 | 3 | null; pair: null };
+        } & (
+            | { priority: 0; pair: { primary: workbench.app.http.resources.UserResource; secondary: workbench.crm.http.resources.UserResource } }
+            | { priority: 1; pair: { primary: workbench.crm.http.resources.UserResource; secondary: workbench.app.http.resources.UserResource } }
+            | { priority: 2 | 3 | null; pair: null }
+        );
+        /**
          * Literals whose read an item between its keys writes where the literal cannot see it: a helper's body, the model
          * through `$this->resource`, and a `->` write of a `?->` read. Each stays flat, while a helper writing nothing keeps
          * its literal split (GH-157).

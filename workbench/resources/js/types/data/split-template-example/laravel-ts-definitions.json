@@ -14378,6 +14378,44 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedEnumsResource": {
+            "name": "SwappedEnumsResource",
+            "properties": [
+                {
+                    "name": "priority",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "stages",
+                    "type": "{ primary: EnumsStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: EnumsStatusType } | null",
+                    "optional": false
+                },
+                {
+                    "name": "meta",
+                    "type": "{ priority: PriorityType | null; stages: { primary: EnumsStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: EnumsStatusType; extra: boolean } | null }",
+                    "optional": false
+                },
+                {
+                    "name": "shared",
+                    "type": "{ status: EnumsStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedResourcesResource": {
+            "name": "SwappedResourcesResource",
+            "properties": [
+                {
+                    "name": "meta",
+                    "type": "{ priority: 0; pair: { primary: ResourcesUserResource; secondary: CrmUserResource } } | { priority: 1; pair: { primary: CrmUserResource; secondary: ResourcesUserResource } } | { priority: 2 | 3 | null; pair: null }",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ priority: 0; pair: { primary: ResourcesUserResource; secondary: CrmUserResource } } | { priority: 1; pair: { primary: CrmUserResource; secondary: ResourcesUserResource } } | { priority: 2 | 3 | null; pair: null }"
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Discriminated\\UnseenWritesResource": {
             "name": "UnseenWritesResource",
             "properties": [

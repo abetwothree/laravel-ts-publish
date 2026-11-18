@@ -41,10 +41,10 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    `match` with no arm for the value and a default closure Laravel cannot call leave that value out of the group,
    since PHP sends nothing for it.
 4. **Dependents and variants.** A key depends on the discriminant when two sent values take arms that differ in
-   type, presence or the classes behind their tokens (`VariantReader::armFingerprint()`). An `EnumResource` wrap
-   and a direct read of one enum differ only where `enums.use_tolki_package` prints them apart. The first
-   discriminant whose group forms owns its dependents. Values whose arms agree for every dependent make one
-   variant, in first-value order.
+   type, presence or the classes behind their tokens, in token order (`VariantReader::armFingerprint()`). An
+   `EnumResource` wrap and a direct read of one enum differ only where `enums.use_tolki_package` prints them apart.
+   The first discriminant whose group forms owns its dependents. Values whose arms agree for every dependent make
+   one variant, in first-value order.
 5. **Declines.** See [below](#where-a-group-declines).
 6. **Nested print.** `InlineObjectResult::of()` prints `LiteralVariants::objects()`: the fold replayed through
    `LiteralWrites::replayed()` once per variant, the discriminant sending its literal and each dependent its arm,
@@ -87,6 +87,9 @@ A group stays unprinted where its rows changed after the fold. Each group finger
 (`VariantGroup::holdsFor()`), and a nested literal its whole fold (`LiteralVariants::holdsFor()`), so a `@return`
 fill, a method `#[TsCasts]`, `MethodAnalysis::stripGaps()` or a rename voids it. A class or model `#[TsCasts]` on
 a grouped key declines the group at the top level, through `VariantUnions::apply()`'s `$declinedKeys`.
+
+Objects that hold two same-named enums, one nested in a member, print flat (`InlineObjectResult::queuesEnumsApart()`),
+since a union of them reads one object's queued enum for the next one's token.
 
 ## Where groups are carried and dropped
 
