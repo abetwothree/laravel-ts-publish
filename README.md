@@ -560,7 +560,8 @@ Key capabilities include:
 - **Four features**: works on models, resources, form requests, and broadcast events, by attribute or config.
 - **Inherited**: an attribute on a parent class or a trait applies to every class that extends or uses it.
 - **Repeatable**: stack several `#[TsExtends]` attributes to extend several interfaces.
-- **Generic helpers**: wrap a type in `Pick<>`, `Omit<>`, or `Partial<>`, and list the names to import in `types`.- **Deduplication and aliasing**: a clause reached twice appears once, and clashing type names get aliases.
+- **Generic helpers**: wrap a type in `Pick<>`, `Omit<>`, or `Partial<>`, and list the names to import in `types`.
+- **Deduplication and aliasing**: a clause reached twice appears once, and clashing type names get aliases.
 
 For inheritance order, config syntax, and alias rules, see the [Extending Interfaces documentation](https://tolki.abe.dev/ts/extending-interfaces.html).
 
