@@ -12,7 +12,7 @@ export type ShowPageProps = Inertia.SharedData & { post: JsonApiDocument<PostRes
  * author: JsonApiDocument<UserResource, never>, category: JsonApiDocument<CategoryResource, never> | null,
  * kpi: JsonApiDocument<KpiResource, JsonApiResourceObject<'reports'>> }
  */
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'json-api.show',
     url: '/json-api/posts/{post}',
     methods: ['get', 'head'] as const,
@@ -29,7 +29,7 @@ export type IndexPageProps = Inertia.SharedData & { posts: JsonApiCollection<Pos
  * paged: JsonApiPaginator<…>, simple: JsonApiSimplePaginator<…>, cursor: JsonApiCursorPaginator<…>,
  * comments: JsonApiCollection<CommentResource, UserResource> }
  */
-export const index = annotatePageProps<IndexPageProps>()(defineRoute({
+export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'json-api.index',
     url: '/json-api/posts',
     methods: ['get', 'head'] as const,

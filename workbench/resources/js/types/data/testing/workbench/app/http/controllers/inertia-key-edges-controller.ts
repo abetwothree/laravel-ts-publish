@@ -2,7 +2,7 @@ import { defineRoute, annotatePageProps } from '@tolki/ts';
 
 export type ShowPageProps = Inertia.SharedData & { "can-edit": boolean, ok: number };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'key-edges.show',
     url: '/key-edges',
     methods: ['get', 'head'] as const,

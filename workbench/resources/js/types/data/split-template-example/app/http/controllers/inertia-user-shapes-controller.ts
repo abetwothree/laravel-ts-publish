@@ -5,7 +5,7 @@ import type { Comment, Post, User } from '../../models';
 export type IndexPageProps = Inertia.SharedData & { users: User[], posts: Post[], page: number };
 
 /** Model collections plus a typed request read. */
-export const index = annotatePageProps<IndexPageProps>()(defineRoute({
+export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.index',
     url: '/user-shapes',
     methods: ['get', 'head'] as const,
@@ -15,7 +15,7 @@ export const index = annotatePageProps<IndexPageProps>()(defineRoute({
 export type ShowPageProps = Inertia.SharedData & { post: Post, draft: Post | null };
 
 /** A found model and a nullable found model. */
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.show',
     url: '/user-shapes/show/{id}',
     methods: ['get', 'head'] as const,
@@ -26,7 +26,7 @@ export const show = annotatePageProps<ShowPageProps>()(defineRoute({
 export type DeferredPageProps = Inertia.SharedData & { comments?: Comment[], tally?: number };
 
 /** Inertia v2 partial-reload prop wrappers. */
-export const deferred = annotatePageProps<DeferredPageProps>()(defineRoute({
+export const deferred = /* @__PURE__ */ annotatePageProps<DeferredPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.deferred',
     url: '/user-shapes/deferred',
     methods: ['get', 'head'] as const,
@@ -36,7 +36,7 @@ export const deferred = annotatePageProps<DeferredPageProps>()(defineRoute({
 export type CompactedPageProps = Inertia.SharedData & { post: Post, comments: Comment[] };
 
 /** Props supplied by compact() rather than an array literal. */
-export const compacted = annotatePageProps<CompactedPageProps>()(defineRoute({
+export const compacted = /* @__PURE__ */ annotatePageProps<CompactedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.compacted',
     url: '/user-shapes/compacted/{id}',
     methods: ['get', 'head'] as const,
@@ -47,7 +47,7 @@ export const compacted = annotatePageProps<CompactedPageProps>()(defineRoute({
 export type ToggledPageProps = Inertia.SharedData & { post: Post | null, views?: number };
 
 /** A props array assigned from a ternary, so the two branches disagree on one key. */
-export const toggled = annotatePageProps<ToggledPageProps>()(defineRoute({
+export const toggled = /* @__PURE__ */ annotatePageProps<ToggledPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.toggled',
     url: '/user-shapes/toggled',
     methods: ['get', 'head'] as const,
@@ -57,7 +57,7 @@ export const toggled = annotatePageProps<ToggledPageProps>()(defineRoute({
 export type ProfilePageProps = Inertia.SharedData & { user: User | null, stats: { views: number; likes: number } };
 
 /** The authenticated user and a service method with an array-shape docblock. */
-export const profile = annotatePageProps<ProfilePageProps>()(defineRoute({
+export const profile = /* @__PURE__ */ annotatePageProps<ProfilePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.profile',
     url: '/user-shapes/profile',
     methods: ['get', 'head'] as const,
@@ -67,7 +67,7 @@ export const profile = annotatePageProps<ProfilePageProps>()(defineRoute({
 export type MergedPageProps = Inertia.SharedData & { title: string, extra: boolean };
 
 /** Props built with array_merge() over a local base array. */
-export const merged = annotatePageProps<MergedPageProps>()(defineRoute({
+export const merged = /* @__PURE__ */ annotatePageProps<MergedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.merged',
     url: '/user-shapes/merged',
     methods: ['get', 'head'] as const,
@@ -77,7 +77,7 @@ export const merged = annotatePageProps<MergedPageProps>()(defineRoute({
 export type BranchedPageProps = Inertia.SharedData & { post: Post | null, detail?: string };
 
 /** Two renders of one component where `detail` exists on only one branch. */
-export const branched = annotatePageProps<BranchedPageProps>()(defineRoute({
+export const branched = /* @__PURE__ */ annotatePageProps<BranchedPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.branched',
     url: '/user-shapes/branched',
     methods: ['get', 'head'] as const,
@@ -87,7 +87,7 @@ export const branched = annotatePageProps<BranchedPageProps>()(defineRoute({
 export type BoundPageProps = Inertia.SharedData & { post: Post, post_id: number, stats: { views: number; likes: number } };
 
 /** A route-bound model parameter. */
-export const bound = annotatePageProps<BoundPageProps>()(defineRoute({
+export const bound = /* @__PURE__ */ annotatePageProps<BoundPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'user-shapes.bound',
     url: '/user-shapes/bound/{post}',
     methods: ['get', 'head'] as const,

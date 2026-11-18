@@ -5,7 +5,7 @@ import type { Post, User } from '../../models';
 export type DashboardPageProps = Inertia.SharedData & { stats: { users: number; posts: number; views: number }, recentActivity: never[] };
 
 /** Display the dashboard page. */
-export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({
+export const dashboard = /* @__PURE__ */ annotatePageProps<DashboardPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia.dashboard',
     url: '/inertia/dashboard',
     methods: ['get', 'head'] as const,
@@ -15,7 +15,7 @@ export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({
 export type SettingsPageProps = Inertia.SharedData & { user: { name: string; email: string }, preferences: { theme: string; notifications: boolean } };
 
 /** Display the settings page. */
-export const settings = annotatePageProps<SettingsPageProps>()(defineRoute({
+export const settings = /* @__PURE__ */ annotatePageProps<SettingsPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia.settings',
     url: '/inertia/settings',
     methods: ['get', 'head'] as const,
@@ -25,7 +25,7 @@ export const settings = annotatePageProps<SettingsPageProps>()(defineRoute({
 export type AboutPageProps = Inertia.SharedData;
 
 /** Display the about page (no props). */
-export const about = annotatePageProps<AboutPageProps>()(defineRoute({
+export const about = /* @__PURE__ */ annotatePageProps<AboutPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia.about',
     url: '/inertia/about',
     methods: ['get', 'head'] as const,
@@ -36,7 +36,7 @@ export type ConditionalAuthenticatedPageProps = Inertia.SharedData & { user: Use
 export type ConditionalGuestPageProps = Inertia.SharedData & { message: string };
 
 /** Conditional rendering based on auth state. */
-export const conditional = annotatePageProps<ConditionalAuthenticatedPageProps | ConditionalGuestPageProps>()(defineRoute({
+export const conditional = /* @__PURE__ */ annotatePageProps<ConditionalAuthenticatedPageProps | ConditionalGuestPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia.conditional',
     url: '/inertia/conditional',
     methods: ['get', 'head'] as const,
@@ -46,7 +46,7 @@ export const conditional = annotatePageProps<ConditionalAuthenticatedPageProps |
 export type PostPageProps = Inertia.SharedData & { post: Post };
 
 /** Display a specific post. */
-export const post = annotatePageProps<PostPageProps>()(defineRoute({
+export const post = /* @__PURE__ */ annotatePageProps<PostPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'inertia.post',
     url: '/inertia/post/{post}',
     methods: ['get', 'head'] as const,

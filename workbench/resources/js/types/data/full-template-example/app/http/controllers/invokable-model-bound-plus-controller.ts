@@ -1,20 +1,20 @@
 import { defineRoute } from '@tolki/ts';
 
-export const invoke = defineRoute({
+export const invoke = /* @__PURE__ */ defineRoute({
     name: 'invokable.model.bound.plus',
     url: '/invokable-model-plus/{post}',
     methods: ['get', 'head'] as const,
     args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
 });
 
-export const extra = defineRoute({
+export const extra = /* @__PURE__ */ defineRoute({
     name: 'invokable.model.bound.extra',
     url: '/invokable-model-extra/{post}',
     methods: ['post'] as const,
     args: [{name: 'post', required: true, _routeKey: 'id'}] as const,
 });
 
-export const surprise = defineRoute({
+export const surprise = /* @__PURE__ */ defineRoute({
     name: 'invokable.model.bound.surprise',
     url: '/invokable-model-surprise/{post}',
     methods: ['delete'] as const,
@@ -22,7 +22,7 @@ export const surprise = defineRoute({
 });
 
 /** @see Workbench\App\Http\Controllers\InvokableModelBoundPlusController */
-const InvokableModelBoundPlusController = Object.assign(invoke, {
+const InvokableModelBoundPlusController = /* @__PURE__ */ Object.assign(invoke, {
     extra,
     surprise,
 });

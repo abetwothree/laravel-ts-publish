@@ -1,6 +1,6 @@
 import { defineRoute } from '@tolki/ts';
 
-export const nested = defineRoute({
+export const nested = /* @__PURE__ */ defineRoute({
     name: 'prism.prism.nested',
     url: '/prism/nested',
     methods: ['get', 'head'] as const,

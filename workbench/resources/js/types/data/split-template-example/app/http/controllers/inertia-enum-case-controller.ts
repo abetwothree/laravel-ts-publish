@@ -4,7 +4,7 @@ import type { StatusKind, StatusType } from '../../enums';
 
 export type ShowPageProps = Inertia.SharedData & { status: StatusType, kept: StatusType, status_name: StatusKind, nested: { status: StatusType }, cases: StatusType[], reading: { date: string; timezone_type: number; timezone: string } };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts.enum-case',
     url: '/posts/{post}/enum-case',
     methods: ['get', 'head'] as const,

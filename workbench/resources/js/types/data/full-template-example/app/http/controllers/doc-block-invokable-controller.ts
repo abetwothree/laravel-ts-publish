@@ -1,7 +1,7 @@
 import { defineRoute } from '@tolki/ts';
 
 /** Performs the invokable action. */
-export const invoke = defineRoute({
+export const invoke = /* @__PURE__ */ defineRoute({
     name: 'docblock.invokable',
     url: '/docblock-invokable',
     methods: ['get', 'head'] as const,
