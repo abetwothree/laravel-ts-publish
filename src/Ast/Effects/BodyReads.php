@@ -8,24 +8,26 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Closure;
 use PhpParser\Node\Stmt;
+use PropertyHookType;
 use ReflectionClass;
 
 /**
- * The method bodies one write scan reads: each at most once per question, and no deeper than DEPTH levels below the
- * window's items. A body any deeper, or one the locator cannot read, may change the read.
+ * The bodies of `$this` methods and property hooks one write scan reads: each at most once per question, and no
+ * deeper than DEPTH levels below the window's items. A body any deeper, or one the locator cannot read, may change
+ * the read.
  *
  * A body is judged once a publish run for each scan alike: the bodies it asks about, in order, and what it finds
  * itself with each of them answered no. A scan replays that where it reaches the body, which answers as reading the
  * body there would, since a body that may change the read ends the whole scan and no caller drops that answer.
  *
- * @phpstan-type BodyAsk = array{ValueUse|null, ReflectionClass<object>, string}
+ * @phpstan-type BodyAsk = array{ValueUse|null, ReflectionClass<object>, string, PropertyHookType|null}
  * @phpstan-type BodyJudgement = array{asks: list<BodyAsk>, changes: bool}
  *
  * @internal
  */
 final class BodyReads
 {
-    /** How many levels of `$this` method bodies one scan reads. */
+    /** How many levels of `$this` method and hook bodies one scan reads. */
     public const int DEPTH = 3;
 
     /** @var array<string, true> each body read, or being read, by question, class and lowercased name */
@@ -57,7 +59,17 @@ final class BodyReads
      */
     public function mayWrite(ReflectionClass $class, string $method): bool
     {
-        return $this->ask(null, $class, $method, 0);
+        return $this->ask(null, $class, $method, null, 0);
+    }
+
+    /**
+     * Whether running a property's hook on `$this` may change the read through its body.
+     *
+     * @param  ReflectionClass<object>  $class  the class whose declaration of the property `$this` reaches
+     */
+    public function hookMayWrite(ReflectionClass $class, string $property, PropertyHookType $hook): bool
+    {
+        return $this->ask(null, $class, $property, $hook, 0);
     }
 
     /**
@@ -67,22 +79,24 @@ final class BodyReads
      */
     public function returnsMayRun(ReflectionClass $class, string $method, ValueUse $use): bool
     {
-        return $this->ask($use, $class, $method, 0);
+        return $this->ask($use, $class, $method, null, 0);
     }
 
     /**
-     * Whether asking a question of a method's body, $depth levels down, may find a change: none where it is read
-     * already, or being read, and none asked from inside a body being judged, which only notes the ask.
+     * Whether asking a question of a method's or a hook's body, $depth levels down, may find a change: none where it
+     * is read already, or being read, and none asked from inside a body being judged, which only notes the ask.
      *
      * @param  ValueUse|null  $use  how what the body returns is used, or null to ask of the body itself
      * @param  ReflectionClass<object>  $class
+     * @param  string  $member  the method, or the hooked property
      */
-    private function ask(?ValueUse $use, ReflectionClass $class, string $method, int $depth): bool
+    private function ask(?ValueUse $use, ReflectionClass $class, string $member, ?PropertyHookType $hook, int $depth): bool
     {
-        $key = ($use === null ? 'body' : 'returns:'.$use->name).':'.$class->getName().'::'.strtolower($method);
+        $key = ($use === null ? 'body' : 'returns:'.$use->name).':'.$class->getName().'::'
+            .($hook === null ? strtolower($member) : '$'.$member.'::'.$hook->value);
 
         if ($this->asked !== null) {
-            $this->asked[$key] ??= [$use, $class, $method];
+            $this->asked[$key] ??= [$use, $class, $member, $hook];
 
             return false;
         }
@@ -91,7 +105,7 @@ final class BodyReads
             return false;
         }
 
-        $judged = $depth < self::DEPTH ? $this->judgement($key, $use, $class, $method) : null;
+        $judged = $depth < self::DEPTH ? $this->judgement($key, $use, $class, $member, $hook) : null;
 
         if ($judged === null) {
             return true;
@@ -101,7 +115,7 @@ final class BodyReads
 
         return array_any(
             $judged['asks'],
-            fn (array $asked): bool => $this->ask($asked[0], $asked[1], $asked[2], $depth + 1),
+            fn (array $asked): bool => $this->ask($asked[0], $asked[1], $asked[2], $asked[3], $depth + 1),
         ) || $judged['changes'];
     }
 
@@ -111,11 +125,16 @@ final class BodyReads
      * @param  ReflectionClass<object>  $class
      * @return BodyJudgement|null
      */
-    private function judgement(string $key, ?ValueUse $use, ReflectionClass $class, string $method): ?array
-    {
+    private function judgement(
+        string $key,
+        ?ValueUse $use,
+        ReflectionClass $class,
+        string $member,
+        ?PropertyHookType $hook,
+    ): ?array {
         return resolve(AnalysisMemo::class)->rememberFact(
             'body-reads:'.$this->scan.':'.$key,
-            fn (): ?array => $this->judge($use, $class, $method),
+            fn (): ?array => $this->judge($use, $class, $member, $hook),
         );
     }
 
@@ -126,15 +145,19 @@ final class BodyReads
      * @param  ReflectionClass<object>  $class
      * @return BodyJudgement|null
      */
-    private function judge(?ValueUse $use, ReflectionClass $class, string $method): ?array
+    private function judge(?ValueUse $use, ReflectionClass $class, string $member, ?PropertyHookType $hook): ?array
     {
-        $body = $this->locator->locate($class->getName(), $method)?->method->stmts;
+        $body = $hook === null
+            ? $this->locator->locate($class->getName(), $member)?->method->stmts
+            : $this->locator->locateHook($class->getName(), $member, $hook)?->getStmts();
 
         if ($body === null) {
             return null;
         }
 
-        $declaring = $class->getMethod($method)->getDeclaringClass();
+        $declaring = $hook === null
+            ? $class->getMethod($member)->getDeclaringClass()
+            : $class->getProperty($member)->getDeclaringClass();
         $this->asked = [];
 
         try {

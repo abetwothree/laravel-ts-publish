@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
 
 /**
- * Properties with a get hook, a set hook only, and no hook.
+ * Properties with a get hook, a set hook only, no hook, and a get hook an attribute marks.
  */
 class HookedProperties
 {
@@ -17,5 +17,10 @@ class HookedProperties
 
     public string $writes {
         set => strtolower($value);
+    }
+
+    public int $marked {
+        #[HookMarker]
+        get => 2;
     }
 }

@@ -28,6 +28,35 @@ class InterveningResource extends InterveningBase
 
     public bool $pinned = true;
 
+    public ?HookedProperties $settings = null;
+
+    /** Clears the pin on every read. */
+    public bool $unpinning {
+        get {
+            $this->resource->is_pinned = false;
+
+            return true;
+        }
+    }
+
+    /** Reads the title on every read. */
+    public string $hookedTitle {
+        get => (string) $this->title;
+    }
+
+    /** Clears the pin on every write. */
+    public bool $resetting = false {
+        set(bool $value) {
+            $this->resource->is_pinned = false;
+            $this->resetting = $value;
+        }
+    }
+
+    /** Keeps what it is given, through a set hook that writes nothing else. */
+    public string $trimmed = '' {
+        set => trim($value);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -363,6 +392,14 @@ class InterveningResource extends InterveningBase
         $post->is_pinned = false;
 
         return true;
+    }
+
+    /**
+     * Reads the hooked property that clears the pin.
+     */
+    private function readsUnpinning(): bool
+    {
+        return $this->unpinning;
     }
 
     /**

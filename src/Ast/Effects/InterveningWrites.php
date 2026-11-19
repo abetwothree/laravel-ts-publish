@@ -40,6 +40,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
+use PropertyHookType;
 use ReflectionClass;
 use WeakMap;
 
@@ -49,10 +50,12 @@ use WeakMap;
  *
  * Every item counts with the writes it spells and the arguments it binds by reference, and every item but the last
  * with the calls it makes, since the last item's calls run after its own guard. A call may write where it hands its
- * callee the subject or an object holding the read, runs a `$this` method whose body may write, calls a model method
- * not known to read, or runs code no scan follows. On an API resource `$this->x` reads `$this->resource->x`.
+ * callee the subject or an object holding the read, runs a `$this` method or property hook whose body may write, runs
+ * another object's hook, calls a model method not known to read, or runs code no scan follows. On an API resource
+ * `$this->x` reads `$this->resource->x`.
  *
  * @phpstan-import-type CallBinding from ByReferenceArguments
+ * @phpstan-import-type HookRun from PropertyHooks
  *
  * @internal
  */
@@ -84,13 +87,14 @@ final class InterveningWrites
         ReadPath $read,
         private readonly bool $proxied,
         private readonly ReflectionClass $runtime,
+        private readonly PropertyHooks $hooks,
     ) {
         $this->readSteps = $this->steps($read);
         $this->references = resolve(ByReferenceArguments::class);
         $this->bindings = new WeakMap;
         $this->reads = new BodyReads(
             resolve(MethodLocator::class),
-            $runtime->getName().($proxied ? '@proxied' : '').'@'.implode('->', $this->readSteps),
+            $hooks->key().'@'.implode('->', $this->readSteps),
             $this->bodyMayChange(...),
             $this->returnedMayRun(...),
         );
@@ -112,7 +116,7 @@ final class InterveningWrites
      */
     public static function reach(array $items, ReadPath $read, AnalysisScope $scope): bool
     {
-        $scan = new self($read, $scope->hasResourceProxy(), $scope->runtime->class);
+        $scan = new self($read, $scope->hasResourceProxy(), $scope->runtime->class, PropertyHooks::of($scope));
         $last = array_key_last($items);
 
         return array_any($items, static fn (ArrayItem $item, int $index): bool => $scan->mayChange(
@@ -197,7 +201,7 @@ final class InterveningWrites
             || ($calls && match (true) {
                 $node instanceof CallLike => $this->callMayWrite($node, $declaring, $inBody),
                 $node instanceof Pipe => $this->pipeMayWrite($node, $declaring, $inBody),
-                default => $this->runsUnseen($node),
+                default => $this->runsUnseen($node) || $this->hooksMayWrite($node, $declaring),
             })) !== null;
     }
 
@@ -284,6 +288,38 @@ final class InterveningWrites
     {
         return $this->closures->hands($pipe->left, $declaring, $inBody, false)
             || $this->closures->mayRun($pipe->right, ValueUse::Called, $declaring, $inBody);
+    }
+
+    /**
+     * Whether a node runs a property hook that may change the read, as a call to it would: a get hook a read of a
+     * `$this` path runs at any step, or the set hook a write of one runs.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function hooksMayWrite(Node $node, ReflectionClass $declaring): bool
+    {
+        $read = $node instanceof PropertyFetch || $node instanceof NullsafePropertyFetch ? ReadPath::of($node) : null;
+
+        return ($read !== null && array_any(
+            $this->hooks->getHooks($read, $declaring),
+            fn (array $run): bool => $this->hookMayWrite($run, PropertyHookType::Get),
+        )) || array_any(
+            self::writtenPaths($node),
+            fn (ReadPath $written): bool => array_any(
+                $this->hooks->setHooks($written, $declaring),
+                fn (array $run): bool => $this->hookMayWrite($run, PropertyHookType::Set),
+            ),
+        );
+    }
+
+    /**
+     * Whether running a hook may change the read: one on `$this` through its body, one on another object always.
+     *
+     * @param  HookRun  $run
+     */
+    private function hookMayWrite(array $run, PropertyHookType $type): bool
+    {
+        return $run[0] === null || $this->reads->hookMayWrite($run[0], $run[1], $type);
     }
 
     /**

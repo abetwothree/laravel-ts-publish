@@ -113,7 +113,15 @@ function interveningCalls(): array
         'a named ancestor\'s writer' => ['InterveningBase::baseWriter()', true],
         'a parent:: writer' => ['parent::baseWriter()', true],
         'a parent body whose self:: names the parent' => ['$this->viaSelf()', true],
+        'a get hook that writes' => ['$this->unpinning', true],
+        'a helper reading a get hook that writes' => ['$this->readsUnpinning()', true],
+        'a set hook that writes' => ['$this->resetting = true', true],
+        'a get hook on another object\'s property, which runs with another $this' => ['$this->settings->reads', true],
+        'a set hook on another object\'s property' => ["\$this->settings->writes = 'A'", true],
         'a reading helper' => ['$this->reader()', false],
+        'a get hook that only reads' => ['$this->hookedTitle', false],
+        'a set hook that writes only its own property' => ["\$this->trimmed = ' a '", false],
+        'a plain property of another object' => ["\$this->settings->plain = 'a'", false],
         'a self-recursive helper that reads' => ['$this->countDown(3)', false],
         'helpers that call each other and read' => ['$this->ping(3)', false],
         'a chain three helpers deep that reads' => ['$this->depthTwo()', false],
@@ -266,6 +274,7 @@ it('reads the last item for its writes and the arguments it binds by reference, 
     expect(windowReach(['$this->title', $last], '$this->pinned'))->toBe($mayWrite);
 })->with([
     'a writing call in its arm' => ['$this->pinned ? $this->writer() : null', false],
+    'a get hook that writes, in its arm' => ['$this->pinned ? $this->unpinning : null', false],
     'a write in its arm' => ['$this->pinned ? ($this->pinned = false) : null', true],
     'a by-reference argument in its arm' => ['$this->pinned ? $this->clearFlag($this->pinned) : null', true],
 ]);
