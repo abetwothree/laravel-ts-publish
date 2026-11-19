@@ -236,6 +236,12 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
   handed to a callee other than a resource helper, such as `array_map($reset, $ids)`;
 - the model passed on through a local or a method's return value, such as `Pins::reset($post)` after
   `$post = $this->resource`, or `Pins::reset($this->model())`;
+- an object built with the model and held in a property or a local, such as `$this->pins->clear()` after
+  `$this->pins = new Pins($resource)` in the constructor;
+- the discriminant bound by reference to a local, such as `$r = &$this->pinned; $r = false;`, in the window or in a
+  method it calls;
+- an accessor, a `getXAttribute()` method or an `Attribute` getter, that writes the discriminant when the window reads
+  its attribute;
 - a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
 - on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
   `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`.
