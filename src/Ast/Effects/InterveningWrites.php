@@ -460,7 +460,7 @@ final class InterveningWrites
         $binding = $this->binding($call, $declaring);
         $unnamed = $binding === null && $this->bindsInPlace
             && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
-            && ! CallableTargets::isThis($call->var);
+            && ! ReadPath::isThis($call->var);
         $byReference = $unnamed
             ? array_merge(...array_map(
                 static fn (Arg $arg): array => self::referencedValues($arg->value),
@@ -565,7 +565,7 @@ final class InterveningWrites
                 || ($node->name->toLowerString() === '__invoke'
                     && ! ($node->var instanceof CallLike && $node->var->isFirstClassCallable())),
             $node instanceof StaticCall => ! $node->name instanceof Identifier
-                || ! ($node->class instanceof Name || CallableTargets::isThis($node->class)),
+                || ! ($node->class instanceof Name || ReadPath::isThis($node->class)),
             default => false,
         };
     }

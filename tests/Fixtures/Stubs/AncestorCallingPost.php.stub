@@ -1,0 +1,24 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Posts using EloquentAncestorCall.php.stub's trait, which runs Model::getKey(): one past a getKeyName() that clears
+ * its pin, so that call writes, and one past Eloquent's own. Load that stub first: its namespace has no autoloader here.
+ */
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs;
+
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
+use Illuminate\Database\Eloquent\TsPublishAncestorCall;
+use Workbench\App\Models\Post;
+
+class AncestorCallingPost extends KeyNameWritingPost
+{
+    use TsPublishAncestorCall;
+}
+
+class AncestorCallingPlainPost extends Post
+{
+    use TsPublishAncestorCall;
+}

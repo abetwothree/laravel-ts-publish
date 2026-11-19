@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Effects\CallableTargets;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -56,7 +56,7 @@ final class LiteralGetter
             $expr instanceof Scalar => ! $expr instanceof InterpolatedString,
             $expr instanceof ConstFetch => true,
             $expr instanceof ClassConstFetch => $expr->class instanceof Name && $expr->name instanceof Identifier,
-            $expr instanceof PropertyFetch => CallableTargets::isThis($expr->var) && $expr->name instanceof Identifier
+            $expr instanceof PropertyFetch => ReadPath::isThis($expr->var) && $expr->name instanceof Identifier
                 && self::plainProperty($class, $expr->name->toString()),
             $expr instanceof Array_ => array_all($expr->items, static fn (ArrayItem $item): bool => ! $item->unpack
                 && ! $item->byRef && ($item->key === null || self::isLiteral($item->key, $class))

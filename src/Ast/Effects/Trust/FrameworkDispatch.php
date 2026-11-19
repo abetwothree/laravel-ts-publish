@@ -6,8 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Effects\CallableTargets;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -26,7 +26,6 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
@@ -40,6 +39,7 @@ use ReflectionMethod;
  * @phpstan-type Dispatched = array{ReflectionClass<object>, ReflectionMethod}
  * @phpstan-type UserMethod = array{ReflectionClass<object>, string}
  * @phpstan-type UserJudge = Closure(ReflectionClass<object>, string): bool
+ * @phpstan-type InPlaceUse = array{Expr, list<string>}
  *
  * @internal
  */
@@ -156,17 +156,18 @@ final class FrameworkDispatch
 
         $finder = new NodeFinder;
         /** @var list<MethodCall|NullsafeMethodCall|StaticCall> $calls */
-        $calls = $finder->find($body, self::runsOnThis(...));
-        $called = array_map(static function (MethodCall|NullsafeMethodCall|StaticCall $call) use ($declaring, $runtime): ?array {
-            if (! $call->name instanceof Identifier) {
-                return null;
+        $calls = $finder->find($body, static fn (Node $node): bool => $node instanceof MethodCall
+            || $node instanceof NullsafeMethodCall || $node instanceof StaticCall);
+        $called = [];
+
+        foreach ($calls as $call) {
+            $name = $call->name instanceof Identifier ? $call->name->toString() : null;
+            $class = AnalysisScope::thisCallClassOf($call, $name, $declaring, $runtime);
+
+            if ($class !== null) {
+                $called[] = $name !== null && $class->hasMethod($name) ? [$class, $class->getMethod($name)] : null;
             }
-
-            $name = $call->name->toString();
-            $class = self::lookupClass($call, $name, $declaring, $runtime);
-
-            return $class !== null && $class->hasMethod($name) ? [$class, $class->getMethod($name)] : null;
-        }, $calls);
+        }
 
         return [...$called, ...self::magicRuns($finder->find($body, static fn (): bool => true), $declaring, $runtime)];
     }
@@ -208,7 +209,7 @@ final class FrameworkDispatch
      * declaration reaches: isset() runs `__isset()`, empty() `__isset()` and `__get()`, unset() `__unset()`, an
      * assignment `__set()`, and a compound assignment or an increment `__get()` and `__set()`.
      *
-     * @return list<array{Expr, list<string>}>
+     * @return list<InPlaceUse>
      */
     private static function usedInPlace(Node $node): array
     {
@@ -232,7 +233,7 @@ final class FrameworkDispatch
      */
     private static function magicProperty(Node $node, ReflectionClass $declaring, ReflectionClass $runtime): bool
     {
-        if (! ($node instanceof PropertyFetch || $node instanceof NullsafePropertyFetch) || ! CallableTargets::isThis($node->var)) {
+        if (! ($node instanceof PropertyFetch || $node instanceof NullsafePropertyFetch) || ! ReadPath::isThis($node->var)) {
             return false;
         }
 
@@ -246,41 +247,6 @@ final class FrameworkDispatch
 
         return $property === null || $property->isStatic()
             || ($property->isPrivate() && $property->getDeclaringClass()->getName() !== $declaring->getName());
-    }
-
-    /**
-     * Whether a node is a call PHP runs on `$this`: through `$this->`, `$this?->`, `$this::`, `self::`, `static::` or
-     * `parent::`.
-     */
-    private static function runsOnThis(Node $node): bool
-    {
-        return match (true) {
-            $node instanceof MethodCall, $node instanceof NullsafeMethodCall => CallableTargets::isThis($node->var),
-            $node instanceof StaticCall => CallableTargets::isThis($node->class)
-                || ($node->class instanceof Name && $node->class->isSpecialClassName()),
-            default => false,
-        };
-    }
-
-    /**
-     * The class PHP looks a call on `$this` up on from a body the declaring class holds: `self::` the declaring class,
-     * `parent::` its parent, a private method of its own the declaring class, and any other the runtime class.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @param  ReflectionClass<object>  $runtime
-     * @return ReflectionClass<object>|null
-     */
-    private static function lookupClass(
-        MethodCall|NullsafeMethodCall|StaticCall $call,
-        string $name,
-        ReflectionClass $declaring,
-        ReflectionClass $runtime,
-    ): ?ReflectionClass {
-        return match (true) {
-            ! $call instanceof StaticCall => AnalysisScope::memberClassOf($declaring, $runtime, $name, true),
-            $call->class instanceof Name => AnalysisScope::relativeClassOf($call->class, $declaring, $runtime),
-            default => $runtime,
-        };
     }
 
     /**

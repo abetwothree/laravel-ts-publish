@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AttributeWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\AncestorCallingPlainPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\AncestorCallingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\PostCardResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Models\CustomKeyPost;
@@ -33,6 +35,21 @@ it('trusts an Eloquent reader only where each model method it dispatches to only
     'trashed(), whose magic read runs a getAttribute() that clears the pin' => [AttributeWritingPost::class, 'trashed', false],
     'a reader the model overrides itself' => [KeyWritingPost::class, 'getKey', false],
     'a literal getter the model declares, no reader of Eloquent\'s' => [CustomKeyPost::class, 'getKeyName', false],
+]);
+
+it('walks an ancestor\'s method a framework method runs on $this, as parent:: is walked', function (
+    string $model,
+    bool $trusted,
+) {
+    require_once __DIR__.'/../../../Fixtures/Stubs/EloquentAncestorCall.php.stub';
+    require_once __DIR__.'/../../../Fixtures/Stubs/AncestorCallingPost.php.stub';
+    $class = new ReflectionClass($model);
+
+    expect(FrameworkDispatch::trusted(FrameworkFamily::Eloquent, $class->getMethod('keyThroughModel'), $class))
+        ->toBe($trusted);
+})->with([
+    'Model::getKey(), past Eloquent\'s getKeyName()' => [AncestorCallingPlainPost::class, true],
+    'Model::getKey(), past a getKeyName() that clears the pin' => [AncestorCallingPost::class, false],
 ]);
 
 it('trusts a resource helper only where each resource method it dispatches to is the framework\'s', function (

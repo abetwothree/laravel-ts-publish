@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\PropertyWriteSites;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use PhpParser\Node\Arg;
@@ -290,7 +291,7 @@ final class CallableForms
      */
     private static function propertyValues(PropertyFetch $fetch, AnalysisScope $scope): ?array
     {
-        if (! self::isThis($fetch->var) || ! $fetch->name instanceof Identifier) {
+        if (! ReadPath::isThis($fetch->var) || ! $fetch->name instanceof Identifier) {
             return null;
         }
 
@@ -333,7 +334,7 @@ final class CallableForms
 
         $method = $call->name->toString();
         $class = match (true) {
-            $call instanceof MethodCall => self::isThis($call->var) ? $scope->thisMemberClass($method, true) : null,
+            $call instanceof MethodCall => ReadPath::isThis($call->var) ? $scope->thisMemberClass($method, true) : null,
             ! $call->class instanceof Name => null,
             $call->class->toLowerString() === 'self' => $scope->declaringClass,
             $call->class->toLowerString() === 'static' => $scope->thisMemberClass($method, true),
@@ -403,24 +404,16 @@ final class CallableForms
      */
     private static function readsNoLocal(Expr $value): bool
     {
-        $isNamed = static fn (Expr $expr): bool => $expr instanceof String_ || $expr instanceof ClassConstFetch || self::isThis($expr);
+        $isNamed = static fn (Expr $expr): bool => $expr instanceof String_ || $expr instanceof ClassConstFetch || ReadPath::isThis($expr);
 
         return match (true) {
             $value instanceof String_, self::isNull($value) => true,
             $value instanceof ClosureExpr => $value->uses === [],
             $value instanceof Array_ => $value->items !== []
                 && array_all($value->items, static fn (ArrayItem $item): bool => $item->key === null && $isNamed($item->value)),
-            $value instanceof MethodCall => $value->isFirstClassCallable() && self::isThis($value->var),
+            $value instanceof MethodCall => $value->isFirstClassCallable() && ReadPath::isThis($value->var),
             default => $value instanceof StaticCall && $value->isFirstClassCallable(),
         };
-    }
-
-    /**
-     * Whether an expression is `$this`.
-     */
-    private static function isThis(Expr $expr): bool
-    {
-        return $expr instanceof Variable && $expr->name === 'this';
     }
 
     /**

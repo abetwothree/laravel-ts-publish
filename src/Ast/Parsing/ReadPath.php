@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
 
+use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -57,6 +58,14 @@ final readonly class ReadPath
         $other = self::of($right);
 
         return $path !== null && $other !== null && $path->same($other);
+    }
+
+    /**
+     * Whether a node is `$this`.
+     */
+    public static function isThis(Node $node): bool
+    {
+        return $node instanceof Variable && $node->name === 'this';
     }
 
     /**

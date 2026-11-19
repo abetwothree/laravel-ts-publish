@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\NativeTypeNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
@@ -168,7 +169,7 @@ final readonly class ClosureReach
         return match (true) {
             self::isClosure($value) => false,
             $value instanceof Pipe => $this->pipeResultMayRun($value, $use, $declaring, $inBody),
-            $value instanceof Variable && ! CallableTargets::isThis($value) => $use !== ValueUse::Handed,
+            $value instanceof Variable && ! ReadPath::isThis($value) => $use !== ValueUse::Handed,
             $spelled => $this->spelledMayRun($value, $declaring, $inBody),
             self::holdsNoClosure($value) => false,
             default => true,
@@ -237,7 +238,7 @@ final readonly class ClosureReach
     private static function holdsNoClosure(Expr $value): bool
     {
         return $value instanceof Scalar || $value instanceof ConstFetch || $value instanceof ClassConstFetch
-            || $value instanceof Array_ || CallableTargets::isThis($value)
+            || $value instanceof Array_ || ReadPath::isThis($value)
             || ($value instanceof BinaryOp && ! $value instanceof Coalesce && ! $value instanceof Pipe)
             || ($value instanceof Cast && ! $value instanceof ObjectCast)
             || $value instanceof BooleanNot || $value instanceof BitwiseNot || $value instanceof UnaryMinus
@@ -491,7 +492,7 @@ final readonly class ClosureReach
         return match (true) {
             is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
-            default => $pair instanceof CallablePair && ! CallableTargets::isThis($pair->holder)
+            default => $pair instanceof CallablePair && ! ReadPath::isThis($pair->holder)
                 && ($this->heldMethodMayWrite)(
                     $pair->holder,
                     $pair->method instanceof String_ ? $pair->method->value : null,
