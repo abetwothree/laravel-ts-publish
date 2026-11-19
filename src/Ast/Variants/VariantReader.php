@@ -110,13 +110,7 @@ final class VariantReader
                 static fn (): bool => false,
             );
 
-            if ($group !== null && ! self::rewritten(
-                $array,
-                $keys,
-                [...$group->keys, ...$reader->droppers],
-                $discriminant['read'],
-                $scope,
-            )) {
+            if ($group !== null && ! $reader->rewritten($array, $keys, [...$group->keys, ...$reader->droppers])) {
                 $groups[] = $group;
                 $owned += array_fill_keys($group->keys, true);
             }
@@ -255,33 +249,6 @@ final class VariantReader
     }
 
     /**
-     * Whether an item from the first of the group's keys and droppers to the last may write the discriminant's read, or
-     * a read it is a member of, so a guard may test another value than the discriminant sends (InterveningWrites).
-     *
-     * @param  list<SoleKey>  $keys
-     * @param  list<string>  $spanned  the group's keys and the droppers
-     */
-    private static function rewritten(
-        Array_ $array,
-        array $keys,
-        array $spanned,
-        ReadPath $read,
-        AnalysisScope $scope,
-    ): bool {
-        $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $spanned, true)), 2);
-
-        if ($at === []) {
-            return false;
-        }
-
-        return InterveningWrites::reach(
-            array_values(array_slice($array->items, min($at), max($at) - min($at) + 1)),
-            $read,
-            $scope,
-        );
-    }
-
-    /**
      * The values no picked arm throws for, by their index: PHP sends nothing for a value an arm throws for.
      *
      * @param  DiscriminantValueList  $values
@@ -402,6 +369,33 @@ final class VariantReader
     }
 
     /**
+     * Whether an item from the first of the group's keys and droppers to the last may write the discriminant's read, or
+     * a read it is a member of, so a guard may test another value than the discriminant sends (InterveningWrites, told
+     * the guards the last one's arms are selected by).
+     *
+     * @param  list<SoleKey>  $keys
+     * @param  list<string>  $spanned  the group's keys and the droppers
+     */
+    private function rewritten(Array_ $array, array $keys, array $spanned): bool
+    {
+        $window = array_values(array_filter($keys, static fn (array $key): bool => in_array($key[0], $spanned, true)));
+
+        if ($window === []) {
+            return false;
+        }
+
+        $first = $window[0][2];
+        [, $value, $last] = $window[count($window) - 1];
+
+        return InterveningWrites::reach(
+            array_values(array_slice($array->items, $first, $last - $first + 1)),
+            $this->discriminant['read'],
+            $this->scope,
+            $this->guardsOf($value),
+        );
+    }
+
+    /**
      * The group of keys this discriminant decides, or null where none follows it or an arm one takes cannot stand,
      * recording its droppers.
      *
@@ -490,21 +484,48 @@ final class VariantReader
     /**
      * The arm a value selects, selected again in its body while that picks between arms, up to LEVELS deep; a level
      * that cannot decide keeps the arm above it. Null where the first level hands over no arms or cannot decide.
+     *
+     * @param  list<Expr>  $decided  each guard decided on the way, appended to
+     *
+     * @param-out list<Expr>  $decided
      */
-    private function selected(?ConditionalArms $arms, DiscriminantValue $sent, int $level = 1): ?ConditionalArm
-    {
-        $arm = $arms?->select(fn (Expr $guard): ?bool => ConditionTruth::decide(
-            $guard,
-            $this->discriminant['read'],
-            $sent,
-            $this->scope,
-        ));
+    private function selected(
+        ?ConditionalArms $arms,
+        DiscriminantValue $sent,
+        int $level = 1,
+        array &$decided = [],
+    ): ?ConditionalArm {
+        $arm = $arms?->select(function (Expr $guard) use ($sent, &$decided): ?bool {
+            $holds = ConditionTruth::decide($guard, $this->discriminant['read'], $sent, $this->scope);
+
+            if ($holds !== null) {
+                $decided[] = $guard;
+            }
+
+            return $holds;
+        });
 
         if ($arm?->body === null || $level === self::LEVELS) {
             return $arm;
         }
 
-        return $this->selected($this->armsFor($arm->body), $sent, $level + 1) ?? $arm;
+        return $this->selected($this->armsFor($arm->body), $sent, $level + 1, $decided) ?? $arm;
+    }
+
+    /**
+     * The guards selected() decides a value's arms by, at every level, for any value the discriminant sends.
+     *
+     * @return list<Expr>
+     */
+    private function guardsOf(Expr $value): array
+    {
+        $guards = [];
+
+        foreach ($this->discriminant['values'] as $sent) {
+            $this->selected($this->armsFor($value), $sent, decided: $guards);
+        }
+
+        return $guards;
     }
 
     /**

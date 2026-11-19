@@ -201,6 +201,10 @@ it('keeps a group past a writing call in the arm of the last key that reads the 
 })->with([
     'the last dependent' => ['call_in_last_arm', ['pinned' => [['true', ['a' => 'string', 'v' => 'boolean']], ['false', ['a' => 'null', 'v' => 'null']]]]],
     'a key after the group that throws for a value' => ['call_in_dropper_arm', ['priority' => [['0', ['v' => 'string']], ['1 | 2 | 3', ['v' => 'null']]]]],
+    'a when() in a when()\'s value, handed the helper after its condition' => [
+        'positional_when_in_value',
+        ['pinned' => [['true', ['v' => 'boolean']], ['false', ['v' => '-']]]],
+    ],
 ]);
 
 // Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
@@ -236,6 +240,10 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'a write between the last dependent and a key that throws for a value' => 'write_before_dropper_kept',
     'a write before a numeric key that throws for a value' => 'numeric_dropper_kept',
     'a write between a key that throws for a value and the discriminant' => 'dropper_leads_kept',
+    'a writing call named before the condition of a when() in the last key\'s arm' => 'named_argument_in_arm_kept',
+    'a writing call named before the condition of a when() in a `match` arm' => 'named_argument_in_match_arm_kept',
+    'a writing call named before the condition of a when() in a when()\'s value' => 'named_argument_in_value_kept',
+    'a when() value testing the read and calling a writer, named before the condition' => 'reading_value_named_first_kept',
     'index_signature',
     'spread_writes',
     'two_returns',

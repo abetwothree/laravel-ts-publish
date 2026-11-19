@@ -730,6 +730,72 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A helper writing the read, named before the condition of a when() in the last key's arm: PHP runs it between the
+     * ternary's guard and the when()'s.
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->is_pinned ? $this->when(value: $this->clearPin(), condition: $this->is_pinned) : null,
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a `match` arm's when().
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInMatchArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => match ($this->is_pinned) {
+                true => $this->when(value: $this->clearPin(), condition: $this->is_pinned),
+                false => null,
+            },
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a when() that a when() on the read sends as its value.
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInValueKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->when($this->is_pinned, $this->when(value: $this->clearPin(), condition: $this->is_pinned)),
+        ];
+    }
+
+    /**
+     * A when() value that tests the read and calls a helper writing it, named before the condition.
+     *
+     * @return array<string, mixed>
+     */
+    public function readingValueNamedFirstKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->when(value: $this->is_pinned ? $this->clearPin() : false, condition: $this->is_pinned),
+        ];
+    }
+
+    /**
+     * A helper writing the read, handed after the condition of a when() that a when() on the read sends as its value.
+     *
+     * @return array<string, mixed>
+     */
+    public function positionalWhenInValue(): array
+    {
+        return ['pinned' => $this->is_pinned, 'v' => $this->when($this->is_pinned, $this->when($this->is_pinned, $this->clearPin()))];
+    }
+
+    /**
      * A helper writing the read, called in an arm of a key after the group that throws for one of its values.
      *
      * @return array<string, mixed>

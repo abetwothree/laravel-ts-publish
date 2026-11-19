@@ -35,9 +35,11 @@ use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use PropertyHookType;
@@ -48,8 +50,8 @@ use WeakMap;
  * Whether the items of a literal's write window may change what its discriminant's read holds, so a guard after the
  * change may test another value than the discriminant sent.
  *
- * Every item counts with the writes it spells and the arguments it binds by reference, and every item but the last
- * with the calls it makes, since the last item's calls run after its own guard. A call may write where it hands its
+ * Every item counts with the writes it spells and the arguments it binds by reference, and with the calls it makes,
+ * the last item only with those PHP runs before its guards read the discriminant. A call may write where it hands its
  * callee the subject or an object holding the read, runs a `$this` method or property hook whose body may write, runs
  * another object's hook, calls a model method not known to read, or runs code no scan follows. On an API resource
  * `$this->x` reads `$this->resource->x`.
@@ -116,11 +118,12 @@ final class InterveningWrites
 
     /**
      * Whether a window's items may change what the read holds: through a write any item spells or an argument it binds
-     * by reference, or through a call any item but the last makes.
+     * by reference, or through a call any item but the last makes, or the last makes before its guards read it.
      *
      * @param  list<ArrayItem>  $items  the window: the group's first key up to the last item that tests the read
+     * @param  list<Expr>  $guards  the guards the last item's arms are selected by; none reads its first read as one
      */
-    public static function reach(array $items, ReadPath $read, AnalysisScope $scope): bool
+    public static function reach(array $items, ReadPath $read, AnalysisScope $scope, array $guards = []): bool
     {
         $scan = new self(
             $read,
@@ -136,7 +139,7 @@ final class InterveningWrites
             $scope->declaringClass,
             false,
             $index !== $last,
-        ));
+        )) || ($last !== null && $scan->runsBeforeGuards($items[$last], $guards, $scope->declaringClass));
     }
 
     /**
@@ -199,6 +202,34 @@ final class InterveningWrites
     }
 
     /**
+     * The nodes under some nodes that PHP runs where they are written, so none in a closure's, a function's or a
+     * class's body, which runs only once something calls it.
+     *
+     * @param  array<Node>  $nodes
+     * @return list<Node>
+     */
+    private static function ownNodes(array $nodes): array
+    {
+        $own = [];
+
+        while ($nodes !== []) {
+            $node = array_pop($nodes);
+
+            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
+                continue;
+            }
+
+            $own[] = $node;
+
+            foreach ($node->getSubNodeNames() as $name) {
+                array_push($nodes, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
+            }
+        }
+
+        return $own;
+    }
+
+    /**
      * Whether nodes may change the read through a write they spell or an argument they bind by reference, or, where
      * $calls holds, through code they run.
      *
@@ -210,11 +241,74 @@ final class InterveningWrites
     {
         return new NodeFinder()->findFirst($nodes, fn (Node $node): bool => $this->writes($node, $inBody)
             || ($node instanceof CallLike && $this->bindsByReference($node, $declaring, $inBody))
-            || ($calls && match (true) {
-                $node instanceof CallLike => $this->callMayWrite($node, $declaring, $inBody),
-                $node instanceof Pipe => $this->pipeMayWrite($node, $declaring, $inBody),
-                default => $this->runsUnseen($node) || $this->hooksMayWrite($node, $declaring),
-            })) !== null;
+            || ($calls && $this->runMayWrite($node, $declaring, $inBody))) !== null;
+    }
+
+    /**
+     * Whether code the last item runs before its guards have read the discriminant may change the read: PHP evaluates
+     * arguments in the order they are written, so one named before `condition:` runs first.
+     *
+     * @param  list<Expr>  $guards
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function runsBeforeGuards(ArrayItem $item, array $guards, ReflectionClass $declaring): bool
+    {
+        $guarded = $this->guardedAt($item, $guards);
+
+        return new NodeFinder()->findFirst(
+            $item,
+            fn (Node $node): bool => $node->getEndFilePos() < $guarded && $this->runMayWrite($node, $declaring, false),
+        ) !== null;
+    }
+
+    /**
+     * Where the last item's guards have read the discriminant: the start of the last read they hold, or of the item's
+     * first where they hold none; every position where a read has none, as a node the engine builds has none.
+     *
+     * @param  list<Expr>  $guards
+     */
+    private function guardedAt(ArrayItem $item, array $guards): int
+    {
+        $guarded = $this->readStarts($guards);
+        $read = $guarded === [] ? min([PHP_INT_MAX, ...$this->readStarts([$item])]) : max($guarded);
+
+        return min([$read, ...$guarded]) < 0 ? PHP_INT_MAX : $read;
+    }
+
+    /**
+     * Where each read of the discriminant, or of a member of it, among some nodes starts, outside a closure's body.
+     *
+     * @param  array<Node>  $nodes
+     * @return list<int>
+     */
+    private function readStarts(array $nodes): array
+    {
+        $starts = [];
+
+        foreach (self::ownNodes($nodes) as $node) {
+            $path = $node instanceof Expr ? ReadPath::of($node) : null;
+
+            if ($path !== null && array_slice($this->steps($path), 0, count($this->readSteps)) === $this->readSteps) {
+                $starts[] = $node->getStartFilePos();
+            }
+        }
+
+        return $starts;
+    }
+
+    /**
+     * Whether code a node runs may change the read: a call by its callee, a pipe by the call it makes, any other node
+     * by a property hook it runs or code no scan follows.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function runMayWrite(Node $node, ReflectionClass $declaring, bool $inBody): bool
+    {
+        return match (true) {
+            $node instanceof CallLike => $this->callMayWrite($node, $declaring, $inBody),
+            $node instanceof Pipe => $this->pipeMayWrite($node, $declaring, $inBody),
+            default => $this->runsUnseen($node) || $this->hooksMayWrite($node, $declaring),
+        };
     }
 
     /**

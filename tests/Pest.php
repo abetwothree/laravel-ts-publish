@@ -290,17 +290,20 @@ function publishPackageView(string $view, string $source): string
 
 /**
  * reach()'s answer for the window of a literal written in InterveningResource's namespace and in $subject's scope, its
- * resource backed by $model: its first item sends $read, and each later item holds one source of $items.
+ * resource backed by $model: its first item sends $read, each later item holds one source of $items, and $guards picks
+ * the guards the last item's arms are selected by from its value.
  *
  * @param  list<string>  $items
  * @param  class-string  $subject
  * @param  class-string<Model>  $model
+ * @param  (Closure(Expr): list<Expr>)|null  $guards
  */
 function windowReach(
     array $items,
     string $read = '$this->is_pinned',
     string $subject = InterveningResource::class,
     string $model = Post::class,
+    ?Closure $guards = null,
 ): bool {
     $values = implode(', ', array_map(
         static fn (int $index, string $item): string => "'k{$index}' => {$item}",
@@ -319,5 +322,6 @@ function windowReach(
         $array->items,
         $sent,
         new AnalysisScope(new ReflectionClass($subject), $model),
+        $guards === null ? [] : $guards($array->items[count($array->items) - 1]->value),
     );
 }

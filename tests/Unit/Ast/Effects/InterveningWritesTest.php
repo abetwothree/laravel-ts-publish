@@ -3,9 +3,20 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
+use PhpParser\Node\ArrayItem;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
+use PhpParser\Node\Expr\Ternary;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
+use Workbench\App\Models\Post;
 
 /**
  * The calls between a discriminant and the key that tests it, each with whether it may change the discriminant's read.
@@ -278,7 +289,7 @@ it('reads a discriminant held by a local, which only the window can write', func
     'a write through the local' => ['$post->is_pinned = false', true],
 ]);
 
-it('reads the last item for its writes and the arguments it binds by reference, not its calls', function (
+it('reads the last item for its writes and the arguments it binds by reference, not the calls after its guard', function (
     string $last,
     bool $mayWrite,
 ) {
@@ -292,6 +303,73 @@ it('reads the last item for its writes and the arguments it binds by reference, 
     'the read handed to a method $this lacks, which takes it by value' => ['$this->pinned ? $this->missing($this->pinned) : null', false],
     'another read handed to a method of an object no scan names' => ['$this->pinned ? $service->reset($this->title) : null', false],
 ]);
+
+// PHP evaluates arguments in the order they are written, named or not, so one written before `condition:` runs first.
+it('reads the calls the last item runs before its guard reads the discriminant', function (string $last, bool $mayWrite) {
+    expect(windowReach([$last]))->toBe($mayWrite);
+})->with([
+    'a value named before the condition' => ['$this->when(value: $this->writer(), condition: $this->is_pinned)', true],
+    'its positional twin' => ['$this->when($this->is_pinned, $this->writer())', false],
+    'a default named before the condition' => [
+        '$this->when(default: $this->writer(), value: 1, condition: $this->is_pinned)',
+        true,
+    ],
+    'its positional twin, a default' => ['$this->when($this->is_pinned, 1, $this->writer())', false],
+    'unless() with its value named first' => ['$this->unless(value: $this->writer(), condition: $this->is_pinned)', true],
+    'its positional twin, unless()' => ['$this->unless($this->is_pinned, $this->writer())', false],
+    'a get hook that writes, named before the condition' => [
+        '$this->when(value: $this->unpinning, condition: $this->is_pinned)',
+        true,
+    ],
+    'the condition named first' => ['$this->when(condition: $this->is_pinned, value: $this->writer())', false],
+    'a reader named before the condition' => ['$this->when(value: $this->reader(), condition: $this->is_pinned)', false],
+    'a closure named before the condition, whose body the scan reads where it is written' => [
+        '$this->when(value: fn () => $this->writer(), condition: $this->is_pinned)',
+        true,
+    ],
+    'a closure named after the condition' => ['$this->when(condition: $this->is_pinned, value: fn () => $this->writer())', false],
+    'a read in a closure named before the condition, which runs only once called' => [
+        '$this->when(value: fn () => $this->is_pinned, default: $this->writer(), condition: $this->is_pinned)',
+        true,
+    ],
+    'a closure named before the condition, which a call before it runs' => [
+        '$this->when(value: array_map(fn () => $this->writer(), [1]), condition: $this->is_pinned)',
+        true,
+    ],
+]);
+
+// A nested when() reads the discriminant again once a ternary's guard has, so a call named before its condition runs
+// between the two.
+it('reads the calls the last item runs before the last of the guards it is handed reads the discriminant', function (
+    Closure $guards,
+    bool $mayWrite,
+) {
+    $last = '$this->is_pinned ? $this->when(value: $this->writer(), condition: $this->is_pinned) : null';
+
+    expect(windowReach([$last], guards: $guards))->toBe($mayWrite);
+})->with([
+    'the ternary\'s guard and the when()\'s' => [
+        static function (Ternary $last): array {
+            assert($last->if instanceof MethodCall);
+
+            return [$last->cond, $last->if->getArgs()[1]->value];
+        },
+        true,
+    ],
+    'the ternary\'s guard alone' => [static fn (Ternary $last): array => [$last->cond], false],
+]);
+
+// A node the engine builds has no position, so nothing tells which of its calls run before its guard.
+it('reads every call of a last item that has no position', function () {
+    $read = new PropertyFetch(new Variable('this'), 'is_pinned');
+    $guarded = new Ternary(clone $read, new MethodCall(new Variable('this'), 'writer'), new ConstFetch(new Name('null')));
+    $path = ReadPath::of($read);
+    assert($path instanceof ReadPath);
+    $scope = new AnalysisScope(new ReflectionClass(InterveningResource::class), Post::class);
+
+    expect(InterveningWrites::reach([new ArrayItem($read), new ArrayItem($guarded)], $path, $scope))->toBeTrue()
+        ->and(windowReach(['$this->is_pinned ? $this->writer() : null']))->toBeFalse();
+});
 
 // Eloquent's setAttribute() runs an attribute's set mutator, which may set any other attribute.
 it('reads a write to a model attribute as a call where a set mutator runs', function (string $write, bool $mayWrite) {
