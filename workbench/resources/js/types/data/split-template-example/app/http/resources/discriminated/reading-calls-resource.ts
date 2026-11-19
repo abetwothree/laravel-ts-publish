@@ -5,8 +5,9 @@ import type { UserResource } from '..';
  * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
  * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
  * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
- * array_map(), and when() handed a method's result on another read. Nothing changes the discriminant, so each literal
- * should publish one object per variant (GH-174).
+ * array_map(), when() handed a method's result on another read, a list of class names, and an untyped helper's
+ * result handed on. Nothing changes the discriminant, so each literal should publish one object per variant
+ * (GH-174).
  *
  * @see Workbench\App\Http\Resources\Discriminated\ReadingCallsResource
  */
@@ -28,5 +29,7 @@ export interface ReadingCallsResource
     resource_of_model_make: { is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null };
     callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
     when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
+    class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
+    untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
     static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
 }

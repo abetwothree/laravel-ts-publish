@@ -85,7 +85,7 @@ final class InterveningWrites
         $this->closures = new ClosureReach(
             $this->targets,
             $this->reads,
-            $proxied,
+            $runtime,
             $this->methodMayWrite(...),
             $this->holdsObject(...),
         );
@@ -248,7 +248,7 @@ final class InterveningWrites
     private function pipeMayWrite(Pipe $pipe, ReflectionClass $declaring, int $depth): bool
     {
         return $this->closures->hands($pipe->left, $declaring, $depth)
-            || $this->closures->mayWrite($pipe->right, $declaring, $depth);
+            || $this->closures->mayRun($pipe->right, ValueUse::Called, $declaring, $depth);
     }
 
     /**
@@ -340,7 +340,7 @@ final class InterveningWrites
     {
         return $arguments->hasUnpack() || array_any(
             ReadOnlyCalls::callbacks($arguments),
-            fn (Expr $callback): bool => $this->closures->mayWrite($callback, $declaring, $depth),
+            fn (Expr $callback): bool => $this->closures->mayRun($callback, ValueUse::Callback, $declaring, $depth),
         );
     }
 
@@ -358,7 +358,7 @@ final class InterveningWrites
         int $depth,
     ): bool {
         if ($call->var instanceof CallLike && $call->var->isFirstClassCallable()) {
-            return $this->closures->runMayWrite($call->var, $declaring, $depth)
+            return $this->closures->mayRun($call->var, ValueUse::Called, $declaring, $depth)
                 || $this->handsSubject($call, $declaring, $depth);
         }
 

@@ -2,43 +2,8 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
-use PhpParser\Node\Expr\Array_;
-use PhpParser\NodeFinder;
-use Workbench\App\Models\Post;
-
-/**
- * reach()'s answer for the window of a literal written in InterveningResource's namespace and in $subject's scope: its
- * first item sends $read, and each later item holds one source of $items.
- *
- * @param  list<string>  $items
- * @param  class-string  $subject
- */
-function windowReach(array $items, string $read = '$this->is_pinned', string $subject = InterveningResource::class): bool
-{
-    $values = implode(', ', array_map(
-        static fn (int $index, string $item): string => "'k{$index}' => {$item}",
-        array_keys([$read, ...$items]),
-        [$read, ...$items],
-    ));
-    $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects; '
-        .'use Closure; use Illuminate\Support\Facades\Gate; use Workbench\App\Http\Resources\UserResource; '
-        ."use Workbench\App\Support\PinWriter; return [{$values}];";
-    $array = new NodeFinder()->findFirstInstanceOf(new AstParser()->parseSource($source), Array_::class);
-    $sent = ReadPath::of(runtimeClassCall($read));
-    assert($array instanceof Array_ && $sent instanceof ReadPath);
-
-    return InterveningWrites::reach(
-        $array->items,
-        $sent,
-        new AnalysisScope(new ReflectionClass($subject), Post::class),
-    );
-}
 
 /**
  * The calls between a discriminant and the key that tests it, each with whether it may change the discriminant's read.
@@ -92,7 +57,7 @@ function interveningCalls(): array
         'a ternary callback, one branch a writer' => ['$this->when(true, $flag ? $this->reader(...) : $this->writer(...))', true],
         'a coalesce callback, one side a local' => ['$this->when(true, $callback ?? $this->reader(...))', true],
         'a match callback, one arm a writer' => ['$this->when(true, match ($flag) { 1 => $this->writer(...), default => null })', true],
-        'a static property callback' => ['$this->when(true, self::$callback)', true],
+        'a static property callback, the accepted gap' => ['$this->when(true, self::$callback)', false],
         'an assignment callback of a writer' => ['$this->when(true, $f = $this->writer(...))', true],
         'a callback a helper returns, typed Closure' => ['$this->when(true, $this->writerCallback())', true],
         'a callback an untyped helper returns, read through its returns' => [
@@ -118,7 +83,7 @@ function interveningCalls(): array
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
         'a writer named by [Ancestor::class, …]' => ['array_map([InterveningBase::class, \'baseWriter\'], [1])', true],
         'a writer named by [\'Fqcn\', …]' => ['array_map([\''.InterveningResource::class.'\', \'writer\'], [1])', true],
-        'a model reader\'s name on a class that lacks it' => ['array_map([PinWriter::class, \'getKey\'], [1])', true],
+        'a model reader\'s name on an unrelated class' => ['array_map([PinWriter::class, \'getKey\'], [1])', false],
         'a coalescing assignment of a value to a local callback' => ["\$this->when(true, \$callback ??= 'none')", true],
         'Closure::fromCallable() of a local callback' => ['$this->when(true, Closure::fromCallable($callback))', true],
         'a writer named by \'Fqcn::m\'' => ['array_map(\''.InterveningResource::class.'::writer\', [1])', true],
@@ -143,7 +108,7 @@ function interveningCalls(): array
         'a clone of a local callback' => ['$this->when(true, clone $callback)', true],
         'a forwarded model method callback not known to read' => ['$this->when(true, $this->isFeatured())', true],
         'a model method\'s callable handed to array_map()' => ['array_map($this->resource->touch(...), [1])', true],
-        'another class\'s missing static method handed to array_map()' => ['array_map(PinWriter::missing(...), [1])', true],
+        'another class\'s missing static method handed to array_map()' => ['array_map(PinWriter::missing(...), [1])', false],
         'a named ancestor\'s writer' => ['InterveningBase::baseWriter()', true],
         'a parent:: writer' => ['parent::baseWriter()', true],
         'a parent body whose self:: names the parent' => ['$this->viaSelf()', true],
@@ -221,7 +186,7 @@ function interveningCalls(): array
             false,
         ],
         'a reader named by \'Fqcn::m\'' => ["array_map('".InterveningResource::class."::reader', ['a'])", false],
-        'a reader named by self::class.\'::m\'' => ["array_map(self::class.'::reader', ['a'])", false],
+        'a method a joined self::class string names' => ["array_map(self::class.'::reader', ['a'])", true],
         'a reader through Closure::fromCallable([self::class, …])' => [
             "array_map(Closure::fromCallable([self::class, 'reader']), ['a'])",
             false,

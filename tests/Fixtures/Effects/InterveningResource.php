@@ -16,7 +16,13 @@ use Workbench\App\Models\Post;
  */
 class InterveningResource extends InterveningBase
 {
+    public const array LABELS = ['draft' => 'Draft'];
+
     public static ?Closure $callback = null;
+
+    public static string $suffix = '!';
+
+    public ?Closure $cb = null;
 
     public bool $pinned = true;
 
@@ -172,6 +178,58 @@ class InterveningResource extends InterveningBase
     private function untypedWriterCallback()
     {
         return $this->writer(...);
+    }
+
+    /**
+     * Names the writer as a `Class::method` string.
+     */
+    private function callableName(): string
+    {
+        return self::class.'::writer';
+    }
+
+    /**
+     * Names the writer as a `[$this, 'method']` array.
+     *
+     * @return array{self, string}
+     */
+    private function callableArray(): array
+    {
+        return [$this, 'writer'];
+    }
+
+    /**
+     * Returns a label, its signature typing a string.
+     */
+    private function plainLabel(): string
+    {
+        return (string) $this->title;
+    }
+
+    /**
+     * Returns the writer as a closure, whatever it is handed.
+     */
+    private function writerCallbackFor(int $times): Closure
+    {
+        return $this->writer(...);
+    }
+
+    /**
+     * Returns a label held in a local, its signature typing nothing.
+     */
+    private function untypedLocal()
+    {
+        $label = (string) $this->title;
+
+        return $label;
+    }
+
+    /**
+     * Returns a value or a default, its signature typing nothing.
+     */
+    private function orDefault(?string $value, string $default)
+    {
+        return $value ?? $default;
     }
 
     /**

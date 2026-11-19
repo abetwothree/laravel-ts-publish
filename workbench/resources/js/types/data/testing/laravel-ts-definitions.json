@@ -14295,6 +14295,11 @@
                     "name": "static_writer",
                     "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
+                },
+                {
+                    "name": "local_callable_in_when",
+                    "type": "{ is_pinned: boolean; cleared: boolean; detail: string | null }",
+                    "optional": false
                 }
             ]
         },
@@ -14524,6 +14529,16 @@
                 {
                     "name": "when_value_of_another_read",
                     "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "class_list_check",
+                    "type": "{ is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "untyped_helper_handed",
+                    "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
                     "optional": false
                 },
                 {

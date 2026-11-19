@@ -17,7 +17,10 @@ use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
+use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\InterpolatedString;
+use PhpParser\Node\Scalar\MagicConst\Class_;
 use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
 use ReflectionMethod;
@@ -51,10 +54,8 @@ final readonly class CallableTargets
     }
 
     /**
-     * The class and method a callable value names: a first-class callable of a method run on `$this` or of another
-     * class's static method, `[$this, 'm']`, `'static::m'` and its kin, or a class's name and a method, as
-     * `[X::class, 'm']`, `'X::m'` or `X::class.'::m'`; false where it names one by a name the source does not spell or
-     * no class here declares; null where it names no method.
+     * The method a callable value runs on `$this`: a first-class callable, or a `Class::method` string or a pair naming
+     * one that `$this`'s class or an ancestor declares non-static; false where the source spells no name, else null.
      *
      * @param  ReflectionClass<object>  $declaring
      * @return CallableTarget|false|null
@@ -64,15 +65,24 @@ final readonly class CallableTargets
         $relative = ReadOnlyCalls::relativeCallable($callable);
 
         if ($relative !== null) {
-            return $this->namedTarget(new Name($relative[0]), $relative[1], $declaring);
+            $class = AnalysisScope::relativeClassOf(new Name($relative[0]), $declaring, $this->runtime);
+
+            return match (true) {
+                $relative[1] !== null => $class === null ? null : self::boundMethod($class, $relative[1]),
+                $callable instanceof Array_ => false,
+                default => null,
+            };
+        }
+
+        if ($callable instanceof Concat || $callable instanceof InterpolatedString) {
+            return $this->joinsOwnMethod($callable, $declaring) ? false : null;
         }
 
         return match (true) {
-            $callable instanceof Array_ => $this->arrayTarget($callable, $declaring),
             $callable instanceof String_ => preg_match(self::NAMED_METHOD, $callable->value, $parts) === 1
-                ? $this->namedTarget(new Name($parts[1]), $parts[2], $declaring)
+                ? $this->namedMethod(new Name($parts[1]), $parts[2], $declaring)
                 : null,
-            $callable instanceof Concat => $this->concatTarget($callable, $declaring),
+            $callable instanceof Array_ => $this->arrayTarget($callable, $declaring),
             $callable instanceof CallLike => $this->firstClassTarget($callable, $declaring),
             default => null,
         };
@@ -104,15 +114,28 @@ final readonly class CallableTargets
     }
 
     /**
-     * The parts a chain of concatenations joins, in order.
+     * The parts a chain of concatenations, or an interpolated string, joins, in order.
      *
-     * @return list<Expr>
+     * @return list<Node>
      */
-    private static function concatParts(Expr $expr): array
+    private static function joinedParts(Expr $expr): array
     {
-        return $expr instanceof Concat
-            ? [...self::concatParts($expr->left), ...self::concatParts($expr->right)]
-            : [$expr];
+        return match (true) {
+            $expr instanceof Concat => [...self::joinedParts($expr->left), ...self::joinedParts($expr->right)],
+            $expr instanceof InterpolatedString => array_values($expr->parts),
+            default => [$expr],
+        };
+    }
+
+    /**
+     * The method a class declares non-static, which runs on `$this` where the class is `$this`'s or an ancestor.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @return CallableTarget|null
+     */
+    private static function boundMethod(ReflectionClass $class, string $method): ?array
+    {
+        return $class->hasMethod($method) && ! $class->getMethod($method)->isStatic() ? [$class, $method] : null;
     }
 
     /**
@@ -130,7 +153,8 @@ final readonly class CallableTargets
     }
 
     /**
-     * The method `[$this, 'm']` names, or `[X::class, 'm']` and `['X', 'm']` name of a class; null for any other array.
+     * The method `[$this, 'm']` runs, or `[X::class, 'm']` and `['X', 'm']` where X is `$this`'s class or an
+     * ancestor; false for a method of those the source does not spell; null for any other array.
      *
      * @param  ReflectionClass<object>  $declaring
      * @return CallableTarget|false|null
@@ -142,46 +166,111 @@ final readonly class CallableTargets
         }
 
         [$holder, $name] = [$callable->items[0]->value, $callable->items[1]->value];
-        $method = $name instanceof String_ ? $name->value : null;
+
+        if (self::isThis($holder)) {
+            if (! $name instanceof String_) {
+                return $name instanceof ClassConstFetch ? null : false;
+            }
+
+            $owner = AnalysisScope::memberClassOf($declaring, $this->runtime, $name->value, true);
+
+            return $owner->hasMethod($name->value) && $owner->getMethod($name->value)->isStatic()
+                ? null
+                : [$owner, $name->value];
+        }
+
         $class = self::arrayClass($holder);
+        $owner = $class === null ? null : $this->ownClass($class, $declaring);
 
         return match (true) {
-            self::isThis($holder) => $method === null
-                ? false
-                : [AnalysisScope::memberClassOf($declaring, $this->runtime, $method, true), $method],
-            $class !== null => $this->namedTarget($class, $method, $declaring),
-            default => null,
+            $owner === null, $name instanceof ClassConstFetch => null,
+            $name instanceof String_ => self::boundMethod($owner, $name->value),
+            default => false,
         };
     }
 
     /**
-     * The method `X::class.'::m'` names; null for a concatenation that does not open with a class's name and `::`.
+     * Whether a joined string names a method of `$this`'s class by a name the source does not spell: a `::class` of
+     * `$this`'s class or an ancestor, `__CLASS__` or `get_class($this)`, next to a piece that opens with `::`.
      *
      * @param  ReflectionClass<object>  $declaring
-     * @return CallableTarget|false|null
      */
-    private function concatTarget(Concat $callable, ReflectionClass $declaring): array|false|null
+    private function joinsOwnMethod(Concat|InterpolatedString $joined, ReflectionClass $declaring): bool
     {
-        [$class, $first] = self::concatParts($callable);
-        $rest = array_slice(self::concatParts($callable), 1);
+        $parts = self::joinedParts($joined);
 
-        if (! $class instanceof ClassConstFetch || ! ReadOnlyCalls::isClassName($class)
-            || ! $class->class instanceof Name || ! $first instanceof String_ || ! str_starts_with($first->value, '::')
-        ) {
-            return null;
+        foreach ($parts as $index => $part) {
+            $next = $parts[$index + 1] ?? null;
+            $piece = match (true) {
+                $next instanceof String_, $next instanceof InterpolatedStringPart => $next->value,
+                default => '',
+            };
+
+            if (str_starts_with($piece, '::') && $this->namesOwnClass($part, $declaring)) {
+                return true;
+            }
         }
 
-        $spelled = array_filter($rest, static fn (Expr $part): bool => $part instanceof String_);
-        $method = count($spelled) === count($rest)
-            ? substr(implode('', array_map(static fn (String_ $part): string => $part->value, $spelled)), 2)
-            : '';
-
-        return $this->namedTarget($class->class, $method === '' ? null : $method, $declaring);
+        return false;
     }
 
     /**
-     * The method a first-class callable runs on `$this`, or of another class it names; null for a function's or one
-     * bound to another object.
+     * Whether a part of a joined string spells `$this`'s class or an ancestor's name.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function namesOwnClass(Node $part, ReflectionClass $declaring): bool
+    {
+        if ($part instanceof ClassConstFetch && ReadOnlyCalls::isClassName($part) && $part->class instanceof Name) {
+            return $this->ownClass($part->class, $declaring) !== null;
+        }
+
+        if (! $part instanceof FuncCall || ! $part->name instanceof Name || $part->isFirstClassCallable()) {
+            return $part instanceof Class_;
+        }
+
+        $arguments = $part->getArgs();
+
+        return $part->name->toLowerString() === 'get_class'
+            && ($arguments === [] || self::isThis($arguments[0]->value));
+    }
+
+    /**
+     * `$this`'s class or the ancestor a class name names: `self`, `static` and `parent` as the declaring class names
+     * them, or a named class `$this` is; null for any other.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return ReflectionClass<object>|null
+     */
+    private function ownClass(Name $class, ReflectionClass $declaring): ?ReflectionClass
+    {
+        $named = $class->toString();
+
+        if ($class->isSpecialClassName()) {
+            return AnalysisScope::relativeClassOf($class, $declaring, $this->runtime);
+        }
+
+        return class_exists($named) && is_a($this->runtime->getName(), $named, true)
+            ? new ReflectionClass($named)
+            : null;
+    }
+
+    /**
+     * The method a `'X::m'` string runs on `$this`, where X is `$this`'s class or an ancestor declaring it non-static.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return CallableTarget|null
+     */
+    private function namedMethod(Name $class, string $method, ReflectionClass $declaring): ?array
+    {
+        $owner = $this->ownClass($class, $declaring);
+
+        return $owner === null ? null : self::boundMethod($owner, $method);
+    }
+
+    /**
+     * The method a first-class callable runs on `$this`; false for one whose name, or whose class, the source does not
+     * spell; null for a function's, another object's or another class's.
      *
      * @param  ReflectionClass<object>  $declaring
      * @return CallableTarget|false|null
@@ -195,39 +284,10 @@ final readonly class CallableTargets
             return null;
         }
 
-        $onThis = $this->thisMethod($callable, $declaring);
+        $named = $callable instanceof StaticCall && $callable->class instanceof Name;
 
-        if ($onThis !== null || ! $callable instanceof StaticCall || ! $callable->class instanceof Name
-            || ! $callable->name instanceof Identifier
-        ) {
-            return $onThis ?? false;
-        }
-
-        return $this->namedTarget($callable->class, $callable->name->toString(), $declaring);
-    }
-
-    /**
-     * The class a callable names by a class's name, beside its method: `self`, `static` and `parent` as the declaring
-     * class names them, `$this`'s class or an ancestor, which runs a method it lacks through `__call()`, or another
-     * class declaring the method; false where the source spells no method or names no such class.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return CallableTarget|false
-     */
-    private function namedTarget(Name $class, ?string $method, ReflectionClass $declaring): array|false
-    {
-        $named = $class->toString();
-        $target = $class->isSpecialClassName()
-            ? AnalysisScope::relativeClassOf($class, $declaring, $this->runtime)
-            : null;
-
-        if ($method !== null && ! $class->isSpecialClassName() && class_exists($named)
-            && (is_a($this->runtime->getName(), $named, true) || method_exists($named, $method))
-        ) {
-            $target = new ReflectionClass($named);
-        }
-
-        return $target === null || $method === null ? false : [$target, $method];
+        return $this->thisMethod($callable, $declaring)
+            ?? ($named && $callable->name instanceof Identifier ? null : false);
     }
 
     /**

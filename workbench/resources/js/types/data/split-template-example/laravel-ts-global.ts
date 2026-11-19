@@ -6281,8 +6281,8 @@ declare global {
          * Literals whose discriminant a write changes between two of its reads, where the write check does not see it yet: a
          * by-reference argument, a callable a helper calls, a write before a key that drops a value, a call inside an arm, a
          * get hook, the model handed to a function, helpers that write two levels down or through the model, a closure a
-         * helper calls, and the model handed to another class's static method. PHP can send a value no arm admits, so each
-         * literal should publish flat (GH-174).
+         * helper calls, the model handed to another class's static method, and a local closure's callable a helper calls.
+         * PHP can send a value no arm admits, so each literal should publish flat (GH-174).
          */
         export interface HiddenWritesResource {
             by_reference: { pinned: boolean; reset: boolean; detail: string | null };
@@ -6297,6 +6297,7 @@ declare global {
             helper_fills_model: { is_pinned: boolean; reset: boolean; detail: string | null };
             closure_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
             static_writer: { is_pinned: boolean; reset: boolean; detail: string | null };
+            local_callable_in_when: { is_pinned: boolean; cleared: boolean; detail: string | null };
         }
         /**
          * GH-157's escape hatch: the keys publish flat, and a union written by hand is intersected with them, so `is_pinned`
@@ -6377,8 +6378,9 @@ declare global {
          * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
          * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
          * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
-         * array_map(), and when() handed a method's result on another read. Nothing changes the discriminant, so each literal
-         * should publish one object per variant (GH-174).
+         * array_map(), when() handed a method's result on another read, a list of class names, and an untyped helper's
+         * result handed on. Nothing changes the discriminant, so each literal should publish one object per variant
+         * (GH-174).
          */
         export interface ReadingCallsResource {
             enum_method: { status: 0; color: string; detail: null } | { status: 1; color: string; detail: string };
@@ -6397,6 +6399,8 @@ declare global {
             resource_of_model_make: { is_pinned: true; author: app.http.resources.UserResource; detail: string } | { is_pinned: false; author: app.http.resources.UserResource; detail: null };
             callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
             when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
+            class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
+            untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
             static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
         }
         /**
