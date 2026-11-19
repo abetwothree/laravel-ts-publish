@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InheritedHookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookParent;
 use Workbench\App\Models\Post;
@@ -80,6 +81,19 @@ it('reads an undeclared first step on what `$this->resource` holds, but writes i
     'a read of the held object' => ['$this->resource->reads', false, [[null, 'reads']]],
     'a write the resource keeps' => ['$this->writes', true, []],
     'a write of the held object' => ['$this->resource->writes', true, [[null, 'writes']]],
+]);
+
+it('lists the set mutator a write of a model attribute runs, whose body runs on the model', function (
+    string $path,
+    array $runs,
+) {
+    expect(hooksRun($path, true, [MutatingPost::class]))->toBe($runs);
+})->with([
+    'a setXAttribute() mutator' => ['$this->resource->pin_reset', [[null, 'pin_reset']]],
+    'an Attribute with a setter' => ['$this->resource->pin_note', [[null, 'pin_note']]],
+    'an Attribute with a getter only' => ['$this->resource->label', []],
+    'an attribute with no mutator' => ['$this->resource->title', []],
+    'an attribute written on the resource, which keeps it' => ['$this->pin_note', []],
 ]);
 
 it('reads a private hooked property a parent declares only in the parent\'s body', function (string $declaring, array $runs) {

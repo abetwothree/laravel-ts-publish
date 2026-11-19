@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\View;
@@ -288,14 +289,19 @@ function publishPackageView(string $view, string $source): string
 }
 
 /**
- * reach()'s answer for the window of a literal written in InterveningResource's namespace and in $subject's scope: its
- * first item sends $read, and each later item holds one source of $items.
+ * reach()'s answer for the window of a literal written in InterveningResource's namespace and in $subject's scope, its
+ * resource backed by $model: its first item sends $read, and each later item holds one source of $items.
  *
  * @param  list<string>  $items
  * @param  class-string  $subject
+ * @param  class-string<Model>  $model
  */
-function windowReach(array $items, string $read = '$this->is_pinned', string $subject = InterveningResource::class): bool
-{
+function windowReach(
+    array $items,
+    string $read = '$this->is_pinned',
+    string $subject = InterveningResource::class,
+    string $model = Post::class,
+): bool {
     $values = implode(', ', array_map(
         static fn (int $index, string $item): string => "'k{$index}' => {$item}",
         array_keys([$read, ...$items]),
@@ -312,6 +318,6 @@ function windowReach(array $items, string $read = '$this->is_pinned', string $su
     return InterveningWrites::reach(
         $array->items,
         $sent,
-        new AnalysisScope(new ReflectionClass($subject), Post::class),
+        new AnalysisScope(new ReflectionClass($subject), $model),
     );
 }

@@ -5,15 +5,31 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeFinder;
 use PropertyHookType;
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionNamedType;
 
 /**
- * Reads what a PHP 8.4 property hook does to a read or a write of a `$this` path, on the class each step reaches: the
- * class `$this` declares the first step on, else, on an API resource, the classes `$this->resource` holds, which an
- * undeclared first step and the step after `resource` read; a later step the one class the step before declares.
+ * Reads what a PHP 8.4 property hook, or an Eloquent model's set mutator, does to a read or a write of a `$this` path,
+ * on the class each step reaches: the class `$this` declares the first step on, else, on an API resource, the classes
+ * `$this->resource` holds, which an undeclared first step and the step after `resource` read; a later step the one
+ * class the step before declares.
  *
  * @phpstan-type HookRun = array{ReflectionClass<object>|null, string}
  * @phpstan-type PathStep = array{string, list<ReflectionClass<object>>, bool}
@@ -94,7 +110,8 @@ final readonly class PropertyHooks
     }
 
     /**
-     * The set hook writing a `$this` path runs on its last step, as getHooks() lists one.
+     * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the set mutator a model
+     * runs for an attribute its `__set()` sets, which runs with the model as `$this`.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is written
      * @return list<HookRun>
@@ -103,11 +120,19 @@ final readonly class PropertyHooks
     {
         $steps = $this->steps($path, $declaring, false);
         [$property, $classes, $onThis] = $steps[count($steps) - 1] ?? ['', [], false];
+        $runs = [];
 
-        return array_values(array_map(
-            static fn (ReflectionClass $class): array => [$onThis ? $class : null, $property],
-            array_filter($classes, static fn (ReflectionClass $class): bool => self::runsSetHook($class, $property)),
-        ));
+        foreach ($classes as $class) {
+            if (self::runsSetHook($class, $property)) {
+                $runs[] = [$onThis ? $class : null, $property];
+            } elseif ($class->isSubclassOf(Model::class) && ! $class->hasProperty($property)
+                && self::runsSetMutator($class, $property)
+            ) {
+                $runs[] = [null, $property];
+            }
+        }
+
+        return $runs;
     }
 
     /**
@@ -122,6 +147,71 @@ final readonly class PropertyHooks
         [$property, $classes] = $this->steps($path, $declaring, true)[$index] ?? ['', [], false];
 
         return array_any($classes, static fn (ReflectionClass $class): bool => $class->hasProperty($property));
+    }
+
+    /**
+     * Whether a model sets an attribute through a mutator, as Eloquent's setAttribute() looks one up: a
+     * `setXAttribute()` method, or a method named for it returning an `Attribute` whose setter the source may hold.
+     *
+     * @param  ReflectionClass<Model>  $model
+     */
+    private static function runsSetMutator(ReflectionClass $model, string $attribute): bool
+    {
+        $method = Str::camel($attribute);
+
+        if ($model->hasMethod('set'.Str::studly($attribute).'Attribute')) {
+            return true;
+        }
+
+        $type = $model->hasMethod($method) ? $model->getMethod($method)->getReturnType() : null;
+
+        return $type instanceof ReflectionNamedType && $type->getName() === Attribute::class
+            && self::returnsSetter($model, $method);
+    }
+
+    /**
+     * Whether a method returning an `Attribute` may give it a setter: some value it returns is not Attribute::make(),
+     * get(), set() or `new Attribute`, left as written or with a method such as shouldCache() called on it, built with
+     * no setter or a `null` one; and so where its body cannot be read.
+     *
+     * @param  ReflectionClass<Model>  $model
+     */
+    private static function returnsSetter(ReflectionClass $model, string $method): bool
+    {
+        $body = resolve(MethodLocator::class)->locate($model->getName(), $method)?->method->stmts;
+
+        return $body === null || array_any(
+            new NodeFinder()->findInstanceOf($body, Return_::class),
+            static fn (Return_ $return): bool => self::buildsSetter($return->expr),
+        );
+    }
+
+    /**
+     * Whether a returned value may be an `Attribute` with a setter: anything but one Attribute's builders make with
+     * no setter or a `null` one.
+     */
+    private static function buildsSetter(?Expr $built): bool
+    {
+        while ($built instanceof MethodCall) {
+            $built = $built->var;
+        }
+
+        if ($built instanceof StaticCall && $built->class instanceof Name && $built->name instanceof Identifier
+            && is_a($built->class->toString(), Attribute::class, true)
+            && in_array($built->name->toLowerString(), ['make', 'get', 'set'], true)
+        ) {
+            $arguments = CallArguments::for($built, new ReflectionMethod(Attribute::class, $built->name->toString()));
+        } elseif ($built instanceof New_ && $built->class instanceof Name
+            && is_a($built->class->toString(), Attribute::class, true)
+        ) {
+            $arguments = CallArguments::for($built, new ReflectionMethod(Attribute::class, '__construct'));
+        } else {
+            return true;
+        }
+
+        $setter = $arguments->named('set')?->value;
+
+        return $setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null');
     }
 
     /**

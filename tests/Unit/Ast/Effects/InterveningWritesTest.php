@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 
 /**
  * The calls between a discriminant and the key that tests it, each with whether it may change the discriminant's read.
@@ -291,6 +292,25 @@ it('reads the last item for its writes and the arguments it binds by reference, 
     'the read handed to a method $this lacks, which takes it by value' => ['$this->pinned ? $this->missing($this->pinned) : null', false],
     'another read handed to a method of an object no scan names' => ['$this->pinned ? $service->reset($this->title) : null', false],
 ]);
+
+// Eloquent's setAttribute() runs an attribute's set mutator, which may set any other attribute.
+it('reads a write to a model attribute as a call where a set mutator runs', function (string $write, bool $mayWrite) {
+    expect(windowReach([$write, '$this->is_pinned ? 1 : null'], model: MutatingPost::class))->toBe($mayWrite);
+})->with([
+    'a setXAttribute() mutator' => ['$this->resource->pin_reset = true', true],
+    'an Attribute with a setter' => ["\$this->resource->pin_note = 'a'", true],
+    'an Attribute a builder the source names no setter in returns' => ["\$this->resource->badge = 'a'", true],
+    'a mutator, through ??=' => ["\$this->resource->pin_note ??= 'a'", true],
+    'an Attribute with a getter only, cached' => ["\$this->resource->label = 'a'", false],
+    'an Attribute whose setter is null' => ["\$this->resource->summary = 'a'", false],
+    'an attribute with no mutator' => ["\$this->resource->title = 'a'", false],
+    'a write the resource keeps, which runs no mutator' => ['$this->pin_reset = true', false],
+]);
+
+it('reads a set mutator in the last item\'s arm as a call that runs after its guard', function () {
+    expect(windowReach(['$this->title', "\$this->is_pinned ? (\$this->resource->pin_note = 'a') : null"], model: MutatingPost::class))
+        ->toBeFalse();
+});
 
 // Eloquent reads an attribute through `__get()`, which hands a by-reference parameter a copy of its value.
 it('reads a model attribute handed to a method of an object no scan names as bound by value', function (string $read) {
