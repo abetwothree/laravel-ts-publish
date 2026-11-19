@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\ReferenceGetResource;
 use Workbench\App\Models\Post;
 
 /**
@@ -160,21 +161,29 @@ it('reads a private hooked property a parent declares only in the parent\'s body
     'the child\'s body, which reads the name through the proxy' => [PrivateHookChild::class, []],
 ]);
 
+// JsonResource's `__get()` returns by value, so a by-reference parameter binds a copy of what it forwards.
 it('tells a read that starts at a declared property, which a by-reference parameter binds in place', function (
     string $path,
     array $held,
     bool $inPlace,
+    string $resource = InterveningResource::class,
 ) {
     $read = ReadPath::of(runtimeClassCall($path));
     assert($read instanceof ReadPath);
-    $resource = new ReflectionClass(InterveningResource::class);
+    $class = new ReflectionClass($resource);
 
-    expect(new PropertyHooks($resource, true, $held)->bindsInPlace($read, $resource))->toBe($inPlace);
+    expect(new PropertyHooks($class, true, $held)->bindsInPlace($read, $class))->toBe($inPlace);
 })->with([
     'a property the resource declares' => ['$this->pinned', [Post::class], true],
     'a model attribute, read through the resource' => ['$this->is_pinned', [Post::class], false],
     'a model attribute, read on the model' => ['$this->resource->is_pinned', [Post::class], false],
-    'a property the held object declares, read through the resource' => ['$this->plain', [HookedProperties::class], true],
+    'a property the held object declares, read through the resource' => ['$this->plain', [HookedProperties::class], false],
+    'a property the held object declares, read through a `__get()` returning by reference' => [
+        '$this->plain',
+        [HookedProperties::class],
+        true,
+        ReferenceGetResource::class,
+    ],
     'a property the held object declares, read on it' => ['$this->resource->plain', [HookedProperties::class], true],
     'another root' => ['$post->is_pinned', [Post::class], false],
 ]);
