@@ -3309,7 +3309,7 @@ declare global {
             null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
-            not_null_spread_default?: string;
+            not_null_spread_default: string | number;
             when_no_default?: string;
             when_with_default: string | number;
             has_with_default: string | number;

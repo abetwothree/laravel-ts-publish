@@ -13069,8 +13069,8 @@
                 },
                 {
                     "name": "not_null_spread_default",
-                    "type": "string",
-                    "optional": true
+                    "type": "string | number",
+                    "optional": false
                 },
                 {
                     "name": "when_no_default",

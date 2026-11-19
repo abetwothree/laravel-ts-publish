@@ -557,7 +557,7 @@ it('types a literal null value as null even when a spread follows it', function 
 it('still treats a spread at the default position as no default', function () {
     $expr = new MethodCall(new Variable('this'), 'whenCounted', [
         new Arg(new String_('posts')),
-        new Arg(new Array_([]), unpack: true),
+        new Arg(new Variable('rest'), unpack: true),
     ]);
 
     $result = (new ConditionalMethodHandler)->resolve($expr, conditionalMethodHandlerScope(), conditionalMethodHandlerThrowingEngine());

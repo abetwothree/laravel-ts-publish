@@ -3902,7 +3902,7 @@ it('reads the model and a helper call as merge sides, and a side read as no arra
         'call_default' => 'string',
         'title' => '?string',
         'default_only' => '?number',
-        'spread_default' => '?string',
+        'spread_default' => 'string | number',
         'needs_arg_default' => '?string',
     ]);
 });
@@ -4960,13 +4960,13 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
             ->and($props['not_null_named_default']['optional'])->toBeFalse();
     });
 
-    // A spread argument at the default position makes the count unknowable, so it bails out.
-    it('bails out on a spread default argument, back to value-arm-only and optional', function () {
+    // func_num_args() counts each item a literal spread passes, so one at the default position is a real default.
+    it('reads a literal spread default argument by its items, required and unioned', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['not_null_spread_default']['type'])->toBe('string')
-            ->and($props['not_null_spread_default']['optional'])->toBeTrue();
+        expect($props['not_null_spread_default']['type'])->toBe('string | number')
+            ->and($props['not_null_spread_default']['optional'])->toBeFalse();
     });
 });
 
