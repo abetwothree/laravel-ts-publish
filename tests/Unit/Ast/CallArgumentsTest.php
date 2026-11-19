@@ -375,6 +375,12 @@ it('lists the positional arguments from a position on', function () {
         ->and($args->from(4))->toBe([]);
 });
 
+it('lists every argument as the call binds it, then each unpack it cannot expand', function () {
+    $args = parsedCallArguments("f(\$a, ...[\$b, 'x' => \$c], ...\$rest, y: \$d);", ['a', 'b']);
+
+    expect(array_map(printedArgument(...), $args->bound()))->toBe(['$a', '$b', '$c', '$d', '$rest']);
+});
+
 it('lists the arguments written by a name no parameter declares', function () {
     $args = parsedCallArguments("f(\$a, ...['b' => \$b, 'more' => \$y], extra: \$x);", ['a', 'b']);
 

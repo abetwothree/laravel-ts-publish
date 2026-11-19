@@ -162,6 +162,16 @@ final class CallArguments
     }
 
     /**
+     * Every argument as the call binds it, positional then named, then each unpack it could not expand.
+     *
+     * @return list<Arg>
+     */
+    public function bound(): array
+    {
+        return [...$this->positional, ...array_values($this->named), ...$this->unexpanded];
+    }
+
+    /**
      * The positional arguments from a position on, which a variadic parameter there collects.
      *
      * @return list<Arg>
