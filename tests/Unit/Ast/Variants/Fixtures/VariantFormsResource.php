@@ -868,6 +868,54 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A helper writing the read in the first arm of a `match (true)`, which runs only once that arm's guard picks it.
+     *
+     * @return array<string, mixed>
+     */
+    public function matchTrueArmCall(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => match (true) {
+                $this->is_pinned === true => $this->clearPin(),
+                $this->is_pinned === false => null,
+            },
+        ];
+    }
+
+    /**
+     * A helper writing the read in a ternary's first branch, before the guard of the ternary in its other branch.
+     *
+     * @return array<string, mixed>
+     */
+    public function ternaryChainArmCall(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low
+                ? $this->clearPriority()
+                : ($this->priority === Priority::High ? 7 : null),
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a when() in a `match (true)` arm, whose guard a later
+     * arm's follows.
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInMatchTrueArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => match (true) {
+                $this->is_pinned === true => $this->when(value: $this->clearPin(), condition: $this->is_pinned),
+                $this->is_pinned === false => null,
+            },
+        ];
+    }
+
+    /**
      * A helper writing the read, handed after the condition of a when() that a when() on the read sends as its value.
      *
      * @return array<string, mixed>

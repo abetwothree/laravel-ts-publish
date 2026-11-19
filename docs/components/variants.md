@@ -101,11 +101,12 @@ keys and its droppers. A dropper is a key whose guard the discriminant decides a
 whether or not it is a dependent, so it decides which values the group sends. Every item may change the read through a
 write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
 parameter binds there ([`ByReferenceArguments`]`::bind()`). On an API resource, `$this->resource->x` and `$this->x` are
-one path. Every item but the last may also change it through code it runs. In the last item, only the code PHP runs
-before its guards have read the discriminant counts. The reader hands over the guards it selected that item's arms by,
-and the check counts what runs before the last of their reads. PHP evaluates arguments in the order they are written, so
-`when(value: $this->clear(), condition: $this->is_pinned)` runs `clear()` first. A closure's body counts where it is
-written. Code may write in these ways:
+one path. Every item but the last may also change it through code it runs. In the last item, only the code PHP may run
+before one of its guards reads the discriminant counts. The reader hands over the guards it selected that item's arms
+by. Code written before such a read runs first, unless it sits in a ternary's branch or a `match` arm's body and the
+read sits in another branch of that ternary or `match`, which PHP never reaches once it takes the first. PHP evaluates
+arguments in the order they are written, so `when(value: $this->clear(), condition: $this->is_pinned)` runs `clear()`
+first. A closure's body counts where it is written. Code may write in these ways:
 
 - A call handed `$this`, `$this->resource` or an object holding the read, or a method called on such an object, may
   write, unless [`ReadOnlyCalls`] knows it only reads: a resource helper, a model method `MODEL_READERS` lists,

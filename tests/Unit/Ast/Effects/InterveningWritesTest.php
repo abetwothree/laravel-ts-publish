@@ -10,11 +10,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use PhpParser\Node\ArrayItem;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
 use Workbench\App\Models\Post;
 
@@ -323,6 +326,7 @@ it('reads the calls the last item runs before its guard reads the discriminant',
     ],
     'the condition named first' => ['$this->when(condition: $this->is_pinned, value: $this->writer())', false],
     'a reader named before the condition' => ['$this->when(value: $this->reader(), condition: $this->is_pinned)', false],
+    'a read written after a writer in the value' => ['$this->when($this->is_pinned, [$this->writer(), $this->is_pinned])', false],
     'a closure named before the condition, whose body the scan reads where it is written' => [
         '$this->when(value: fn () => $this->writer(), condition: $this->is_pinned)',
         true,
@@ -357,6 +361,53 @@ it('reads the calls the last item runs before the last of the guards it is hande
         true,
     ],
     'the ternary\'s guard alone' => [static fn (Ternary $last): array => [$last->cond], false],
+]);
+
+// A ternary branch or a `match` arm body runs only once its own guard picks it, and no later guard of the split then.
+it('reads a call in a branch as running before a guard only where the branch runs before it', function (
+    string $last,
+    Closure $guards,
+    bool $mayWrite,
+) {
+    expect(windowReach([$last], guards: $guards))->toBe($mayWrite);
+})->with([
+    'a writer in a `match (true)` arm before a later arm\'s guard' => [
+        'match (true) { $this->is_pinned === true => $this->writer(), $this->is_pinned === false => null }',
+        static fn (Match_ $last): array => array_map(static fn (MatchArm $arm): Expr => $arm->conds[0] ?? $last->cond, $last->arms),
+        false,
+    ],
+    'a writer in a ternary\'s branch before the guard of its other branch' => [
+        '$this->is_pinned === true ? $this->writer() : ($this->is_pinned === false ? 1 : null)',
+        static function (Ternary $last): array {
+            assert($last->else instanceof Ternary);
+
+            return [$last->cond, $last->else->cond];
+        },
+        false,
+    ],
+    'a writer named before a when() condition in an arm, before a later arm\'s guard' => [
+        'match (true) { $this->is_pinned === true => $this->when(value: $this->writer(), condition: $this->is_pinned), '
+            .'$this->is_pinned === false => null }',
+        static function (Match_ $last): array {
+            assert($last->arms[0]->body instanceof MethodCall);
+
+            return [
+                ...array_map(static fn (MatchArm $arm): Expr => $arm->conds[0] ?? $last->cond, $last->arms),
+                $last->arms[0]->body->getArgs()[1]->value,
+            ];
+        },
+        true,
+    ],
+    'a writer in a branch of a value named before the condition' => [
+        '$this->when(value: $this->is_pinned ? $this->writer() : false, condition: $this->is_pinned)',
+        static function (MethodCall $last): array {
+            $value = $last->getArgs()[0]->value;
+            assert($value instanceof Ternary);
+
+            return [$last->getArgs()[1]->value, $value->cond];
+        },
+        true,
+    ],
 ]);
 
 // A node the engine builds has no position, so nothing tells which of its calls run before its guard.

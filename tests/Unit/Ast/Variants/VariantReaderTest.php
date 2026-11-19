@@ -205,6 +205,12 @@ it('keeps a group past a writing call in the arm of the last key that reads the 
         'positional_when_in_value',
         ['pinned' => [['true', ['v' => 'boolean']], ['false', ['v' => '-']]]],
     ],
+    'a `match (true)` arm, before a later arm\'s guard' => ['match_true_arm_call', ['pinned' => [['true', ['v' => 'boolean']], ['false', ['v' => 'null']]]]],
+    'a ternary branch, before the guard of the ternary in its other branch' => ['ternary_chain_arm_call', ['priority' => [
+        ['0', ['v' => 'string']],
+        ['1 | 3 | null', ['v' => 'null']],
+        ['2', ['v' => 'number']],
+    ]]],
 ]);
 
 // Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
@@ -242,6 +248,7 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'a write between a key that throws for a value and the discriminant' => 'dropper_leads_kept',
     'a writing call named before the condition of a when() in the last key\'s arm' => 'named_argument_in_arm_kept',
     'a writing call named before the condition of a when() in a `match` arm' => 'named_argument_in_match_arm_kept',
+    'a writing call named before the condition of a when() in a `match (true)` arm' => 'named_argument_in_match_true_arm_kept',
     'a writing call named before the condition of a when() in a when()\'s value' => 'named_argument_in_value_kept',
     'a when() value testing the read and calling a writer, named before the condition' => 'reading_value_named_first_kept',
     'index_signature',

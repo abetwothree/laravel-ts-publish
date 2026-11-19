@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
@@ -24,6 +25,7 @@ use PhpParser\Node\Expr\Eval_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Include_;
 use PhpParser\Node\Expr\List_;
+use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
@@ -34,6 +36,7 @@ use PhpParser\Node\Expr\PreDec;
 use PhpParser\Node\Expr\PreInc;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
@@ -55,6 +58,8 @@ use WeakMap;
  * callee the subject or an object holding the read, runs a `$this` method or property hook whose body may write, runs
  * another object's hook, calls a model method not known to read, or runs code no scan follows. On an API resource
  * `$this->x` reads `$this->resource->x`.
+ *
+ * @phpstan-type Branch = array{Ternary|Match_, Expr}
  *
  * @phpstan-import-type CallBinding from ByReferenceArguments
  * @phpstan-import-type HookRun from PropertyHooks
@@ -230,6 +235,47 @@ final class InterveningWrites
     }
 
     /**
+     * Each ternary's branch and each `match` arm's body in an item, beside the ternary or the `match` it belongs to.
+     *
+     * @return list<Branch>
+     */
+    private static function branches(ArrayItem $item): array
+    {
+        $finder = new NodeFinder;
+        $branches = [];
+
+        foreach ($finder->findInstanceOf($item, Ternary::class) as $ternary) {
+            foreach (array_filter([$ternary->if, $ternary->else]) as $body) {
+                $branches[] = [$ternary, $body];
+            }
+        }
+
+        foreach ($finder->findInstanceOf($item, Match_::class) as $match) {
+            foreach ($match->arms as $arm) {
+                $branches[] = [$match, $arm->body];
+            }
+        }
+
+        return $branches;
+    }
+
+    /**
+     * Whether PHP may run a node before a read: it is written first, and no branch that holds it leaves the read to
+     * another branch of its ternary or `match`, which PHP never reaches once it takes the node's.
+     *
+     * @param  list<Branch>  $branches
+     */
+    private static function runsBefore(Node $node, Expr $read, array $branches): bool
+    {
+        return $node->getEndFilePos() < $read->getStartFilePos() && ! array_any(
+            $branches,
+            static fn (array $branch): bool => StatementBlocks::encloses($branch[1], $node)
+                && StatementBlocks::encloses($branch[0], $read)
+                && ! StatementBlocks::encloses($branch[1], $read),
+        );
+    }
+
+    /**
      * Whether nodes may change the read through a write they spell or an argument they bind by reference, or, where
      * $calls holds, through code they run.
      *
@@ -253,47 +299,56 @@ final class InterveningWrites
      */
     private function runsBeforeGuards(ArrayItem $item, array $guards, ReflectionClass $declaring): bool
     {
-        $guarded = $this->guardedAt($item, $guards);
+        $reads = $this->guardReads($item, $guards);
+        $branches = self::branches($item);
 
-        return new NodeFinder()->findFirst(
-            $item,
-            fn (Node $node): bool => $node->getEndFilePos() < $guarded && $this->runMayWrite($node, $declaring, false),
-        ) !== null;
+        return new NodeFinder()->findFirst($item, fn (Node $node): bool => ($reads === null || array_any(
+            $reads,
+            static fn (Expr $read): bool => self::runsBefore($node, $read, $branches),
+        )) && $this->runMayWrite($node, $declaring, false)) !== null;
     }
 
     /**
-     * Where the last item's guards have read the discriminant: the start of the last read they hold, or of the item's
-     * first where they hold none; every position where a read has none, as a node the engine builds has none.
+     * The reads of the discriminant the last item's guards make, or the item's first where they make none; null where
+     * a read has no position, as a node the engine builds has none, or there is none, so any node may run first.
      *
      * @param  list<Expr>  $guards
+     * @return list<Expr>|null
      */
-    private function guardedAt(ArrayItem $item, array $guards): int
+    private function guardReads(ArrayItem $item, array $guards): ?array
     {
-        $guarded = $this->readStarts($guards);
-        $read = $guarded === [] ? min([PHP_INT_MAX, ...$this->readStarts([$item])]) : max($guarded);
+        $reads = $this->reads($guards);
 
-        return min([$read, ...$guarded]) < 0 ? PHP_INT_MAX : $read;
+        if ($reads === []) {
+            $reads = $this->reads([$item]);
+            usort($reads, static fn (Expr $one, Expr $other): int => $one->getStartFilePos() <=> $other->getStartFilePos());
+            $reads = array_slice($reads, 0, 1);
+        }
+
+        return $reads === [] || array_any($reads, static fn (Expr $read): bool => $read->getStartFilePos() < 0)
+            ? null
+            : $reads;
     }
 
     /**
-     * Where each read of the discriminant, or of a member of it, among some nodes starts, outside a closure's body.
+     * The reads of the discriminant, or of a member of it, among some nodes, outside a closure's body.
      *
      * @param  array<Node>  $nodes
-     * @return list<int>
+     * @return list<Expr>
      */
-    private function readStarts(array $nodes): array
+    private function reads(array $nodes): array
     {
-        $starts = [];
+        $reads = [];
 
         foreach (self::ownNodes($nodes) as $node) {
             $path = $node instanceof Expr ? ReadPath::of($node) : null;
 
             if ($path !== null && array_slice($this->steps($path), 0, count($this->readSteps)) === $this->readSteps) {
-                $starts[] = $node->getStartFilePos();
+                $reads[] = $node;
             }
         }
 
-        return $starts;
+        return $reads;
     }
 
     /**
