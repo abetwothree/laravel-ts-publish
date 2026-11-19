@@ -1501,6 +1501,7 @@ describe('narrowing', function () {
         'a class-and-method array given as a conditional helper\'s default' => ['$this->when(false, 1, [\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Services\\ImageableSwapper::class, \'swap\']);', []],
         'a callable string relative to the subject' => ['array_map(\'static::toArray\', [1]);', []],
         'a callable array relative to the subject' => ['array_map([\'parent\', \'toArray\'], [1]);', []],
+        'a callable array relative to the subject, one key a constant' => ['array_map([\Workbench\App\Models\Post::CREATED_AT => \'parent\', 1 => \'toArray\'], [1]);', []],
         'a plain string given to a conditional helper' => ['$this->when(true, \'active\');', ['$this->author' => [[[User::class], '$this->when(true, \'active\'); $x = 1;']]]],
         'a plain string unpacked into a conditional helper' => ['$this->when(...[true, \'active\']);', ['$this->author' => [[[User::class], '$this->when(...[true, \'active\']); $x = 1;']]]],
         'whenHas() naming an attribute spelled like a function' => ['$this->whenHas(\'date\');', ['$this->author' => [[[User::class], '$this->whenHas(\'date\'); $x = 1;']]]],

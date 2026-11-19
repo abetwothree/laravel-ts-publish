@@ -41,7 +41,7 @@ it('reads a callable pair by its keys 0 and 1, as PHP does', function (string $a
     'no items' => ['[]', null],
     'a computed key' => ["[\$k => \$a, 1 => 'm']", false],
     'an unpacked item' => ['[...$x]', false],
-    'a by-reference item' => ["[&\$a, 'm']", false],
+    'a by-reference item, which PHP calls as it calls a copy' => ["[&\$x, 'm']", "\$x, 'm'"],
     'a key past 1 beside a computed key, which no key removes' => ["[\$k => \$a, 2 => 'm']", null],
     'a string key beside an unpacked item' => ["['mode' => \$a, ...\$x]", null],
 ]);

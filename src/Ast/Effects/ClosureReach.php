@@ -80,6 +80,9 @@ final readonly class ClosureReach
     /** The return types, lowercased, that can hold no callable, besides a class with no `__invoke()`. */
     private const array CALLABLE_FREE = ['int', 'float', 'bool', 'null', 'void', 'never', 'false', 'true'];
 
+    /** The local an open array's unspelled method is read through, named as no source can spell a variable. */
+    private const string UNSPELLED_METHOD = 'unspelled method';
+
     /**
      * A judge for one scan.
      *
@@ -442,15 +445,24 @@ final readonly class ClosureReach
 
     /**
      * Whether a string, an array or a joined string a callee runs may change the read: one naming a method run on
-     * `$this` by its body, one naming one by a name the source does not spell, an array that may be any pair, and a
-     * pair whose object holds the read, as the model's method.
+     * `$this` by its body, one naming one by a name the source does not spell, a pair whose object holds the read, as
+     * the model's method, and an open array as a pair of any of its own items and a method the source does not spell.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function spelledMayRun(Expr $value, ReflectionClass $declaring, bool $inBody): bool
     {
-        $target = $this->targets->callableTarget($value, $declaring);
         $pair = $value instanceof Array_ ? CallablePair::of($value) : null;
+
+        if ($value instanceof Array_ && $pair === false) {
+            return array_any($value->items, fn (ArrayItem $item): bool => $this->spelledMayRun(
+                new Array_([new ArrayItem($item->value), new ArrayItem(new Variable(self::UNSPELLED_METHOD))]),
+                $declaring,
+                $inBody,
+            ));
+        }
+
+        $target = $this->targets->callableTarget($value, $declaring);
 
         return match (true) {
             is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),

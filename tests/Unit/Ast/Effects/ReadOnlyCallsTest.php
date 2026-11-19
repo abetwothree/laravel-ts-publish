@@ -106,6 +106,8 @@ it('reads a callable relative to the subject, which runs on $this', function (st
     '[parent, m] keyed out of order' => ["[1 => 'baseWriter', 0 => 'parent']", ['parent', 'baseWriter']],
     '[m, parent], parent second' => ["['baseWriter', 'parent']", null],
     '[parent, m], keyed 0 and 2' => ["[0 => 'parent', 2 => 'baseWriter']", null],
+    'parent beside a constant key, which may make it the class' => ["[Foo::K => 'parent', 1 => 'baseWriter']", ['parent', null]],
+    'a word beside a computed key' => ["[\$k => 'word', 1 => 'baseWriter']", null],
     'a relative class and no method' => ["'self::'", ['self', null]],
     'a named class' => ["'Foo::bar'", null],
     '[$this, m]' => ["[\$this, 'writer']", null],

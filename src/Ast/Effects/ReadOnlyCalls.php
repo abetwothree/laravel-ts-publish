@@ -16,6 +16,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use PhpParser\Node;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\CallLike;
@@ -179,7 +180,7 @@ final class ReadOnlyCalls
 
     /**
      * The class keyword, lowercased, and the method of a callable relative to the subject, the method null where the
-     * source spells none; null for any other value.
+     * source spells none, as in an open array whose keys may make a keyword item its class; null for any other value.
      *
      * @return array{string, string|null}|null
      */
@@ -192,12 +193,20 @@ final class ReadOnlyCalls
         }
 
         $pair = $node instanceof Array_ ? CallablePair::of($node) : null;
-        $class = $pair instanceof CallablePair ? $pair->holder : null;
-        $method = $pair instanceof CallablePair ? $pair->method : null;
 
-        return $class instanceof String_ && in_array(strtolower($class->value), ['self', 'static', 'parent'], true)
-            ? [strtolower($class->value), $method instanceof String_ ? $method->value : null]
+        if ($pair instanceof CallablePair) {
+            $keyword = self::relativeKeyword($pair->holder);
+            $method = $pair->method instanceof String_ ? $pair->method->value : null;
+
+            return $keyword === null ? null : [$keyword, $method];
+        }
+
+        $holder = $node instanceof Array_ && $pair === false
+            ? array_find($node->items, static fn (ArrayItem $one): bool => self::relativeKeyword($one->value) !== null)
             : null;
+        $keyword = $holder === null ? null : self::relativeKeyword($holder->value);
+
+        return $keyword === null ? null : [$keyword, null];
     }
 
     /**
@@ -321,6 +330,16 @@ final class ReadOnlyCalls
                 : null,
             array_filter($calls, static fn (MethodCall|NullsafeMethodCall $call): bool => CallableTargets::isThis($call->var)),
         ));
+    }
+
+    /**
+     * The class keyword, lowercased, a string spells: `self`, `static` or `parent`; null for any other value.
+     */
+    private static function relativeKeyword(Expr $value): ?string
+    {
+        $keyword = $value instanceof String_ ? strtolower($value->value) : null;
+
+        return in_array($keyword, ['self', 'static', 'parent'], true) ? $keyword : null;
     }
 
     /**

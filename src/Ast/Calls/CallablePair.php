@@ -26,8 +26,8 @@ final readonly class CallablePair
     private function __construct(public Expr $holder, public Expr $method) {}
 
     /**
-     * The pair an array literal holds; false where a computed key, an unpacked item or a reference leaves its keys or
-     * values open, so it may be one; null where it holds a key besides 0 and 1, or lacks one of them.
+     * The pair an array literal holds; false where a computed key or an unpacked item leaves its keys open, so it may
+     * be one; null where it holds a key besides 0 and 1, or lacks one of them.
      */
     public static function of(Array_ $array): self|false|null
     {
@@ -53,8 +53,6 @@ final readonly class CallablePair
             if (array_diff_key($slots, self::KEYS) !== []) {
                 return null;
             }
-
-            $open = $open || $item->byRef;
         }
 
         return match (true) {
