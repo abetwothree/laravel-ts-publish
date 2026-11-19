@@ -53,6 +53,9 @@ final class VariantReader
     /** @var array<int, ConditionalArms|null> the arms each expression hands over, by its object id, read once */
     private array $arms = [];
 
+    /** @var list<string> the picked keys with an arm that throws, whose guards decide which values the group sends */
+    private array $droppers = [];
+
     /**
      * Read the groups of one discriminant.
      *
@@ -106,7 +109,13 @@ final class VariantReader
                 static fn (): bool => false,
             );
 
-            if ($group !== null && ! self::rewritten($array, $keys, $group->keys, $discriminant['read'], $scope)) {
+            if ($group !== null && ! self::rewritten(
+                $array,
+                $keys,
+                [...$group->keys, ...$reader->droppers],
+                $discriminant['read'],
+                $scope,
+            )) {
                 $groups[] = $group;
                 $owned += array_fill_keys($group->keys, true);
             }
@@ -236,20 +245,20 @@ final class VariantReader
     }
 
     /**
-     * Whether an item from the group's first key to its last may write the discriminant's read, or a read it is a
-     * member of, so a guard after it may test another value than the discriminant sent (InterveningWrites).
+     * Whether an item from the first of the group's keys and droppers to the last may write the discriminant's read, or
+     * a read it is a member of, so a guard may test another value than the discriminant sends (InterveningWrites).
      *
      * @param  list<SoleKey>  $keys
-     * @param  list<string>  $grouped
+     * @param  list<string>  $spanned  the group's keys and the droppers
      */
     private static function rewritten(
         Array_ $array,
         array $keys,
-        array $grouped,
+        array $spanned,
         ReadPath $read,
         AnalysisScope $scope,
     ): bool {
-        $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $grouped, true)), 2);
+        $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $spanned, true)), 2);
 
         if ($at === []) {
             return false;
@@ -383,7 +392,8 @@ final class VariantReader
     }
 
     /**
-     * The group of keys this discriminant decides, or null where none follows it or an arm one takes cannot stand.
+     * The group of keys this discriminant decides, or null where none follows it or an arm one takes cannot stand,
+     * recording its droppers.
      *
      * @param  list<SoleKey>  $keys  the literal's sole keys, in item order
      * @param  array<string, true>  $owned  the keys an earlier discriminant's group holds
@@ -395,8 +405,14 @@ final class VariantReader
         foreach ($keys as [$name, $value]) {
             $picked = isset($owned[$name]) || ! $this->mayFollow($value) ? null : $this->picks($value);
 
-            if ($picked !== null) {
-                $picks[$name] = $picked;
+            if ($picked === null) {
+                continue;
+            }
+
+            $picks[$name] = $picked;
+
+            if (array_any($picked['arms'], static fn (ConditionalArm $arm): bool => $arm->throws)) {
+                $this->droppers[] = $name;
             }
         }
 

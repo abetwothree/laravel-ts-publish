@@ -1,3 +1,5 @@
+import type { PriorityType } from '../../../enums';
+
 /**
  * Literals whose discriminant a write changes between two of its reads, where the write check does not see it yet: a
  * by-reference argument, a callable a helper calls, a write before a key that drops a value, a call inside an arm, a
@@ -13,8 +15,8 @@ export interface HiddenWritesResource
     by_reference: { pinned: boolean; reset: boolean; detail: string | null };
     by_reference_in_helper: { pinned: boolean; reset: boolean; detail: string | null };
     callable_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
-    write_before_dropper: { maybe: true; detail: string; reset: boolean; check: string } | { maybe: false; detail: null; reset: boolean; check: string };
-    write_before_dropper_enum: { priority: 0 | 2 | 3; detail: string; reset: boolean; check: string } | { priority: 1; detail: null; reset: boolean; check: string };
+    write_before_dropper: { maybe: boolean | null; detail: string | null; reset: boolean; check: string };
+    write_before_dropper_enum: { priority: PriorityType | null; detail: string | null; reset: boolean; check: string };
     call_in_arm: { is_pinned: boolean; changed: string | null; detail: string | null };
     hooked: { flag: true; detail: string } | { flag: false; detail: number };
     handed_model: { is_pinned: boolean; reset: boolean; detail: string | null };

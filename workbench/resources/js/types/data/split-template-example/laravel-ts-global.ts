@@ -6289,8 +6289,8 @@ declare global {
             by_reference: { pinned: boolean; reset: boolean; detail: string | null };
             by_reference_in_helper: { pinned: boolean; reset: boolean; detail: string | null };
             callable_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
-            write_before_dropper: { maybe: true; detail: string; reset: boolean; check: string } | { maybe: false; detail: null; reset: boolean; check: string };
-            write_before_dropper_enum: { priority: 0 | 2 | 3; detail: string; reset: boolean; check: string } | { priority: 1; detail: null; reset: boolean; check: string };
+            write_before_dropper: { maybe: boolean | null; detail: string | null; reset: boolean; check: string };
+            write_before_dropper_enum: { priority: app.enums.PriorityType | null; detail: string | null; reset: boolean; check: string };
             call_in_arm: { is_pinned: boolean; changed: string | null; detail: string | null };
             hooked: { flag: true; detail: string } | { flag: false; detail: number };
             handed_model: { is_pinned: boolean; reset: boolean; detail: string | null };
@@ -6300,6 +6300,19 @@ declare global {
             static_writer: { is_pinned: boolean; reset: boolean; detail: string | null };
             local_callable_in_when: { is_pinned: boolean; cleared: boolean; detail: string | null };
             pair_holding_subject: { is_pinned: boolean; reset: boolean; detail: string | null };
+        }
+        /**
+         * A top-level literal whose discriminants a call inside an arm writes between two of their reads: `changed` clears
+         * the pin before `detail` reads it, and the arm `level` takes for `null` sets the priority before `check`, which
+         * throws for `null`, reads it. PHP can send a value no arm admits, so the literal publishes flat (GH-174).
+         */
+        export interface HiddenWritesTopResource {
+            is_pinned: boolean;
+            changed: string | null;
+            detail: string | null;
+            priority: app.enums.PriorityType | null;
+            level: string | boolean | null;
+            check: string;
         }
         /**
          * GH-157's escape hatch: the keys publish flat, and a union written by hand is intersected with them, so `is_pinned`

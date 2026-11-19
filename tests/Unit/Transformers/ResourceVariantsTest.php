@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapOrReadPinnedR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedFlagCastResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Resources\Discriminated\HiddenWritesTopResource;
 use Workbench\App\Http\Resources\Discriminated\NumericKeysResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
@@ -226,4 +227,18 @@ it('publishes flat a literal whose read a helper, the model or a `->` write rewr
         'by_arrow' => '{ enabled: boolean | null; off: boolean; title: string | null }',
         'by_reader' => '{ is_pinned: true; label: string; title: string } | { is_pinned: false; label: string; title: null }',
     ]);
+});
+
+// `level`'s `null` arm sets the priority before `check` reads it, so `check` may pass for a `null` PHP still sends.
+it('publishes flat a top-level literal whose read a call in an arm rewrites before a later guard', function () {
+    $data = variantsData(HiddenWritesTopResource::class);
+
+    expect(variantsProps($data))->toBe([
+        'is_pinned' => 'boolean',
+        'changed' => 'string | null',
+        'detail' => 'string | null',
+        'priority' => 'PriorityType | null',
+        'level' => 'string | boolean | null',
+        'check' => 'string',
+    ])->and($data->variants)->toBe([]);
 });

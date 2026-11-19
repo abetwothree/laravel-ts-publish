@@ -190,6 +190,19 @@ it('keeps a group past calls that only read the model or the read itself', funct
     expect(variantsOf('model_readers'))->toBe(['status' => [['0', ['v' => 'null']], ['1', ['v' => 'string']]]]);
 });
 
+// `check` drops `null` from the values sent, so the write scan reaches it; `z` neither drops a value nor differs.
+it('keeps a group a later key that throws for a value follows, with no write before that key', function () {
+    expect(variantsOf('dropper_after_group'))->toBe(['priority' => [['0', ['v' => 'string']], ['1 | 2 | 3', ['v' => 'null']]]]);
+});
+
+// A call in the last guard's arm runs after that guard, and every earlier guard has read the discriminant by then.
+it('keeps a group past a writing call in the arm of the last key that reads the discriminant as a guard', function (string $cell, array $variants) {
+    expect(variantsOf($cell))->toBe($variants);
+})->with([
+    'the last dependent' => ['call_in_last_arm', ['pinned' => [['true', ['a' => 'string', 'v' => 'boolean']], ['false', ['a' => 'null', 'v' => 'null']]]]],
+    'a key after the group that throws for a value' => ['call_in_dropper_arm', ['priority' => [['0', ['v' => 'string']], ['1 | 2 | 3', ['v' => 'null']]]]],
+]);
+
 // Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
 it('selects a value through eight levels of arms at most', function () {
     expect(variantsOf('nine_levels'))->toBe(['pinned' => [['true', ['v' => 'string | number']], ['false', ['v' => 'null']]]]);
@@ -218,6 +231,10 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'a call no class of the resource declares' => 'forwarded_call_kept',
     'a call on the object holding the read' => 'receiver_call_kept',
     'a closure call' => 'closure_call_kept',
+    'a writing call in an earlier dependent\'s arm' => 'call_in_earlier_arm_kept',
+    'a write between the last dependent and a key that throws for a value' => 'write_before_dropper_kept',
+    'a write before a numeric key that throws for a value' => 'numeric_dropper_kept',
+    'a write between a key that throws for a value and the discriminant' => 'dropper_leads_kept',
     'index_signature',
     'spread_writes',
     'two_returns',

@@ -590,6 +590,126 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A read assigned between the group's last key and a later key that throws for one of its values.
+     *
+     * @return array<string, mixed>
+     */
+    public function writeBeforeDropperKept(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'x' => $this->priority = Priority::Low,
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+        ];
+    }
+
+    /**
+     * A read assigned between the group's last key and a later numeric key that throws for one of its values.
+     *
+     * @return array<string, mixed>
+     */
+    public function numericDropperKept(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'x' => $this->priority = Priority::Low,
+            '1' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+        ];
+    }
+
+    /**
+     * A read assigned between a key that throws for one of its values and the key that sends it.
+     *
+     * @return array<string, mixed>
+     */
+    public function dropperLeadsKept(): array
+    {
+        return [
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+            'x' => $this->priority = null,
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+        ];
+    }
+
+    /**
+     * A key that throws for one of the read's values after the group, past a call that writes nothing, then a write of
+     * the read and a guard whose arms send one type.
+     *
+     * @return array<string, mixed>
+     */
+    public function dropperAfterGroup(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'x' => $this->label(),
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+            'y' => $this->clearPriority(),
+            'z' => $this->priority === null ? 'unset' : 'set',
+        ];
+    }
+
+    /**
+     * A helper writing the read, called in an arm of a key a later key of the group follows.
+     *
+     * @return array<string, mixed>
+     */
+    public function callInEarlierArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'a' => $this->is_pinned ? $this->clearPin() : null,
+            'v' => $this->is_pinned ? $this->title : null,
+        ];
+    }
+
+    /**
+     * A helper writing the read, called in an arm of the group's last key, once every other guard has read it.
+     *
+     * @return array<string, mixed>
+     */
+    public function callInLastArm(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'a' => $this->is_pinned ? $this->title : null,
+            'v' => $this->is_pinned ? $this->clearPin() : null,
+        ];
+    }
+
+    /**
+     * A helper writing the read, called in an arm of a key after the group that throws for one of its values.
+     *
+     * @return array<string, mixed>
+     */
+    public function callInDropperArm(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => $this->clearPriority(),
+            },
+        ];
+    }
+
+    /**
      * Calls between the keys that write no read: a helper, a static helper, a call on another read, a conditional
      * helper of Laravel's and a `new`.
      *
@@ -747,6 +867,16 @@ final class VariantFormsResource extends JsonResource
         $this->resource->is_pinned = false;
 
         return true;
+    }
+
+    /**
+     * Clears the priority, writing the read the priority keys send.
+     */
+    private function clearPriority(): string
+    {
+        $this->resource->priority = null;
+
+        return 'cleared';
     }
 
     /**

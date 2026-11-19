@@ -14253,12 +14253,12 @@
                 },
                 {
                     "name": "write_before_dropper",
-                    "type": "{ maybe: true; detail: string; reset: boolean; check: string } | { maybe: false; detail: null; reset: boolean; check: string }",
+                    "type": "{ maybe: boolean | null; detail: string | null; reset: boolean; check: string }",
                     "optional": false
                 },
                 {
                     "name": "write_before_dropper_enum",
-                    "type": "{ priority: 0 | 2 | 3; detail: string; reset: boolean; check: string } | { priority: 1; detail: null; reset: boolean; check: string }",
+                    "type": "{ priority: PriorityType | null; detail: string | null; reset: boolean; check: string }",
                     "optional": false
                 },
                 {
@@ -14304,6 +14304,41 @@
                 {
                     "name": "pair_holding_subject",
                     "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\HiddenWritesTopResource": {
+            "name": "HiddenWritesTopResource",
+            "properties": [
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "changed",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "detail",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "level",
+                    "type": "string | boolean | null",
+                    "optional": false
+                },
+                {
+                    "name": "check",
+                    "type": "string",
                     "optional": false
                 }
             ]
