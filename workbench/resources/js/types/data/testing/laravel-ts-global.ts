@@ -6432,8 +6432,8 @@ declare global {
             reading_helper: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null };
             url_of_model: { is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null };
             gate_on_model: { is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null };
-            resource_of_model: { is_pinned: true; card: workbench.app.http.resources.UserResource; detail: string } | { is_pinned: false; card: workbench.app.http.resources.UserResource; detail: null };
-            resource_of_model_make: { is_pinned: true; author: workbench.app.http.resources.UserResource; detail: string } | { is_pinned: false; author: workbench.app.http.resources.UserResource; detail: null };
+            resource_of_model: { is_pinned: true; card: workbench.app.http.resources.PostResource; detail: string } | { is_pinned: false; card: workbench.app.http.resources.PostResource; detail: null };
+            resource_of_model_make: { is_pinned: true; card: workbench.app.http.resources.PostResource; detail: string } | { is_pinned: false; card: workbench.app.http.resources.PostResource; detail: null };
             callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
             when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
             class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };

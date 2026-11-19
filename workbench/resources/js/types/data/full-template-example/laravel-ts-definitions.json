@@ -14593,12 +14593,12 @@
                 },
                 {
                     "name": "resource_of_model",
-                    "type": "{ is_pinned: true; card: UserResource; detail: string } | { is_pinned: false; card: UserResource; detail: null }",
+                    "type": "{ is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null }",
                     "optional": false
                 },
                 {
                     "name": "resource_of_model_make",
-                    "type": "{ is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null }",
+                    "type": "{ is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null }",
                     "optional": false
                 },
                 {

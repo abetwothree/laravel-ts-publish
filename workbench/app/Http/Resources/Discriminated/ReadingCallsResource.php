@@ -10,6 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
 
@@ -97,12 +98,12 @@ class ReadingCallsResource extends JsonResource
             ],
             'resource_of_model' => [
                 'is_pinned' => $this->is_pinned,
-                'card' => new UserResource($this->resource),
+                'card' => new PostResource($this->resource),
                 'detail' => $this->is_pinned ? $this->title : null,
             ],
             'resource_of_model_make' => [
                 'is_pinned' => $this->is_pinned,
-                'author' => UserResource::make($this->resource),
+                'card' => PostResource::make($this->resource),
                 'detail' => $this->is_pinned ? $this->title : null,
             ],
             'callable_to_map' => [
