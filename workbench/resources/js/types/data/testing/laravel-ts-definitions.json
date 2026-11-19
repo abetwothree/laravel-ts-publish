@@ -14628,7 +14628,7 @@
                 },
                 {
                     "name": "nested_closure_return",
-                    "type": "{ is_pinned: boolean; ones: number[]; detail: string | null }",
+                    "type": "{ is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null }",
                     "optional": false
                 }
             ]

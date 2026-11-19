@@ -6439,7 +6439,7 @@ declare global {
             class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
             untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
             static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
-            nested_closure_return: { is_pinned: boolean; ones: number[]; detail: string | null };
+            nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
         }
         /**
          * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of

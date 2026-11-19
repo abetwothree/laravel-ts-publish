@@ -128,6 +128,11 @@ function closureReachRows(): array
         'row 9, called: a local a pipe calls' => ['$this->title |> $callback', true],
         'row 10, callback: an arrow function that writes' => ['$this->when(true, fn () => $this->writer())', true],
         'row 10, handed: an arrow function that reads' => ['array_map(fn () => $this->reader(), [1])', false],
+        'row 10, handed: a closure whose nested closure returns the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; return 1; })',
+            false,
+        ],
+        'row 10, handed: a closure returning the model' => ['PinWriter::unpin(function () { return $this->resource; })', true],
         'row 11, callback: a writer\'s callable' => ['$this->when(true, $this->writer(...))', true],
         'row 11, handed: a self:: reader\'s callable' => ["array_map(self::reader(...), ['a'])", false],
         'row 12, callback: a model method\'s callable' => ['$this->when(true, $this->resource->touch(...))', true],

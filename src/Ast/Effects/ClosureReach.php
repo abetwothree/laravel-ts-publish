@@ -60,7 +60,6 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Return_;
-use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionType;
 
@@ -198,11 +197,7 @@ final readonly class ClosureReach
                 $holds,
             ),
             $yields !== null => array_any($yields, $holds),
-            $value instanceof ArrowFunction => $holds($value->expr),
-            $value instanceof ClosureExpr => array_any(
-                new NodeFinder()->findInstanceOf($value->stmts, Return_::class),
-                fn (Return_ $return): bool => $holds($return->expr),
-            ),
+            self::isClosure($value) => array_any(self::closureReturns($value), $holds),
             default => $this->mayRun($value, ValueUse::Handed, $declaring, $inBody),
         };
     }

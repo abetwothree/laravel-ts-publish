@@ -144,6 +144,10 @@ function interveningCalls(): array
             'array_map($this->keyedWriterPair(), [1])',
             true,
         ],
+        'a closure returning the model, handed to array_map()' => [
+            'array_map(function () { return $this->resource; }, [1])',
+            true,
+        ],
         'a method of $this named by a local' => ['array_map([$this, $name], [1])', true],
         'a writer named by [self::class, …]' => ['array_map([self::class, \'writer\'], [1])', true],
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
@@ -236,6 +240,10 @@ function interveningCalls(): array
         'a reader named by \'self::\'' => ["array_map('self::reader', ['a'])", false],
         'a reader named by [$this, …]' => ["array_map([\$this, 'reader'], ['a'])", false],
         'a reader named by a pair keyed out of order' => ["array_map([1 => 'reader', 0 => \$this], ['a'])", false],
+        'a closure whose nested closure returns $this, which nothing calls' => [
+            'array_map(function () { $f = function () { return $this; }; return 1; }, [1])',
+            false,
+        ],
         'a named ancestor\'s reader' => ['InterveningBase::baseReader()', false],
         'a parent:: reader' => ['parent::baseReader()', false],
         'new self of the subject' => ['new self($this->resource)', false],
