@@ -34,6 +34,7 @@ function interveningCalls(): array
             '$this->clearFlag($this->resource->is_pinned)',
             true,
         ],
+        'a by-reference argument through ?->' => ['$this?->clearFlag($this->pinned)', true, '$this->pinned'],
         'a literal\'s reference unpacked into a later by-reference parameter' => [
             'self::clearAfter(...[0, &$this->pinned])',
             true,

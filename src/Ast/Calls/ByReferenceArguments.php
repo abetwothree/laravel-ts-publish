@@ -16,6 +16,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -30,7 +31,7 @@ use ReflectionParameter;
 
 /**
  * The arguments a call passes to a by-reference parameter of the callee it names: a function, a method of `$this`,
- * `self`, `static`, `parent` or a named class, or a named class's constructor. The property default scan and the local
+ * through `->` or `?->`, of `self`, `static`, `parent` or a named class, or a named class's constructor. The property default scan and the local
  * write scan both read a call's writes through it, and the local write scan what a built-in leaves in each; the
  * discriminant's write check also reads which arguments a built-in may run.
  *
@@ -251,7 +252,8 @@ final class ByReferenceArguments
                 return $this->namedClass($call->class, $declaring, $runtime)?->getConstructor();
             }
 
-            if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
+            if (($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
+                && $call->var instanceof Variable && $call->var->name === 'this'
                 && $call->name instanceof Identifier && $runtime !== null && $declaring !== null
             ) {
                 $method = $call->name->toString();

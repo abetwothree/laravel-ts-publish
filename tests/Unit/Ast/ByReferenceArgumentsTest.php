@@ -54,6 +54,7 @@ it('reports the arguments a call passes to a by-reference parameter of the calle
     'a by-value function' => ['strlen($s);', []],
     'a function nobody declares' => ['missing_function($a);', []],
     'a method of $this' => ['$this->fill($a);', ['$a']],
+    'a method of $this through ?->' => ['$this?->fill($a);', ['$a']],
     // An unpacked array fills the parameter at its position and each after it; a literal's other elements are copies.
     'a literal\'s reference unpacked into a later parameter' => ['preg_match(...["/x/", $s, &$m]);', ['$m']],
     'a literal\'s copy unpacked into a later parameter' => ['preg_match(...["/x/", $s, $m]);', []],
