@@ -37,10 +37,11 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
-use ReflectionParameter;
+use WeakMap;
 
 /**
  * Whether the items of a literal's write window may change what its discriminant's read holds, so a guard after the
@@ -50,6 +51,8 @@ use ReflectionParameter;
  * with the calls it makes, since the last item's calls run after its own guard. A call may write where it hands its
  * callee the subject or an object holding the read, runs a `$this` method whose body may write, calls a model method
  * not known to read, or runs code no scan follows. On an API resource `$this->x` reads `$this->resource->x`.
+ *
+ * @phpstan-import-type CallBinding from ByReferenceArguments
  *
  * @internal
  */
@@ -69,6 +72,9 @@ final class InterveningWrites
 
     private readonly ClosureReach $closures;
 
+    /** @var WeakMap<CallLike, array<string, CallBinding|null>> each call's binding, by the class `self` names there */
+    private WeakMap $bindings;
+
     /**
      * A scan for one read, in a scope whose `$this` is an instance of $runtime.
      *
@@ -81,7 +87,13 @@ final class InterveningWrites
     ) {
         $this->readSteps = $this->steps($read);
         $this->references = resolve(ByReferenceArguments::class);
-        $this->reads = new BodyReads(resolve(MethodLocator::class));
+        $this->bindings = new WeakMap;
+        $this->reads = new BodyReads(
+            resolve(MethodLocator::class),
+            $runtime->getName().($proxied ? '@proxied' : '').'@'.implode('->', $this->readSteps),
+            $this->bodyMayChange(...),
+            $this->returnedMayRun(...),
+        );
         $this->targets = new CallableTargets($runtime);
         $this->closures = new ClosureReach(
             $this->targets,
@@ -106,7 +118,7 @@ final class InterveningWrites
         return array_any($items, static fn (ArrayItem $item, int $index): bool => $scan->mayChange(
             [$item],
             $scope->declaringClass,
-            0,
+            false,
             $index !== $last,
         ));
     }
@@ -171,40 +183,52 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a parameter's declared type is or holds `callable` or `Closure`.
-     */
-    private static function declaresCallable(ReflectionParameter $parameter): bool
-    {
-        $names = preg_split('/[|&()?\s]+/', strtolower((string) $parameter->getType()), flags: PREG_SPLIT_NO_EMPTY);
-
-        return array_intersect(['callable', 'closure'], $names ?: []) !== [];
-    }
-
-    /**
      * Whether nodes may change the read through a write they spell or an argument they bind by reference, or, where
      * $calls holds, through code they run.
      *
      * @param  array<Node>  $nodes
      * @param  ReflectionClass<object>  $declaring  the class `self` names in them
-     * @param  int  $depth  how many `$this` method bodies down they sit, none for the window's items
+     * @param  bool  $inBody  whether they sit in a `$this` method's body rather than in the window's items
      */
-    private function mayChange(array $nodes, ReflectionClass $declaring, int $depth, bool $calls): bool
+    private function mayChange(array $nodes, ReflectionClass $declaring, bool $inBody, bool $calls): bool
     {
-        return new NodeFinder()->findFirst($nodes, fn (Node $node): bool => $this->writes($node, $depth)
-            || ($node instanceof CallLike && $this->bindsByReference($node, $declaring, $depth))
+        return new NodeFinder()->findFirst($nodes, fn (Node $node): bool => $this->writes($node, $inBody)
+            || ($node instanceof CallLike && $this->bindsByReference($node, $declaring, $inBody))
             || ($calls && match (true) {
-                $node instanceof CallLike => $this->callMayWrite($node, $declaring, $depth),
-                $node instanceof Pipe => $this->pipeMayWrite($node, $declaring, $depth),
+                $node instanceof CallLike => $this->callMayWrite($node, $declaring, $inBody),
+                $node instanceof Pipe => $this->pipeMayWrite($node, $declaring, $inBody),
                 default => $this->runsUnseen($node),
             })) !== null;
     }
 
     /**
+     * Whether a `$this` method's body may change the read, every call in it counted.
+     *
+     * @param  array<Stmt>  $body
+     * @param  ReflectionClass<object>  $declaring  the class `self` names in it
+     */
+    private function bodyMayChange(array $body, ReflectionClass $declaring): bool
+    {
+        return $this->mayChange($body, $declaring, true, true);
+    }
+
+    /**
+     * Whether a value a `$this` method's body returns may run code that changes the read, used as $use.
+     *
+     * @param  array<Stmt>  $body
+     * @param  ReflectionClass<object>  $declaring  the class `self` names in it
+     */
+    private function returnedMayRun(array $body, ReflectionClass $declaring, ValueUse $use): bool
+    {
+        return $this->closures->returnedMayRun($body, $use, $declaring);
+    }
+
+    /**
      * Whether a node spells a write that reaches the read.
      */
-    private function writes(Node $node, int $depth): bool
+    private function writes(Node $node, bool $inBody): bool
     {
-        return array_any(self::writtenPaths($node), fn (ReadPath $written): bool => $this->reaches($written, $depth));
+        return array_any(self::writtenPaths($node), fn (ReadPath $written): bool => $this->reaches($written, $inBody));
     }
 
     /**
@@ -212,13 +236,13 @@ final class InterveningWrites
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function bindsByReference(CallLike $call, ReflectionClass $declaring, int $depth): bool
+    private function bindsByReference(CallLike $call, ReflectionClass $declaring, bool $inBody): bool
     {
-        return ! $call->isFirstClassCallable() && array_any(
-            $this->references->of($call, $call->getArgs(), $declaring, $this->runtime),
+        return array_any(
+            $this->binding($call, $declaring)['byReference'] ?? [],
             fn (Expr $bound): bool => array_any(
                 self::targetPaths($bound),
-                fn (ReadPath $path): bool => $this->reaches($path, $depth),
+                fn (ReadPath $path): bool => $this->reaches($path, $inBody),
             ),
         );
     }
@@ -230,7 +254,7 @@ final class InterveningWrites
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function callMayWrite(CallLike $call, ReflectionClass $declaring, int $depth): bool
+    private function callMayWrite(CallLike $call, ReflectionClass $declaring, bool $inBody): bool
     {
         if ($call->isFirstClassCallable()) {
             return false;
@@ -243,12 +267,12 @@ final class InterveningWrites
         $onThis = $this->targets->thisMethod($call, $declaring);
 
         if ($onThis !== null) {
-            return $this->thisCallMayWrite($call, $onThis[0], $onThis[1], $declaring, $depth);
+            return $this->thisCallMayWrite($call, $onThis[0], $onThis[1], $declaring, $inBody);
         }
 
         return ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && $call->name instanceof Identifier
-            ? $this->objectCallMayWrite($call, $call->name->toString(), $declaring, $depth)
-            : ! $this->knownToRead($call, $declaring) && $this->handsSubject($call, $declaring, $depth);
+            ? $this->objectCallMayWrite($call, $call->name->toString(), $declaring, $inBody)
+            : ! $this->knownToRead($call, $declaring) && $this->handsSubject($call, $declaring, $inBody);
     }
 
     /**
@@ -256,10 +280,10 @@ final class InterveningWrites
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function pipeMayWrite(Pipe $pipe, ReflectionClass $declaring, int $depth): bool
+    private function pipeMayWrite(Pipe $pipe, ReflectionClass $declaring, bool $inBody): bool
     {
-        return $this->closures->hands($pipe->left, $declaring, $depth, false)
-            || $this->closures->mayRun($pipe->right, ValueUse::Called, $declaring, $depth);
+        return $this->closures->hands($pipe->left, $declaring, $inBody, false)
+            || $this->closures->mayRun($pipe->right, ValueUse::Called, $declaring, $inBody);
     }
 
     /**
@@ -296,49 +320,28 @@ final class InterveningWrites
         ReflectionClass $class,
         string $method,
         ReflectionClass $declaring,
-        int $depth,
+        bool $inBody,
     ): bool {
         $helper = ReadOnlyCalls::helperOn($class, $method);
 
         return match (true) {
-            $helper !== null => $this->callbacksMayWrite(CallArguments::for($call, $helper), $declaring, $depth),
-            $class->hasMethod($method) && $this->handsSubject($call, $declaring, $depth) => true,
-            default => $this->methodMayWrite($class, $method, $depth),
+            $helper !== null => $this->callbacksMayWrite(CallArguments::for($call, $helper), $declaring, $inBody),
+            $class->hasMethod($method) && $this->handsSubject($call, $declaring, $inBody) => true,
+            default => $this->methodMayWrite($class, $method),
         };
     }
 
     /**
-     * Whether running a method on `$this` may change the read: through its body, or, where the class lacks it, as the
-     * model's method an API resource forwards it to.
+     * Whether running a method on `$this` may change the read: through its body, as BodyReads reads it, or, where the
+     * class lacks it, as the model's method an API resource forwards it to.
      *
      * @param  ReflectionClass<object>  $class
      */
-    private function methodMayWrite(ReflectionClass $class, string $method, int $depth): bool
+    private function methodMayWrite(ReflectionClass $class, string $method): bool
     {
         return $class->hasMethod($method)
-            ? $this->bodyMayWrite($class, $method, $depth)
+            ? $this->reads->mayWrite($class, $method)
             : ! $this->proxied || $this->modelCallMayWrite($method);
-    }
-
-    /**
-     * Whether the body of a method run on `$this` may change the read, as BodyReads reads it.
-     *
-     * @param  ReflectionClass<object>  $class
-     */
-    private function bodyMayWrite(ReflectionClass $class, string $method, int $depth): bool
-    {
-        return $this->reads->mayWrite(
-            'body',
-            $class,
-            $method,
-            $depth,
-            fn (array $body, ReflectionClass $declaring, int $inner): bool => $this->mayChange(
-                $body,
-                $declaring,
-                $inner,
-                true,
-            ),
-        );
     }
 
     /**
@@ -347,11 +350,11 @@ final class InterveningWrites
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function callbacksMayWrite(CallArguments $arguments, ReflectionClass $declaring, int $depth): bool
+    private function callbacksMayWrite(CallArguments $arguments, ReflectionClass $declaring, bool $inBody): bool
     {
         return $arguments->hasUnpack() || array_any(
             ReadOnlyCalls::callbacks($arguments),
-            fn (Expr $callback): bool => $this->closures->mayRun($callback, ValueUse::Callback, $declaring, $depth),
+            fn (Expr $callback): bool => $this->closures->mayRun($callback, ValueUse::Callback, $declaring, $inBody),
         );
     }
 
@@ -366,16 +369,16 @@ final class InterveningWrites
         MethodCall|NullsafeMethodCall $call,
         string $method,
         ReflectionClass $declaring,
-        int $depth,
+        bool $inBody,
     ): bool {
         if ($call->var instanceof CallLike && $call->var->isFirstClassCallable()) {
-            return $this->closures->mayRun($call->var, ValueUse::Called, $declaring, $depth)
-                || $this->handsSubject($call, $declaring, $depth);
+            return $this->closures->mayRun($call->var, ValueUse::Called, $declaring, $inBody)
+                || $this->handsSubject($call, $declaring, $inBody);
         }
 
-        return $this->holdsObject($call->var, $depth)
+        return $this->holdsObject($call->var, $inBody)
             ? $this->modelCallMayWrite($method)
-            : $this->handsSubject($call, $declaring, $depth);
+            : $this->handsSubject($call, $declaring, $inBody);
     }
 
     /**
@@ -414,59 +417,52 @@ final class InterveningWrites
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function handsSubject(CallLike $call, ReflectionClass $declaring, int $depth): bool
+    private function handsSubject(CallLike $call, ReflectionClass $declaring, bool $inBody): bool
     {
         if ($call->isFirstClassCallable() || $call->getArgs() === []) {
             return false;
         }
 
-        $run = $this->builtInCallables($call, $declaring);
+        $run = $this->binding($call, $declaring)['runnable'] ?? [];
 
         return array_any(
             $call->getArgs(),
-            fn (Arg $arg): bool => $this->closures->hands($arg->value, $declaring, $depth, in_array($arg, $run, true)),
+            fn (Arg $arg): bool => $this->closures->hands($arg->value, $declaring, $inBody, in_array($arg, $run, true)),
         );
     }
 
     /**
-     * The arguments a call binds to a parameter its callee declares `callable` or `Closure`, where PHP itself
-     * implements the callee, which may run them but sets no property of them.
+     * What a call binds, as ByReferenceArguments reads it, its callee looked up once a scan; null where it names none.
      *
      * @param  ReflectionClass<object>  $declaring
-     * @return list<Arg>
+     * @return CallBinding|null
      */
-    private function builtInCallables(CallLike $call, ReflectionClass $declaring): array
+    private function binding(CallLike $call, ReflectionClass $declaring): ?array
     {
-        $callee = $this->references->callee($call, $declaring, $this->runtime);
+        $bound = $this->bindings[$call] ?? [];
 
-        if ($callee === null || ! $callee->isInternal()) {
-            return [];
+        if (! array_key_exists($declaring->getName(), $bound)) {
+            $bound[$declaring->getName()] = $this->references->bind($call, $declaring, $this->runtime);
+            $this->bindings[$call] = $bound;
         }
 
-        $arguments = CallArguments::for($call, $callee);
-
-        return array_values(array_filter(array_map(
-            static fn (ReflectionParameter $parameter): ?Arg => self::declaresCallable($parameter)
-                ? $arguments->named($parameter->getName())
-                : null,
-            $callee->getParameters(),
-        )));
+        return $bound[$declaring->getName()];
     }
 
     /**
      * Whether an object read is the subject or an object the read is a member of; see holdsRead().
      */
-    private function holdsObject(Expr $object, int $depth): bool
+    private function holdsObject(Expr $object, bool $inBody): bool
     {
-        return $this->holdsRead(self::objectPath($object), $depth);
+        return $this->holdsRead(self::objectPath($object), $inBody);
     }
 
     /**
      * Whether a path is the subject or an object the read is a member of, where it names the variable the read does.
      */
-    private function holdsRead(?ReadPath $path, int $depth): bool
+    private function holdsRead(?ReadPath $path, bool $inBody): bool
     {
-        if ($path === null || ! $this->inScope($path, $depth)) {
+        if ($path === null || ! $this->inScope($path, $inBody)) {
             return false;
         }
 
@@ -479,19 +475,19 @@ final class InterveningWrites
      * Whether a write to a path reaches the read: the path is the read, or one the read is a member of at any depth,
      * whatever operator each step is read with, since PHP writes through `->` alone.
      */
-    private function reaches(ReadPath $written, int $depth): bool
+    private function reaches(ReadPath $written, bool $inBody): bool
     {
         $target = $this->steps($written);
 
-        return $this->inScope($written, $depth) && array_slice($this->readSteps, 0, count($target)) === $target;
+        return $this->inScope($written, $inBody) && array_slice($this->readSteps, 0, count($target)) === $target;
     }
 
     /**
      * Whether a path's root is the variable the read's is: any in the window, only `$this` in a method body.
      */
-    private function inScope(ReadPath $path, int $depth): bool
+    private function inScope(ReadPath $path, bool $inBody): bool
     {
-        return $depth === 0 || $path->root === 'this';
+        return ! $inBody || $path->root === 'this';
     }
 
     /**

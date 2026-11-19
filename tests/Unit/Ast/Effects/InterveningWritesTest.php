@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 
@@ -205,6 +206,31 @@ it('tells whether a call between the keys may change the discriminant', function
 ) {
     expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
 })->with(interveningCalls());
+
+it('reads each body once a publish run, whatever scan reaches it', function () {
+    $memo = resolve(AnalysisMemo::class);
+    $window = ['$this->middleTwice()', '$this->is_pinned ? 1 : null'];
+
+    expect(windowReach($window))->toBeFalse();
+
+    $computed = $memo->computations();
+
+    expect(windowReach($window))->toBeFalse()
+        ->and($memo->computations())->toBe($computed)
+        ->and(array_filter($memo->keys(), static fn (string $key): bool => str_starts_with($key, 'body-reads:')))
+        ->toHaveCount(5);
+});
+
+// The run's bodies are read once and replayed, so a window answers as a fresh run would after any other window.
+it('answers each window alike whatever windows the run read before it', function (int $seed) {
+    $rows = array_values(array_filter(interveningCalls(), static fn (array $row): bool => ! isset($row[2])));
+    mt_srand($seed);
+    shuffle($rows);
+
+    foreach ($rows as [$call, $mayWrite]) {
+        expect(windowReach([$call, '$this->is_pinned ? 1 : null']))->toBe($mayWrite, $call);
+    }
+})->with([1, 2]);
 
 // The window's first item reads untypedTwo() to the end; the returns of untypedOne() start a level further down.
 it('reads what a helper returns as deep as the scan reads a body, whatever an earlier item read', function () {

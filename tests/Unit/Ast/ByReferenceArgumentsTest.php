@@ -63,6 +63,51 @@ it('reports the arguments a call passes to a by-reference parameter of the calle
     'a first-class callable' => ['preg_match(...);', []],
 ]);
 
+/**
+ * What bind() reports for the one call a statement makes, each list printed as PHP; null where it names no callee.
+ *
+ * @return array{byReference: list<string>, runnable: list<string>}|null
+ */
+function byReferenceBindingOf(string $statement): ?array
+{
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0] ?? null;
+    $call = $stmt instanceof Expression ? $stmt->expr : null;
+
+    if (! $call instanceof CallLike) {
+        throw new LogicException("Not a call: {$statement}");
+    }
+
+    $subject = new ReflectionClass(ByReferenceDefaultsSubject::class);
+    $binding = resolve(ByReferenceArguments::class)->bind($call, $subject, $subject);
+    $printer = new Standard;
+
+    return $binding === null ? null : [
+        'byReference' => array_map(fn ($argument): string => $printer->prettyPrintExpr($argument), $binding['byReference']),
+        'runnable' => array_map(fn ($arg): string => $printer->prettyPrintExpr($arg->value), $binding['runnable']),
+    ];
+}
+
+it('binds a call\'s arguments by reference, and those a built-in may run, from one look-up of its callee', function (
+    string $statement,
+    ?array $binding,
+) {
+    expect(byReferenceBindingOf($statement))->toBe($binding);
+})->with([
+    'a built-in\'s callable parameter' => ['array_map($f, $a);', ['byReference' => [], 'runnable' => ['$f']]],
+    'a built-in\'s by-reference and callable parameters' => ['usort($a, $f);', ['byReference' => ['$a'], 'runnable' => ['$f']]],
+    'a built-in\'s Closure parameter, by name' => [
+        'Closure::bind(newThis: $o, closure: $f);',
+        ['byReference' => [], 'runnable' => ['$f']],
+    ],
+    'a built-in with neither' => ['strlen($s);', ['byReference' => [], 'runnable' => []]],
+    'a pointer function' => ['end($a);', ['byReference' => [], 'runnable' => []]],
+    'a method of $this, which PHP does not implement' => ['$this->fill($a);', ['byReference' => ['$a'], 'runnable' => []]],
+    'a call passing nothing, whatever it names' => ['$other->push();', ['byReference' => [], 'runnable' => []]],
+    'a receiver it cannot name' => ['$other->push($a);', null],
+    'a function nobody declares' => ['missing_function($a);', null],
+    'a first-class callable' => ['array_map(...);', ['byReference' => [], 'runnable' => []]],
+]);
+
 it('binds parent:: to the declaring class\'s parent, not the runtime class\'s', function () {
     $subject = new ReflectionClass(ByReferenceDefaultsSubject::class);
 

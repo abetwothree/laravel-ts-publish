@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\NativeTypeNames;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
@@ -55,6 +56,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
@@ -80,9 +82,10 @@ final readonly class ClosureReach
      * A judge for one scan.
      *
      * @param  ReflectionClass<object>  $runtime  the class `$this` and `static` name
-     * @param  Closure(ReflectionClass<object>, string, int): bool  $methodMayWrite  whether running a method on
-     *                                                                               `$this` may change the read
-     * @param  Closure(Expr, int): bool  $holdsRead  whether an object read is the subject or holds the read
+     * @param  Closure(ReflectionClass<object>, string): bool  $methodMayWrite  whether running a method on `$this`
+     *                                                                          may change the read
+     * @param  Closure(Expr, bool): bool  $holdsRead  whether an object read is the subject or holds the read, in a
+     *                                                method's body or in the window's items
      */
     public function __construct(
         private CallableTargets $targets,
@@ -109,25 +112,25 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the value is written
      */
-    public function mayRun(Expr $value, ValueUse $use, ReflectionClass $declaring, int $depth): bool
+    public function mayRun(Expr $value, ValueUse $use, ReflectionClass $declaring, bool $inBody): bool
     {
         $yields = self::yields($value);
 
         if ($yields !== null) {
-            return array_any($yields, fn (Expr $yielded): bool => $this->mayRun($yielded, $use, $declaring, $depth));
+            return array_any($yields, fn (Expr $yielded): bool => $this->mayRun($yielded, $use, $declaring, $inBody));
         }
 
         if ($value instanceof CallLike) {
-            return $this->callMayRun($value, $use, $declaring, $depth);
+            return $this->callMayRun($value, $use, $declaring, $inBody);
         }
 
         $spelled = $use !== ValueUse::Callback && self::spellsCallable($value);
 
         return match (true) {
             self::isClosure($value) => false,
-            $value instanceof Pipe => $this->pipeResultMayRun($value, $use, $declaring, $depth),
+            $value instanceof Pipe => $this->pipeResultMayRun($value, $use, $declaring, $inBody),
             $value instanceof Variable && ! CallableTargets::isThis($value) => $use !== ValueUse::Handed,
-            $spelled => $this->spelledMayRun($value, $declaring, $depth),
+            $spelled => $this->spelledMayRun($value, $declaring, $inBody),
             self::holdsNoClosure($value) => false,
             default => true,
         };
@@ -142,18 +145,18 @@ final readonly class ClosureReach
      * @param  bool  $runByBuiltIn  whether the value lands in a `callable` or `Closure` parameter of a callee PHP
      *                              itself implements, which may run it but sets no property of it
      */
-    public function hands(?Expr $value, ReflectionClass $declaring, int $depth, bool $runByBuiltIn): bool
+    public function hands(?Expr $value, ReflectionClass $declaring, bool $inBody, bool $runByBuiltIn): bool
     {
         if ($value === null) {
             return false;
         }
 
-        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $depth, $runByBuiltIn);
+        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $inBody, $runByBuiltIn);
         $yields = self::yields($value);
 
         return match (true) {
-            self::isPath($value) => ($this->holdsRead)($value, $depth),
-            $value instanceof Array_ => $this->handsArray($value, $declaring, $depth, $runByBuiltIn),
+            self::isPath($value) => ($this->holdsRead)($value, $inBody),
+            $value instanceof Array_ => $this->handsArray($value, $declaring, $inBody, $runByBuiltIn),
             $value instanceof Pipe && self::isClosure($value->right) => array_any(
                 self::closureReturns($value->right),
                 $holds,
@@ -164,8 +167,23 @@ final readonly class ClosureReach
                 new NodeFinder()->findInstanceOf($value->stmts, Return_::class),
                 fn (Return_ $return): bool => $holds($return->expr),
             ),
-            default => $this->mayRun($value, ValueUse::Handed, $declaring, $depth),
+            default => $this->mayRun($value, ValueUse::Handed, $declaring, $inBody),
         };
+    }
+
+    /**
+     * Whether a value a body returns, outside the closures it holds, may run code that changes the read, used as $use;
+     * BodyReads judges a `$this` method's returns by it.
+     *
+     * @param  array<Stmt>  $body
+     * @param  ReflectionClass<object>  $declaring  the class `self` names in the body
+     */
+    public function returnedMayRun(array $body, ValueUse $use, ReflectionClass $declaring): bool
+    {
+        return array_any(
+            self::returnedValues($body),
+            fn (Expr $returned): bool => $this->mayRun($returned, $use, $declaring, true),
+        );
     }
 
     /**
@@ -297,7 +315,7 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function handsArray(Array_ $value, ReflectionClass $declaring, int $depth, bool $runByBuiltIn): bool
+    private function handsArray(Array_ $value, ReflectionClass $declaring, bool $inBody, bool $runByBuiltIn): bool
     {
         $pair = self::pairsCallable($value);
         $runOnly = $pair && $runByBuiltIn && $value->items[1]->value instanceof String_;
@@ -305,8 +323,8 @@ final readonly class ClosureReach
         return array_any(
             $value->items,
             fn (ArrayItem $item): bool => ! ($runOnly && self::isPath($item->value))
-                && $this->hands($item->value, $declaring, $depth, $runByBuiltIn),
-        ) || ($pair && $this->mayRun($value, ValueUse::Handed, $declaring, $depth));
+                && $this->hands($item->value, $declaring, $inBody, $runByBuiltIn),
+        ) || ($pair && $this->mayRun($value, ValueUse::Handed, $declaring, $inBody));
     }
 
     /**
@@ -315,12 +333,12 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function callMayRun(CallLike $call, ValueUse $use, ReflectionClass $declaring, int $depth): bool
+    private function callMayRun(CallLike $call, ValueUse $use, ReflectionClass $declaring, bool $inBody): bool
     {
         return match (true) {
-            $call->isFirstClassCallable() => $this->firstClassMayRun($call, $declaring, $depth),
-            self::wrapsCallable($call) => $this->wrappedMayRun($call, $use, $declaring, $depth),
-            default => $this->resultMayRun($call, $use, $declaring, $depth),
+            $call->isFirstClassCallable() => $this->firstClassMayRun($call, $declaring, $inBody),
+            self::wrapsCallable($call) => $this->wrappedMayRun($call, $use, $declaring, $inBody),
+            default => $this->resultMayRun($call, $use, $declaring),
         };
     }
 
@@ -331,20 +349,20 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function firstClassMayRun(CallLike $callable, ReflectionClass $declaring, int $depth): bool
+    private function firstClassMayRun(CallLike $callable, ReflectionClass $declaring, bool $inBody): bool
     {
         if ($callable instanceof FuncCall) {
             return ! $callable->name instanceof Name
-                && $this->mayRun($callable->name, ValueUse::Called, $declaring, $depth);
+                && $this->mayRun($callable->name, ValueUse::Called, $declaring, $inBody);
         }
 
         $target = $this->targets->callableTarget($callable, $declaring);
 
         return match (true) {
-            is_array($target) => ($this->methodMayWrite)($target[0], $target[1], $depth),
+            is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
             default => ($callable instanceof MethodCall || $callable instanceof NullsafeMethodCall)
-                && ($this->holdsRead)($callable->var, $depth)
+                && ($this->holdsRead)($callable->var, $inBody)
                 && (! $callable->name instanceof Identifier
                     || ! ReadOnlyCalls::readsModel($callable->name->toString())),
         };
@@ -356,13 +374,13 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function wrappedMayRun(CallLike $call, ValueUse $use, ReflectionClass $declaring, int $depth): bool
+    private function wrappedMayRun(CallLike $call, ValueUse $use, ReflectionClass $declaring, bool $inBody): bool
     {
         $wrapped = $use === ValueUse::Callback ? ValueUse::Called : $use;
 
         return array_any(
             $call->getArgs(),
-            fn (Arg $arg): bool => $this->mayRun($arg->value, $wrapped, $declaring, $depth),
+            fn (Arg $arg): bool => $this->mayRun($arg->value, $wrapped, $declaring, $inBody),
         );
     }
 
@@ -372,18 +390,18 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function pipeResultMayRun(Pipe $pipe, ValueUse $use, ReflectionClass $declaring, int $depth): bool
+    private function pipeResultMayRun(Pipe $pipe, ValueUse $use, ReflectionClass $declaring, bool $inBody): bool
     {
         if (self::isClosure($pipe->right)) {
             return array_any(
                 self::closureReturns($pipe->right),
-                fn (Expr $returned): bool => $this->mayRun($returned, $use, $declaring, $depth),
+                fn (Expr $returned): bool => $this->mayRun($returned, $use, $declaring, $inBody),
             );
         }
 
         $target = $this->targets->callableTarget($pipe->right, $declaring);
 
-        return is_array($target) && $this->returnMayRun($target[0], $target[1], $use, $depth);
+        return is_array($target) && $this->returnMayRun($target[0], $target[1], $use);
     }
 
     /**
@@ -392,11 +410,11 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function resultMayRun(CallLike $call, ValueUse $use, ReflectionClass $declaring, int $depth): bool
+    private function resultMayRun(CallLike $call, ValueUse $use, ReflectionClass $declaring): bool
     {
         $onThis = $this->targets->thisMethod($call, $declaring);
 
-        return $onThis !== null && $this->returnMayRun($onThis[0], $onThis[1], $use, $depth);
+        return $onThis !== null && $this->returnMayRun($onThis[0], $onThis[1], $use);
     }
 
     /**
@@ -405,7 +423,7 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $class
      */
-    private function returnMayRun(ReflectionClass $class, string $method, ValueUse $use, int $depth): bool
+    private function returnMayRun(ReflectionClass $class, string $method, ValueUse $use): bool
     {
         if (! $class->hasMethod($method)) {
             return false;
@@ -413,16 +431,8 @@ final readonly class ClosureReach
 
         $type = $class->getMethod($method)->getReturnType();
 
-        return ($type === null || $this->typeMayHold($type, $use, $class)) && $this->reads->mayWrite(
-            'returns:'.$use->name,
-            $class,
-            $method,
-            $depth,
-            fn (array $body, ReflectionClass $declaring, int $inner): bool => array_any(
-                self::returnedValues($body),
-                fn (Expr $returned): bool => $this->mayRun($returned, $use, $declaring, $inner),
-            ),
-        );
+        return ($type === null || $this->typeMayHold($type, $use, $class))
+            && $this->reads->returnsMayRun($class, $method, $use);
     }
 
     /**
@@ -432,16 +442,16 @@ final readonly class ClosureReach
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function spelledMayRun(Expr $value, ReflectionClass $declaring, int $depth): bool
+    private function spelledMayRun(Expr $value, ReflectionClass $declaring, bool $inBody): bool
     {
         $target = $this->targets->callableTarget($value, $declaring);
         $holder = $value instanceof Array_ && count($value->items) === 2 ? $value->items[0]->value : null;
         $name = $holder === null ? null : $value->items[1]->value;
 
         return match (true) {
-            is_array($target) => ($this->methodMayWrite)($target[0], $target[1], $depth),
+            is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
-            default => $holder !== null && ! CallableTargets::isThis($holder) && ($this->holdsRead)($holder, $depth)
+            default => $holder !== null && ! CallableTargets::isThis($holder) && ($this->holdsRead)($holder, $inBody)
                 && (! $name instanceof String_ || ! ReadOnlyCalls::readsModel($name->value)),
         };
     }
@@ -454,7 +464,7 @@ final readonly class ClosureReach
      */
     private function typeMayHold(ReflectionType $type, ValueUse $use, ReflectionClass $class): bool
     {
-        $names = preg_split('/[|&()?\s]+/', strtolower((string) $type), flags: PREG_SPLIT_NO_EMPTY) ?: [];
+        $names = NativeTypeNames::of($type);
 
         if ($use === ValueUse::Callback) {
             return array_intersect(self::CLOSURE_HOLDERS, $names) !== [];
