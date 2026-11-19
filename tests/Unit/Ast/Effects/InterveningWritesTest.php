@@ -58,6 +58,12 @@ function interveningCalls(): array
             '$this->pinned',
         ],
         'a by-reference argument to a $this:: static method' => ['$this::clearAfter(0, $this->pinned)', true, '$this->pinned'],
+        'a reference an array literal holds, handed by value' => ['self::clearHeld([&$this->pinned])', true, '$this->pinned'],
+        'a reference an unpacked literal\'s array holds, handed by value' => [
+            'self::clearHeld(...[[&$this->pinned]])',
+            true,
+            '$this->pinned',
+        ],
         'a local handed to a method of an object no scan names' => ['$writer->clear($flag)', true, '$flag'],
         'another local handed to a method of an object no scan names' => ['$writer->clear($other)', false, '$flag'],
         'a local unpacked from a literal into a method of an object no scan names' => ['$writer->clear(...[$flag])', false, '$flag'],
@@ -252,6 +258,12 @@ function interveningCalls(): array
         ],
         'a literal\'s copy unpacked by name, after another unpacked literal' => [
             "self::clearAfter(...['unused' => 0], ...['flag' => \$this->pinned])",
+            false,
+            '$this->pinned',
+        ],
+        'a copy an array literal holds, handed by value' => ['self::clearHeld([$this->pinned])', false, '$this->pinned'],
+        'a copy an unpacked literal\'s array holds, handed by value' => [
+            'self::clearHeld(...[[$this->pinned]])',
             false,
             '$this->pinned',
         ],
@@ -478,6 +490,10 @@ it('reads the last item for its writes and the arguments it binds by reference, 
     'a by-reference argument in its arm' => ['$this->pinned ? $this->clearFlag($this->pinned) : null', true],
     'the read handed to a method of an object no scan names, in its arm' => ['$this->pinned ? $service->reset($this->pinned) : null', true],
     'the read handed to a method $this lacks, which takes it by value' => ['$this->pinned ? $this->missing($this->pinned) : null', false],
+    'a reference an array literal holds, handed to a method $this lacks' => [
+        '$this->pinned ? $this->missing([&$this->pinned]) : null',
+        true,
+    ],
     'another read handed to a method of an object no scan names' => ['$this->pinned ? $service->reset($this->title) : null', false],
 ]);
 

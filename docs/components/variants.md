@@ -105,7 +105,9 @@ PHP does, a string key by name and any other by position, and an item binds by r
 An unpack it cannot expand may bind any by-reference parameter left to it: one of a non-literal, of a literal with a
 computed key or a nested unpack, or of any literal after such an unpack, at a place no earlier argument fixes. A method
 of an object no scan names may take any argument by reference, but of an array literal only its `&` items, which reaches
-a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). On an API resource,
+a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). Any callee may write
+through an array literal's `&` items, at any depth, whatever parameter takes it, since PHP copies an array with its
+references (`ByReferenceArguments::heldReferences()`). On an API resource,
 `$this->resource->x` and `$this->x` are one path. Every item but the last may also change it through code it runs. In
 the last item, only the code PHP may run before one of its guards reads the discriminant counts. The reader hands over
 the guards it selected that item's arms by. Code written before such a read runs first, unless it sits in a ternary's

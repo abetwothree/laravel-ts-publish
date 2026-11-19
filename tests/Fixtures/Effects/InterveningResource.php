@@ -118,6 +118,18 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Clears the first flag of the array it takes by value, which reaches a flag the array holds by reference.
+     *
+     * @param  array<int, bool>  $flags
+     */
+    private static function clearHeld(array $flags): bool
+    {
+        $flags[0] = false;
+
+        return true;
+    }
+
+    /**
      * Clears the flag it is handed.
      */
     private function clearFlag(bool &$flag): bool

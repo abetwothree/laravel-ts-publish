@@ -89,6 +89,40 @@ final class ByReferenceArguments
     ];
 
     /**
+     * The values the `&` items of a call's array literals hold, at any depth: PHP copies an array with the references
+     * it holds, so the callee may write each whatever parameter takes the array; an unpacked literal's own items are
+     * arguments, which only a by-reference parameter takes as references.
+     *
+     * @param  array<Arg>  $args
+     * @return list<Expr>
+     */
+    public static function heldReferences(array $args): array
+    {
+        return array_merge(...array_map(
+            static fn (Arg $arg): array => $arg->unpack && $arg->value instanceof Array_
+                ? array_merge(...array_map(
+                    static fn (ArrayItem $item): array => self::arrayReferences($item->value),
+                    $arg->value->items,
+                ))
+                : self::arrayReferences($arg->value),
+            array_values($args),
+        ));
+    }
+
+    /**
+     * The values an array literal's `&` items hold, at any depth; none for any other value.
+     *
+     * @return list<Expr>
+     */
+    public static function arrayReferences(Expr $value): array
+    {
+        return $value instanceof Array_ ? array_merge(...array_map(
+            static fn (ArrayItem $item): array => $item->byRef ? [$item->value] : self::arrayReferences($item->value),
+            $value->items,
+        )) : [];
+    }
+
+    /**
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
      *
      * @param  array<Arg>  $passed  the call's arguments the caller asks about, matched by identity whatever their keys

@@ -205,15 +205,7 @@ final class InterveningWrites
      */
     private static function referencedValues(Expr $value): array
     {
-        if (! $value instanceof Array_) {
-            return [$value];
-        }
-
-        return array_merge(...array_map(static fn (ArrayItem $item): array => match (true) {
-            $item->byRef => [$item->value],
-            $item->value instanceof Array_ => self::referencedValues($item->value),
-            default => [],
-        }, $value->items));
+        return $value instanceof Array_ ? ByReferenceArguments::arrayReferences($value) : [$value];
     }
 
     /**
@@ -454,22 +446,24 @@ final class InterveningWrites
 
     /**
      * Whether a call binds the read, or a path it is a member of, to a by-reference parameter of the callee it names,
-     * or of a method of an object no scan names, which may take any argument by reference.
+     * or of a method of an object no scan names, which may take any argument by reference, or hands any callee it in
+     * a reference an array literal holds.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function bindsByReference(CallLike $call, ReflectionClass $declaring, bool $inBody): bool
     {
         $binding = $this->binding($call, $declaring);
+        $args = $call->isFirstClassCallable() ? [] : $call->getArgs();
         $unnamed = $binding === null && $this->bindsInPlace
             && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
             && ! ReadPath::isThis($call->var);
-        $byReference = $unnamed
-            ? array_merge(...array_map(
-                static fn (Arg $arg): array => self::referencedValues($arg->value),
-                $call->getArgs(),
-            ))
-            : $binding['byReference'] ?? [];
+        $byReference = [
+            ...($unnamed
+                ? array_merge(...array_map(static fn (Arg $arg): array => self::referencedValues($arg->value), $args))
+                : $binding['byReference'] ?? []),
+            ...ByReferenceArguments::heldReferences($args),
+        ];
 
         return array_any(
             $byReference,

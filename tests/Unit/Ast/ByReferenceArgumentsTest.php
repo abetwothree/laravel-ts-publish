@@ -91,6 +91,30 @@ it('reports the arguments a call passes to a by-reference parameter of the calle
     'a first-class callable' => ['preg_match(...);', []],
 ]);
 
+// PHP copies an array with the references it holds, so a callee writes through them whatever parameter takes it.
+it('reports the references a call\'s array literals hold, whatever parameter takes them', function (
+    string $statement,
+    array $held,
+) {
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0] ?? null;
+    $call = $stmt instanceof Expression ? $stmt->expr : null;
+    assert($call instanceof CallLike);
+    $printer = new Standard;
+
+    expect(array_map(
+        fn ($value): string => $printer->prettyPrintExpr($value),
+        ByReferenceArguments::heldReferences($call->getArgs()),
+    ))->toBe($held);
+})->with([
+    'a literal\'s reference' => ['f([&$a]);', ['$a']],
+    'a literal\'s copy' => ['f([$a]);', []],
+    'references at any depth' => ['f([1, [[&$a]], &$b]);', ['$a', '$b']],
+    'a reference an unpacked literal\'s array holds' => ['f(...[[&$a]]);', ['$a']],
+    'an unpacked literal\'s own reference, which only a by-reference parameter takes' => ['f(...[&$a]);', []],
+    'a copy an unpacked literal\'s array holds' => ['f(...[[$a]]);', []],
+    'a variable' => ['f($a);', []],
+]);
+
 /**
  * What bind() reports for the one call a statement makes, each list printed as PHP; null where it names no callee.
  *
