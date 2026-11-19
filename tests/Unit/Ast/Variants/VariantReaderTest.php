@@ -224,6 +224,7 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'scalar_local_kept',
     'merge_parent_kept',
     'mutate_between_kept',
+    'a `$this` property with a get hook' => 'hooked_kept',
     'a `?->` read written through `->`' => 'nullsafe_write_kept',
     'a read written through `$this->resource`' => 'resource_write_kept',
     'a helper writing the read' => 'call_write_kept',

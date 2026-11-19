@@ -28,6 +28,10 @@ final class VariantFormsResource extends JsonResource
 {
     public ?PinSettings $settings = null;
 
+    public bool $live {
+        get => (bool) random_int(0, 1);
+    }
+
     /**
      * The keys.
      *
@@ -511,6 +515,16 @@ final class VariantFormsResource extends JsonResource
     public function mutateBetweenKept(): array
     {
         return ['pinned' => $this->is_pinned, 'x' => $this->is_pinned = ! $this->is_pinned, 'v' => $this->is_pinned ? $this->title : null];
+    }
+
+    /**
+     * A discriminant that is a property with a get hook, which runs on every read.
+     *
+     * @return array<string, mixed>
+     */
+    public function hookedKept(): array
+    {
+        return ['live' => $this->live, 'v' => $this->live ? $this->title : null];
     }
 
     /**

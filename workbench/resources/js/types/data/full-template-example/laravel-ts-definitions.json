@@ -14268,7 +14268,7 @@
                 },
                 {
                     "name": "hooked",
-                    "type": "{ flag: true; detail: string } | { flag: false; detail: number }",
+                    "type": "{ flag: boolean; detail: string | number }",
                     "optional": false
                 },
                 {

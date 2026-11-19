@@ -18,7 +18,7 @@ export interface HiddenWritesResource
     write_before_dropper: { maybe: boolean | null; detail: string | null; reset: boolean; check: string };
     write_before_dropper_enum: { priority: PriorityType | null; detail: string | null; reset: boolean; check: string };
     call_in_arm: { is_pinned: boolean; changed: string | null; detail: string | null };
-    hooked: { flag: true; detail: string } | { flag: false; detail: number };
+    hooked: { flag: boolean; detail: string | number };
     handed_model: { is_pinned: boolean; reset: boolean; detail: string | null };
     two_helpers_down: { is_pinned: boolean; reset: boolean; detail: string | null };
     helper_fills_model: { is_pinned: boolean; reset: boolean; detail: string | null };
