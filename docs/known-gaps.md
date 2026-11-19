@@ -226,6 +226,22 @@ writes stay outside that reading:
 
 Write the key once, or type it with `#[TsCasts]`.
 
+### A discriminated union can pair a value with the wrong arm, past a write the package cannot see
+
+A literal splits only while no code between the discriminant and the keys that follow it may change the discriminant
+([Variants § What may change a discriminant](./components/variants.md#what-may-change-a-discriminant)). The package
+misses these writes, so a variant can pair a value with the arm PHP sends for another value:
+
+- a closure a property or an array element holds, such as `$this->when($c, $this->callback)`, or a closure in a local
+  handed to a callee other than a resource helper, such as `array_map($reset, $ids)`;
+- the model passed on through a local or a method's return value, such as `Pins::reset($post)` after
+  `$post = $this->resource`, or `Pins::reset($this->model())`;
+- a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
+- on PHP 8.4, a `get` hook on a discriminant such as `$this->settings->flag`, where an interface types `settings`.
+
+Move that code above the discriminant and the keys that follow it, or below them. For a hooked discriminant,
+`#[TsResource(discriminated: false)]` keeps a resource's top level flat.
+
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes

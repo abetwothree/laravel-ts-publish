@@ -18,7 +18,7 @@ before, and only the print changes. Users read
 | [`ConditionTruth`] | Whether a guard holds for one value of one read |
 | [`SplitsOnCondition`], [`ConditionalArms`], [`ConditionalArm`] | The arms `TernaryHandler`, `MatchHandler` and `ConditionalMethodHandler` hand over, each typed by the code that types the whole expression, through `ExpressionDispatcher::conditionalArms()` |
 | [`VariantReader`] | A literal's groups, read once its fold is written |
-| [`InterveningWrites`] | Whether an item between a group's keys may write its discriminant's read |
+| [`InterveningWrites`] | Whether an item of a group's window may change its discriminant's read |
 | [`VariantGroup`], [`Variant`], [`LiteralVariants`] | One discriminant with its dependents and variants, and one literal's groups with its replayed objects |
 | [`VariantUnions`] | A resource's top level, each group replaced by one variant row |
 | [`VariantRows`] | The reserved row name, and a resource's rows split into shared keys and variants |
@@ -34,6 +34,7 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    ([`DiscriminantValues`]). A wrapped enum has none. A scalar literal arm may stand for a case, so on a key that
    reads an enum, or under `AnalysisScope::$casesAsLiterals`, it leaves the row with none.
    A read whose type a class's `#[TsType]` or a custom cast declares (`typedByClass`) is none, as PHP tests the object.
+   A read that runs a get hook at any step ([`PropertyHooks`]) is none, as each read runs the hook.
 2. **Guards.** [`ConditionTruth`] decides a guard with PHP's own operators on the value the read sends. A guard that
    reads anything but that read and constants stays undecided.
 3. **Arms.** A ternary with a middle operand, a `match`, and `$this->when()` or `unless()`, with or without a
@@ -79,10 +80,7 @@ and a group where:
 
 - an arm a sent value takes is `unknown`, holds a [visible gap](ast-engine.md#visible-gaps), or left an arm out,
   since `DroppedUnionArms::dropped()` grew while it was read ([Dropped union arms](ast-engine.md#dropped-union-arms));
-- an item from the group's first key to its last may write the discriminant's read, or a read it is a member of,
-  whatever operator reads it ([`InterveningWrites`]): a write it spells, `$this->resource->x` standing for `$this->x`;
-  outside the group's own items, a `$this` call whose body writes one or cannot be read, a closure call, or a call on
-  a read holding it. Laravel's resource helpers ([`ReadOnlyCalls`]) only read.
+- an item of its window may change the discriminant's read, as [below](#what-may-change-a-discriminant).
 
 A group stays unprinted where its rows changed after the fold. Each group fingerprints its rows
 (`VariantGroup::holdsFor()`), and a nested literal its whole fold (`LiteralVariants::holdsFor()`), so a `@return`
@@ -92,6 +90,27 @@ literal also fingerprints its casts, since its replayed objects never carry one 
 
 Objects that hold two same-named enums, one nested in a member, print flat (`InlineObjectResult::queuesEnumsApart()`),
 since a union of them reads one object's queued enum for the next one's token.
+
+### What may change a discriminant
+
+`VariantReader::rewritten()` hands [`InterveningWrites`] the window: the items from the first to the last of the
+group's keys and its droppers. A dropper is a key with an arm that throws for some value, so its guard decides which
+values the group sends. Every item may change the read through a write to it or to a path it is a member of, whatever
+operator spells each step, or through an argument a by-reference parameter binds there
+([`ByReferenceArguments`]`::bind()`). On an API resource, `$this->resource->x` and `$this->x` are one path. Every item
+but the last may also change it through code it runs, since the last item's calls run after its own guard:
+
+- A call handed `$this`, `$this->resource` or an object holding the read, or a method called on such an object, may
+  write, unless [`ReadOnlyCalls`] knows it only reads: a resource helper, a model method `MODEL_READERS` lists,
+  `route()` or `url()`, a Gate check, or a resource's `new`, `make()` or `collection()` used as a value.
+- A `$this` method may write where its body may by these rules. [`BodyReads`] reads each body once a publish run,
+  three levels deep, and a body deeper or unreadable may write. A method the resource lacks runs on the model.
+- A callable a call may run is judged by its kind and its use ([`ClosureReach`], [`ValueUse`]): a resource helper
+  runs only a `Closure`, and any other callee runs any callable. [`CallableTargets`] names the method a callable runs.
+- A property hook or a model's set mutator may write ([`PropertyHooks`]).
+- `eval`, `include` and a call by a name the source does not spell may write.
+
+A call on the read itself, or on an object that does not hold it, counts only through what it is handed.
 
 ## Where groups are carried and dropped
 
@@ -116,13 +135,18 @@ union.
 
 [`VariantReaderTest`](../../tests/Unit/Ast/Variants/VariantReaderTest.php),
 [`LiteralVariantsTest`](../../tests/Unit/Ast/Variants/LiteralVariantsTest.php) and
-[`ResourceVariantsTest`](../../tests/Unit/Transformers/ResourceVariantsTest.php) pin the rules.
+[`ResourceVariantsTest`](../../tests/Unit/Transformers/ResourceVariantsTest.php) pin the rules, and
+[`tests/Unit/Ast/Effects/`](../../tests/Unit/Ast/Effects) the write check.
 [`DiscriminatedNarrowingTest`](../../tests/Feature/DiscriminatedNarrowingTest.php) compiles a narrowing read of
 the probe resources with `tsc --strict`. The workbench fixtures live in
 `workbench/app/Http/Resources/Discriminated/`, where each `*_kept` key of `DiscriminantFormsResource` is a
 control that must stay flat. The regression and redundant-arm gates read a split resource's shared rows and arms
 ([Type inference gates](../testing/type-inference-gates.md#how-properties-are-keyed)).
 
+[`BodyReads`]: ../../src/Ast/Effects/BodyReads.php
+[`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
+[`CallableTargets`]: ../../src/Ast/Effects/CallableTargets.php
+[`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`ConditionTruth`]: ../../src/Ast/Variants/ConditionTruth.php
 [`ConditionalArm`]: ../../src/Ast/Variants/ConditionalArm.php
 [`ConditionalArms`]: ../../src/Ast/Variants/ConditionalArms.php
@@ -131,10 +155,12 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
 [`LiteralVariants`]: ../../src/Ast/Variants/LiteralVariants.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
+[`PropertyHooks`]: ../../src/Ast/Effects/PropertyHooks.php
 [`ReadOnlyCalls`]: ../../src/Ast/Effects/ReadOnlyCalls.php
 [`ReadPath`]: ../../src/Ast/Parsing/ReadPath.php
 [`ResourceDeclaration`]: ../../src/Support/ResourceDeclaration.php
 [`SplitsOnCondition`]: ../../src/Ast/Contracts/SplitsOnCondition.php
+[`ValueUse`]: ../../src/Ast/Effects/ValueUse.php
 [`Variant`]: ../../src/Ast/Variants/Variant.php
 [`VariantGroup`]: ../../src/Ast/Variants/VariantGroup.php
 [`VariantReader`]: ../../src/Ast/Variants/VariantReader.php
