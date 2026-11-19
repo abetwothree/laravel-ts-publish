@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkDispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkFamily;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AttributeWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
@@ -29,6 +30,7 @@ it('trusts an Eloquent reader only where each model method it dispatches to only
     'getRouteKey(), past a getRouteKeyName() returning a literal' => [SlugPost::class, 'getRouteKey', true],
     'getKey(), past a getKeyName() that clears the pin' => [KeyNameWritingPost::class, 'getKey', false],
     'getKey(), past a trait\'s getAttribute()' => [TaskAssignment::class, 'getKey', false],
+    'trashed(), whose magic read runs a getAttribute() that clears the pin' => [AttributeWritingPost::class, 'trashed', false],
     'a reader the model overrides itself' => [KeyWritingPost::class, 'getKey', false],
     'a literal getter the model declares, no reader of Eloquent\'s' => [CustomKeyPost::class, 'getKeyName', false],
 ]);
