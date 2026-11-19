@@ -35,7 +35,6 @@ use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\Isset_;
 use PhpParser\Node\Expr\Match_;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PostDec;
@@ -179,13 +178,13 @@ final readonly class ClosureReach
 
     /**
      * Whether a value can hold no closure, nor name a callable that runs on `$this` where a string or an array can:
-     * a scalar, a constant, an array, a `new`, an operator's or a cast's result but `??`, `|>` and `(object)`,
+     * a scalar, a constant, an array, an operator's or a cast's result but `??`, `|>` and `(object)`,
      * `isset()`, `empty()`, `instanceof`, `$this`, or a member read with any root.
      */
     private static function holdsNoClosure(Expr $value): bool
     {
         return $value instanceof Scalar || $value instanceof ConstFetch || $value instanceof ClassConstFetch
-            || $value instanceof Array_ || $value instanceof New_ || CallableTargets::isThis($value)
+            || $value instanceof Array_ || CallableTargets::isThis($value)
             || ($value instanceof BinaryOp && ! $value instanceof Coalesce && ! $value instanceof Pipe)
             || ($value instanceof Cast && ! $value instanceof ObjectCast)
             || $value instanceof BooleanNot || $value instanceof BitwiseNot || $value instanceof UnaryMinus
