@@ -19,6 +19,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Callbacks/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
+| `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]) and a discriminant's read ([`InterveningWrites`]), which share the framework calls known only to read ([`ReadOnlyCalls`]). For a discriminant: what a callable value may run ([`ClosureReach`], [`ValueUse`]), the method a callable names ([`CallableTargets`]), the `$this` method and hook bodies read, three levels deep and once a run ([`BodyReads`]), and property hooks and model set mutators ([`PropertyHooks`]) |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
@@ -528,7 +529,8 @@ bound by reference, a by-reference destructuring included, or to any local once 
 `include`, `extract()`, a variable variable), and a write or `unset()` through another `$this` chain of a member the
 tested chain reads through (`mayShareObject()`), since two chains can hold one object, end its proof, and so does every
 call `safeCall()` does not know to be safe, a call naming the subject's own or an ancestor's class among them
-(`bindsThis()`). A closure argument counts by its whole body; the first parameter of a helper callback handed a member
+(`bindsThis()`). `safeCall()` takes the framework calls it knows from [`ReadOnlyCalls`], which [`InterveningWrites`]
+shares. A closure argument counts by its whole body; the first parameter of a helper callback handed a member
 of the resource reads as that member's chain (`handedMember()`). Only a write through the chain itself keeps it, by
 `keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through `$this->resource`. An
 `if` proof on a chain no class names reads as its classes, guarded, so no conditional guess publishes.
@@ -1148,20 +1150,26 @@ These pages cover the engine's neighbors:
 [`ArrayArm`]: ../../src/Ast/Members/ArrayArm.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/Parsing/AstParser.php
+[`BodyReads`]: ../../src/Ast/Effects/BodyReads.php
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
+[`CallableTargets`]: ../../src/Ast/Effects/CallableTargets.php
+[`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Values/EnumValueTypes.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
+[`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
 [`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
+[`PropertyHooks`]: ../../src/Ast/Effects/PropertyHooks.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
+[`ReadOnlyCalls`]: ../../src/Ast/Effects/ReadOnlyCalls.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php
 [`RedundantArms::admits()`]: ../../src/Support/TypeStrings/RedundantArms.php
@@ -1173,7 +1181,8 @@ These pages cover the engine's neighbors:
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
-[`ThisPathWrites`]: ../../src/Ast/Analysis/ThisPathWrites.php
+[`ThisPathWrites`]: ../../src/Ast/Effects/ThisPathWrites.php
+[`ValueUse`]: ../../src/Ast/Effects/ValueUse.php
 [`VisibleGaps`]: ../../src/Support/TypeStrings/VisibleGaps.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver

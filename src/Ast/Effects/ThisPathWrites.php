@@ -2,18 +2,17 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrite;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\CollectsResources;
-use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
-use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Http\Resources\Json\ResourceCollection;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -45,7 +44,6 @@ use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Function_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
-use ReflectionFunction;
 use ReflectionMethod;
 use ReflectionNamedType;
 
@@ -65,31 +63,8 @@ use ReflectionNamedType;
  */
 final class ThisPathWrites
 {
-    /** The framework's resource classes and traits, whose helpers only read the resource. */
-    private const array READING_DECLARERS = [
-        JsonResource::class, ResourceCollection::class, ConditionallyLoadsAttributes::class, CollectsResources::class,
-    ];
-
-    /** The JsonResource helpers that read what they are given, calling a closure given at most, lowercased. */
-    private const array RESOURCE_HELPERS = [
-        'when', 'unless', 'whenloaded', 'whennotnull', 'whennull', 'whenhas', 'whencounted', 'whenaggregated',
-        'whenpivotloaded', 'whenpivotloadedas', 'whenexistsloaded', 'mergewhen', 'mergeunless', 'merge',
-    ];
-
-    /** The helpers that call their callback with a member of the resource, lowercased. */
-    private const array HANDING_HELPERS = ['whenloaded', 'whenhas', 'whencounted', 'whenaggregated', 'whenexistsloaded'];
-
-    /** The parameters of a JsonResource helper whose closure the helper calls. */
-    private const array CALLBACK_PARAMETERS = ['value', 'default'];
-
     /** The ability checks the signed-in user runs through the app's gates, lowercased. */
     private const array ABILITY_CHECKS = ['can', 'cannot', 'canany'];
-
-    /** The Gate facade's checks, which run the app's gates and policies. */
-    private const array GATE_CHECKS = ['allows', 'denies', 'check', 'any', 'none'];
-
-    /** The helpers that only read a model to build a URL. */
-    private const array URL_HELPERS = ['route', 'url'];
 
     /** The built-ins that call the callable they are given first. */
     private const array CALLERS = ['call_user_func', 'call_user_func_array'];
@@ -185,28 +160,6 @@ final class ThisPathWrites
         }
 
         return $expr;
-    }
-
-    /**
-     * Whether a name runs one of Laravel's global helpers: no namespaced function of that name shadows it, and the
-     * global one is the framework's.
-     *
-     * @param  list<string>  $helpers
-     */
-    private static function runsLaravelHelper(Name $name, array $helpers): bool
-    {
-        $namespaced = $name->getAttribute('namespacedName');
-
-        if (! in_array($name->toLowerString(), $helpers, true)
-            || ($namespaced instanceof Name && function_exists($namespaced->toString()))
-            || ! function_exists($name->toString())
-        ) {
-            return false;
-        }
-
-        $file = str_replace('\\', '/', (string) new ReflectionFunction($name->toString())->getFileName());
-
-        return str_ends_with($file, '/Illuminate/Foundation/helpers.php');
     }
 
     /**
@@ -336,52 +289,14 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a value names a callable other than a closure written there: a first-class callable,
-     * Closure::fromCallable(), a function's or a static method's name, or a class-and-method array.
-     */
-    private static function namesCallable(Expr $value): bool
-    {
-        $items = $value instanceof Array_ ? $value->items : [];
-        $class = isset($items[0]) ? $items[0]->value : null;
-
-        return match (true) {
-            $value instanceof CallLike && $value->isFirstClassCallable() => true,
-            $value instanceof StaticCall => $value->class instanceof Name && $value->class->toLowerString() === 'closure'
-                && $value->name instanceof Identifier && $value->name->toLowerString() === 'fromcallable',
-            $value instanceof String_ => str_contains($value->value, '::') || function_exists($value->value),
-            default => count($items) === 2 && isset($items[1]) && $items[1]->value instanceof String_ && (self::isClassName($class)
-                || ($class instanceof String_ && class_exists($class->value))),
-        };
-    }
-
-    /**
-     * Whether a value spells a callable relative to the subject, which runs on `$this`: `'static::m'` or
-     * `['parent', 'm']`.
-     */
-    private static function namesRelativeCallable(Node $node): bool
-    {
-        $class = $node instanceof Array_ && count($node->items) === 2 ? $node->items[0]->value : null;
-
-        return ($node instanceof String_ && preg_match('/^(self|static|parent)::/i', $node->value) === 1)
-            || ($class instanceof String_ && in_array(strtolower($class->value), ['self', 'static', 'parent'], true));
-    }
-
-    /**
      * Whether a value may be a closure, which a helper calls: anything but a literal, an array or a named class's
      * new instance.
      */
     private static function mayBeClosure(Expr $value): bool
     {
-        return ! ($value instanceof Scalar || $value instanceof ConstFetch || $value instanceof Array_ || self::isClassName($value)
+        return ! ($value instanceof Scalar || $value instanceof ConstFetch || $value instanceof Array_
+            || ReadOnlyCalls::isClassName($value)
             || ($value instanceof New_ && $value->class instanceof Name));
-    }
-
-    /**
-     * Whether an expression is a `::class` name.
-     */
-    private static function isClassName(?Expr $expr): bool
-    {
-        return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
     }
 
     /**
@@ -394,7 +309,7 @@ final class ThisPathWrites
         }
 
         if (! $expr instanceof ClassConstFetch || ! $expr->class instanceof Name || $expr->class->isSpecialClassName()
-            || ! $expr->name instanceof Identifier || self::isClassName($expr)
+            || ! $expr->name instanceof Identifier || ReadOnlyCalls::isClassName($expr)
         ) {
             return null;
         }
@@ -540,20 +455,18 @@ final class ThisPathWrites
      */
     private function safeHelperCall(MethodCall|NullsafeMethodCall $call, array $path, array $parameters): bool
     {
-        $helper = $call->name instanceof Identifier && in_array($call->name->toLowerString(), self::RESOURCE_HELPERS, true)
-            ? $this->readingHelper($call)
-            : null;
+        $helper = ReadOnlyCalls::resourceHelper($call, $this->scope);
 
         if ($helper === null) {
             return false;
         }
 
         $arguments = CallArguments::for($call, $helper);
-        $callbacks = array_map(fn (string $name): ?Expr => $arguments->named($name)?->value, self::CALLBACK_PARAMETERS);
-        [$handedTo, $member] = $this->handedMember($call, $helper) ?? [null, null];
+        $callbacks = ReadOnlyCalls::callbacks($arguments);
+        [$handedTo, $member] = $this->handedMember($helper, $arguments) ?? [null, null];
 
         return ! $arguments->hasUnpack() && array_all($call->getArgs(), fn (Node\Arg $arg): bool => match (true) {
-            in_array($arg->value, $callbacks, true) && self::namesCallable($arg->value) => false,
+            in_array($arg->value, $callbacks, true) && ReadOnlyCalls::namesCallable($arg->value) => false,
             $arg->value !== $handedTo || $member === null => $this->safeValue($arg->value, $path, $parameters),
             $arg->value instanceof ClosureExpr || $arg->value instanceof ArrowFunction => $this->safeClosure($arg->value, $path, $parameters, $member),
             default => (($member !== false && ! self::strictPrefix($member, $path)) || ! self::mayBeClosure($arg->value))
@@ -567,13 +480,12 @@ final class ThisPathWrites
      *
      * @return array{Expr, list<string>|false}|null
      */
-    private function handedMember(MethodCall|NullsafeMethodCall $call, ReflectionMethod $helper): ?array
+    private function handedMember(ReflectionMethod $helper, CallArguments $arguments): ?array
     {
         $name = strtolower($helper->getName());
-        $arguments = CallArguments::for($call, $helper);
         $callback = $arguments->named('value')?->value;
 
-        if ($callback === null || ! in_array($name, self::HANDING_HELPERS, true)) {
+        if ($callback === null || ! in_array($name, ReadOnlyCalls::HANDING_HELPERS, true)) {
             return null;
         }
 
@@ -611,8 +523,7 @@ final class ThisPathWrites
         return match (true) {
             ! $class instanceof Name || $class->isSpecialClassName() => false,
             $this->bindsThis($class->toString(), $call->name instanceof Identifier ? $call->name->toString() : null) => false,
-            in_array($class->toString(), [Gate::class, 'Gate'], true) && $call->name instanceof Identifier
-                && in_array($call->name->toLowerString(), self::GATE_CHECKS, true) => true,
+            ReadOnlyCalls::gateCheck($call) => true,
             default => $this->safeArguments($call, $path, $parameters),
         };
     }
@@ -637,7 +548,7 @@ final class ThisPathWrites
             return false;
         }
 
-        if (self::runsLaravelHelper($name, self::URL_HELPERS)) {
+        if (ReadOnlyCalls::urlHelper($call)) {
             return true;
         }
 
@@ -693,7 +604,7 @@ final class ThisPathWrites
 
         return match (true) {
             $node instanceof ClosureExpr, $node instanceof ArrowFunction => $this->safeClosure($node, $path, $parameters),
-            $node instanceof ClassLike, self::namesRelativeCallable($node) => false,
+            $node instanceof ClassLike, ReadOnlyCalls::namesRelativeCallable($node) => false,
             ($node instanceof ClassConstFetch || $node instanceof StaticPropertyFetch || $node instanceof StaticCall
                 || $node instanceof New_) && ! ($node->class instanceof Name && ! $node->class->isSpecialClassName()) => false,
             default => $this->safeChildren($node, $path, $parameters, $acrossCalls),
@@ -767,7 +678,7 @@ final class ThisPathWrites
         $holder = $receiver->var;
 
         return match (true) {
-            $holder instanceof FuncCall => $holder->name instanceof Name && self::runsLaravelHelper($holder->name, ['auth']),
+            $holder instanceof FuncCall => ReadOnlyCalls::authHelper($holder),
             $holder instanceof Variable && is_string($holder->name) => $this->holdsRequestParameter($holder->name, $call),
             default => false,
         };
@@ -877,8 +788,11 @@ final class ThisPathWrites
     {
         $helper = ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && $call->var instanceof Variable
             && $call->var->name === 'this' && $call->name instanceof Identifier
-            && in_array($call->name->toLowerString(), self::HANDING_HELPERS, true) ? $this->readingHelper($call) : null;
-        [$callback, $member] = ($helper === null ? null : $this->handedMember($call, $helper)) ?? [null, false];
+            && in_array($call->name->toLowerString(), ReadOnlyCalls::HANDING_HELPERS, true)
+            ? ReadOnlyCalls::resourceHelper($call, $this->scope)
+            : null;
+        [$callback, $member] = ($helper === null ? null : $this->handedMember($helper, CallArguments::for($call, $helper)))
+            ?? [null, false];
 
         return $callback instanceof ClosureExpr || $callback instanceof ArrowFunction ? [spl_object_id($callback) => $member] : [];
     }
@@ -918,18 +832,6 @@ final class ThisPathWrites
         $passed = array_filter($call->getArgs(), fn (Node\Arg $arg): bool => $arg->value === $value);
 
         return resolve(ByReferenceArguments::class)->of($call, $passed, $this->scope->declaringClass, $this->scope->runtime->class) !== [];
-    }
-
-    /**
-     * The helper a call on `$this` runs, where the framework's resource classes declare it and it only reads.
-     */
-    private function readingHelper(MethodCall|NullsafeMethodCall $call): ?ReflectionMethod
-    {
-        $name = $call->name instanceof Identifier ? $call->name->toString() : null;
-        $class = $name === null ? null : $this->scope->thisMemberClass($name, true);
-        $method = $name !== null && $class !== null && $class->hasMethod($name) ? $class->getMethod($name) : null;
-
-        return $method !== null && in_array(DeclaringFile::ofMethod($method)->getName(), self::READING_DECLARERS, true) ? $method : null;
     }
 
     /**

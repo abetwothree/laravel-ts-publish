@@ -14238,52 +14238,107 @@
             "properties": [
                 {
                     "name": "by_reference",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "by_reference_in_helper",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "callable_in_when",
-                    "type": "{ is_pinned: true; cleared?: boolean; detail: string } | { is_pinned: false; cleared?: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; cleared?: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "write_before_dropper",
-                    "type": "{ maybe: true; detail: string; reset: boolean; check: string } | { maybe: false; detail: null; reset: boolean; check: string }",
+                    "type": "{ maybe: boolean | null; detail: string | null; reset: boolean; check: string }",
                     "optional": false
                 },
                 {
                     "name": "write_before_dropper_enum",
-                    "type": "{ priority: 0 | 2 | 3; detail: string; reset: boolean; check: string } | { priority: 1; detail: null; reset: boolean; check: string }",
+                    "type": "{ priority: PriorityType | null; detail: string | null; reset: boolean; check: string }",
                     "optional": false
                 },
                 {
                     "name": "call_in_arm",
-                    "type": "{ is_pinned: true; changed: string; detail: string } | { is_pinned: false; changed: null; detail: null }",
+                    "type": "{ is_pinned: boolean; changed: string | null; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "hooked",
-                    "type": "{ flag: true; detail: string } | { flag: false; detail: number }",
+                    "type": "{ flag: boolean; detail: string | number }",
                     "optional": false
                 },
                 {
                     "name": "handed_model",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "two_helpers_down",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "helper_fills_model",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "closure_in_when",
+                    "type": "{ is_pinned: boolean; cleared?: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_writer",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "local_callable_in_when",
+                    "type": "{ is_pinned: boolean; cleared: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "pair_holding_subject",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\HiddenWritesTopResource": {
+            "name": "HiddenWritesTopResource",
+            "properties": [
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "changed",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "detail",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "level",
+                    "type": "string | boolean | null",
+                    "optional": false
+                },
+                {
+                    "name": "check",
+                    "type": "string",
                     "optional": false
                 }
             ]
@@ -14438,12 +14493,12 @@
             "properties": [
                 {
                     "name": "enum_method",
-                    "type": "{ status: StatusType; color: string; detail: string | null }",
+                    "type": "{ status: 0; color: string; detail: null } | { status: 1; color: string; detail: string }",
                     "optional": false
                 },
                 {
                     "name": "forwarded_key",
-                    "type": "{ is_pinned: boolean; key: number; detail: string | null }",
+                    "type": "{ is_pinned: true; key: number; detail: string } | { is_pinned: false; key: number; detail: null }",
                     "optional": false
                 },
                 {
@@ -14453,12 +14508,12 @@
                 },
                 {
                     "name": "relation_check",
-                    "type": "{ is_pinned: boolean; loaded: boolean; detail: string | null }",
+                    "type": "{ is_pinned: true; loaded: boolean; detail: string } | { is_pinned: false; loaded: boolean; detail: null }",
                     "optional": false
                 },
                 {
                     "name": "forwarded_check_in_when",
-                    "type": "{ is_pinned: boolean; author_title?: string; detail: string | null }",
+                    "type": "{ is_pinned: true; author_title?: string; detail: string } | { is_pinned: false; author_title?: string; detail: null }",
                     "optional": false
                 },
                 {
@@ -14479,6 +14534,56 @@
                 {
                     "name": "reading_call_in_arm",
                     "type": "{ is_pinned: true; label: string; detail: string } | { is_pinned: false; label: null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_helper",
+                    "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "url_of_model",
+                    "type": "{ is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "gate_on_model",
+                    "type": "{ is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "resource_of_model",
+                    "type": "{ is_pinned: true; card: UserResource; detail: string } | { is_pinned: false; card: UserResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "resource_of_model_make",
+                    "type": "{ is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "callable_to_map",
+                    "type": "{ is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "when_value_of_another_read",
+                    "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "class_list_check",
+                    "type": "{ is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "untyped_helper_handed",
+                    "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_reader",
+                    "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
                     "optional": false
                 }
             ]

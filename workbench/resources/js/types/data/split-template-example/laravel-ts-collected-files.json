@@ -181,6 +181,7 @@
     "app\/Http\/Resources\/Discriminated\/DiscriminantFormsResource.php",
     "app\/Http\/Resources\/Discriminated\/FeedPlacementResource.php",
     "app\/Http\/Resources\/Discriminated\/HiddenWritesResource.php",
+    "app\/Http\/Resources\/Discriminated\/HiddenWritesTopResource.php",
     "app\/Http\/Resources\/Discriminated\/IntersectedPostResource.php",
     "app\/Http\/Resources\/Discriminated\/NumericKeysResource.php",
     "app\/Http\/Resources\/Discriminated\/PinnedPlacementResource.php",

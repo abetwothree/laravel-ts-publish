@@ -9,6 +9,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\PropertyHooks;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
@@ -51,6 +53,9 @@ final class VariantReader
 
     /** @var array<int, ConditionalArms|null> the arms each expression hands over, by its object id, read once */
     private array $arms = [];
+
+    /** @var list<string> the picked keys with an arm that throws, whose guards decide which values the group sends */
+    private array $droppers = [];
 
     /**
      * Read the groups of one discriminant.
@@ -105,7 +110,7 @@ final class VariantReader
                 static fn (): bool => false,
             );
 
-            if ($group !== null && ! self::rewritten($array, $keys, $group->keys, $discriminant['read'], $scope)) {
+            if ($group !== null && ! $reader->rewritten($array, $keys, [...$group->keys, ...$reader->droppers])) {
                 $groups[] = $group;
                 $owned += array_fill_keys($group->keys, true);
             }
@@ -198,12 +203,21 @@ final class VariantReader
 
             $values = DiscriminantValues::of($analysis, $name, $scope->casesAsLiterals) ?? [];
 
-            if (count($values) > 1) {
+            if (count($values) > 1 && ! self::readsHook($read, $scope)) {
                 $discriminants[] = ['name' => $name, 'read' => $read, 'values' => $values];
             }
         }
 
         return $discriminants;
+    }
+
+    /**
+     * Whether a read may run a get hook at any step, on `$this` or on an object a step reaches, so two reads of it may
+     * send different values.
+     */
+    private static function readsHook(ReadPath $read, AnalysisScope $scope): bool
+    {
+        return PropertyHooks::of($scope)->mayRunGetHook($read, $scope->declaringClass);
     }
 
     /**
@@ -232,36 +246,6 @@ final class VariantReader
             && in_array($value->name->toString(), ['value', 'name'], true);
 
         return $sendsMember ? ReadPath::of($value->var) : null;
-    }
-
-    /**
-     * Whether an item from the group's first key to its last may write the discriminant's read, or a read it is a
-     * member of, so a guard after it may test another value than the discriminant sent (InterveningWrites).
-     *
-     * @param  list<SoleKey>  $keys
-     * @param  list<string>  $grouped
-     */
-    private static function rewritten(
-        Array_ $array,
-        array $keys,
-        array $grouped,
-        ReadPath $read,
-        AnalysisScope $scope,
-    ): bool {
-        $at = array_column(array_filter($keys, static fn (array $key): bool => in_array($key[0], $grouped, true)), 2);
-
-        if ($at === []) {
-            return false;
-        }
-
-        $items = array_slice($array->items, min($at), max($at) - min($at) + 1, preserve_keys: true);
-
-        return InterveningWrites::reach(
-            array_values($items),
-            array_values(array_diff_key($items, array_flip($at))),
-            $read,
-            $scope,
-        );
     }
 
     /**
@@ -385,7 +369,35 @@ final class VariantReader
     }
 
     /**
-     * The group of keys this discriminant decides, or null where none follows it or an arm one takes cannot stand.
+     * Whether an item from the first of the group's keys and droppers to the last may write the discriminant's read, or
+     * a read it is a member of, so a guard may test another value than the discriminant sends (InterveningWrites, told
+     * the guards the last one's arms are selected by).
+     *
+     * @param  list<SoleKey>  $keys
+     * @param  list<string>  $spanned  the group's keys and the droppers
+     */
+    private function rewritten(Array_ $array, array $keys, array $spanned): bool
+    {
+        $window = array_values(array_filter($keys, static fn (array $key): bool => in_array($key[0], $spanned, true)));
+
+        if ($window === []) {
+            return false;
+        }
+
+        $first = $window[0][2];
+        [, $value, $last] = $window[count($window) - 1];
+
+        return InterveningWrites::reach(
+            array_values(array_slice($array->items, $first, $last - $first + 1)),
+            $this->discriminant['read'],
+            $this->scope,
+            $this->guardsOf($value),
+        );
+    }
+
+    /**
+     * The group of keys this discriminant decides, or null where none follows it or an arm one takes cannot stand,
+     * recording its droppers.
      *
      * @param  list<SoleKey>  $keys  the literal's sole keys, in item order
      * @param  array<string, true>  $owned  the keys an earlier discriminant's group holds
@@ -397,8 +409,14 @@ final class VariantReader
         foreach ($keys as [$name, $value]) {
             $picked = isset($owned[$name]) || ! $this->mayFollow($value) ? null : $this->picks($value);
 
-            if ($picked !== null) {
-                $picks[$name] = $picked;
+            if ($picked === null) {
+                continue;
+            }
+
+            $picks[$name] = $picked;
+
+            if (array_any($picked['arms'], static fn (ConditionalArm $arm): bool => $arm->throws)) {
+                $this->droppers[] = $name;
             }
         }
 
@@ -466,21 +484,48 @@ final class VariantReader
     /**
      * The arm a value selects, selected again in its body while that picks between arms, up to LEVELS deep; a level
      * that cannot decide keeps the arm above it. Null where the first level hands over no arms or cannot decide.
+     *
+     * @param  list<Expr>  $decided  each guard decided on the way, appended to
+     *
+     * @param-out list<Expr>  $decided
      */
-    private function selected(?ConditionalArms $arms, DiscriminantValue $sent, int $level = 1): ?ConditionalArm
-    {
-        $arm = $arms?->select(fn (Expr $guard): ?bool => ConditionTruth::decide(
-            $guard,
-            $this->discriminant['read'],
-            $sent,
-            $this->scope,
-        ));
+    private function selected(
+        ?ConditionalArms $arms,
+        DiscriminantValue $sent,
+        int $level = 1,
+        array &$decided = [],
+    ): ?ConditionalArm {
+        $arm = $arms?->select(function (Expr $guard) use ($sent, &$decided): ?bool {
+            $holds = ConditionTruth::decide($guard, $this->discriminant['read'], $sent, $this->scope);
+
+            if ($holds !== null) {
+                $decided[] = $guard;
+            }
+
+            return $holds;
+        });
 
         if ($arm?->body === null || $level === self::LEVELS) {
             return $arm;
         }
 
-        return $this->selected($this->armsFor($arm->body), $sent, $level + 1) ?? $arm;
+        return $this->selected($this->armsFor($arm->body), $sent, $level + 1, $decided) ?? $arm;
+    }
+
+    /**
+     * The guards selected() decides a value's arms by, at every level, for any value the discriminant sends.
+     *
+     * @return list<Expr>
+     */
+    private function guardsOf(Expr $value): array
+    {
+        $guards = [];
+
+        foreach ($this->discriminant['values'] as $sent) {
+            $this->selected($this->armsFor($value), $sent, decided: $guards);
+        }
+
+        return $guards;
     }
 
     /**

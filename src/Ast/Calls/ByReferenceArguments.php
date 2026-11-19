@@ -7,13 +7,16 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp\BitwiseOr;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -28,8 +31,11 @@ use ReflectionParameter;
 
 /**
  * The arguments a call passes to a by-reference parameter of the callee it names: a function, a method of `$this`,
- * `self`, `static`, `parent` or a named class, or a named class's constructor. The property default scan and the local
- * write scan both read a call's writes through it, and the local write scan what a built-in leaves in each.
+ * through `->` or `?->`, of `self`, `static`, `parent` or a named class, or a named class's constructor. The property default scan and the local
+ * write scan both read a call's writes through it, and the local write scan what a built-in leaves in each; the
+ * discriminant's write check also reads which arguments a built-in may run.
+ *
+ * @phpstan-type CallBinding = array{byReference: list<Expr>, runnable: list<Arg>}
  *
  * @internal
  */
@@ -96,22 +102,30 @@ final class ByReferenceArguments
     {
         $callee = $passed === [] || $call->isFirstClassCallable() ? null : $this->callee($call, $declaring, $runtime);
 
-        if ($callee === null
-            || ($callee instanceof ReflectionFunction && in_array($callee->getName(), self::POINTER_FUNCTIONS, true))
-        ) {
-            return [];
+        return $callee === null ? [] : $this->byReference($callee, $passed);
+    }
+
+    /**
+     * What a call binds, from one look-up of the callee it names: the values its arguments bind by reference, and the
+     * arguments a callee PHP itself implements takes as `callable` or `Closure`, which it may run but sets no property
+     * of; null where it passes arguments to a callee this cannot name.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
+     * @return CallBinding|null
+     */
+    public function bind(CallLike $call, ReflectionClass $declaring, ReflectionClass $runtime): ?array
+    {
+        if ($call->isFirstClassCallable() || $call->getArgs() === []) {
+            return ['byReference' => [], 'runnable' => []];
         }
 
-        $parameters = $callee->getParameters();
-        $arguments = [];
+        $callee = $this->callee($call, $declaring, $runtime);
 
-        foreach ($passed as $index => $arg) {
-            if ($this->parameterAt($parameters, $index, $arg)?->isPassedByReference()) {
-                $arguments[] = $arg->value;
-            }
-        }
-
-        return $arguments;
+        return $callee === null ? null : [
+            'byReference' => $this->byReference($callee, $call->getArgs()),
+            'runnable' => $callee->isInternal() ? $this->runnable($call, $callee) : [],
+        ];
     }
 
     /**
@@ -184,6 +198,39 @@ final class ByReferenceArguments
     }
 
     /**
+     * Whether a parameter's declared type is or holds `callable` or `Closure`.
+     */
+    private static function declaresCallable(ReflectionParameter $parameter): bool
+    {
+        return array_intersect(['callable', 'closure'], NativeTypeNames::of($parameter->getType())) !== [];
+    }
+
+    /**
+     * What an unpacked argument binds by reference, as it fills the parameter at its position and each after it: a
+     * literal's `&` elements, whose referents its other elements only copy, or any other array itself.
+     *
+     * @param  list<ReflectionParameter>  $parameters
+     * @return list<Expr>
+     */
+    private static function unpackedByReference(array $parameters, int $position, Expr $unpacked): array
+    {
+        $last = $parameters === [] ? null : $parameters[array_key_last($parameters)];
+        $takesReference = array_any(
+            array_slice($parameters, $position),
+            static fn (ReflectionParameter $parameter): bool => $parameter->isPassedByReference(),
+        ) || ($last?->isVariadic() === true && $last->isPassedByReference());
+
+        if (! $takesReference) {
+            return [];
+        }
+
+        return $unpacked instanceof Array_ ? array_values(array_map(
+            static fn (ArrayItem $item): Expr => $item->value,
+            array_filter($unpacked->items, static fn (ArrayItem $item): bool => $item->byRef),
+        )) : [$unpacked];
+    }
+
+    /**
      * The function or method a call names, or null when its receiver or name is computed or cannot be loaded.
      *
      * A method PHP cannot find goes to `__call()` or `__callStatic()`, which take their arguments by value.
@@ -205,7 +252,8 @@ final class ByReferenceArguments
                 return $this->namedClass($call->class, $declaring, $runtime)?->getConstructor();
             }
 
-            if ($call instanceof MethodCall && $call->var instanceof Variable && $call->var->name === 'this'
+            if (($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
+                && $call->var instanceof Variable && $call->var->name === 'this'
                 && $call->name instanceof Identifier && $runtime !== null && $declaring !== null
             ) {
                 $method = $call->name->toString();
@@ -225,6 +273,50 @@ final class ByReferenceArguments
         }
 
         return null;
+    }
+
+    /**
+     * The values of the given arguments that land in a by-reference parameter of a callee, but none for a built-in
+     * that only moves an array's internal pointer.
+     *
+     * @param  array<Arg>  $passed
+     * @return list<Expr>
+     */
+    private function byReference(ReflectionFunctionAbstract $callee, array $passed): array
+    {
+        if ($callee instanceof ReflectionFunction && in_array($callee->getName(), self::POINTER_FUNCTIONS, true)) {
+            return [];
+        }
+
+        $parameters = $callee->getParameters();
+        $arguments = [];
+
+        foreach ($passed as $index => $arg) {
+            if ($arg->unpack && is_int($index)) {
+                array_push($arguments, ...self::unpackedByReference($parameters, $index, $arg->value));
+            } elseif ($this->parameterAt($parameters, $index, $arg)?->isPassedByReference()) {
+                $arguments[] = $arg->value;
+            }
+        }
+
+        return $arguments;
+    }
+
+    /**
+     * The arguments a call binds to a parameter its callee declares `callable` or `Closure`.
+     *
+     * @return list<Arg>
+     */
+    private function runnable(CallLike $call, ReflectionFunctionAbstract $callee): array
+    {
+        $arguments = CallArguments::for($call, $callee);
+
+        return array_values(array_filter(array_map(
+            static fn (ReflectionParameter $parameter): ?Arg => self::declaresCallable($parameter)
+                ? $arguments->named($parameter->getName())
+                : null,
+            $callee->getParameters(),
+        )));
     }
 
     /**

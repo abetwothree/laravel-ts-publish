@@ -226,6 +226,33 @@ writes stay outside that reading:
 
 Write the key once, or type it with `#[TsCasts]`.
 
+### A discriminated union can pair a value with the wrong arm, past a write the package cannot see
+
+A group declines where code in its window may change the discriminant
+([Variants § What may change a discriminant](./components/variants.md#what-may-change-a-discriminant)). The package
+misses these writes, so a variant can pair a value with the arm PHP sends for another value:
+
+- a closure a property or an array element holds, such as `$this->when($c, $this->callback)`, or a closure in a local
+  handed to a callee other than a resource helper, such as `array_map($reset, $ids)`;
+- the model passed on through a local or a method's return value, such as `Pins::reset($post)` after
+  `$post = $this->resource`, or `Pins::reset($this->model())`;
+- an object built with the model and held in a property or a local, such as `$this->pins->clear()` after
+  `$this->pins = new Pins($resource)` in the constructor;
+- the discriminant bound by reference to a local, such as `$r = &$this->pinned; $r = false;`, in the window or in a
+  method it calls;
+- an accessor, a `getXAttribute()` method or an `Attribute` getter, that writes the discriminant when the window reads
+  its attribute;
+- a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
+- on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
+  `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
+- a gate or policy a `Gate` check runs, or a model's route key `route()` or `url()` reads, which the package trusts to
+  only read the model it is handed, as
+  [`instanceof` narrowing](#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways) does.
+
+Move that code above the first key that reads the discriminant, or below the last: the discriminant's own key and each
+key whose condition tests it. Where it cannot move, `#[TsResource(discriminated: false)]` keeps a resource's top level
+flat.
+
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes
@@ -603,7 +630,7 @@ Check which spelling you wrote before you assume a value is `unknown`:
   through, a write through a local or to one bound by reference (`$ref = &$this->post`, a by-reference destructuring,
   or any local once `extract()` or a variable variable runs), a write through another `$this` chain that sets a member
   the tested chain reads through, since two chains can hold one object, code no scan sees, and any call outside the
-  known-safe list [`ThisPathWrites`](../src/Ast/Analysis/ThisPathWrites.php) keeps, which leaves out a call naming the
+  known-safe list [`ThisPathWrites`](../src/Ast/Effects/ThisPathWrites.php) keeps, which leaves out a call naming the
   subject's own or an ancestor's class, as PHP runs one on `$this`. One such call, such as `$this->reload()`,
   `PostResource::make($this->resource)` or a call on a local, publishes every read of the chain unnarrowed. Trusted,
   though each may change the chain: a gate or policy callback a `Gate` or ability check runs, even one that writes the

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Variants\Fixtures;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FlagContract;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use LogicException;
@@ -27,6 +31,21 @@ use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 final class VariantFormsResource extends JsonResource
 {
     public ?PinSettings $settings = null;
+
+    public ?HookedProperties $hooked = null;
+
+    public ?FlagContract $contract = null;
+
+    public ?OpenFlags $openFlags = null;
+
+    public ?FinalFlags $finalFlags = null;
+
+    /** @var OpenFlags|null */
+    public $docFlags = null;
+
+    public bool $live {
+        get => (bool) random_int(0, 1);
+    }
 
     /**
      * The keys.
@@ -514,6 +533,106 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A discriminant that is a property with a get hook, which runs on every read.
+     *
+     * @return array<string, mixed>
+     */
+    public function hookedKept(): array
+    {
+        return ['live' => $this->live, 'v' => $this->live ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a property of another object, whose get hook runs on every read.
+     *
+     * @return array<string, mixed>
+     */
+    public function hookedStepKept(): array
+    {
+        return ['flag' => $this->hooked->reads, 'v' => $this->hooked->reads ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of another object.
+     *
+     * @return array<string, mixed>
+     */
+    public function otherObjectStep(): array
+    {
+        return ['enabled' => $this->settings->enabled, 'v' => $this->settings->enabled ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a property an interface types, whose implementer may give it a get hook.
+     *
+     * @return array<string, mixed>
+     */
+    public function interfaceStepKept(): array
+    {
+        return ['flag' => $this->contract->flag, 'v' => $this->contract->flag ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of a non-final class, which a child class may give a get hook.
+     *
+     * @return array<string, mixed>
+     */
+    public function openStepKept(): array
+    {
+        return ['open' => $this->openFlags->open, 'v' => $this->openFlags->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of a non-final class a docblock types.
+     *
+     * @return array<string, mixed>
+     */
+    public function docblockStepKept(): array
+    {
+        return ['open' => $this->docFlags->open, 'v' => $this->docFlags->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of a non-final class, a step past a final one.
+     *
+     * @return array<string, mixed>
+     */
+    public function openPastFinalKept(): array
+    {
+        return ['open' => $this->finalFlags->inner->open, 'v' => $this->finalFlags->inner->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a property of a final class.
+     *
+     * @return array<string, mixed>
+     */
+    public function finalClassStep(): array
+    {
+        return ['open' => $this->finalFlags->open, 'v' => $this->finalFlags->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a readonly property of a non-final class.
+     *
+     * @return array<string, mixed>
+     */
+    public function readonlyStep(): array
+    {
+        return ['frozen' => $this->openFlags->frozen, 'v' => $this->openFlags->frozen ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a final property of a non-final class.
+     *
+     * @return array<string, mixed>
+     */
+    public function finalPropertyStep(): array
+    {
+        return ['fixed' => $this->openFlags->fixed, 'v' => $this->openFlags->fixed ? $this->title : null];
+    }
+
+    /**
      * A `?->` read written through `->` between the key that sends it and the key that tests it.
      *
      * @return array<string, mixed>
@@ -590,6 +709,240 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A read assigned between the group's last key and a later key that throws for one of its values.
+     *
+     * @return array<string, mixed>
+     */
+    public function writeBeforeDropperKept(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'x' => $this->priority = Priority::Low,
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+        ];
+    }
+
+    /**
+     * A read assigned between the group's last key and a later numeric key that throws for one of its values.
+     *
+     * @return array<string, mixed>
+     */
+    public function numericDropperKept(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'x' => $this->priority = Priority::Low,
+            '1' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+        ];
+    }
+
+    /**
+     * A read assigned between a key that throws for one of its values and the key that sends it.
+     *
+     * @return array<string, mixed>
+     */
+    public function dropperLeadsKept(): array
+    {
+        return [
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+            'x' => $this->priority = null,
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+        ];
+    }
+
+    /**
+     * A key that throws for one of the read's values after the group, past a call that writes nothing, then a write of
+     * the read and a guard whose arms send one type.
+     *
+     * @return array<string, mixed>
+     */
+    public function dropperAfterGroup(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'x' => $this->label(),
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => 'set',
+            },
+            'y' => $this->clearPriority(),
+            'z' => $this->priority === null ? 'unset' : 'set',
+        ];
+    }
+
+    /**
+     * A helper writing the read, called in an arm of a key a later key of the group follows.
+     *
+     * @return array<string, mixed>
+     */
+    public function callInEarlierArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'a' => $this->is_pinned ? $this->clearPin() : null,
+            'v' => $this->is_pinned ? $this->title : null,
+        ];
+    }
+
+    /**
+     * A helper writing the read, called in an arm of the group's last key, once every other guard has read it.
+     *
+     * @return array<string, mixed>
+     */
+    public function callInLastArm(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'a' => $this->is_pinned ? $this->title : null,
+            'v' => $this->is_pinned ? $this->clearPin() : null,
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a when() in the last key's arm: PHP runs it between the
+     * ternary's guard and the when()'s.
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->is_pinned ? $this->when(value: $this->clearPin(), condition: $this->is_pinned) : null,
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a `match` arm's when().
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInMatchArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => match ($this->is_pinned) {
+                true => $this->when(value: $this->clearPin(), condition: $this->is_pinned),
+                false => null,
+            },
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a when() that a when() on the read sends as its value.
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInValueKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->when($this->is_pinned, $this->when(value: $this->clearPin(), condition: $this->is_pinned)),
+        ];
+    }
+
+    /**
+     * A when() value that tests the read and calls a helper writing it, named before the condition.
+     *
+     * @return array<string, mixed>
+     */
+    public function readingValueNamedFirstKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => $this->when(value: $this->is_pinned ? $this->clearPin() : false, condition: $this->is_pinned),
+        ];
+    }
+
+    /**
+     * A helper writing the read in the first arm of a `match (true)`, which runs only once that arm's guard picks it.
+     *
+     * @return array<string, mixed>
+     */
+    public function matchTrueArmCall(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => match (true) {
+                $this->is_pinned === true => $this->clearPin(),
+                $this->is_pinned === false => null,
+            },
+        ];
+    }
+
+    /**
+     * A helper writing the read in a ternary's first branch, before the guard of the ternary in its other branch.
+     *
+     * @return array<string, mixed>
+     */
+    public function ternaryChainArmCall(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low
+                ? $this->clearPriority()
+                : ($this->priority === Priority::High ? 7 : null),
+        ];
+    }
+
+    /**
+     * A helper writing the read, named before the condition of a when() in a `match (true)` arm, whose guard a later
+     * arm's follows.
+     *
+     * @return array<string, mixed>
+     */
+    public function namedArgumentInMatchTrueArmKept(): array
+    {
+        return [
+            'pinned' => $this->is_pinned,
+            'v' => match (true) {
+                $this->is_pinned === true => $this->when(value: $this->clearPin(), condition: $this->is_pinned),
+                $this->is_pinned === false => null,
+            },
+        ];
+    }
+
+    /**
+     * A helper writing the read, handed after the condition of a when() that a when() on the read sends as its value.
+     *
+     * @return array<string, mixed>
+     */
+    public function positionalWhenInValue(): array
+    {
+        return ['pinned' => $this->is_pinned, 'v' => $this->when($this->is_pinned, $this->when($this->is_pinned, $this->clearPin()))];
+    }
+
+    /**
+     * A helper writing the read, called in an arm of a key after the group that throws for one of its values.
+     *
+     * @return array<string, mixed>
+     */
+    public function callInDropperArm(): array
+    {
+        return [
+            'priority' => $this->priority,
+            'v' => $this->priority === Priority::Low ? $this->title : null,
+            'check' => match ($this->priority) {
+                null => throw new LogicException('Unset priority.'),
+                default => $this->clearPriority(),
+            },
+        ];
+    }
+
+    /**
      * Calls between the keys that write no read: a helper, a static helper, a call on another read, a conditional
      * helper of Laravel's and a `new`.
      *
@@ -605,6 +958,23 @@ final class VariantFormsResource extends JsonResource
             'd' => $this->whenLoaded('author'),
             'e' => new UserResource($this->author),
             'v' => $this->is_pinned ? $this->title : null,
+        ];
+    }
+
+    /**
+     * Calls between the keys that only read the model or the read itself: a key the resource forwards, a relation
+     * check on the model, and a method of the read's own enum.
+     *
+     * @return array<string, mixed>
+     */
+    public function modelReaders(): array
+    {
+        return [
+            'status' => $this->status,
+            'a' => $this->getKey(),
+            'b' => $this->resource->relationLoaded('author'),
+            'c' => $this->status->color(),
+            'v' => $this->status === Status::Published ? $this->title : null,
         ];
     }
 
@@ -730,6 +1100,16 @@ final class VariantFormsResource extends JsonResource
         $this->resource->is_pinned = false;
 
         return true;
+    }
+
+    /**
+     * Clears the priority, writing the read the priority keys send.
+     */
+    private function clearPriority(): string
+    {
+        $this->resource->priority = null;
+
+        return 'cleared';
     }
 
     /**

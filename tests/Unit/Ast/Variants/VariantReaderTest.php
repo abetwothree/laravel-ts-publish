@@ -185,6 +185,34 @@ it('keeps a group past calls that write no read it holds', function () {
     expect(variantsOf('harmless_calls'))->toBe(['pinned' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
 });
 
+// Eloquent's reading methods change nothing on the model, and no call on an enum case rebinds the read holding it.
+it('keeps a group past calls that only read the model or the read itself', function () {
+    expect(variantsOf('model_readers'))->toBe(['status' => [['0', ['v' => 'null']], ['1', ['v' => 'string']]]]);
+});
+
+// `check` drops `null` from the values sent, so the write scan reaches it; `z` neither drops a value nor differs.
+it('keeps a group a later key that throws for a value follows, with no write before that key', function () {
+    expect(variantsOf('dropper_after_group'))->toBe(['priority' => [['0', ['v' => 'string']], ['1 | 2 | 3', ['v' => 'null']]]]);
+});
+
+// A call in the last guard's arm runs after that guard, and every earlier guard has read the discriminant by then.
+it('keeps a group past a writing call in the arm of the last key that reads the discriminant as a guard', function (string $cell, array $variants) {
+    expect(variantsOf($cell))->toBe($variants);
+})->with([
+    'the last dependent' => ['call_in_last_arm', ['pinned' => [['true', ['a' => 'string', 'v' => 'boolean']], ['false', ['a' => 'null', 'v' => 'null']]]]],
+    'a key after the group that throws for a value' => ['call_in_dropper_arm', ['priority' => [['0', ['v' => 'string']], ['1 | 2 | 3', ['v' => 'null']]]]],
+    'a when() in a when()\'s value, handed the helper after its condition' => [
+        'positional_when_in_value',
+        ['pinned' => [['true', ['v' => 'boolean']], ['false', ['v' => '-']]]],
+    ],
+    'a `match (true)` arm, before a later arm\'s guard' => ['match_true_arm_call', ['pinned' => [['true', ['v' => 'boolean']], ['false', ['v' => 'null']]]]],
+    'a ternary branch, before the guard of the ternary in its other branch' => ['ternary_chain_arm_call', ['priority' => [
+        ['0', ['v' => 'string']],
+        ['1 | 3 | null', ['v' => 'null']],
+        ['2', ['v' => 'number']],
+    ]]],
+]);
+
 // Eight levels deep the true arm keeps its own union, the ninth ternary's, rather than select its `title` arm.
 it('selects a value through eight levels of arms at most', function () {
     expect(variantsOf('nine_levels'))->toBe(['pinned' => [['true', ['v' => 'string | number']], ['false', ['v' => 'null']]]]);
@@ -206,6 +234,7 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'scalar_local_kept',
     'merge_parent_kept',
     'mutate_between_kept',
+    'a `$this` property with a get hook' => 'hooked_kept',
     'a `?->` read written through `->`' => 'nullsafe_write_kept',
     'a read written through `$this->resource`' => 'resource_write_kept',
     'a helper writing the read' => 'call_write_kept',
@@ -213,6 +242,15 @@ it('makes no group for a control, or for a literal no variant can stand for', fu
     'a call no class of the resource declares' => 'forwarded_call_kept',
     'a call on the object holding the read' => 'receiver_call_kept',
     'a closure call' => 'closure_call_kept',
+    'a writing call in an earlier dependent\'s arm' => 'call_in_earlier_arm_kept',
+    'a write between the last dependent and a key that throws for a value' => 'write_before_dropper_kept',
+    'a write before a numeric key that throws for a value' => 'numeric_dropper_kept',
+    'a write between a key that throws for a value and the discriminant' => 'dropper_leads_kept',
+    'a writing call named before the condition of a when() in the last key\'s arm' => 'named_argument_in_arm_kept',
+    'a writing call named before the condition of a when() in a `match` arm' => 'named_argument_in_match_arm_kept',
+    'a writing call named before the condition of a when() in a `match (true)` arm' => 'named_argument_in_match_true_arm_kept',
+    'a writing call named before the condition of a when() in a when()\'s value' => 'named_argument_in_value_kept',
+    'a when() value testing the read and calling a writer, named before the condition' => 'reading_value_named_first_kept',
     'index_signature',
     'spread_writes',
     'two_returns',
@@ -305,6 +343,38 @@ it('makes no group where an arm is untyped or holds a gap', function (array $tru
     'untyped' => [['type' => 'unknown', 'optional' => false]],
     'a gap' => [['type' => VisibleGaps::withArm('string', 1), 'optional' => false]],
 ]);
+
+// A child class may hook a property that is neither final nor readonly, and an implementer any an interface names.
+it('makes no group for a discriminant read through an object whose class may hook it', function (string $cell) {
+    expect(variantsOf($cell))->toBe([]);
+})->with([
+    'a property an interface types' => 'interface_step_kept',
+    'a plain property of a non-final class' => 'open_step_kept',
+    'a plain property of a non-final class a docblock types' => 'docblock_step_kept',
+    'a plain property of a non-final class, a step past a final one' => 'open_past_final_kept',
+]);
+
+it('keeps a group for a discriminant read through an object whose class no child can hook', function (
+    string $cell,
+    string $discriminant,
+) {
+    expect(variantsOf($cell))->toBe([$discriminant => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
+})->with([
+    'a property of a final class' => ['final_class_step', 'open'],
+    'a readonly property' => ['readonly_step', 'frozen'],
+    'a final property' => ['final_property_step', 'fixed'],
+]);
+
+// Each read of the discriminant runs the hook, so no group is read for it, its arms included.
+it('reads no arm for a discriminant whose read runs a get hook at any step', function () {
+    expect(readFixtureLiteral(
+        'hookedStepKept',
+        ['flag' => 'boolean', 'v' => 'string | null'],
+        static fn (): never => throw new LogicException('No arm is read.'),
+    ))->toBeNull()
+        ->and(variantsOf('other_object_step'))
+        ->toBe(['enabled' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
+});
 
 it('makes no group where reading its arms leaves one out, and keeps neither the drop nor its count', function () {
     $scope = new AnalysisScope(new ReflectionClass(VariantFormsResource::class), Post::class);

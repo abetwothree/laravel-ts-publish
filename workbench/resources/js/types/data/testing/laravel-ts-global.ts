@@ -6280,20 +6280,39 @@ declare global {
         /**
          * Literals whose discriminant a write changes between two of its reads, where the write check does not see it yet: a
          * by-reference argument, a callable a helper calls, a write before a key that drops a value, a call inside an arm, a
-         * get hook, the model handed to a function, and helpers that write two levels down or through the model. PHP can send
-         * a value no arm admits, so each literal should publish flat (GH-174).
+         * get hook, the model handed to a function, helpers that write two levels down or through the model, a closure a
+         * helper calls, the model handed to another class's static method, a local closure's callable a helper calls, and the
+         * resource handed second in a pair.
+         * PHP can send a value no arm admits, so each literal should publish flat (GH-174).
          */
         export interface HiddenWritesResource {
-            by_reference: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
-            by_reference_in_helper: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
-            callable_in_when: { is_pinned: true; cleared?: boolean; detail: string } | { is_pinned: false; cleared?: boolean; detail: null };
-            write_before_dropper: { maybe: true; detail: string; reset: boolean; check: string } | { maybe: false; detail: null; reset: boolean; check: string };
-            write_before_dropper_enum: { priority: 0 | 2 | 3; detail: string; reset: boolean; check: string } | { priority: 1; detail: null; reset: boolean; check: string };
-            call_in_arm: { is_pinned: true; changed: string; detail: string } | { is_pinned: false; changed: null; detail: null };
-            hooked: { flag: true; detail: string } | { flag: false; detail: number };
-            handed_model: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
-            two_helpers_down: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
-            helper_fills_model: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
+            by_reference: { pinned: boolean; reset: boolean; detail: string | null };
+            by_reference_in_helper: { pinned: boolean; reset: boolean; detail: string | null };
+            callable_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
+            write_before_dropper: { maybe: boolean | null; detail: string | null; reset: boolean; check: string };
+            write_before_dropper_enum: { priority: workbench.app.enums.PriorityType | null; detail: string | null; reset: boolean; check: string };
+            call_in_arm: { is_pinned: boolean; changed: string | null; detail: string | null };
+            hooked: { flag: boolean; detail: string | number };
+            handed_model: { is_pinned: boolean; reset: boolean; detail: string | null };
+            two_helpers_down: { is_pinned: boolean; reset: boolean; detail: string | null };
+            helper_fills_model: { is_pinned: boolean; reset: boolean; detail: string | null };
+            closure_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
+            static_writer: { is_pinned: boolean; reset: boolean; detail: string | null };
+            local_callable_in_when: { is_pinned: boolean; cleared: boolean; detail: string | null };
+            pair_holding_subject: { is_pinned: boolean; reset: boolean; detail: string | null };
+        }
+        /**
+         * A top-level literal whose discriminants a call inside an arm writes between two of their reads: `changed` clears
+         * the pin before `detail` reads it, and the arm `level` takes for `null` sets the priority before `check`, which
+         * throws for `null`, reads it. PHP can send a value no arm admits, so the literal publishes flat (GH-174).
+         */
+        export interface HiddenWritesTopResource {
+            is_pinned: boolean;
+            changed: string | null;
+            detail: string | null;
+            priority: workbench.app.enums.PriorityType | null;
+            level: string | boolean | null;
+            check: string;
         }
         /**
          * GH-157's escape hatch: the keys publish flat, and a union written by hand is intersected with them, so `is_pinned`
@@ -6372,19 +6391,32 @@ declare global {
         /**
          * Literals whose items between a discriminant and its dependents only read: a method of the discriminant's own enum,
          * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
-         * drops a value outside the group, and reading calls inside an arm. Nothing changes the discriminant, so each literal
-         * should publish one object per variant (GH-174).
+         * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
+         * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
+         * array_map(), when() handed a method's result on another read, a list of class names, and an untyped helper's
+         * result handed on. Nothing changes the discriminant, so each literal should publish one object per variant
+         * (GH-174).
          */
         export interface ReadingCallsResource {
-            enum_method: { status: workbench.app.enums.StatusType; color: string; detail: string | null };
-            forwarded_key: { is_pinned: boolean; key: number; detail: string | null };
+            enum_method: { status: 0; color: string; detail: null } | { status: 1; color: string; detail: string };
+            forwarded_key: { is_pinned: true; key: number; detail: string } | { is_pinned: false; key: number; detail: null };
             forwarded_key_in_arm: { is_pinned: true; key: number; detail: string } | { is_pinned: false; key: null; detail: null };
-            relation_check: { is_pinned: boolean; loaded: boolean; detail: string | null };
-            forwarded_check_in_when: { is_pinned: boolean; author_title?: string; detail: string | null };
+            relation_check: { is_pinned: true; loaded: boolean; detail: string } | { is_pinned: false; loaded: boolean; detail: null };
+            forwarded_check_in_when: { is_pinned: true; author_title?: string; detail: string } | { is_pinned: false; author_title?: string; detail: null };
             nested_resource: { is_pinned: true; author?: workbench.app.http.resources.UserResource; detail: string } | { is_pinned: false; author?: workbench.app.http.resources.UserResource; detail: null };
             reading_callable_in_when: { is_pinned: true; label?: string; detail: string } | { is_pinned: false; label?: string; detail: null };
             dropper_outside_group: { id: number; priority: 0; detail: string; stage: string } | { id: number; priority: 1 | 2 | 3; detail: null; stage: string };
             reading_call_in_arm: { is_pinned: true; label: string; detail: string } | { is_pinned: false; label: null; detail: null };
+            reading_helper: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null };
+            url_of_model: { is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null };
+            gate_on_model: { is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null };
+            resource_of_model: { is_pinned: true; card: workbench.app.http.resources.UserResource; detail: string } | { is_pinned: false; card: workbench.app.http.resources.UserResource; detail: null };
+            resource_of_model_make: { is_pinned: true; author: workbench.app.http.resources.UserResource; detail: string } | { is_pinned: false; author: workbench.app.http.resources.UserResource; detail: null };
+            callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
+            when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
+            class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
+            untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
+            static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
         }
         /**
          * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of

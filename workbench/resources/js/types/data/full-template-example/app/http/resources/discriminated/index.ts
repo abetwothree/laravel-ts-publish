@@ -1,6 +1,7 @@
 export * from './discriminant-forms-resource';
 export * from './feed-placement-resource';
 export * from './hidden-writes-resource';
+export * from './hidden-writes-top-resource';
 export * from './intersected-post-resource';
 export * from './numeric-keys-resource';
 export * from './pinned-placement-resource';
