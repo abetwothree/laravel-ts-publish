@@ -195,6 +195,25 @@ final class InterveningWrites
     }
 
     /**
+     * The values an argument may bind by reference: its own, but an array literal's, unpacked or not, only those of
+     * its `&` items at any depth, since PHP copies every other item.
+     *
+     * @return list<Expr>
+     */
+    private static function referencedValues(Expr $value): array
+    {
+        if (! $value instanceof Array_) {
+            return [$value];
+        }
+
+        return array_merge(...array_map(static fn (ArrayItem $item): array => match (true) {
+            $item->byRef => [$item->value],
+            $item->value instanceof Array_ => self::referencedValues($item->value),
+            default => [],
+        }, $value->items));
+    }
+
+    /**
      * The path an object read names, or the longest one it starts with where a member's name is computed, since that
      * member may be any of them.
      */
@@ -443,7 +462,10 @@ final class InterveningWrites
             && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
             && ! CallableTargets::isThis($call->var);
         $byReference = $unnamed
-            ? array_map(static fn (Arg $arg): Expr => $arg->value, $call->getArgs())
+            ? array_merge(...array_map(
+                static fn (Arg $arg): array => self::referencedValues($arg->value),
+                $call->getArgs(),
+            ))
             : $binding['byReference'] ?? [];
 
         return array_any(

@@ -59,6 +59,18 @@ function interveningCalls(): array
         'a by-reference argument to a $this:: static method' => ['$this::clearAfter(0, $this->pinned)', true, '$this->pinned'],
         'a local handed to a method of an object no scan names' => ['$writer->clear($flag)', true, '$flag'],
         'another local handed to a method of an object no scan names' => ['$writer->clear($other)', false, '$flag'],
+        'a local unpacked from a literal into a method of an object no scan names' => ['$writer->clear(...[$flag])', false, '$flag'],
+        'a local in a literal handed to a method of an object no scan names' => ['$writer->clear([$flag])', false, '$flag'],
+        'a local\'s reference unpacked from a literal into a method of an object no scan names' => [
+            '$writer->clear(...[&$flag])',
+            true,
+            '$flag',
+        ],
+        'a local\'s reference in a literal handed to a method of an object no scan names' => [
+            '$writer->clear([[&$flag]])',
+            true,
+            '$flag',
+        ],
         'a helper whose foreach destructures into the read' => ['$this->loopsIntoFlag()', true, '$this->pinned'],
         'a helper whose foreach key is the model\'s attribute' => ['$this->loopsIntoPin()', true],
         'a reader\'s name on a class that is no model' => [
