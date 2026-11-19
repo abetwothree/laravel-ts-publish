@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Illuminate\Http\Resources\CollectsResources;
 use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -25,6 +27,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionMethod;
@@ -106,7 +109,7 @@ final class ReadOnlyCalls
 
     /**
      * The helper RESOURCE_HELPERS lists that a method of a class names, where the framework's resource classes
-     * declare it rather than the class overriding it.
+     * declare it and each method it calls on `$this`, rather than the class overriding one.
      *
      * @param  ReflectionClass<object>  $class
      */
@@ -118,7 +121,7 @@ final class ReadOnlyCalls
 
         $helper = $class->getMethod($method);
 
-        return in_array(DeclaringFile::ofMethod($helper)->getName(), self::READING_DECLARERS, true) ? $helper : null;
+        return self::runsFrameworkCode($class, $helper, []) ? $helper : null;
     }
 
     /**
@@ -252,6 +255,62 @@ final class ReadOnlyCalls
     public static function isClassName(?Expr $expr): bool
     {
         return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
+    }
+
+    /**
+     * Whether a method of a class runs only the framework's resource code: the framework's resource classes declare
+     * it, and each method its body calls on `$this`, as `unless()` calls `when()`, which the class may override.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  list<string>  $seen  the methods, lowercased, the chain already holds
+     */
+    private static function runsFrameworkCode(ReflectionClass $class, ReflectionMethod $method, array $seen): bool
+    {
+        if (! in_array(DeclaringFile::ofMethod($method)->getName(), self::READING_DECLARERS, true)) {
+            return false;
+        }
+
+        $seen[] = strtolower($method->getName());
+
+        return resolve(AnalysisMemo::class)->rememberFact(
+            'framework-helper:'.$class->getName().'::'.$method->getName(),
+            static function () use ($class, $method, $seen): bool {
+                $called = self::thisCalls($class, $method);
+
+                return $called !== null && array_all($called, static fn (?string $name): bool => $name !== null
+                    && (in_array(strtolower($name), $seen, true) || ($class->hasMethod($name)
+                        && self::runsFrameworkCode($class, $class->getMethod($name), $seen))));
+            },
+        );
+    }
+
+    /**
+     * The names of the methods a method's body calls on `$this`, each null where the call computes it; null where the
+     * body cannot be read.
+     *
+     * @param  ReflectionClass<object>  $class  the class whose method it is
+     * @return list<string|null>|null
+     */
+    private static function thisCalls(ReflectionClass $class, ReflectionMethod $method): ?array
+    {
+        $body = resolve(MethodLocator::class)->locate($class->getName(), $method->getName())?->method->stmts;
+
+        if ($body === null) {
+            return null;
+        }
+
+        $finder = new NodeFinder;
+        $calls = [
+            ...$finder->findInstanceOf($body, MethodCall::class),
+            ...$finder->findInstanceOf($body, NullsafeMethodCall::class),
+        ];
+
+        return array_values(array_map(
+            static fn (MethodCall|NullsafeMethodCall $call): ?string => $call->name instanceof Identifier
+                ? $call->name->toString()
+                : null,
+            array_filter($calls, static fn (MethodCall|NullsafeMethodCall $call): bool => CallableTargets::isThis($call->var)),
+        ));
     }
 
     /**

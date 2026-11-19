@@ -39,6 +39,7 @@ it('names a helper the framework lists, run on $this', function (
     'a self:: method the subject declares' => ['self::header()', null],
     'a helper the subject overrides' => ['$this->when($c, 1)', null, OwnWhenResource::class],
     'parent::when() past the override' => ['parent::when($c, 1)', 'when', OwnWhenResource::class],
+    'unless(), which calls the when() the subject overrides' => ['$this->unless($c, 1)', null, OwnWhenResource::class],
     'a method no class declares' => ['$this->missing()', null],
     'a helper\'s name on another receiver' => ['$this->resource->when($c, 1)', null],
     'a JsonResource method the framework does not list' => ['$this->resolve()', null],
@@ -58,6 +59,9 @@ it('names the helper a method of a class runs, where the framework declares it',
     'a method the framework does not list' => ['additional', null],
     'a method the class lacks' => ['missing', null],
     'a helper the class overrides' => ['when', null, OwnWhenResource::class],
+    'a helper calling one the class overrides' => ['unless', null, OwnWhenResource::class],
+    'merge(), whose mergeWhen() the class keeps' => ['merge', 'merge', OwnWhenResource::class],
+    'whenLoaded(), calling no helper the class overrides' => ['whenLoaded', 'whenLoaded', OwnWhenResource::class],
 ]);
 
 it('gives the arguments a helper calls, as its value and default', function (string $call, array $callbacks) {

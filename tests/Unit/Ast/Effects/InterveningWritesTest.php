@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -252,6 +253,23 @@ it('tells whether a call between the keys may change the discriminant', function
 ) {
     expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
 })->with(interveningCalls());
+
+it('reads a framework helper as the class runs it, past a helper it overrides', function (
+    string $call,
+    string $subject,
+    bool $mayWrite,
+) {
+    expect(windowReach([$call, '$this->is_pinned ? 1 : null'], subject: $subject))->toBe($mayWrite);
+})->with([
+    'unless(), which calls the when() the class overrides' => ['$this->unless(false, 1)', OwnWhenResource::class, true],
+    'whenNotNull(), which calls the when() the class overrides' => [
+        '$this->whenNotNull($this->title)',
+        OwnWhenResource::class,
+        true,
+    ],
+    'whenLoaded(), which calls no helper the class overrides' => ["\$this->whenLoaded('author')", OwnWhenResource::class, false],
+    'unless() on a class that overrides no helper' => ['$this->unless(false, 1)', InterveningResource::class, false],
+]);
 
 it('reads each body once a publish run, whatever scan reaches it', function () {
     $memo = resolve(AnalysisMemo::class);
