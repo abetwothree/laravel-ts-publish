@@ -640,6 +640,7 @@ it('reads a write to a model attribute as a call where a set mutator runs', func
     'an Attribute with a setter' => ["\$this->resource->pin_note = 'a'", true],
     'an Attribute a builder the source names no setter in returns' => ["\$this->resource->badge = 'a'", true],
     'a mutator, through ??=' => ["\$this->resource->pin_note ??= 'a'", true],
+    'an Attribute with a getter only, built past a write' => ["\$this->resource->pin_label = 'a'", true],
     'an Attribute with a getter only, cached' => ["\$this->resource->label = 'a'", false],
     'an Attribute whose setter is null' => ["\$this->resource->summary = 'a'", false],
     'an Attribute whose getter is a closure with its own return' => ["\$this->resource->caption = 'a'", false],

@@ -152,6 +152,7 @@ it('lists the set mutator a write of a model attribute runs, whose body runs on 
     'an Attribute with a setter unpacked by name' => ['$this->resource->pin_mark', [[null, 'pin_mark']]],
     'an Attribute built from an array a helper returns' => ['$this->resource->pin_tag', [[null, 'pin_tag']]],
     'an Attribute with a getter only' => ['$this->resource->label', []],
+    'an Attribute with a getter only, built past a write' => ['$this->resource->pin_label', [[null, 'pin_label']]],
     'an attribute with no mutator' => ['$this->resource->title', []],
     'an attribute written on the resource, which keeps it' => ['$this->pin_note', []],
 ]);

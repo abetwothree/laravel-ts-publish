@@ -75,6 +75,19 @@ class MutatingPost extends Post
     }
 
     /**
+     * Clears the pin, then reads the pin's label with no setter: Eloquent runs this on a write of `pin_label`, to look
+     * for a setter.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinLabel(): Attribute
+    {
+        $this->attributes['is_pinned'] = false;
+
+        return Attribute::get(fn (): string => 'label');
+    }
+
+    /**
      * Reads the summary, its setter left out by name.
      *
      * @return Attribute<string, never>

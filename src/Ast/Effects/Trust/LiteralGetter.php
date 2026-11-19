@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -17,9 +18,6 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\InterpolatedString;
-use PhpParser\Node\Stmt;
-use PhpParser\Node\Stmt\Nop;
-use PhpParser\Node\Stmt\Return_;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -41,10 +39,9 @@ final class LiteralGetter
     {
         $declaring = $method->getDeclaringClass();
         $body = resolve(MethodLocator::class)->locate($declaring->getName(), $method->getName())?->method->stmts ?? [];
-        $statements = array_values(array_filter($body, static fn (Stmt $statement): bool => ! $statement instanceof Nop));
+        $returned = StatementBlocks::soleReturn($body);
 
-        return count($statements) === 1 && $statements[0] instanceof Return_ && $statements[0]->expr !== null
-            && self::isLiteral($statements[0]->expr, $declaring, $runtime);
+        return $returned !== null && self::isLiteral($returned, $declaring, $runtime);
     }
 
     /**

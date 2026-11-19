@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -127,7 +128,7 @@ final readonly class PropertyHooks
 
     /**
      * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the set mutator a model
-     * runs for an attribute its `__set()` sets, which runs with the model as `$this`.
+     * runs for an attribute its `__set()` sets, or looks one up through, which runs with the model as `$this`.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is written
      * @return list<HookRun>
@@ -202,8 +203,8 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether a model sets an attribute through a mutator, as Eloquent's setAttribute() looks one up: a
-     * `setXAttribute()` method, or a method named for it returning an `Attribute` whose setter the source may hold.
+     * Whether a write of an attribute runs the model's code, as Eloquent's setAttribute() looks for a mutator: a
+     * `setXAttribute()` method, or the method named for it returning an `Attribute`, which it runs to read the setter.
      *
      * @param  ReflectionClass<Model>  $model
      */
@@ -218,21 +219,22 @@ final readonly class PropertyHooks
         $type = $model->hasMethod($method) ? $model->getMethod($method)->getReturnType() : null;
 
         return $type instanceof ReflectionNamedType && $type->getName() === Attribute::class
-            && self::returnsSetter($model, $method);
+            && self::attributeMayWrite($model, $method);
     }
 
     /**
-     * Whether a method returning an `Attribute` may give it a setter: some value it returns is not Attribute::make(),
-     * get(), set() or `new Attribute`, left as written or with a method such as shouldCache() called on it, built with
-     * no setter or a `null` one; and so where its body cannot be read.
+     * Whether running a method returning an `Attribute` may write the model or give it a setter: its body is not one
+     * `return` of Attribute::make(), get(), set() or `new Attribute`, left as written or with a method such as
+     * shouldCache() called on it, built with no setter or a `null` one; and so where its body cannot be read.
      *
      * @param  ReflectionClass<Model>  $model
      */
-    private static function returnsSetter(ReflectionClass $model, string $method): bool
+    private static function attributeMayWrite(ReflectionClass $model, string $method): bool
     {
         $body = resolve(MethodLocator::class)->locate($model->getName(), $method)?->method->stmts;
+        $returned = $body === null ? null : StatementBlocks::soleReturn($body);
 
-        return $body === null || array_any(ClosureReach::returnedValues($body), self::buildsSetter(...));
+        return $returned === null || self::buildsSetter($returned);
     }
 
     /**
