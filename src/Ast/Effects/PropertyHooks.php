@@ -170,6 +170,28 @@ final readonly class PropertyHooks
     }
 
     /**
+     * The classes `$this->resource` holds.
+     *
+     * @return list<ReflectionClass<object>>
+     */
+    public function heldClasses(): array
+    {
+        return array_map(static fn (string $class): ReflectionClass => new ReflectionClass($class), $this->held);
+    }
+
+    /**
+     * The classes the object a `$this` path reads may be, as its steps name them; none past a step whose class the
+     * engine cannot name, and none for any other root.
+     *
+     * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is read
+     * @return list<ReflectionClass<object>>
+     */
+    public function classesOf(ReadPath $path, ReflectionClass $declaring): array
+    {
+        return $this->walk($path, $declaring, true)[1];
+    }
+
+    /**
      * Whether a model sets an attribute through a mutator, as Eloquent's setAttribute() looks one up: a
      * `setXAttribute()` method, or a method named for it returning an `Attribute` whose setter the source may hold.
      *
@@ -285,10 +307,21 @@ final readonly class PropertyHooks
      */
     private function steps(ReadPath $path, ReflectionClass $declaring, bool $reads): array
     {
+        return $this->walk($path, $declaring, $reads)[0];
+    }
+
+    /**
+     * A `$this` path's steps, as steps() lists them, beside the classes the object its last step reads may be.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return array{list<PathStep>, list<ReflectionClass<object>>}
+     */
+    private function walk(ReadPath $path, ReflectionClass $declaring, bool $reads): array
+    {
         $first = $path->segments[0] ?? null;
 
         if ($path->root !== 'this' || $first === null) {
-            return [];
+            return [[], []];
         }
 
         $own = AnalysisScope::memberClassOf($declaring, $this->runtime, $first, false);
@@ -303,16 +336,6 @@ final readonly class PropertyHooks
                 : self::declaredClasses($classes, $property);
         }
 
-        return $steps;
-    }
-
-    /**
-     * The classes `$this->resource` holds.
-     *
-     * @return list<ReflectionClass<object>>
-     */
-    private function heldClasses(): array
-    {
-        return array_map(static fn (string $class): ReflectionClass => new ReflectionClass($class), $this->held);
+        return [$steps, $classes];
     }
 }

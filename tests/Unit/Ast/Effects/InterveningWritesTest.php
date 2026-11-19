@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use PhpParser\Node\ArrayItem;
@@ -43,6 +44,21 @@ function interveningCalls(): array
         ],
         'a helper whose foreach destructures into the read' => ['$this->loopsIntoFlag()', true, '$this->pinned'],
         'a helper whose foreach key is the model\'s attribute' => ['$this->loopsIntoPin()', true],
+        'a reader\'s name on a class that is no model' => [
+            '$this->finalFlags->getKey()',
+            true,
+            '$this->finalFlags->open',
+        ],
+        'a reader\'s name on a class that is no model, in a pair' => [
+            "array_map([\$this->finalFlags, 'getKey'], [1])",
+            true,
+            '$this->finalFlags->open',
+        ],
+        'a reader\'s name on a class that is no model, as a callable' => [
+            'array_map($this->finalFlags->getKey(...), [1])',
+            true,
+            '$this->finalFlags->open',
+        ],
         'the read handed to a method of an object no scan names' => ['$service->reset($this->pinned)', true, '$this->pinned'],
         'the read handed to a method of a built object' => ['(new PinWriter)->reset($this->pinned)', true, '$this->pinned'],
         'the read handed to a method of what a helper returns' => ['$this->reader()->reset($this->pinned)', true, '$this->pinned'],
@@ -253,6 +269,21 @@ it('tells whether a call between the keys may change the discriminant', function
 ) {
     expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
 })->with(interveningCalls());
+
+it('reads a model reader as Eloquent\'s only where the model runs Eloquent\'s own', function (
+    string $call,
+    string $model,
+    bool $mayWrite,
+) {
+    expect(windowReach([$call, '$this->is_pinned ? 1 : null'], model: $model))->toBe($mayWrite);
+})->with([
+    'getKey() the model overrides, forwarded' => ['$this->getKey()', KeyWritingPost::class, true],
+    'getKey() the model overrides, on the model' => ['$this->resource->getKey()', KeyWritingPost::class, true],
+    'getKey() the model overrides, as a callable' => ['array_map($this->resource->getKey(...), [1])', KeyWritingPost::class, true],
+    'getKey() the model overrides, in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", KeyWritingPost::class, true],
+    'Eloquent\'s getKey(), forwarded' => ['$this->getKey()', Post::class, false],
+    'Eloquent\'s getKey(), in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", Post::class, false],
+]);
 
 it('reads a framework helper as the class runs it, past a helper it overrides', function (
     string $call,

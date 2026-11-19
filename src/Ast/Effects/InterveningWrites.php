@@ -119,6 +119,7 @@ final class InterveningWrites
             $runtime,
             $this->methodMayWrite(...),
             $this->holdsObject(...),
+            $this->heldMethodMayWrite(...),
         );
     }
 
@@ -579,7 +580,7 @@ final class InterveningWrites
     {
         return $class->hasMethod($method)
             ? $this->reads->mayWrite($class, $method)
-            : ! $this->proxied || $this->modelCallMayWrite($method);
+            : ! $this->proxied || $this->modelCallMayWrite($method, $this->hooks->heldClasses());
     }
 
     /**
@@ -615,18 +616,48 @@ final class InterveningWrites
         }
 
         return match (true) {
-            $this->holdsObject($call->var, $inBody) => $this->modelCallMayWrite($method),
+            $this->holdsObject($call->var, $inBody) => $this->modelCallMayWrite(
+                $method,
+                $this->objectClasses($call->var, $declaring),
+            ),
             $call->var instanceof CallLike && $this->handsSubject($call->var, $declaring, $inBody) => true,
             default => $this->handsSubject($call, $declaring, $inBody),
         };
     }
 
     /**
-     * Whether a model method may change the model: any that Eloquent does not list as only reading it.
+     * Whether a method of a model may change it: any but a reader Eloquent itself runs on each class it may be.
+     *
+     * @param  list<ReflectionClass<object>>  $receivers
      */
-    private function modelCallMayWrite(string $method): bool
+    private function modelCallMayWrite(string $method, array $receivers): bool
     {
-        return ! ReadOnlyCalls::readsModel($method);
+        return ! ReadOnlyCalls::readsModel($method, $receivers);
+    }
+
+    /**
+     * Whether running a method, named or computed, on an object read may change the read: one on the subject or on an
+     * object holding the read, as modelCallMayWrite() judges it.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function heldMethodMayWrite(Expr $object, ?string $method, ReflectionClass $declaring, bool $inBody): bool
+    {
+        return $this->holdsObject($object, $inBody)
+            && ($method === null || $this->modelCallMayWrite($method, $this->objectClasses($object, $declaring)));
+    }
+
+    /**
+     * The classes an object read may be, as PropertyHooks names a `$this` path's; none for a read no path names.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return list<ReflectionClass<object>>
+     */
+    private function objectClasses(Expr $object, ReflectionClass $declaring): array
+    {
+        $path = ReadPath::of($object);
+
+        return $path === null ? [] : $this->hooks->classesOf($path, $declaring);
     }
 
     /**

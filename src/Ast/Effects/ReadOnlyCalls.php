@@ -73,6 +73,9 @@ final class ReadOnlyCalls
      */
     public const array RESOURCE_BUILDERS = ['make' => ['make'], 'collection' => ['collection', 'newCollection']];
 
+    /** The namespace Eloquent's model, its concerns and the SoftDeletes trait declare MODEL_READERS in. */
+    public const string ELOQUENT = 'Illuminate\\Database\\Eloquent\\';
+
     /** Eloquent's methods that read a model and change nothing on it; `trashed()` is the SoftDeletes trait's. */
     public const array MODEL_READERS = [
         'getKey', 'getKeyName', 'getKeyType', 'getRouteKey', 'getRouteKeyName', 'getTable', 'getForeignKey',
@@ -242,11 +245,17 @@ final class ReadOnlyCalls
     }
 
     /**
-     * Whether a model method only reads the model, its name matched as PHP matches one, in any case.
+     * Whether a method only reads an object of each of the classes: MODEL_READERS lists it, its name matched as PHP
+     * matches one, in any case, and each class runs Eloquent's own, which no class past Eloquent overrides.
+     *
+     * @param  list<ReflectionClass<object>>  $receivers
      */
-    public static function readsModel(string $method): bool
+    public static function readsModel(string $method, array $receivers): bool
     {
-        return array_any(self::MODEL_READERS, static fn (string $reader): bool => strcasecmp($reader, $method) === 0);
+        return $receivers !== []
+            && array_any(self::MODEL_READERS, static fn (string $reader): bool => strcasecmp($reader, $method) === 0)
+            && array_all($receivers, static fn (ReflectionClass $class): bool => $class->hasMethod($method)
+                && str_starts_with(DeclaringFile::ofMethod($class->getMethod($method))->getName(), self::ELOQUENT));
     }
 
     /**

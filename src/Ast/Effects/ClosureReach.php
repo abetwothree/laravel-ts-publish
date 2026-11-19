@@ -68,6 +68,8 @@ use ReflectionType;
  * used (ValueUse): a resource helper's callback, a value handed to another callee, or one called outright. The scan
  * that owns the read answers for the methods it runs on `$this` and for the objects that hold the read.
  *
+ * @phpstan-type HeldMethodJudge = Closure(Expr, string|null, ReflectionClass<object>, bool): bool
+ *
  * @internal
  */
 final readonly class ClosureReach
@@ -86,6 +88,8 @@ final readonly class ClosureReach
      *                                                                          may change the read
      * @param  Closure(Expr, bool): bool  $holdsRead  whether an object read is the subject or holds the read, in a
      *                                                method's body or in the window's items
+     * @param  HeldMethodJudge  $heldMethodMayWrite  whether running a method, null where its name is computed, on an
+     *                                               object read may change the read
      */
     public function __construct(
         private CallableTargets $targets,
@@ -93,6 +97,7 @@ final readonly class ClosureReach
         private ReflectionClass $runtime,
         private Closure $methodMayWrite,
         private Closure $holdsRead,
+        private Closure $heldMethodMayWrite,
     ) {}
 
     /**
@@ -362,9 +367,12 @@ final readonly class ClosureReach
             is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
             default => ($callable instanceof MethodCall || $callable instanceof NullsafeMethodCall)
-                && ($this->holdsRead)($callable->var, $inBody)
-                && (! $callable->name instanceof Identifier
-                    || ! ReadOnlyCalls::readsModel($callable->name->toString())),
+                && ($this->heldMethodMayWrite)(
+                    $callable->var,
+                    $callable->name instanceof Identifier ? $callable->name->toString() : null,
+                    $declaring,
+                    $inBody,
+                ),
         };
     }
 
@@ -451,8 +459,12 @@ final readonly class ClosureReach
         return match (true) {
             is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
-            default => $holder !== null && ! CallableTargets::isThis($holder) && ($this->holdsRead)($holder, $inBody)
-                && (! $name instanceof String_ || ! ReadOnlyCalls::readsModel($name->value)),
+            default => $holder !== null && ! CallableTargets::isThis($holder) && ($this->heldMethodMayWrite)(
+                $holder,
+                $name instanceof String_ ? $name->value : null,
+                $declaring,
+                $inBody,
+            ),
         };
     }
 

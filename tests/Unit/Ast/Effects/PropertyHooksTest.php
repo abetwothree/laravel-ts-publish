@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InheritedHookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookParent;
 use Workbench\App\Models\Post;
@@ -176,4 +177,21 @@ it('tells a read that starts at a declared property, which a by-reference parame
     'a property the held object declares, read through the resource' => ['$this->plain', [HookedProperties::class], true],
     'a property the held object declares, read on it' => ['$this->resource->plain', [HookedProperties::class], true],
     'another root' => ['$post->is_pinned', [Post::class], false],
+]);
+
+it('names the classes the object a path reads may be', function (string $path, array $classes) {
+    $read = ReadPath::of(runtimeClassCall($path));
+    assert($read instanceof ReadPath);
+    $resource = new ReflectionClass(InterveningResource::class);
+
+    expect(array_map(
+        static fn (ReflectionClass $class): string => $class->getName(),
+        new PropertyHooks($resource, true, [Post::class])->classesOf($read, $resource),
+    ))->toBe($classes);
+})->with([
+    'the model the resource holds' => ['$this->resource', [Post::class]],
+    'a property the resource types' => ['$this->finalFlags', [FinalFlags::class]],
+    'a property a step further' => ['$this->finalFlags->inner', [OpenFlags::class]],
+    'a relation the model types no property for' => ['$this->author', []],
+    'another root' => ['$post->author', []],
 ]);

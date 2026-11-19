@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnpinningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\MergedResourceCollection;
@@ -18,6 +20,8 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\PrettyPrinter\Standard;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Post;
+use Workbench\App\Models\User;
 
 it('names a helper the framework lists, run on $this', function (
     string $call,
@@ -166,13 +170,25 @@ it('knows the Gate facade\'s checks', function (string $call, bool $check) {
     'another class' => ["Policy::allows('view', \$this->resource)", false],
 ]);
 
-it('knows the model methods that only read, whatever their case', function (string $method, bool $reads) {
-    expect(ReadOnlyCalls::readsModel($method))->toBe($reads);
+it('knows the model methods that only read, as Eloquent runs them, whatever their case', function (
+    string $method,
+    array $receivers,
+    bool $reads,
+) {
+    $classes = array_map(static fn (string $class): ReflectionClass => new ReflectionClass($class), $receivers);
+
+    expect(ReadOnlyCalls::readsModel($method, $classes))->toBe($reads);
 })->with([
-    'getKey()' => ['getKey', true],
-    'getkey()' => ['getkey', true],
-    'hasAppended()' => ['hasAppended', true],
-    'save()' => ['save', false],
+    'getKey()' => ['getKey', [Post::class], true],
+    'getkey()' => ['getkey', [Post::class], true],
+    'hasAppended()' => ['hasAppended', [Post::class], true],
+    'trashed(), on the SoftDeletes trait' => ['trashed', [Post::class], true],
+    'save()' => ['save', [Post::class], false],
+    'a reader a model overrides' => ['getKey', [KeyWritingPost::class], false],
+    'a reader one of two models overrides' => ['getKey', [Post::class, KeyWritingPost::class], false],
+    'a reader\'s name on a class that is no model' => ['getKey', [FinalFlags::class], false],
+    'a reader on an object of no known class' => ['getKey', [], false],
+    'a reader a model lacks' => ['trashed', [User::class], false],
 ]);
 
 it('lists only methods Eloquent declares, trashed() on the SoftDeletes trait', function () {
