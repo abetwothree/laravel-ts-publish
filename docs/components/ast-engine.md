@@ -1169,7 +1169,7 @@ These pages cover the engine's neighbors:
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
 [`PropertyHooks`]: ../../src/Ast/Effects/PropertyHooks.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
-[`ReadOnlyCalls`]: ../../src/Ast/Effects/ReadOnlyCalls.php
+[`ReadOnlyCalls`]: ../../src/Ast/Effects/Trust/ReadOnlyCalls.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php
 [`RedundantArms::admits()`]: ../../src/Support/TypeStrings/RedundantArms.php

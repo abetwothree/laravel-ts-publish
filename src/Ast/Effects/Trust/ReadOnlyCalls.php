@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\CallableTargets;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Illuminate\Http\Resources\CollectsResources;
 use Illuminate\Http\Resources\ConditionallyLoadsAttributes;

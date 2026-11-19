@@ -167,7 +167,7 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`LiteralVariants`]: ../../src/Ast/Variants/LiteralVariants.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`PropertyHooks`]: ../../src/Ast/Effects/PropertyHooks.php
-[`ReadOnlyCalls`]: ../../src/Ast/Effects/ReadOnlyCalls.php
+[`ReadOnlyCalls`]: ../../src/Ast/Effects/Trust/ReadOnlyCalls.php
 [`ReadPath`]: ../../src/Ast/Parsing/ReadPath.php
 [`ResourceDeclaration`]: ../../src/Support/ResourceDeclaration.php
 [`SplitsOnCondition`]: ../../src/Ast/Contracts/SplitsOnCondition.php
