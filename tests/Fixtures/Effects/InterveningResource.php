@@ -304,6 +304,26 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Names the writer as a pair a spread literal holds, which PHP spreads in place.
+     *
+     * @return array<int, mixed>
+     */
+    private function spreadWriterPair(): array
+    {
+        return [...[$this, 'writer']];
+    }
+
+    /**
+     * Names the reader as a pair a spread literal holds, which PHP spreads in place.
+     *
+     * @return array<int, mixed>
+     */
+    private function spreadReaderPair(): array
+    {
+        return [...[$this, 'reader']];
+    }
+
+    /**
      * Returns a label, its signature typing a string.
      */
     private function plainLabel(): string

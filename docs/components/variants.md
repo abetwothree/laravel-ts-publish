@@ -126,10 +126,10 @@ it, so in the last item the call counts, not where the body is written. Code may
   `self::` names the class that declares the hook, which may be a parent of the class that redeclares the property.
 - A callable a call may run is judged by its kind and its use ([`ClosureReach`], [`ValueUse`]): a resource helper
   runs only a `Closure`, and any other callee runs any callable. [`CallableTargets`] names the method a callable runs,
-  reading a callable array by its keys 0 and 1, as PHP does ([`CallablePair`]). An array that a computed key or an
-  unpacked item leaves open may write only through an item that can receive the call: `$this`, a class keyword, the
-  class's or an ancestor's name, or an object holding the read. A closure hands a callee what it returns or yields,
-  not what a closure nested in it returns or yields.
+  reading a callable array by its keys 0 and 1, as PHP does, a spread literal's items in its place ([`CallablePair`]).
+  An array that a computed key or an unpack of anything else leaves open may write only through an item that can
+  receive the call: `$this`, a class keyword, the class's or an ancestor's name, or an object holding the read. A
+  closure hands a callee what it returns or yields, not what a closure nested in it returns or yields.
 - A property hook or a model's set mutator may write ([`PropertyHooks`]).
 - `eval`, `include` and a call by a name the source does not spell may write.
 

@@ -169,6 +169,10 @@ function interveningCalls(): array
             'array_map($this->keyedWriterPair(), [1])',
             true,
         ],
+        'a writer named by a pair a spread literal holds, which a helper returns' => [
+            'array_map($this->spreadWriterPair(), [1])',
+            true,
+        ],
         'a closure returning the model, handed to array_map()' => [
             'array_map(function () { return $this->resource; }, [1])',
             true,
@@ -305,6 +309,10 @@ function interveningCalls(): array
         'a reader named by \'self::\'' => ["array_map('self::reader', ['a'])", false],
         'a reader named by [$this, …]' => ["array_map([\$this, 'reader'], ['a'])", false],
         'a reader named by a pair keyed out of order' => ["array_map([1 => 'reader', 0 => \$this], ['a'])", false],
+        'a reader named by a pair a spread literal holds, which a helper returns' => [
+            "array_map(\$this->spreadReaderPair(), ['a'])",
+            false,
+        ],
         'a closure whose nested closure returns $this, which nothing calls' => [
             'array_map(function () { $f = function () { return $this; }; return 1; }, [1])',
             false,
