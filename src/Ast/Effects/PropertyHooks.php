@@ -233,7 +233,7 @@ final readonly class PropertyHooks
 
     /**
      * Whether an object of a class may run a get hook on a read of a property: an interface's implementer may, and so
-     * may the class itself, or a child of it where neither the class nor the property is final or readonly.
+     * may the class itself, or a child of it where neither the class nor the public property is final or readonly.
      *
      * @param  ReflectionClass<object>  $class
      */
@@ -243,13 +243,11 @@ final readonly class PropertyHooks
             return true;
         }
 
-        if ($class->isFinal() || ! $class->hasProperty($property)) {
-            return false;
-        }
+        $declared = $class->hasProperty($property) ? $class->getProperty($property) : null;
 
-        $declared = $class->getProperty($property);
-
-        return ! $declared->isFinal() && ! $declared->isReadOnly();
+        // A read from outside reaches a property that is not public through `__get()`, as Eloquent's $visible.
+        return ! $class->isFinal() && $declared !== null && $declared->isPublic()
+            && ! $declared->isFinal() && ! $declared->isReadOnly();
     }
 
     /**

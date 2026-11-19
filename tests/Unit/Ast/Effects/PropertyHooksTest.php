@@ -78,8 +78,8 @@ it('lists the hooks an access of a `$this` path runs, on the class each step rea
     'a write of a property an interface types, whose hook only an implementer runs' => ['$this->contract->label', true, []],
 ]);
 
-// PHP 8.4 lets a child class hook an inherited property that is neither final nor readonly, and an implementer hook
-// any property an interface names, so only `$this`, the class published, is read on its own declaration.
+// PHP 8.4 lets a child class hook an inherited public property that is neither final nor readonly, and an object an
+// interface types be of any class, so only `$this`, the class published, is read on its own declaration.
 it('tells a read that may run a get hook, on the class a step reads or one the object there may be', function (
     string $path,
     array $held,
@@ -112,6 +112,17 @@ it('tells a read that may run a get hook, on the class a step reads or one the o
     'a property of a final class the resource holds' => ['$this->open', [FinalFlags::class], false],
     'a model attribute, read through the resource' => ['$this->is_pinned', [Post::class], false],
     'a model attribute, read on the model' => ['$this->resource->is_pinned', [Post::class], false],
+    'a model attribute named like a protected property of Model, read through the resource' => ['$this->visible', [Post::class], false],
+    'a model attribute named like a protected property of Model, read on the model' => [
+        '$this->resource->hidden',
+        [Post::class],
+        false,
+    ],
+    'a private property of a non-final class, which a read from outside reaches through `__get()`' => [
+        '$this->openFlags->secret',
+        [Post::class],
+        false,
+    ],
     'another root' => ['$post->open', [Post::class], false],
 ]);
 
