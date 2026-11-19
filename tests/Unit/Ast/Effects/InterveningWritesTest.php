@@ -19,6 +19,9 @@ function interveningCalls(): array
             '$this->clearFlag($this->resource->is_pinned)',
             true,
         ],
+        'the read handed to a method of an object no scan names' => ['$service->reset($this->pinned)', true, '$this->pinned'],
+        'the read handed to a method of a built object' => ['(new PinWriter)->reset($this->pinned)', true, '$this->pinned'],
+        'the read handed to a method of what a helper returns' => ['$this->reader()->reset($this->pinned)', true, '$this->pinned'],
         'data_set() handed the model' => ["data_set(\$this->resource, 'is_pinned', false)", true],
         'forceFill() on the model' => ["\$this->resource->forceFill(['is_pinned' => false])", true],
         'save() on the model' => ['$this->resource->save()', true],
@@ -284,7 +287,15 @@ it('reads the last item for its writes and the arguments it binds by reference, 
     'a get hook that writes, in its arm' => ['$this->pinned ? $this->unpinning : null', false],
     'a write in its arm' => ['$this->pinned ? ($this->pinned = false) : null', true],
     'a by-reference argument in its arm' => ['$this->pinned ? $this->clearFlag($this->pinned) : null', true],
+    'the read handed to a method of an object no scan names, in its arm' => ['$this->pinned ? $service->reset($this->pinned) : null', true],
+    'the read handed to a method $this lacks, which takes it by value' => ['$this->pinned ? $this->missing($this->pinned) : null', false],
+    'another read handed to a method of an object no scan names' => ['$this->pinned ? $service->reset($this->title) : null', false],
 ]);
+
+// Eloquent reads an attribute through `__get()`, which hands a by-reference parameter a copy of its value.
+it('reads a model attribute handed to a method of an object no scan names as bound by value', function (string $read) {
+    expect(windowReach(['$this->title', "\$this->is_pinned ? \$service->reset({$read}) : null"]))->toBeFalse();
+})->with(['$this->is_pinned', '$this->resource->is_pinned']);
 
 // A window's answer is any of its items' answers, the last one's calls left out, whatever the order or the repeats.
 it('answers for a window as any of its items does', function (int $seed) {

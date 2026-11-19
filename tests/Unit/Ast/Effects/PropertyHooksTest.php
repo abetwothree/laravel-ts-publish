@@ -88,3 +88,22 @@ it('reads a private hooked property a parent declares only in the parent\'s body
     'the parent\'s body' => [PrivateHookParent::class, [[PrivateHookParent::class, 'flag']]],
     'the child\'s body, which reads the name through the proxy' => [PrivateHookChild::class, []],
 ]);
+
+it('tells a read that starts at a declared property, which a by-reference parameter binds in place', function (
+    string $path,
+    array $held,
+    bool $inPlace,
+) {
+    $read = ReadPath::of(runtimeClassCall($path));
+    assert($read instanceof ReadPath);
+    $resource = new ReflectionClass(InterveningResource::class);
+
+    expect(new PropertyHooks($resource, true, $held)->bindsInPlace($read, $resource))->toBe($inPlace);
+})->with([
+    'a property the resource declares' => ['$this->pinned', [Post::class], true],
+    'a model attribute, read through the resource' => ['$this->is_pinned', [Post::class], false],
+    'a model attribute, read on the model' => ['$this->resource->is_pinned', [Post::class], false],
+    'a property the held object declares, read through the resource' => ['$this->plain', [HookedProperties::class], true],
+    'a property the held object declares, read on it' => ['$this->resource->plain', [HookedProperties::class], true],
+    'another root' => ['$post->is_pinned', [Post::class], false],
+]);

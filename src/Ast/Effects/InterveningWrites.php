@@ -78,23 +78,29 @@ final class InterveningWrites
     /** @var WeakMap<CallLike, array<string, CallBinding|null>> each call's binding, by the class `self` names there */
     private WeakMap $bindings;
 
+    /** Whether the read starts at a property its class declares, which a by-reference parameter binds in place. */
+    private readonly bool $bindsInPlace;
+
     /**
      * A scan for one read, in a scope whose `$this` is an instance of $runtime.
      *
      * @param  ReflectionClass<object>  $runtime
+     * @param  ReflectionClass<object>  $declaring  the class `self` names where the read is made
      */
     private function __construct(
         ReadPath $read,
+        ReflectionClass $declaring,
         private readonly bool $proxied,
         private readonly ReflectionClass $runtime,
         private readonly PropertyHooks $hooks,
     ) {
         $this->readSteps = $this->steps($read);
+        $this->bindsInPlace = $hooks->bindsInPlace($read, $declaring);
         $this->references = resolve(ByReferenceArguments::class);
         $this->bindings = new WeakMap;
         $this->reads = new BodyReads(
             resolve(MethodLocator::class),
-            $hooks->key().'@'.implode('->', $this->readSteps),
+            $hooks->key().'@'.implode('->', $this->readSteps).($this->bindsInPlace ? '@in-place' : ''),
             $this->bodyMayChange(...),
             $this->returnedMayRun(...),
         );
@@ -116,7 +122,13 @@ final class InterveningWrites
      */
     public static function reach(array $items, ReadPath $read, AnalysisScope $scope): bool
     {
-        $scan = new self($read, $scope->hasResourceProxy(), $scope->runtime->class, PropertyHooks::of($scope));
+        $scan = new self(
+            $read,
+            $scope->declaringClass,
+            $scope->hasResourceProxy(),
+            $scope->runtime->class,
+            PropertyHooks::of($scope),
+        );
         $last = array_key_last($items);
 
         return array_any($items, static fn (ArrayItem $item, int $index): bool => $scan->mayChange(
@@ -236,14 +248,19 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a call binds the read, or a path it is a member of, to a by-reference parameter of the callee it names.
+     * Whether a call binds the read, or a path it is a member of, to a by-reference parameter of the callee it names,
+     * or of a method of an object no scan names, which may take any argument by reference.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function bindsByReference(CallLike $call, ReflectionClass $declaring, bool $inBody): bool
     {
+        $binding = $this->binding($call, $declaring);
+        $unnamed = $binding === null && $this->bindsInPlace
+            && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && ! CallableTargets::isThis($call->var);
+
         return array_any(
-            $this->binding($call, $declaring)['byReference'] ?? [],
+            $unnamed ? array_map(static fn (Arg $arg): Expr => $arg->value, $call->getArgs()) : $binding['byReference'] ?? [],
             fn (Expr $bound): bool => array_any(
                 self::targetPaths($bound),
                 fn (ReadPath $path): bool => $this->reaches($path, $inBody),
