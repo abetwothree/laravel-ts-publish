@@ -149,6 +149,8 @@ it('lists the set mutator a write of a model attribute runs, whose body runs on 
 })->with([
     'a setXAttribute() mutator' => ['$this->resource->pin_reset', [[null, 'pin_reset']]],
     'an Attribute with a setter' => ['$this->resource->pin_note', [[null, 'pin_note']]],
+    'an Attribute with a setter unpacked by name' => ['$this->resource->pin_mark', [[null, 'pin_mark']]],
+    'an Attribute built from an array a helper returns' => ['$this->resource->pin_tag', [[null, 'pin_tag']]],
     'an Attribute with a getter only' => ['$this->resource->label', []],
     'an attribute with no mutator' => ['$this->resource->title', []],
     'an attribute written on the resource, which keeps it' => ['$this->pin_note', []],

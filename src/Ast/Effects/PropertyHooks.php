@@ -233,7 +233,7 @@ final readonly class PropertyHooks
 
     /**
      * Whether a returned value may be an `Attribute` with a setter: anything but one Attribute's builders make with
-     * no setter or a `null` one.
+     * no setter or a `null` one, an unpack it cannot read holding none.
      */
     private static function buildsSetter(Expr $built): bool
     {
@@ -256,7 +256,8 @@ final readonly class PropertyHooks
 
         $setter = $arguments->named('set')?->value;
 
-        return $setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null');
+        return $arguments->hasUnpack()
+            || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'));
     }
 
     /**

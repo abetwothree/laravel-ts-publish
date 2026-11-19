@@ -42,6 +42,17 @@ function interveningCalls(): array
             true,
             '$this->pinned',
         ],
+        'a literal\'s reference unpacked by name, after another unpacked literal' => [
+            "self::clearAfter(...['unused' => 0], ...['flag' => &\$this->pinned])",
+            true,
+            '$this->pinned',
+        ],
+        'a literal\'s reference unpacked by name into an earlier by-reference parameter' => [
+            "self::clearFirst(...['unused' => 0], ...['flag' => &\$this->pinned])",
+            true,
+            '$this->pinned',
+        ],
+        'a by-reference argument to a $this:: static method' => ['$this::clearAfter(0, $this->pinned)', true, '$this->pinned'],
         'a helper whose foreach destructures into the read' => ['$this->loopsIntoFlag()', true, '$this->pinned'],
         'a helper whose foreach key is the model\'s attribute' => ['$this->loopsIntoPin()', true],
         'a reader\'s name on a class that is no model' => [
@@ -174,6 +185,11 @@ function interveningCalls(): array
         'a self-recursive helper that reads' => ['$this->countDown(3)', false],
         'a literal\'s copy unpacked into a later by-reference parameter' => [
             'self::clearAfter(...[0, $this->pinned])',
+            false,
+            '$this->pinned',
+        ],
+        'a literal\'s copy unpacked by name, after another unpacked literal' => [
+            "self::clearAfter(...['unused' => 0], ...['flag' => \$this->pinned])",
             false,
             '$this->pinned',
         ],

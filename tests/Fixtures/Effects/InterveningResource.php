@@ -108,6 +108,16 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Clears the flag it is handed first, as a static method.
+     */
+    private static function clearFirst(bool &$flag, int $unused): bool
+    {
+        $flag = false;
+
+        return $unused === 0;
+    }
+
+    /**
      * Clears the flag it is handed.
      */
     private function clearFlag(bool &$flag): bool

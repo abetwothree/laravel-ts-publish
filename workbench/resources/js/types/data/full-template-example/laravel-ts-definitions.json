@@ -14238,12 +14238,12 @@
             "properties": [
                 {
                     "name": "named_unpack",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "static_through_this",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {

@@ -8,8 +8,8 @@
  */
 export interface DispatchWritesResource
 {
-    named_unpack: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
-    static_through_this: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
+    named_unpack: { pinned: boolean; reset: boolean; detail: string | null };
+    static_through_this: { pinned: boolean; reset: boolean; detail: string | null };
     pair_keys_out_of_order: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
     local_by_reference: { flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null };
 }
