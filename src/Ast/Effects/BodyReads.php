@@ -90,8 +90,13 @@ final class BodyReads
      * @param  ReflectionClass<object>  $class
      * @param  string  $member  the method, or the hooked property
      */
-    private function ask(?ValueUse $use, ReflectionClass $class, string $member, ?PropertyHookType $hook, int $depth): bool
-    {
+    private function ask(
+        ?ValueUse $use,
+        ReflectionClass $class,
+        string $member,
+        ?PropertyHookType $hook,
+        int $depth,
+    ): bool {
         $key = ($use === null ? 'body' : 'returns:'.$use->name).':'.$class->getName().'::'
             .($hook === null ? strtolower($member) : '$'.$member.'::'.$hook->value);
 

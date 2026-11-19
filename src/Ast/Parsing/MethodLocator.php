@@ -123,8 +123,10 @@ class MethodLocator
 
         $node = new NodeFinder()->findFirst(
             $this->parser->parseFile($file),
-            static fn (Node $node): bool => $node instanceof PropertyHook && $node->name->toLowerString() === $type->value
-                && $node->getAttribute('propertyName') === $property && $node->getEndLine() === $hook->getEndLine(),
+            static fn (Node $node): bool => $node instanceof PropertyHook
+                && $node->name->toLowerString() === $type->value
+                && $node->getAttribute('propertyName') === $property
+                && $node->getEndLine() === $hook->getEndLine(),
         );
 
         return $this->hooks[$key] = $node instanceof PropertyHook ? $node : null;

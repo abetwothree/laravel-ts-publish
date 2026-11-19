@@ -218,8 +218,8 @@ final class VariantReader
     }
 
     /**
-     * Whether a read runs a get hook at any step, on `$this` or on an object a step reaches, so two reads of it may send
-     * different values.
+     * Whether a read runs a get hook at any step, on `$this` or on an object a step reaches, so two reads of it may
+     * send different values.
      */
     private static function readsHook(ReadPath $read, AnalysisScope $scope): bool
     {

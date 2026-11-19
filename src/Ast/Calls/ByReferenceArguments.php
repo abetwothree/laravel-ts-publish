@@ -105,7 +105,7 @@ final class ByReferenceArguments
     /**
      * What a call binds, from one look-up of the callee it names: the values its arguments bind by reference, and the
      * arguments a callee PHP itself implements takes as `callable` or `Closure`, which it may run but sets no property
-     * of; null where the call passes arguments to a callee it names no way this reads.
+     * of; null where it passes arguments to a callee this cannot name.
      *
      * @param  ReflectionClass<object>  $declaring
      * @param  ReflectionClass<object>  $runtime

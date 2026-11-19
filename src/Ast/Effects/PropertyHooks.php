@@ -50,11 +50,9 @@ final readonly class PropertyHooks
      */
     public static function of(AnalysisScope $scope): self
     {
-        return new self(
-            $scope->runtime->class,
-            $scope->hasResourceProxy(),
-            array_values(array_unique(array_filter([$scope->forwardsUndeclaredMembersTo, ...$scope->declaredHeld ?? []]))),
-        );
+        $held = array_filter([$scope->forwardsUndeclaredMembersTo, ...$scope->declaredHeld ?? []]);
+
+        return new self($scope->runtime->class, $scope->hasResourceProxy(), array_values(array_unique($held)));
     }
 
     /**

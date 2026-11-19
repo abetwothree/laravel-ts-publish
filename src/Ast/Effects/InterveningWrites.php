@@ -257,10 +257,14 @@ final class InterveningWrites
     {
         $binding = $this->binding($call, $declaring);
         $unnamed = $binding === null && $this->bindsInPlace
-            && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall) && ! CallableTargets::isThis($call->var);
+            && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
+            && ! CallableTargets::isThis($call->var);
+        $byReference = $unnamed
+            ? array_map(static fn (Arg $arg): Expr => $arg->value, $call->getArgs())
+            : $binding['byReference'] ?? [];
 
         return array_any(
-            $unnamed ? array_map(static fn (Arg $arg): Expr => $arg->value, $call->getArgs()) : $binding['byReference'] ?? [],
+            $byReference,
             fn (Expr $bound): bool => array_any(
                 self::targetPaths($bound),
                 fn (ReadPath $path): bool => $this->reaches($path, $inBody),
