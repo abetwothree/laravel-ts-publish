@@ -237,6 +237,35 @@ final class InterveningWrites
     }
 
     /**
+     * Each node under a node, beside the node whose place PHP runs it at: its own, or, in a closure's body, the
+     * innermost call the closure is handed to or called by; none in a closure no call there runs, or in a class.
+     *
+     * @param  Node|null  $call  the innermost call or pipe holding the node
+     * @param  Node|null  $place  where the closure holding the node runs, null outside one
+     * @return list<array{Node, Node}>
+     */
+    private static function runPlaces(Node $node, ?Node $call, ?Node $place): array
+    {
+        if ($node instanceof ClassLike || ($node instanceof FunctionLike && $place === null && $call === null)) {
+            return [];
+        }
+
+        $place ??= $node instanceof FunctionLike ? $call : null;
+        $call = $node instanceof CallLike || $node instanceof Pipe ? $node : $call;
+        $runs = [[$node, $place ?? $node]];
+
+        foreach ($node->getSubNodeNames() as $name) {
+            foreach (is_array($node->{$name}) ? $node->{$name} : [$node->{$name}] as $child) {
+                if ($child instanceof Node) {
+                    array_push($runs, ...self::runPlaces($child, $call, $place));
+                }
+            }
+        }
+
+        return $runs;
+    }
+
+    /**
      * Each ternary's branch and each `match` arm's body in an item, beside the ternary or the `match` it belongs to.
      *
      * @return list<Branch>
@@ -294,7 +323,8 @@ final class InterveningWrites
 
     /**
      * Whether code the last item runs before its guards have read the discriminant may change the read: PHP evaluates
-     * arguments in the order they are written, so one named before `condition:` runs first.
+     * arguments in the order they are written, so one named before `condition:` runs first, and a closure's body runs
+     * where the call it is handed to or called by does.
      *
      * @param  list<Expr>  $guards
      * @param  ReflectionClass<object>  $declaring
@@ -304,10 +334,10 @@ final class InterveningWrites
         $reads = $this->guardReads($item, $guards);
         $branches = self::branches($item);
 
-        return new NodeFinder()->findFirst($item, fn (Node $node): bool => ($reads === null || array_any(
+        return array_any(self::runPlaces($item, null, null), fn (array $run): bool => ($reads === null || array_any(
             $reads,
-            static fn (Expr $read): bool => self::runsBefore($node, $read, $branches),
-        )) && $this->runMayWrite($node, $declaring, false)) !== null;
+            static fn (Expr $read): bool => self::runsBefore($run[1], $read, $branches),
+        )) && $this->runMayWrite($run[0], $declaring, false));
     }
 
     /**

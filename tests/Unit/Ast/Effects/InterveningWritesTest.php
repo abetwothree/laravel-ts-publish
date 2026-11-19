@@ -340,9 +340,21 @@ it('reads the calls the last item runs before its guard reads the discriminant',
     'the condition named first' => ['$this->when(condition: $this->is_pinned, value: $this->writer())', false],
     'a reader named before the condition' => ['$this->when(value: $this->reader(), condition: $this->is_pinned)', false],
     'a read written after a writer in the value' => ['$this->when($this->is_pinned, [$this->writer(), $this->is_pinned])', false],
-    'a closure named before the condition, whose body the scan reads where it is written' => [
+    'a closure named before the condition, which the helper calls after reading it' => [
         '$this->when(value: fn () => $this->writer(), condition: $this->is_pinned)',
+        false,
+    ],
+    'a function named before the condition, which the helper calls after reading it' => [
+        '$this->when(value: function () { return $this->writer(); }, condition: $this->is_pinned, default: null)',
+        false,
+    ],
+    'a closure named before the condition, called there' => [
+        '$this->when(value: (fn () => $this->writer())(), condition: $this->is_pinned)',
         true,
+    ],
+    'a call in a closure named before the condition, which runs once the closure does' => [
+        '$this->when(value: fn () => array_map(fn () => $this->writer(), [1]), condition: $this->is_pinned)',
+        false,
     ],
     'a closure named after the condition' => ['$this->when(condition: $this->is_pinned, value: fn () => $this->writer())', false],
     'a read in a closure named before the condition, which runs only once called' => [
