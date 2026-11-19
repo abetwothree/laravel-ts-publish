@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use PhpParser\Node\ArrayItem;
@@ -31,49 +32,56 @@ use ReflectionMethod;
 final class LiteralGetter
 {
     /**
-     * Whether a method's body is one `return` of a scalar, a constant, a class constant, a property its class declares
+     * Whether a method's body is one `return` of a scalar, a constant, a class constant, a property it reads on `$this`
      * with no hook, or an array of those.
+     *
+     * @param  ReflectionClass<object>  $runtime  the class of the `$this` it runs on, whose properties it reads
      */
-    public static function returnsLiteral(ReflectionMethod $method): bool
+    public static function returnsLiteral(ReflectionMethod $method, ReflectionClass $runtime): bool
     {
-        $class = $method->getDeclaringClass();
-        $body = resolve(MethodLocator::class)->locate($class->getName(), $method->getName())?->method->stmts ?? [];
+        $declaring = $method->getDeclaringClass();
+        $body = resolve(MethodLocator::class)->locate($declaring->getName(), $method->getName())?->method->stmts ?? [];
         $statements = array_values(array_filter($body, static fn (Stmt $statement): bool => ! $statement instanceof Nop));
 
         return count($statements) === 1 && $statements[0] instanceof Return_ && $statements[0]->expr !== null
-            && self::isLiteral($statements[0]->expr, $class);
+            && self::isLiteral($statements[0]->expr, $declaring, $runtime);
     }
 
     /**
-     * Whether reading an expression runs no code: a scalar, a constant, a class constant, a property of `$this` its
-     * class declares with no hook, or an array of those.
+     * Whether reading an expression runs no code: a scalar, a constant, a class constant, a property of `$this` read
+     * with no hook, or an array of those.
      *
-     * @param  ReflectionClass<object>  $class  the class whose method returns it
+     * @param  ReflectionClass<object>  $declaring  the class whose method returns it
+     * @param  ReflectionClass<object>  $runtime
      */
-    private static function isLiteral(Expr $expr, ReflectionClass $class): bool
+    private static function isLiteral(Expr $expr, ReflectionClass $declaring, ReflectionClass $runtime): bool
     {
         return match (true) {
             $expr instanceof Scalar => ! $expr instanceof InterpolatedString,
             $expr instanceof ConstFetch => true,
             $expr instanceof ClassConstFetch => $expr->class instanceof Name && $expr->name instanceof Identifier,
             $expr instanceof PropertyFetch => ReadPath::isThis($expr->var) && $expr->name instanceof Identifier
-                && self::plainProperty($class, $expr->name->toString()),
+                && self::plainProperty($declaring, $runtime, $expr->name->toString()),
             $expr instanceof Array_ => array_all($expr->items, static fn (ArrayItem $item): bool => ! $item->unpack
-                && ! $item->byRef && ($item->key === null || self::isLiteral($item->key, $class))
-                && self::isLiteral($item->value, $class)),
+                && ! $item->byRef && ($item->key === null || self::isLiteral($item->key, $declaring, $runtime))
+                && self::isLiteral($item->value, $declaring, $runtime)),
             default => false,
         };
     }
 
     /**
-     * Whether `$this->{name}` reads a property a class declares, rather than running `__get()` or a get hook.
+     * Whether `$this->{name}`, read in the declaring class's body, reads a property rather than running `__get()` or a
+     * get hook: the declaring class's own private one, else one of the runtime class's that the body may reach.
      *
-     * @param  ReflectionClass<object>  $class
+     * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
      */
-    private static function plainProperty(ReflectionClass $class, string $name): bool
+    private static function plainProperty(ReflectionClass $declaring, ReflectionClass $runtime, string $name): bool
     {
+        $class = AnalysisScope::memberClassOf($declaring, $runtime, $name, false);
         $property = $class->hasProperty($name) ? $class->getProperty($name) : null;
 
-        return $property !== null && ! $property->isStatic() && ! $property->hasHooks();
+        return $property !== null && ! $property->isStatic() && ! $property->hasHooks()
+            && (! $property->isPrivate() || $property->getDeclaringClass()->getName() === $declaring->getName());
     }
 }

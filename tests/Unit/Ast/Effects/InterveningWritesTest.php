@@ -183,6 +183,24 @@ function interveningCalls(): array
             'PinWriter::unpin(1 |> function ($x) { $f = function () { return $this->resource; }; return $f; })',
             true,
         ],
+        'a closure yielding a local that holds a closure returning the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; yield $f; })',
+            true,
+        ],
+        'a closure returning a local that holds a closure yielding the model' => [
+            'PinWriter::unpin(function () { $g = function () { yield $this->resource; }; return $g; })',
+            true,
+        ],
+        'a closure yielding the model' => ['PinWriter::unpin(function () { yield $this->resource; })', true],
+        'a closure yielding the model as a key' => ['PinWriter::unpin(function () { yield $this->resource => 1; })', true],
+        'a closure yielding from an array holding the model' => [
+            'PinWriter::unpin(function () { yield from [$this->resource]; })',
+            true,
+        ],
+        'a pipe into a closure yielding the model' => [
+            'PinWriter::unpin(1 |> function ($x) { yield $this->resource; })',
+            true,
+        ],
         'a method of $this named by a local' => ['array_map([$this, $name], [1])', true],
         'a writer named by [self::class, …]' => ['array_map([self::class, \'writer\'], [1])', true],
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
@@ -279,6 +297,11 @@ function interveningCalls(): array
             'array_map(function () { $f = function () { return $this; }; return 1; }, [1])',
             false,
         ],
+        'a closure whose nested closure yields $this, which nothing calls' => [
+            'array_map(function () { $g = function () { yield $this; }; return 1; }, [1])',
+            false,
+        ],
+        'a closure yielding a number' => ['PinWriter::unpin(function () { yield 1; })', false],
         'a named ancestor\'s reader' => ['InterveningBase::baseReader()', false],
         'a parent:: reader' => ['parent::baseReader()', false],
         'new self of the subject' => ['new self($this->resource)', false],

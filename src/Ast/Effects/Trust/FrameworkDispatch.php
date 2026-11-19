@@ -69,7 +69,16 @@ final class FrameworkDispatch
 
         return resolve(AnalysisMemo::class)->rememberFact(
             'framework-trust:'.self::key($family, $method, $runtime),
-            static fn (): bool => self::judged($family, $method, $runtime, $family->userMethodMayWrite(...)),
+            static fn (): bool => self::judged(
+                $family,
+                $method,
+                $runtime,
+                static fn (ReflectionClass $class, string $name): bool => $family->userMethodMayWrite(
+                    $class,
+                    $name,
+                    $runtime,
+                ),
+            ),
         );
     }
 

@@ -6,8 +6,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkDispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkFamily;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AttributeWritingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PropertyKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\StrictAttributesPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\AncestorCallingPlainPost;
@@ -32,6 +34,12 @@ it('trusts an Eloquent reader only where each model method it dispatches to only
     'getKey(), past a getKeyName() returning a literal' => [CustomKeyPost::class, 'getKey', true],
     'getRouteKey(), past a getRouteKeyName() returning a literal' => [SlugPost::class, 'getRouteKey', true],
     'getKey(), past a getKeyName() that clears the pin' => [KeyNameWritingPost::class, 'getKey', false],
+    'getKey(), past a getKeyName() returning a property' => [PropertyKeyPost::class, 'getKey', true],
+    'getKey(), past a parent\'s getKeyName() returning a property the model hooks' => [
+        HookedKeyPost::class,
+        'getKey',
+        false,
+    ],
     'getKey(), past a trait\'s getAttribute()' => [TaskAssignment::class, 'getKey', false],
     'trashed(), whose magic read runs a getAttribute() that clears the pin' => [AttributeWritingPost::class, 'trashed', false],
     'getAttribute(), past a preventsAccessingMissingAttributes() it runs through static::' => [
@@ -126,6 +134,22 @@ it('trusts every reader Eloquent lists on a model overriding none, as this Larav
 
     expect(array_values($untrusted))->toBe([]);
 });
+
+it('judges a model\'s method on the class PHP looks it up on, reading its properties on the class of $this', function (
+    string $runtime,
+    bool $mayWrite,
+) {
+    $judged = FrameworkFamily::Eloquent->userMethodMayWrite(
+        new ReflectionClass(PropertyKeyPost::class),
+        'getKeyName',
+        new ReflectionClass($runtime),
+    );
+
+    expect($judged)->toBe($mayWrite);
+})->with([
+    'run on the class that declares it' => [PropertyKeyPost::class, false],
+    'run on a subclass that hooks the property it returns' => [HookedKeyPost::class, true],
+]);
 
 it('tells the methods each family declares', function (FrameworkFamily $family, string $class, string $method, bool $declares) {
     expect($family->declares(new ReflectionMethod($class, $method)))->toBe($declares);

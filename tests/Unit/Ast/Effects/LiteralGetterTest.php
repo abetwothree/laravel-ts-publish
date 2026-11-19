@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\LiteralGetter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookingLiteralGetters;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\LiteralGetters;
 
 it('tells a method that only returns a literal, a constant or a property', function (string $method, bool $literal) {
-    expect(LiteralGetter::returnsLiteral(new ReflectionMethod(LiteralGetters::class, $method)))->toBe($literal);
+    $runtime = new ReflectionClass(LiteralGetters::class);
+
+    expect(LiteralGetter::returnsLiteral($runtime->getMethod($method), $runtime))->toBe($literal);
 })->with([
     'a string' => ['string', true],
     'a number' => ['number', true],
@@ -29,4 +32,21 @@ it('tells a method that only returns a literal, a constant or a property', funct
     'a property assigned with ??=' => ['coalesceAssigned', false],
     'a new object' => ['built', false],
     'an empty body' => ['nothing', false],
+]);
+
+it('reads a property on the class the method runs on, but a private one its own class declares', function (
+    string $name,
+    string $runtime,
+    bool $literal,
+) {
+    $method = new ReflectionMethod(LiteralGetters::class, $name);
+
+    expect(LiteralGetter::returnsLiteral($method, new ReflectionClass($runtime)))->toBe($literal);
+})->with([
+    'a property the class declares, run on it' => ['property', LiteralGetters::class, true],
+    'a property a subclass redeclares with a get hook' => ['property', HookingLiteralGetters::class, false],
+    'a private property a subclass hooks its own of' => ['ownProperty', HookingLiteralGetters::class, true],
+    'a property only a subclass declares, run on it' => ['belowProperty', HookingLiteralGetters::class, true],
+    'a property only a subclass declares, run on the class' => ['belowProperty', LiteralGetters::class, false],
+    'a property a subclass keeps private, read through __get()' => ['undeclared', HookingLiteralGetters::class, false],
 ]);

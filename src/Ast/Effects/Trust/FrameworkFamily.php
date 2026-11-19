@@ -59,13 +59,14 @@ enum FrameworkFamily
      * Whether a method the family's code runs on `$this`, which the app declares, may write, judged with nothing more
      * than its own body: a model's only where it does more than return a literal, a resource's always.
      *
-     * @param  ReflectionClass<object>  $class  the class the method runs on
+     * @param  ReflectionClass<object>  $class  the class PHP looks the method up on
+     * @param  ReflectionClass<object>  $runtime  the class of the `$this` it runs on
      */
-    public function userMethodMayWrite(ReflectionClass $class, string $method): bool
+    public function userMethodMayWrite(ReflectionClass $class, string $method, ReflectionClass $runtime): bool
     {
         return match ($this) {
             self::ResourceHelpers => true,
-            self::Eloquent => ! LiteralGetter::returnsLiteral($class->getMethod($method)),
+            self::Eloquent => ! LiteralGetter::returnsLiteral($class->getMethod($method), $runtime),
         };
     }
 }

@@ -26,6 +26,8 @@ class LiteralGetters
     /** @var list<string> */
     protected static array $registry = [];
 
+    private string $own = 'id';
+
     /**
      * Reads a property the class lacks.
      */
@@ -80,6 +82,22 @@ class LiteralGetters
     public function property(): string
     {
         return $this->keyName;
+    }
+
+    /**
+     * A private property the class declares, which no subclass's property of that name replaces.
+     */
+    public function ownProperty(): string
+    {
+        return $this->own;
+    }
+
+    /**
+     * A property only a subclass may declare, which PHP reads through `__get()` on this class.
+     */
+    public function belowProperty(): mixed
+    {
+        return $this->belowKey;
     }
 
     /**

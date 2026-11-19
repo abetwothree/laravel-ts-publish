@@ -51,6 +51,8 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\UnaryMinus;
 use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Expr\Yield_;
+use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\MatchArm;
@@ -123,26 +125,7 @@ final readonly class ClosureReach
      */
     public static function returnedValues(array $stmts): array
     {
-        $values = [];
-        $stack = $stmts;
-
-        while ($stack !== []) {
-            $node = array_pop($stack);
-
-            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
-                continue;
-            }
-
-            if ($node instanceof Return_ && $node->expr !== null) {
-                $values[] = $node->expr;
-            }
-
-            foreach ($node->getSubNodeNames() as $name) {
-                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
-            }
-        }
-
-        return $values;
+        return self::outerValues($stmts, static fn (Node $node): bool => $node instanceof Return_);
     }
 
     /**
@@ -316,26 +299,84 @@ final readonly class ClosureReach
     }
 
     /**
-     * The values a closure or an arrow function written there may hand back: what it returns, or, where a value it
-     * returns reads a variable or a static property or makes a call, which may carry a closure the body builds, what
-     * every `return` in its body returns, its nested closures' included.
+     * The values a closure or an arrow function written there may hand back: what it returns or yields, or, where such
+     * a value reads a variable or a static property or makes a call, which may carry a closure the body builds, what
+     * every `return`, `yield` and `yield from` in its body hands back, its nested closures' included.
      *
      * @return list<Expr>
      */
     private static function handedBack(ClosureExpr|ArrowFunction $closure): array
     {
-        $returns = self::closureReturns($closure);
+        $own = $closure instanceof ArrowFunction
+            ? [$closure->expr]
+            : self::outerValues($closure->stmts, self::handsBack(...));
         $carries = static fn (Node $node): bool => $node instanceof Variable || $node instanceof StaticPropertyFetch
             || $node instanceof CallLike;
 
-        if ($closure instanceof ArrowFunction || new NodeFinder()->findFirst($returns, $carries) === null) {
-            return $returns;
+        if ($closure instanceof ArrowFunction || new NodeFinder()->findFirst($own, $carries) === null) {
+            return $own;
         }
 
-        return array_values(array_filter(array_map(
-            static fn (Return_ $return): ?Expr => $return->expr,
-            new NodeFinder()->findInstanceOf($closure->stmts, Return_::class),
-        )));
+        return array_merge(...array_map(
+            self::valuesOf(...),
+            new NodeFinder()->find($closure->stmts, self::handsBack(...)),
+        ));
+    }
+
+    /**
+     * Whether a node hands its function's caller a value: a `return`, or, in a generator the caller iterates, a `yield`
+     * or a `yield from`.
+     */
+    private static function handsBack(Node $node): bool
+    {
+        return $node instanceof Return_ || $node instanceof Yield_ || $node instanceof YieldFrom;
+    }
+
+    /**
+     * The values a node hands its function's caller: what a `return` returns, the key and the value a `yield` yields,
+     * and what a `yield from` yields from; none for any other node.
+     *
+     * @return list<Expr>
+     */
+    private static function valuesOf(Node $node): array
+    {
+        return match (true) {
+            $node instanceof Return_ => array_filter([$node->expr]),
+            $node instanceof Yield_ => array_values(array_filter([$node->key, $node->value])),
+            $node instanceof YieldFrom => [$node->expr],
+            default => [],
+        };
+    }
+
+    /**
+     * The values the nodes a test picks hand back in a body, outside the closures, functions and classes it holds.
+     *
+     * @param  array<Node>  $stmts
+     * @param  Closure(Node): bool  $picks
+     * @return list<Expr>
+     */
+    private static function outerValues(array $stmts, Closure $picks): array
+    {
+        $values = [];
+        $stack = $stmts;
+
+        while ($stack !== []) {
+            $node = array_pop($stack);
+
+            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
+                continue;
+            }
+
+            if ($picks($node)) {
+                array_push($values, ...self::valuesOf($node));
+            }
+
+            foreach ($node->getSubNodeNames() as $name) {
+                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
+            }
+        }
+
+        return $values;
     }
 
     /**
