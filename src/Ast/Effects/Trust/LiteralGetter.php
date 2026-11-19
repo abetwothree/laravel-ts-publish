@@ -5,12 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
-use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
-use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -21,8 +18,6 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\InterpolatedString;
-use PhpParser\Node\Stmt\Unset_;
-use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -86,42 +81,6 @@ final class LiteralGetter
 
         return $property !== null && ! $property->isStatic() && ! $property->hasHooks()
             && (! $property->isPrivate() || $property->getDeclaringClass()->getName() === $declaring->getName())
-            && ! self::unsets($runtime, $name);
-    }
-
-    /**
-     * Whether a method the app declares on the runtime class or an ancestor below the framework unsets `$this->{name}`,
-     * after which PHP reads the property through `__get()`.
-     *
-     * @param  ReflectionClass<object>  $runtime
-     */
-    private static function unsets(ReflectionClass $runtime, string $name): bool
-    {
-        $locator = resolve(MethodLocator::class);
-        $unsetsName = static fn (Node $node): bool => $node instanceof Unset_ && array_any(
-            $node->vars,
-            static fn (Expr $var): bool => $var instanceof PropertyFetch && ReadPath::isThis($var->var)
-                && $var->name instanceof Identifier && $var->name->toString() === $name,
-        );
-
-        $class = $runtime;
-
-        // A method the class overrides may still run, through `parent::`, so each ancestor's own methods count.
-        while ($class !== false && ! FrameworkClasses::is($class->getName())) {
-            foreach ($class->getMethods() as $method) {
-                $body = $method->getDeclaringClass()->getName() === $class->getName()
-                    && ! FrameworkClasses::is(DeclaringFile::ofMethod($method)->getName())
-                    ? $locator->locate($class->getName(), $method->getName())?->method->stmts
-                    : null;
-
-                if ($body !== null && new NodeFinder()->findFirst($body, $unsetsName) !== null) {
-                    return true;
-                }
-            }
-
-            $class = $class->getParentClass();
-        }
-
-        return false;
+            && ! UnsetProperties::unsets($runtime, $name);
     }
 }

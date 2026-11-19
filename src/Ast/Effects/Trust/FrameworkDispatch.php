@@ -235,7 +235,8 @@ final class FrameworkDispatch
 
     /**
      * Whether a node is a property of `$this` PHP reaches through a magic method from the declaring class's body: one
-     * whose name the source does not spell, or one the class lacks, holds static or keeps private to another class.
+     * whose name the source does not spell, or one the class lacks, holds static, keeps private to another class or the
+     * app's own code unsets.
      *
      * @param  ReflectionClass<object>  $declaring
      * @param  ReflectionClass<object>  $runtime
@@ -255,7 +256,8 @@ final class FrameworkDispatch
         $property = $class->hasProperty($name) ? $class->getProperty($name) : null;
 
         return $property === null || $property->isStatic()
-            || ($property->isPrivate() && $property->getDeclaringClass()->getName() !== $declaring->getName());
+            || ($property->isPrivate() && $property->getDeclaringClass()->getName() !== $declaring->getName())
+            || UnsetProperties::unsets($runtime, $name);
     }
 
     /**
