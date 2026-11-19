@@ -106,6 +106,36 @@ final readonly class ClosureReach
     }
 
     /**
+     * The values a body's `return` statements return, outside the closures, functions and classes it holds.
+     *
+     * @param  array<Node>  $stmts
+     * @return list<Expr>
+     */
+    public static function returnedValues(array $stmts): array
+    {
+        $values = [];
+        $stack = $stmts;
+
+        while ($stack !== []) {
+            $node = array_pop($stack);
+
+            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
+                continue;
+            }
+
+            if ($node instanceof Return_ && $node->expr !== null) {
+                $values[] = $node->expr;
+            }
+
+            foreach ($node->getSubNodeNames() as $name) {
+                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * Whether running a value may change the read, by its kind and its use: a value that yields others by each, a
      * closure by its body, which the scan reads in place, a callable by the method it runs, a call by its result, a
      * local where it is run, a string or an array where any callable runs, a value holding no closure never.
@@ -276,36 +306,6 @@ final readonly class ClosureReach
     private static function closureReturns(ClosureExpr|ArrowFunction $closure): array
     {
         return $closure instanceof ArrowFunction ? [$closure->expr] : self::returnedValues($closure->stmts);
-    }
-
-    /**
-     * The values a body's `return` statements return, outside the closures, functions and classes it holds.
-     *
-     * @param  array<Node>  $stmts
-     * @return list<Expr>
-     */
-    private static function returnedValues(array $stmts): array
-    {
-        $values = [];
-        $stack = $stmts;
-
-        while ($stack !== []) {
-            $node = array_pop($stack);
-
-            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
-                continue;
-            }
-
-            if ($node instanceof Return_ && $node->expr !== null) {
-                $values[] = $node->expr;
-            }
-
-            foreach ($node->getSubNodeNames() as $name) {
-                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
-            }
-        }
-
-        return $values;
     }
 
     /**

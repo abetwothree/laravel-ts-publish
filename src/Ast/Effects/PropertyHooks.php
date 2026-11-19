@@ -18,8 +18,6 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use PhpParser\Node\Stmt\Return_;
-use PhpParser\NodeFinder;
 use PropertyHookType;
 use ReflectionClass;
 use ReflectionMethod;
@@ -180,17 +178,14 @@ final readonly class PropertyHooks
     {
         $body = resolve(MethodLocator::class)->locate($model->getName(), $method)?->method->stmts;
 
-        return $body === null || array_any(
-            new NodeFinder()->findInstanceOf($body, Return_::class),
-            static fn (Return_ $return): bool => self::buildsSetter($return->expr),
-        );
+        return $body === null || array_any(ClosureReach::returnedValues($body), self::buildsSetter(...));
     }
 
     /**
      * Whether a returned value may be an `Attribute` with a setter: anything but one Attribute's builders make with
      * no setter or a `null` one.
      */
-    private static function buildsSetter(?Expr $built): bool
+    private static function buildsSetter(Expr $built): bool
     {
         while ($built instanceof MethodCall) {
             $built = $built->var;

@@ -64,6 +64,18 @@ class MutatingPost extends Post
     }
 
     /**
+     * Reads the caption through a closure that returns it, with no setter.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function caption(): Attribute
+    {
+        return Attribute::get(function (): string {
+            return 'caption';
+        });
+    }
+
+    /**
      * An attribute holding what it is given.
      *
      * @return Attribute<string, string>

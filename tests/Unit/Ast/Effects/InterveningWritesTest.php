@@ -303,6 +303,7 @@ it('reads a write to a model attribute as a call where a set mutator runs', func
     'a mutator, through ??=' => ["\$this->resource->pin_note ??= 'a'", true],
     'an Attribute with a getter only, cached' => ["\$this->resource->label = 'a'", false],
     'an Attribute whose setter is null' => ["\$this->resource->summary = 'a'", false],
+    'an Attribute whose getter is a closure with its own return' => ["\$this->resource->caption = 'a'", false],
     'an attribute with no mutator' => ["\$this->resource->title = 'a'", false],
     'a write the resource keeps, which runs no mutator' => ['$this->pin_reset = true', false],
 ]);
