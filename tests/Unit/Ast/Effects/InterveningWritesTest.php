@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookGrandchild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsetKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
 use PhpParser\Node\ArrayItem;
@@ -393,6 +394,11 @@ it('reads a model reader as Eloquent\'s only where the model runs Eloquent\'s ow
     'Eloquent\'s getKey(), in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", Post::class, false],
     'Eloquent\'s getKey(), past a getKeyName() that clears the pin' => ['$this->getKey()', KeyNameWritingPost::class, true],
     'Eloquent\'s getKey(), past a getKeyName() returning a literal' => ['$this->getKey()', CustomKeyPost::class, false],
+    'Eloquent\'s getKey(), past a getKeyName() returning a property the model unsets' => [
+        '$this->getKey()',
+        UnsetKeyPost::class,
+        true,
+    ],
 ]);
 
 it('reads a framework helper as the class runs it, past a helper it overrides', function (

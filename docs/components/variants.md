@@ -150,7 +150,7 @@ method its [`FrameworkFamily`] declares is walked in turn, and the family decide
 | Family | Declared by | A call by a computed name, or to a method the class lacks | A method of the app the walk reaches |
 | --- | --- | --- | --- |
 | `ResourceHelpers` | `RESOURCE_DECLARERS` | Ends the trust | Ends it where the judge says it may write: `InterveningWrites` passes the scan's [`BodyReads`], and `ThisPathWrites` none, so any such method ends it |
-| `Eloquent` | `ELOQUENT_NAMESPACE` | Trusted, as it runs an accessor, a relation or the model's `__call()` ([known gap][gap-wrong-arm]) | Ends the trust unless [`LiteralGetter`] finds one `return` of a scalar, a constant, a property the class of `$this` declares with no hook, or an array of those, as a `getKeyName()` returning `'uuid'` |
+| `Eloquent` | `ELOQUENT_NAMESPACE` | Trusted, as it runs an accessor, a relation or the model's `__call()` ([known gap][gap-wrong-arm]) | Ends the trust unless [`LiteralGetter`] finds one `return` of a scalar, a constant, a property the class of `$this` declares with no hook and no method of the app unsets, or an array of those, as a `getKeyName()` returning `'uuid'` |
 
 [`AnalysisMemo`] remembers the methods a walk reaches once a publish run, by family, runtime class and method, and the
 answer too where no judge is passed in.

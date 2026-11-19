@@ -259,9 +259,9 @@ flat.
 The other way round, a group stays flat where its window calls an Eloquent reader, such as `getKey()` or
 `getRouteKey()`, on a model that overrides a method the reader runs, such as `getKeyName()`, `getRouteKeyName()`,
 `getCasts()`, `getConnectionName()` or `getTable()`, with a body that does more than return a literal, a constant, a
-property with no hook, or an array of those. That holds even for an override that only reads, and for one a package's
-trait adds, such as a translatable or multi-tenancy trait's. To keep the split, make the override return one of those,
-or move the reader's call above or below those keys, as above.
+property with no hook that the model's own code never unsets, or an array of those. That holds even for an override
+that only reads, and for one a package's trait adds, such as a translatable or multi-tenancy trait's. To keep the
+split, make the override return one of those, or move the reader's call above or below those keys, as above.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
