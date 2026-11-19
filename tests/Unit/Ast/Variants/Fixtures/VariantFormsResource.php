@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Variants\Fixtures;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FlagContract;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use LogicException;
@@ -30,6 +33,15 @@ final class VariantFormsResource extends JsonResource
     public ?PinSettings $settings = null;
 
     public ?HookedProperties $hooked = null;
+
+    public ?FlagContract $contract = null;
+
+    public ?OpenFlags $openFlags = null;
+
+    public ?FinalFlags $finalFlags = null;
+
+    /** @var OpenFlags|null */
+    public $docFlags = null;
 
     public bool $live {
         get => (bool) random_int(0, 1);
@@ -548,6 +560,76 @@ final class VariantFormsResource extends JsonResource
     public function otherObjectStep(): array
     {
         return ['enabled' => $this->settings->enabled, 'v' => $this->settings->enabled ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a property an interface types, whose implementer may give it a get hook.
+     *
+     * @return array<string, mixed>
+     */
+    public function interfaceStepKept(): array
+    {
+        return ['flag' => $this->contract->flag, 'v' => $this->contract->flag ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of a non-final class, which a child class may give a get hook.
+     *
+     * @return array<string, mixed>
+     */
+    public function openStepKept(): array
+    {
+        return ['open' => $this->openFlags->open, 'v' => $this->openFlags->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of a non-final class a docblock types.
+     *
+     * @return array<string, mixed>
+     */
+    public function docblockStepKept(): array
+    {
+        return ['open' => $this->docFlags->open, 'v' => $this->docFlags->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of a non-final class, a step past a final one.
+     *
+     * @return array<string, mixed>
+     */
+    public function openPastFinalKept(): array
+    {
+        return ['open' => $this->finalFlags->inner->open, 'v' => $this->finalFlags->inner->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a property of a final class.
+     *
+     * @return array<string, mixed>
+     */
+    public function finalClassStep(): array
+    {
+        return ['open' => $this->finalFlags->open, 'v' => $this->finalFlags->open ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a readonly property of a non-final class.
+     *
+     * @return array<string, mixed>
+     */
+    public function readonlyStep(): array
+    {
+        return ['frozen' => $this->openFlags->frozen, 'v' => $this->openFlags->frozen ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a final property of a non-final class.
+     *
+     * @return array<string, mixed>
+     */
+    public function finalPropertyStep(): array
+    {
+        return ['fixed' => $this->openFlags->fixed, 'v' => $this->openFlags->fixed ? $this->title : null];
     }
 
     /**

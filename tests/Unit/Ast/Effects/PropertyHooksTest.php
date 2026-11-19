@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\PropertyHooks;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InheritedHookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
@@ -68,6 +69,50 @@ it('lists the hooks an access of a `$this` path runs, on the class each step rea
     'a model attribute, read through the resource' => ['$this->is_pinned', false, []],
     'a model attribute, read on the model' => ['$this->resource->is_pinned', false, []],
     'another root' => ['$post->unpinning', false, []],
+    'a read of another object\'s get-hooked property, its holder typed by a docblock' => [
+        '$this->docSettings->reads',
+        false,
+        [[null, 'reads']],
+    ],
+    'a read of a property an interface types, whose hook only an implementer runs' => ['$this->contract->flag', false, []],
+    'a write of a property an interface types, whose hook only an implementer runs' => ['$this->contract->label', true, []],
+]);
+
+// PHP 8.4 lets a child class hook an inherited property that is neither final nor readonly, and an implementer hook
+// any property an interface names, so only `$this`, the class published, is read on its own declaration.
+it('tells a read that may run a get hook, on the class a step reads or one the object there may be', function (
+    string $path,
+    array $held,
+    bool $runs,
+) {
+    $read = ReadPath::of(runtimeClassCall($path));
+    assert($read instanceof ReadPath);
+    $resource = new ReflectionClass(InterveningResource::class);
+
+    expect(new PropertyHooks($resource, true, $held)->mayRunGetHook($read, $resource))->toBe($runs);
+})->with([
+    'a property an interface types' => ['$this->contract->flag', [Post::class], true],
+    'a property an interface does not name, which an implementer may declare' => ['$this->contract->other', [Post::class], true],
+    'a plain property of a non-final class' => ['$this->openFlags->open', [Post::class], true],
+    'a plain property of a non-final class, its holder typed by a docblock' => ['$this->docFlags->open', [Post::class], true],
+    'a plain property of a non-final class a union names' => ['$this->eitherFlags->open', [Post::class], true],
+    'a plain property of a non-final class past a final class' => ['$this->finalFlags->inner->open', [Post::class], true],
+    'a plain property of a non-final class the resource holds, read through it' => ['$this->plain', [HookedProperties::class], true],
+    'a plain property of a non-final class the resource holds, read on it' => [
+        '$this->resource->plain',
+        [HookedProperties::class],
+        true,
+    ],
+    'a get hook another object declares' => ['$this->settings->reads', [Post::class], true],
+    'a get hook of $this' => ['$this->unpinning', [Post::class], true],
+    'a property of a final class' => ['$this->finalFlags->open', [Post::class], false],
+    'a readonly property of a non-final class' => ['$this->openFlags->frozen', [Post::class], false],
+    'a final property of a non-final class' => ['$this->openFlags->fixed', [Post::class], false],
+    'a plain property of $this, the class published' => ['$this->pinned', [Post::class], false],
+    'a property of a final class the resource holds' => ['$this->open', [FinalFlags::class], false],
+    'a model attribute, read through the resource' => ['$this->is_pinned', [Post::class], false],
+    'a model attribute, read on the model' => ['$this->resource->is_pinned', [Post::class], false],
+    'another root' => ['$post->open', [Post::class], false],
 ]);
 
 it('reads an undeclared first step on what `$this->resource` holds, but writes it on the resource', function (

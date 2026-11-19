@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -25,9 +26,9 @@ use ReflectionNamedType;
 
 /**
  * Reads what a PHP 8.4 property hook, or an Eloquent model's set mutator, does to a read or a write of a `$this` path,
- * on the class each step reaches: the class `$this` declares the first step on, else, on an API resource, the classes
- * `$this->resource` holds, which an undeclared first step and the step after `resource` read; a later step the one
- * class the step before declares.
+ * on the classes each step reaches: the class `$this` declares the first step on, else, on an API resource, the classes
+ * `$this->resource` holds, which an undeclared first step and the step after `resource` read; a later step the classes
+ * the type of the step before names.
  *
  * @phpstan-type HookRun = array{ReflectionClass<object>|null, string}
  * @phpstan-type PathStep = array{string, list<ReflectionClass<object>>, bool}
@@ -84,8 +85,8 @@ final readonly class PropertyHooks
     }
 
     /**
-     * The get hooks reading a `$this` path runs, at any step: each as its property's class where it runs on `$this`,
-     * else null, since its body runs with another `$this`, beside its property's name.
+     * The get hooks a class declares that reading a `$this` path runs, at any step: each as its property's class where
+     * it runs on `$this`, else null, since its body runs with another `$this`, beside its property's name.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is read
      * @return list<HookRun>
@@ -96,13 +97,32 @@ final readonly class PropertyHooks
 
         foreach ($this->steps($path, $declaring, true) as [$property, $classes, $onThis]) {
             foreach ($classes as $class) {
-                if (self::runsGetHook($class, $property)) {
+                if (! $class->isInterface() && self::runsGetHook($class, $property)) {
                     $runs[] = [$onThis ? $class : null, $property];
                 }
             }
         }
 
         return $runs;
+    }
+
+    /**
+     * Whether reading a `$this` path may run a get hook at any step: on `$this`, the class published, one it declares;
+     * past it, one the object's own class may add, since a child may hook a property its parent leaves unsealed.
+     *
+     * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is read
+     */
+    public function mayRunGetHook(ReadPath $path, ReflectionClass $declaring): bool
+    {
+        foreach ($this->steps($path, $declaring, true) as [$property, $classes, $onThis]) {
+            foreach ($classes as $class) {
+                if ($onThis ? self::runsGetHook($class, $property) : self::mayHook($class, $property)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -119,6 +139,10 @@ final readonly class PropertyHooks
         $runs = [];
 
         foreach ($classes as $class) {
+            if ($class->isInterface()) {
+                continue;
+            }
+
             if (self::runsSetHook($class, $property)) {
                 $runs[] = [$onThis ? $class : null, $property];
             } elseif ($class->isSubclassOf(Model::class) && ! $class->hasProperty($property)
@@ -208,7 +232,29 @@ final readonly class PropertyHooks
     }
 
     /**
-     * The classes a property holds as each of the classes declares it: the one class its native type names.
+     * Whether an object of a class may run a get hook on a read of a property: an interface's implementer may, and so
+     * may the class itself, or a child of it where neither the class nor the property is final or readonly.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private static function mayHook(ReflectionClass $class, string $property): bool
+    {
+        if ($class->isInterface() || self::runsGetHook($class, $property)) {
+            return true;
+        }
+
+        if ($class->isFinal() || ! $class->hasProperty($property)) {
+            return false;
+        }
+
+        $declared = $class->getProperty($property);
+
+        return ! $declared->isFinal() && ! $declared->isReadOnly();
+    }
+
+    /**
+     * The classes and interfaces a property holds as each of the classes declares it, as its native type names them,
+     * else its docblock.
      *
      * @param  list<ReflectionClass<object>>  $classes
      * @return list<ReflectionClass<object>>
@@ -218,10 +264,12 @@ final readonly class PropertyHooks
         $held = [];
 
         foreach ($classes as $class) {
-            $type = $class->hasProperty($property) ? $class->getProperty($property)->getType() : null;
+            $named = $class->hasProperty($property)
+                ? DeclaredClasses::propertyClasses($class->getProperty($property), $class, $class->getName())
+                : null;
 
-            if ($type instanceof ReflectionNamedType && ! $type->isBuiltin() && class_exists($type->getName())) {
-                $held[] = new ReflectionClass($type->getName());
+            foreach ($named ?? [] as $name) {
+                $held[] = new ReflectionClass($name);
             }
         }
 

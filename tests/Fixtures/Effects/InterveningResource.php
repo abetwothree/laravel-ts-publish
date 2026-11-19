@@ -30,6 +30,20 @@ class InterveningResource extends InterveningBase
 
     public ?HookedProperties $settings = null;
 
+    /** @var HookedProperties|null */
+    public $docSettings = null;
+
+    public ?FlagContract $contract = null;
+
+    public ?FinalFlags $finalFlags = null;
+
+    public ?OpenFlags $openFlags = null;
+
+    /** @var OpenFlags|null */
+    public $docFlags = null;
+
+    public OpenFlags|FinalFlags|null $eitherFlags = null;
+
     /** Clears the pin on every read. */
     public bool $unpinning {
         get {

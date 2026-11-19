@@ -34,7 +34,10 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    ([`DiscriminantValues`]). A wrapped enum has none. A scalar literal arm may stand for a case, so on a key that
    reads an enum, or under `AnalysisScope::$casesAsLiterals`, it leaves the row with none.
    A read whose type a class's `#[TsType]` or a custom cast declares (`typedByClass`) is none, as PHP tests the object.
-   A read that runs a get hook at any step ([`PropertyHooks`]) is none, as each read runs the hook.
+   A read that may run a get hook at any step ([`PropertyHooks`]`::mayRunGetHook()`) is none, as each read runs the
+   hook. Past `$this`, the class published, the object may be of a class that adds one. A child class can hook a
+   property unless the property is `final` or `readonly` or its class is `final`, and an implementer can hook any
+   property an interface names.
 2. **Guards.** [`ConditionTruth`] decides a guard with PHP's own operators on the value the read sends. A guard that
    reads anything but that read and constants stays undecided.
 3. **Arms.** A ternary with a middle operand, a `match`, and `$this->when()` or `unless()`, with or without a

@@ -337,6 +337,27 @@ it('makes no group where an arm is untyped or holds a gap', function (array $tru
     'a gap' => [['type' => VisibleGaps::withArm('string', 1), 'optional' => false]],
 ]);
 
+// A child class may hook a property that is neither final nor readonly, and an implementer any an interface names.
+it('makes no group for a discriminant read through an object whose class may hook it', function (string $cell) {
+    expect(variantsOf($cell))->toBe([]);
+})->with([
+    'a property an interface types' => 'interface_step_kept',
+    'a plain property of a non-final class' => 'open_step_kept',
+    'a plain property of a non-final class a docblock types' => 'docblock_step_kept',
+    'a plain property of a non-final class, a step past a final one' => 'open_past_final_kept',
+]);
+
+it('keeps a group for a discriminant read through an object whose class no child can hook', function (
+    string $cell,
+    string $discriminant,
+) {
+    expect(variantsOf($cell))->toBe([$discriminant => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
+})->with([
+    'a property of a final class' => ['final_class_step', 'open'],
+    'a readonly property' => ['readonly_step', 'frozen'],
+    'a final property' => ['final_property_step', 'fixed'],
+]);
+
 // Each read of the discriminant runs the hook, so no group is read for it, its arms included.
 it('reads no arm for a discriminant whose read runs a get hook at any step', function () {
     expect(readFixtureLiteral(

@@ -237,10 +237,11 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
 - the model passed on through a local or a method's return value, such as `Pins::reset($post)` after
   `$post = $this->resource`, or `Pins::reset($this->model())`;
 - a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
-- on PHP 8.4, a `get` hook on a discriminant such as `$this->settings->flag`, where an interface types `settings`.
+- on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
+  `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`.
 
-Move that code above every key that reads the discriminant, or below the last key whose condition tests it. For a
-hooked discriminant, `#[TsResource(discriminated: false)]` keeps a resource's top level flat.
+Move that code above every key that reads the discriminant, or below the last key whose condition tests it. Where it
+cannot move, `#[TsResource(discriminated: false)]` keeps a resource's top level flat.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
