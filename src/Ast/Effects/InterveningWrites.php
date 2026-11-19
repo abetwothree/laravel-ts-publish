@@ -40,6 +40,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use ReflectionClass;
+use ReflectionParameter;
 
 /**
  * Whether the items of a literal's write window may change what its discriminant's read holds, so a guard after the
@@ -167,6 +168,16 @@ final class InterveningWrites
         }
 
         return $path;
+    }
+
+    /**
+     * Whether a parameter's declared type is or holds `callable` or `Closure`.
+     */
+    private static function declaresCallable(ReflectionParameter $parameter): bool
+    {
+        $names = preg_split('/[|&()?\s]+/', strtolower((string) $parameter->getType()), flags: PREG_SPLIT_NO_EMPTY);
+
+        return array_intersect(['callable', 'closure'], $names ?: []) !== [];
     }
 
     /**
@@ -409,12 +420,37 @@ final class InterveningWrites
             return false;
         }
 
-        $builtIn = $this->references->callee($call, $declaring, $this->runtime)?->isInternal() ?? false;
+        $run = $this->builtInCallables($call, $declaring);
 
         return array_any(
             $call->getArgs(),
-            fn (Arg $arg): bool => $this->closures->hands($arg->value, $declaring, $depth, $builtIn),
+            fn (Arg $arg): bool => $this->closures->hands($arg->value, $declaring, $depth, in_array($arg, $run, true)),
         );
+    }
+
+    /**
+     * The arguments a call binds to a parameter its callee declares `callable` or `Closure`, where PHP itself
+     * implements the callee, which may run them but sets no property of them.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @return list<Arg>
+     */
+    private function builtInCallables(CallLike $call, ReflectionClass $declaring): array
+    {
+        $callee = $this->references->callee($call, $declaring, $this->runtime);
+
+        if ($callee === null || ! $callee->isInternal()) {
+            return [];
+        }
+
+        $arguments = CallArguments::for($call, $callee);
+
+        return array_values(array_filter(array_map(
+            static fn (ReflectionParameter $parameter): ?Arg => self::declaresCallable($parameter)
+                ? $arguments->named($parameter->getName())
+                : null,
+            $callee->getParameters(),
+        )));
     }
 
     /**

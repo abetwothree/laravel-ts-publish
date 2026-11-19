@@ -139,21 +139,21 @@ final readonly class ClosureReach
      * refuses as handed.
      *
      * @param  ReflectionClass<object>  $declaring
-     * @param  bool  $toBuiltIn  whether PHP itself implements the callee, which may run a callable it is handed but
-     *                           sets no property of it
+     * @param  bool  $runByBuiltIn  whether the value lands in a `callable` or `Closure` parameter of a callee PHP
+     *                              itself implements, which may run it but sets no property of it
      */
-    public function hands(?Expr $value, ReflectionClass $declaring, int $depth, bool $toBuiltIn): bool
+    public function hands(?Expr $value, ReflectionClass $declaring, int $depth, bool $runByBuiltIn): bool
     {
         if ($value === null) {
             return false;
         }
 
-        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $depth, $toBuiltIn);
+        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $depth, $runByBuiltIn);
         $yields = self::yields($value);
 
         return match (true) {
             self::isPath($value) => ($this->holdsRead)($value, $depth),
-            $value instanceof Array_ => $this->handsArray($value, $declaring, $depth, $toBuiltIn),
+            $value instanceof Array_ => $this->handsArray($value, $declaring, $depth, $runByBuiltIn),
             $value instanceof Pipe && self::isClosure($value->right) => array_any(
                 self::closureReturns($value->right),
                 $holds,
@@ -292,20 +292,20 @@ final readonly class ClosureReach
 
     /**
      * Whether an array handed to a callee may let it change the read: through any item that hands the subject, but,
-     * in a pair naming a method that a built-in is handed, the object the pair names, which the built-in may only
-     * run; or through the callable the array may spell.
+     * in a pair naming a method that lands where a built-in takes a callable, the object the pair names, which the
+     * built-in may only run; or through the callable the array may spell.
      *
      * @param  ReflectionClass<object>  $declaring
      */
-    private function handsArray(Array_ $value, ReflectionClass $declaring, int $depth, bool $toBuiltIn): bool
+    private function handsArray(Array_ $value, ReflectionClass $declaring, int $depth, bool $runByBuiltIn): bool
     {
         $pair = self::pairsCallable($value);
-        $runOnly = $pair && $toBuiltIn && $value->items[1]->value instanceof String_;
+        $runOnly = $pair && $runByBuiltIn && $value->items[1]->value instanceof String_;
 
         return array_any(
             $value->items,
             fn (ArrayItem $item): bool => ! ($runOnly && self::isPath($item->value))
-                && $this->hands($item->value, $declaring, $depth, $toBuiltIn),
+                && $this->hands($item->value, $declaring, $depth, $runByBuiltIn),
         ) || ($pair && $this->mayRun($value, ValueUse::Handed, $declaring, $depth));
     }
 
