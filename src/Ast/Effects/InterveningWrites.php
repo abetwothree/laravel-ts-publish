@@ -396,8 +396,9 @@ final class InterveningWrites
 
     /**
      * Whether a method call on an object may change the read: on a first-class callable, as a call of that callable;
-     * on one holding the read, as the model's method; on the read itself or anything else only through what it is
-     * handed.
+     * on one holding the read, as the model's method; on what a call handed the subject builds or returns, as one more
+     * call handed it, since a resource built of the subject runs its toArray() here once a method is called on it; on
+     * the read itself or anything else only through what it is handed.
      *
      * @param  ReflectionClass<object>  $declaring
      */
@@ -412,9 +413,11 @@ final class InterveningWrites
                 || $this->handsSubject($call, $declaring, $inBody);
         }
 
-        return $this->holdsObject($call->var, $inBody)
-            ? $this->modelCallMayWrite($method)
-            : $this->handsSubject($call, $declaring, $inBody);
+        return match (true) {
+            $this->holdsObject($call->var, $inBody) => $this->modelCallMayWrite($method),
+            $call->var instanceof CallLike && $this->handsSubject($call->var, $declaring, $inBody) => true,
+            default => $this->handsSubject($call, $declaring, $inBody),
+        };
     }
 
     /**
@@ -427,7 +430,7 @@ final class InterveningWrites
 
     /**
      * Whether a call is one the framework only reads with: `route()` or `url()`, a Gate check, or `new`, make() or
-     * collection() of a resource with JsonResource's own constructor.
+     * collection() of a resource with JsonResource's own constructor, whose object a method called on it hands on.
      *
      * @param  ReflectionClass<object>  $declaring
      */
