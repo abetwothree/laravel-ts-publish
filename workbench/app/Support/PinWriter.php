@@ -19,13 +19,14 @@ final class PinWriter
     }
 
     /**
-     * Clears the pin of the object a pair holds second.
+     * Clears the pin of the post a pair holds second, alone or wrapped in a resource, which forwards no write to it.
      *
      * @param  array{string, Post|JsonResource}  $pair
      */
     public static function unpinSecond(array $pair): bool
     {
-        $pair[1]->is_pinned = false;
+        $post = $pair[1] instanceof JsonResource ? $pair[1]->resource : $pair[1];
+        $post->is_pinned = false;
 
         return true;
     }
