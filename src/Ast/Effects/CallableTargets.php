@@ -169,7 +169,7 @@ final readonly class CallableTargets
 
         if (self::isThis($holder)) {
             if (! $name instanceof String_) {
-                return $name instanceof ClassConstFetch ? null : false;
+                return false;
             }
 
             $owner = AnalysisScope::memberClassOf($declaring, $this->runtime, $name->value, true);

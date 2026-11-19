@@ -20,6 +20,10 @@ function closureReachRows(): array
         'row 2, handed: \'self::\' naming a reader' => ["array_map('self::reader', ['a'])", false],
         'row 2, handed: this class\'s name naming a writer' => ["array_map('".InterveningResource::class."::writer', [1])", true],
         'row 2, handed: this class\'s name naming a static method' => ["array_map('".InterveningResource::class."::shout', ['a'])", false],
+        'row 2, handed: this class\'s name naming a static method running a local' => [
+            "array_map('".InterveningResource::class."::staticRunsLocal', [1])",
+            false,
+        ],
         'row 2, handed: this class\'s name and a missing method' => ["array_map('".InterveningResource::class."::missing', [1])", false],
         'row 2, handed: a function\'s name' => ["array_map('strtoupper', ['a'])", false],
         'row 2, handed: an unrelated class\'s method' => ["array_map('Workbench\\App\\Support\\PinWriter::unpin', [1])", false],
@@ -36,6 +40,11 @@ function closureReachRows(): array
         'row 3, handed: [self::class, a static method]' => ["array_map([self::class, 'shout'], ['a'])", false],
         'row 3, handed: [self::class, a missing method]' => ["array_map([self::class, 'missing'], [1])", false],
         'row 3, handed: [self::class, a computed name]' => ['array_map([self::class, $name], [1])', true],
+        'row 3, handed: [\'static\', a computed name]' => ["array_map(['static', \$name], [1])", true],
+        'row 3, handed: [$this, a class name], the subject handed' => ['collect([$this, Post::class])', true],
+        'row 3, handed: [self::class, a class name]' => ['in_array($name, [self::class, Post::class], true)', false],
+        'row 3, handed: [self::class, a static method running a local]' => ["array_map([self::class, 'staticRunsLocal'], [1])", false],
+        'row 3, handed: [$this, a static method running a local]' => ["array_map([\$this, 'staticRunsLocal'], [1])", false],
         'row 3, handed: two class names (NB2)' => ['in_array($name, [Post::class, User::class], true)', false],
         'row 3, callback: two class names (NB2)' => ['$this->when(true, [Post::class, User::class])', false],
         'row 3, handed: an unrelated class\'s non-static method (NB2)' => [
@@ -52,6 +61,8 @@ function closureReachRows(): array
         'row 4, handed: __CLASS__.\'::writer\'' => ["array_map(__CLASS__.'::writer', [1])", true],
         'row 4, handed: get_class($this).\'::writer\'' => ["array_map(get_class(\$this).'::writer', [1])", true],
         'row 4, handed: an unrelated class\'s name and a key (NB2)' => ["md5(Post::class.'::'.\$this->id)", false],
+        'row 4, handed: get_class().\'::writer\'' => ["array_map(get_class().'::writer', [1])", true],
+        'row 4, handed: this class\'s name joined without ::' => ["md5(self::class.'-'.\$this->id)", false],
         'row 4, handed: an interpolated string' => ['strtoupper("#{$this->id}")', false],
         'row 5, callback and handed: a new' => ['array_map(null, [new UserResource($this->title)])', false],
         'row 6, callback: operators, casts and checks' => [
@@ -80,6 +91,8 @@ function closureReachRows(): array
         'row 12, callback: a model method\'s callable' => ['$this->when(true, $this->resource->touch(...))', true],
         'row 12, handed: another read\'s method' => ["array_map(\$this->created_at->format(...), ['Y'])", false],
         'row 13, callback: a function\'s callable' => ['$this->when(true, strtoupper(...))', false],
+        'row 11, callback: a callable of $this by a computed name' => ['$this->when(true, $this->{$name}(...))', true],
+        'row 11, handed: a callable of a class held in a local' => ['array_map($class::make(...), [1])', true],
         'row 14, callback: a local\'s callable (NB1)' => ['$this->when(true, $callback(...))', true],
         'row 14, called: a pipe into a local\'s callable (NB1)' => ['1 |> $callback(...)', true],
         'row 14, handed: a local\'s callable' => ['array_map($callback(...), [1])', true],
@@ -99,6 +112,7 @@ function closureReachRows(): array
         'row 17, handed: an untyped helper returning a local (NB5)' => ['strtoupper($this->untypedLocal())', false],
         'row 17, handed: an untyped helper returning a parameter (NB5)' => ["strtoupper(\$this->orDefault(\$this->title, 'none'))", false],
         'row 17, callback: an untyped helper returning a local' => ['$this->when(true, $this->untypedLocal())', true],
+        'row 17, handed: a helper typed with a class that has no __invoke()' => ['array_map($this->typedPost(), [1])', false],
         'row 18, callback: a call on the model' => ['$this->when(true, $this->resource->replicate())', true],
         'row 19, callback: another class\'s static call' => ['$this->when(true, \\Illuminate\\Support\\Str::upper($this->title))', false],
         'row 19, handed: a resource builder' => ['collect(UserResource::make($this->title))', false],
@@ -110,3 +124,12 @@ function closureReachRows(): array
 it('judges each kind of value by where it may run', function (string $call, bool $mayWrite) {
     expect(windowReach([$call, '$this->is_pinned ? 1 : null']))->toBe($mayWrite);
 })->with(closureReachRows());
+
+// The first item reads the helper's returns as handed, where its local is data; the second runs them as a callback.
+it('reads a helper\'s returns once for each use', function () {
+    expect(windowReach([
+        'strtoupper($this->untypedLocal())',
+        '$this->when(true, $this->untypedLocal())',
+        '$this->is_pinned ? 1 : null',
+    ]))->toBeTrue();
+});

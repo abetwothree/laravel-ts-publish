@@ -43,6 +43,16 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Runs a closure held in a local, as a static method, which no `$this` reaches.
+     */
+    private static function staticRunsLocal(): int
+    {
+        $run = static fn (): int => 1;
+
+        return $run();
+    }
+
+    /**
      * Clears the flag it is handed.
      */
     private function clearFlag(bool &$flag): bool
@@ -178,6 +188,14 @@ class InterveningResource extends InterveningBase
     private function untypedWriterCallback()
     {
         return $this->writer(...);
+    }
+
+    /**
+     * Returns the writer as a closure, where its signature types a post that holds none; no caller runs it.
+     */
+    private function typedPost(): Post
+    {
+        return $this->writerCallback();
     }
 
     /**
