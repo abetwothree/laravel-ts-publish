@@ -100,28 +100,55 @@ since a union of them reads one object's queued enum for the next one's token.
 keys and its droppers. A dropper is a key whose guard the discriminant decides and whose arm throws for some value,
 whether or not it is a dependent, so it decides which values the group sends. Every item may change the read through a
 write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
-parameter binds there ([`ByReferenceArguments`]`::bind()`). On an API resource, `$this->resource->x` and `$this->x` are
-one path. Every item but the last may also change it through code it runs. In the last item, only the code PHP may run
-before one of its guards reads the discriminant counts. The reader hands over the guards it selected that item's arms
-by. Code written before such a read runs first, unless it sits in a ternary's branch or a `match` arm's body and the
-read sits in another branch of that ternary or `match`, which PHP never reaches once it takes the first. PHP evaluates
-arguments in the order they are written, so `when(value: $this->clear(), condition: $this->is_pinned)` runs `clear()`
-first. A closure's body runs where a call runs it, so in the last item the call counts, not where the body is written.
-Code may write in these ways:
+parameter binds there ([`ByReferenceArguments`]`::bind()`). [`CallArguments`] binds an unpacked array literal's items as
+PHP does, a string key by name and any other by position, and an item binds by reference only where it is written `&`.
+An unpack it cannot expand, of a non-literal or of a literal with a computed key or a nested unpack, may bind any
+by-reference parameter left to it. A method of an object no scan names may take any argument by reference, which
+reaches a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). On an API
+resource, `$this->resource->x` and `$this->x` are one path. Every item but the last may also change it through code
+it runs. In the last item, only the code PHP may run before one of its guards reads the discriminant counts. The reader
+hands over the guards it selected that item's arms by. Code written before such a read runs first, unless it sits in a
+ternary's branch or a `match` arm's body and the read sits in another branch of that ternary or `match`, which PHP never
+reaches once it takes the first. PHP evaluates arguments in the order they are written, so
+`when(value: $this->clear(), condition: $this->is_pinned)` runs `clear()` first. A closure's body runs where a call runs
+it, so in the last item the call counts, not where the body is written. Code may write in these ways:
 
 - A call handed `$this`, `$this->resource` or an object holding the read, or a method called on such an object, may
   write, unless [`ReadOnlyCalls`] knows it only reads: a resource helper, a model method `MODEL_READERS` lists,
-  `route()` or `url()`, a Gate check, or a resource's `new`, `make()` or `collection()` used as a value. A helper counts
-  only where the class overrides no method the framework's helper calls on `$this`, as `unless()` calls `when()`, and a
-  model method only where Eloquent's own runs on every class the object may be.
+  `route()` or `url()`, a Gate check, or a resource's `new`, `make()` or `collection()` used as a value. A helper
+  counts only where [the dispatch walk](#the-dispatch-walk) trusts it on the runtime class, and a model method only
+  where the walk trusts it on every class the object may be.
 - A `$this` method may write where its body may by these rules. [`BodyReads`] reads each body once a publish run,
-  three levels deep, and a body deeper or unreadable may write. A method the resource lacks runs on the model.
+  three levels deep, and a body deeper or unreadable may write. A method the resource lacks runs on the model. A hook's
+  `self::` names the class that declares the hook, which may be a parent of the class that redeclares the property.
 - A callable a call may run is judged by its kind and its use ([`ClosureReach`], [`ValueUse`]): a resource helper
-  runs only a `Closure`, and any other callee runs any callable. [`CallableTargets`] names the method a callable runs.
+  runs only a `Closure`, and any other callee runs any callable. [`CallableTargets`] names the method a callable runs,
+  reading a callable array by its keys 0 and 1, as PHP does ([`CallablePair`]). An array that a computed key or an
+  unpacked item leaves open may write only through an item that can receive the call: `$this`, a class keyword, the
+  class's or an ancestor's name, or an object holding the read. A closure hands a callee what it returns, not what a
+  closure nested in it returns.
 - A property hook or a model's set mutator may write ([`PropertyHooks`]).
 - `eval`, `include` and a call by a name the source does not spell may write.
 
 A call on the read itself, or on an object that does not hold it, counts only through what it is handed.
+
+#### The dispatch walk
+
+[`FrameworkDispatch`] trusts a resource helper or an Eloquent reader only as an instance of the runtime class runs it,
+since PHP runs a method the app overrides in place of the framework's, as `unless()` runs a resource's own `when()`. It
+walks the method's body for each call through `$this->`, `$this?->`, `$this::`, `static::`, `self::` or `parent::`,
+looked up where PHP looks it up: `self::` and a private method on the declaring class, `parent::` on its parent, and any
+other on the runtime class. A `$this` property no declaration reaches runs the runtime class's `__get()`, or
+`__isset()`, `__set()` or `__unset()` where the body uses it in place. A body the walk cannot read ends the trust, a
+method its [`FrameworkFamily`] declares is walked in turn, and the family decides the rest:
+
+| Family | Declared by | A call by a computed name, or to a method the class lacks | A method of the app the walk reaches |
+| --- | --- | --- | --- |
+| `ResourceHelpers` | `RESOURCE_DECLARERS` | Ends the trust | Ends it where the judge says it may write: `InterveningWrites` passes the scan's [`BodyReads`], and `ThisPathWrites` none, so any such method ends it |
+| `Eloquent` | `ELOQUENT_NAMESPACE` | Trusted, as it runs an accessor, a relation or the model's `__call()` ([known gap][gap-wrong-arm]) | Ends the trust unless [`LiteralGetter`] finds one `return` of a scalar, a constant, a declared property with no hook, or an array of those, as a `getKeyName()` returning `'uuid'` |
+
+[`AnalysisMemo`] remembers the methods a walk reaches once a publish run, by family, runtime class and method, and the
+answer too where no judge is passed in.
 
 ## Where groups are carried and dropped
 
@@ -147,15 +174,20 @@ union.
 [`VariantReaderTest`](../../tests/Unit/Ast/Variants/VariantReaderTest.php),
 [`LiteralVariantsTest`](../../tests/Unit/Ast/Variants/LiteralVariantsTest.php) and
 [`ResourceVariantsTest`](../../tests/Unit/Transformers/ResourceVariantsTest.php) pin the rules, and
-[`tests/Unit/Ast/Effects/`](../../tests/Unit/Ast/Effects) the write check.
+[`tests/Unit/Ast/Effects/`](../../tests/Unit/Ast/Effects) the write check. `FrameworkDispatchTest` walks every
+`RESOURCE_HELPERS` helper and `MODEL_READERS` reader and expects each trusted, so a Laravel release whose bodies the
+walk no longer trusts fails it on CI's Laravel 12 and 13 jobs.
 [`DiscriminatedNarrowingTest`](../../tests/Feature/DiscriminatedNarrowingTest.php) compiles a narrowing read of
 the probe resources with `tsc --strict`. The workbench fixtures live in
 `workbench/app/Http/Resources/Discriminated/`, where each `*_kept` key of `DiscriminantFormsResource` is a
 control that must stay flat. The regression and redundant-arm gates read a split resource's shared rows and arms
 ([Type inference gates](../testing/type-inference-gates.md#how-properties-are-keyed)).
 
+[`AnalysisMemo`]: ../../src/Ast/Analysis/AnalysisMemo.php
 [`BodyReads`]: ../../src/Ast/Effects/BodyReads.php
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
+[`CallArguments`]: ../../src/Ast/Calls/CallArguments.php
+[`CallablePair`]: ../../src/Ast/Calls/CallablePair.php
 [`CallableTargets`]: ../../src/Ast/Effects/CallableTargets.php
 [`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`ConditionTruth`]: ../../src/Ast/Variants/ConditionTruth.php
@@ -163,7 +195,10 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`ConditionalArms`]: ../../src/Ast/Variants/ConditionalArms.php
 [`DiscriminantValue`]: ../../src/Ast/Variants/DiscriminantValue.php
 [`DiscriminantValues`]: ../../src/Ast/Variants/DiscriminantValues.php
+[`FrameworkDispatch`]: ../../src/Ast/Effects/Trust/FrameworkDispatch.php
+[`FrameworkFamily`]: ../../src/Ast/Effects/Trust/FrameworkFamily.php
 [`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
+[`LiteralGetter`]: ../../src/Ast/Effects/Trust/LiteralGetter.php
 [`LiteralVariants`]: ../../src/Ast/Variants/LiteralVariants.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`PropertyHooks`]: ../../src/Ast/Effects/PropertyHooks.php
@@ -178,3 +213,4 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`VariantRows`]: ../../src/Support/VariantRows.php
 [`VariantUnions`]: ../../src/Ast/Variants/VariantUnions.php
 [`WarnsOfTemplatesWithoutVariants`]: ../../src/Writers/Concerns/WarnsOfTemplatesWithoutVariants.php
+[gap-wrong-arm]: ../known-gaps.md#a-discriminated-union-can-pair-a-value-with-the-wrong-arm-past-a-write-the-package-cannot-see

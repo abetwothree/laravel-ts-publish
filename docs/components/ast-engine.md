@@ -14,12 +14,13 @@ folder by role, and a new class joins the folder whose role it shares:
 | Folder | Holds |
 | --- | --- |
 | `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record; and the write and fill scans a body's seeding reads |
-| `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
+| `Calls/` | Reading a call: its arguments, an unpacked literal's among them, parameter binding, by-reference writes, callable arrays and macros |
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included, and merging a key with its method's `@return` (`ReturnShape/`) |
 | `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Callbacks/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
-| `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]) and a discriminant's read ([`InterveningWrites`]), which share the framework calls known only to read ([`ReadOnlyCalls`]). For a discriminant: what a callable value may run ([`ClosureReach`], [`ValueUse`]), the method a callable names ([`CallableTargets`]), the `$this` method and hook bodies read, three levels deep and once a run ([`BodyReads`]), and property hooks and model set mutators ([`PropertyHooks`]) |
+| `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]) and a discriminant's read ([`InterveningWrites`]), which share the code `Trust/` knows only reads. For a discriminant: what a callable value may run ([`ClosureReach`], [`ValueUse`]), the method a callable names ([`CallableTargets`]), the `$this` method and hook bodies read, three levels deep and once a run ([`BodyReads`]), and property hooks and model set mutators ([`PropertyHooks`]) |
+| `Effects/Trust/` | What the write checks trust to only read: the framework calls they know ([`ReadOnlyCalls`]), and a resource helper or Eloquent reader walked as the runtime class dispatches it ([`FrameworkDispatch`]), by its family's rules ([`FrameworkFamily`], [`LiteralGetter`]): [Variants § The dispatch walk](variants.md#the-dispatch-walk) |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
@@ -1161,7 +1162,10 @@ These pages cover the engine's neighbors:
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
+[`FrameworkDispatch`]: ../../src/Ast/Effects/Trust/FrameworkDispatch.php
+[`FrameworkFamily`]: ../../src/Ast/Effects/Trust/FrameworkFamily.php
 [`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
+[`LiteralGetter`]: ../../src/Ast/Effects/Trust/LiteralGetter.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
