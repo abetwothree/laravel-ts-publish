@@ -419,6 +419,30 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Clears the resource's flag as a value a `foreach` destructures.
+     */
+    private function loopsIntoFlag(): bool
+    {
+        foreach ([[false]] as [$this->pinned]) {
+            continue;
+        }
+
+        return true;
+    }
+
+    /**
+     * Sets the pin to `0` as the key a `foreach` assigns.
+     */
+    private function loopsIntoPin(): bool
+    {
+        foreach ([0 => 'a'] as $this->resource->is_pinned => $label) {
+            continue;
+        }
+
+        return $label === 'a';
+    }
+
+    /**
      * Reads the hooked property that clears the pin.
      */
     private function readsUnpinning(): bool

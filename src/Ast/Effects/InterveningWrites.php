@@ -43,6 +43,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\ClassLike;
+use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use PropertyHookType;
@@ -148,8 +149,8 @@ final class InterveningWrites
     }
 
     /**
-     * The paths a node writes, each as far as a path names it: `$a->b[0] = …` writes `$a->b`, and `unset()` each
-     * path it removes.
+     * The paths a node writes, each as far as a path names it: `$a->b[0] = …` writes `$a->b`, `unset()` each path it
+     * removes and `foreach` the key and value it assigns.
      *
      * @return list<ReadPath>
      */
@@ -158,6 +159,7 @@ final class InterveningWrites
         $targets = match (true) {
             $node instanceof Assign, $node instanceof AssignOp, $node instanceof AssignRef, $node instanceof PreInc,
             $node instanceof PreDec, $node instanceof PostInc, $node instanceof PostDec => [$node->var],
+            $node instanceof Foreach_ => array_values(array_filter([$node->keyVar, $node->valueVar])),
             $node instanceof Unset_ => $node->vars,
             default => [],
         };

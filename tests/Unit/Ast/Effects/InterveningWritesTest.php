@@ -40,6 +40,8 @@ function interveningCalls(): array
             true,
             '$this->pinned',
         ],
+        'a helper whose foreach destructures into the read' => ['$this->loopsIntoFlag()', true, '$this->pinned'],
+        'a helper whose foreach key is the model\'s attribute' => ['$this->loopsIntoPin()', true],
         'the read handed to a method of an object no scan names' => ['$service->reset($this->pinned)', true, '$this->pinned'],
         'the read handed to a method of a built object' => ['(new PinWriter)->reset($this->pinned)', true, '$this->pinned'],
         'the read handed to a method of what a helper returns' => ['$this->reader()->reset($this->pinned)', true, '$this->pinned'],
