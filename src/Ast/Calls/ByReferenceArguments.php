@@ -191,7 +191,7 @@ final class ByReferenceArguments
      * @param  ReflectionClass<object>|null  $declaring
      * @param  ReflectionClass<object>|null  $runtime
      */
-    private function callee(
+    public function callee(
         CallLike $call,
         ?ReflectionClass $declaring,
         ?ReflectionClass $runtime,

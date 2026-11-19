@@ -6281,7 +6281,8 @@ declare global {
          * Literals whose discriminant a write changes between two of its reads, where the write check does not see it yet: a
          * by-reference argument, a callable a helper calls, a write before a key that drops a value, a call inside an arm, a
          * get hook, the model handed to a function, helpers that write two levels down or through the model, a closure a
-         * helper calls, the model handed to another class's static method, and a local closure's callable a helper calls.
+         * helper calls, the model handed to another class's static method, a local closure's callable a helper calls, and the
+         * resource handed second in a pair.
          * PHP can send a value no arm admits, so each literal should publish flat (GH-174).
          */
         export interface HiddenWritesResource {
@@ -6298,6 +6299,7 @@ declare global {
             closure_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
             static_writer: { is_pinned: boolean; reset: boolean; detail: string | null };
             local_callable_in_when: { is_pinned: boolean; cleared: boolean; detail: string | null };
+            pair_holding_subject: { is_pinned: boolean; reset: boolean; detail: string | null };
         }
         /**
          * GH-157's escape hatch: the keys publish flat, and a union written by hand is intersected with them, so `is_pinned`

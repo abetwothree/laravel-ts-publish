@@ -14300,6 +14300,11 @@
                     "name": "local_callable_in_when",
                     "type": "{ is_pinned: boolean; cleared: boolean; detail: string | null }",
                     "optional": false
+                },
+                {
+                    "name": "pair_holding_subject",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
                 }
             ]
         },

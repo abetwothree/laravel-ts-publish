@@ -95,6 +95,8 @@ final readonly class ClosureReach
 
     /**
      * Whether a value is a closure or an arrow function written there, whose body the scan reads in place.
+     *
+     * @phpstan-assert-if-true ClosureExpr|ArrowFunction $value
      */
     public static function isClosure(?Expr $value): bool
     {
@@ -134,26 +136,28 @@ final readonly class ClosureReach
 
     /**
      * Whether a value handed to a callee may let it change the read: the subject or an object the read is a member
-     * of, such a value in an array but a callable pair, a branch, an assignment or a closure's return, or a value
-     * mayRun() refuses as handed.
+     * of, such a value in an array, a branch, an assignment, a closure's return or a pipe's, or a value mayRun()
+     * refuses as handed.
      *
      * @param  ReflectionClass<object>  $declaring
+     * @param  bool  $toBuiltIn  whether PHP itself implements the callee, which may run a callable it is handed but
+     *                           sets no property of it
      */
-    public function hands(?Expr $value, ReflectionClass $declaring, int $depth): bool
+    public function hands(?Expr $value, ReflectionClass $declaring, int $depth, bool $toBuiltIn): bool
     {
         if ($value === null) {
             return false;
         }
 
-        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $depth);
+        $holds = fn (?Expr $part): bool => $this->hands($part, $declaring, $depth, $toBuiltIn);
         $yields = self::yields($value);
 
         return match (true) {
-            $value instanceof Variable, $value instanceof PropertyFetch,
-            $value instanceof NullsafePropertyFetch => ($this->holdsRead)($value, $depth),
-            $value instanceof Array_ && ! self::pairsCallable($value) => array_any(
-                $value->items,
-                fn (ArrayItem $item): bool => $holds($item->value),
+            self::isPath($value) => ($this->holdsRead)($value, $depth),
+            $value instanceof Array_ => $this->handsArray($value, $declaring, $depth, $toBuiltIn),
+            $value instanceof Pipe && self::isClosure($value->right) => array_any(
+                self::closureReturns($value->right),
+                $holds,
             ),
             $yields !== null => array_any($yields, $holds),
             $value instanceof ArrowFunction => $holds($value->expr),
@@ -163,6 +167,14 @@ final readonly class ClosureReach
             ),
             default => $this->mayRun($value, ValueUse::Handed, $declaring, $depth),
         };
+    }
+
+    /**
+     * Whether a value is a variable or a property of one, which the scan matches against the read.
+     */
+    private static function isPath(Expr $value): bool
+    {
+        return $value instanceof Variable || $value instanceof PropertyFetch || $value instanceof NullsafePropertyFetch;
     }
 
     /**
@@ -218,15 +230,14 @@ final readonly class ClosureReach
     }
 
     /**
-     * Whether an array is a callable pair: two items, the second a method's name, a class's, or a name the source
-     * computes.
+     * Whether an array may spell a callable pair: two items, the second a method's name, a constant, or a name the
+     * source computes in a local.
      */
     private static function pairsCallable(Array_ $value): bool
     {
         $name = count($value->items) === 2 ? $value->items[1]->value : null;
 
-        return $name instanceof String_ || $name instanceof Variable
-            || ($name instanceof ClassConstFetch && ReadOnlyCalls::isClassName($name));
+        return $name instanceof String_ || $name instanceof Variable || $name instanceof ClassConstFetch;
     }
 
     /**
@@ -238,6 +249,16 @@ final readonly class ClosureReach
             && $call->class->toLowerString() === 'closure'
             && $call->name instanceof Identifier && $call->name->toLowerString() === 'fromcallable'
             && ! $call->isFirstClassCallable();
+    }
+
+    /**
+     * The values a closure or an arrow function written there returns when it is called.
+     *
+     * @return list<Expr>
+     */
+    private static function closureReturns(ClosureExpr|ArrowFunction $closure): array
+    {
+        return $closure instanceof ArrowFunction ? [$closure->expr] : self::returnedValues($closure->stmts);
     }
 
     /**
@@ -268,6 +289,25 @@ final readonly class ClosureReach
         }
 
         return $values;
+    }
+
+    /**
+     * Whether an array handed to a callee may let it change the read: through any item that hands the subject, but,
+     * in a pair naming a method that a built-in is handed, the object the pair names, which the built-in may only
+     * run; or through the callable the array may spell.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     */
+    private function handsArray(Array_ $value, ReflectionClass $declaring, int $depth, bool $toBuiltIn): bool
+    {
+        $pair = self::pairsCallable($value);
+        $runOnly = $pair && $toBuiltIn && $value->items[1]->value instanceof String_;
+
+        return array_any(
+            $value->items,
+            fn (ArrayItem $item): bool => ! ($runOnly && self::isPath($item->value))
+                && $this->hands($item->value, $declaring, $depth, $toBuiltIn),
+        ) || ($pair && $this->mayRun($value, ValueUse::Handed, $declaring, $depth));
     }
 
     /**
@@ -328,13 +368,20 @@ final readonly class ClosureReach
     }
 
     /**
-     * Whether a pipe's result may run code that changes the read: what the method its right side runs on `$this`
-     * returns; any other callable's result is safe.
+     * Whether a pipe's result may run code that changes the read: what a closure on its right side, or the method
+     * it runs on `$this`, returns; any other callable's result is safe.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function pipeResultMayRun(Pipe $pipe, ValueUse $use, ReflectionClass $declaring, int $depth): bool
     {
+        if (self::isClosure($pipe->right)) {
+            return array_any(
+                self::closureReturns($pipe->right),
+                fn (Expr $returned): bool => $this->mayRun($returned, $use, $declaring, $depth),
+            );
+        }
+
         $target = $this->targets->callableTarget($pipe->right, $declaring);
 
         return is_array($target) && $this->returnMayRun($target[0], $target[1], $use, $depth);

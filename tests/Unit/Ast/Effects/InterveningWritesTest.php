@@ -218,6 +218,7 @@ it('reads a scope that is no API resource without forwarding to its model', func
     expect(windowReach([$call, '$this->is_pinned ? 1 : null'], '$this->is_pinned', InterveningSubject::class))->toBe($mayWrite);
 })->with([
     'a method the subject lacks' => ['$this->getKey()', true],
+    'a method its class lacks, named by [self::class, …], with no __call()' => ["array_map([self::class, 'missing'], [1])", false],
     'a write to its own resource property' => ['$this->resource->is_pinned = false', false],
 ]);
 
@@ -227,6 +228,8 @@ it('reads a discriminant held by a local, which only the window can write', func
     'a helper writing $this' => ['$this->writer()', false],
     'a helper writing a local of the same name' => ['$this->clearsOwnPost()', false],
     'the local handed to a writer' => ['PinWriter::unpin($post)', true],
+    'the local in a pair\'s second slot, handed to a writer (NB6)' => ["PinWriter::unpin(['k', \$post])", true],
+    'a read of the local in a pair\'s second slot' => ["PinWriter::unpin(['k', \$post->title])", false],
     'a write through the local' => ['$post->is_pinned = false', true],
 ]);
 

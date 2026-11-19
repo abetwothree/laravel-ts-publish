@@ -18,6 +18,8 @@ class InterveningResource extends InterveningBase
 {
     public const array LABELS = ['draft' => 'Draft'];
 
+    public const string WRITER = 'writer';
+
     public static ?Closure $callback = null;
 
     public static string $suffix = '!';

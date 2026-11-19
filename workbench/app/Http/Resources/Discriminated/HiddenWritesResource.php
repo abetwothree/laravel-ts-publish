@@ -15,7 +15,8 @@ use Workbench\App\Support\PinWriter;
  * Literals whose discriminant a write changes between two of its reads, where the write check does not see it yet: a
  * by-reference argument, a callable a helper calls, a write before a key that drops a value, a call inside an arm, a
  * get hook, the model handed to a function, helpers that write two levels down or through the model, a closure a
- * helper calls, the model handed to another class's static method, and a local closure's callable a helper calls.
+ * helper calls, the model handed to another class's static method, a local closure's callable a helper calls, and the
+ * resource handed second in a pair.
  * PHP can send a value no arm admits, so each literal should publish flat (GH-174).
  *
  * @mixin Post
@@ -126,6 +127,11 @@ class HiddenWritesResource extends JsonResource
             'local_callable_in_when' => [
                 'is_pinned' => $this->is_pinned,
                 'cleared' => (bool) $this->when(true, $clear(...)),
+                'detail' => $this->is_pinned ? $this->title : null,
+            ],
+            'pair_holding_subject' => [
+                'is_pinned' => $this->is_pinned,
+                'reset' => PinWriter::unpinSecond(['label', $this]),
                 'detail' => $this->is_pinned ? $this->title : null,
             ],
         ];

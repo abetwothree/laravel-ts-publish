@@ -128,14 +128,35 @@ final readonly class CallableTargets
     }
 
     /**
-     * The method a class declares non-static, which runs on `$this` where the class is `$this`'s or an ancestor.
+     * The method a name runs on `$this` where the class is `$this`'s or an ancestor: one it declares non-static, or
+     * one it lacks where it has `__call()`, which PHP hands the name and an API resource forwards to its model.
      *
      * @param  ReflectionClass<object>  $class
      * @return CallableTarget|null
      */
     private static function boundMethod(ReflectionClass $class, string $method): ?array
     {
-        return $class->hasMethod($method) && ! $class->getMethod($method)->isStatic() ? [$class, $method] : null;
+        if (! $class->hasMethod($method)) {
+            return $class->hasMethod('__call') ? [$class, $method] : null;
+        }
+
+        return $class->getMethod($method)->isStatic() ? null : [$class, $method];
+    }
+
+    /**
+     * The class a `::class` names, with `$this::class` read as `static::class`; null for any other expression.
+     */
+    private static function classNamed(Node $expr): ?Name
+    {
+        if (! $expr instanceof ClassConstFetch || ! ReadOnlyCalls::isClassName($expr)) {
+            return null;
+        }
+
+        return match (true) {
+            $expr->class instanceof Name => $expr->class,
+            self::isThis($expr->class) => new Name('static'),
+            default => null,
+        };
     }
 
     /**
@@ -143,13 +164,8 @@ final readonly class CallableTargets
      */
     private static function arrayClass(Expr $holder): ?Name
     {
-        if ($holder instanceof ClassConstFetch && ReadOnlyCalls::isClassName($holder)
-            && $holder->class instanceof Name
-        ) {
-            return $holder->class;
-        }
-
-        return $holder instanceof String_ && class_exists($holder->value) ? new Name($holder->value) : null;
+        return self::classNamed($holder)
+            ?? ($holder instanceof String_ && class_exists($holder->value) ? new Name($holder->value) : null);
     }
 
     /**
@@ -183,7 +199,7 @@ final readonly class CallableTargets
         $owner = $class === null ? null : $this->ownClass($class, $declaring);
 
         return match (true) {
-            $owner === null, $name instanceof ClassConstFetch => null,
+            $owner === null, ReadOnlyCalls::isClassName($name) => null,
             $name instanceof String_ => self::boundMethod($owner, $name->value),
             default => false,
         };
@@ -221,8 +237,10 @@ final readonly class CallableTargets
      */
     private function namesOwnClass(Node $part, ReflectionClass $declaring): bool
     {
-        if ($part instanceof ClassConstFetch && ReadOnlyCalls::isClassName($part) && $part->class instanceof Name) {
-            return $this->ownClass($part->class, $declaring) !== null;
+        $class = self::classNamed($part);
+
+        if ($class !== null) {
+            return $this->ownClass($class, $declaring) !== null;
         }
 
         if (! $part instanceof FuncCall || ! $part->name instanceof Name || $part->isFirstClassCallable()) {

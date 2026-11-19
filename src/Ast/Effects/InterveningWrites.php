@@ -247,7 +247,7 @@ final class InterveningWrites
      */
     private function pipeMayWrite(Pipe $pipe, ReflectionClass $declaring, int $depth): bool
     {
-        return $this->closures->hands($pipe->left, $declaring, $depth)
+        return $this->closures->hands($pipe->left, $declaring, $depth, false)
             || $this->closures->mayRun($pipe->right, ValueUse::Called, $declaring, $depth);
     }
 
@@ -405,11 +405,16 @@ final class InterveningWrites
      */
     private function handsSubject(CallLike $call, ReflectionClass $declaring, int $depth): bool
     {
-        return ! $call->isFirstClassCallable()
-            && array_any(
-                $call->getArgs(),
-                fn (Arg $arg): bool => $this->closures->hands($arg->value, $declaring, $depth),
-            );
+        if ($call->isFirstClassCallable() || $call->getArgs() === []) {
+            return false;
+        }
+
+        $builtIn = $this->references->callee($call, $declaring, $this->runtime)?->isInternal() ?? false;
+
+        return array_any(
+            $call->getArgs(),
+            fn (Arg $arg): bool => $this->closures->hands($arg->value, $declaring, $depth, $builtIn),
+        );
     }
 
     /**
