@@ -244,10 +244,14 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
   its attribute;
 - a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
 - on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
-  `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`.
+  `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
+- a gate or policy a `Gate` check runs, or a model's route key `route()` or `url()` reads, which the package trusts to
+  only read the model it is handed, as
+  [`instanceof` narrowing](#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways) does.
 
-Move that code above every key that reads the discriminant, or below the last key whose condition tests it. Where it
-cannot move, `#[TsResource(discriminated: false)]` keeps a resource's top level flat.
+Move that code above the first key that reads the discriminant, or below the last: the discriminant's own key and each
+key whose condition tests it. Where it cannot move, `#[TsResource(discriminated: false)]` keeps a resource's top level
+flat.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 

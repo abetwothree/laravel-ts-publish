@@ -111,7 +111,9 @@ Code may write in these ways:
 
 - A call handed `$this`, `$this->resource` or an object holding the read, or a method called on such an object, may
   write, unless [`ReadOnlyCalls`] knows it only reads: a resource helper, a model method `MODEL_READERS` lists,
-  `route()` or `url()`, a Gate check, or a resource's `new`, `make()` or `collection()` used as a value.
+  `route()` or `url()`, a Gate check, or a resource's `new`, `make()` or `collection()` used as a value. A helper counts
+  only where the class overrides no method the framework's helper calls on `$this`, as `unless()` calls `when()`, and a
+  model method only where Eloquent's own runs on every class the object may be.
 - A `$this` method may write where its body may by these rules. [`BodyReads`] reads each body once a publish run,
   three levels deep, and a body deeper or unreadable may write. A method the resource lacks runs on the model.
 - A callable a call may run is judged by its kind and its use ([`ClosureReach`], [`ValueUse`]): a resource helper
