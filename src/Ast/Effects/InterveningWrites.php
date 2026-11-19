@@ -510,10 +510,9 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a method call on an object may change the read: on a first-class callable, as a call of that callable;
-     * on one holding the read, as the model's method; on what a call handed the subject builds or returns, as one more
-     * call handed it, since a resource built of the subject runs its toArray() here once a method is called on it; on
-     * the read itself or anything else only through what it is handed.
+     * Whether a method call on an object may change the read: on a first-class callable, as a call of it; on one that
+     * holds the read, as the model's method; on what a call handed the subject builds or returns, as a call handed it,
+     * as a resource of the subject runs toArray() once a method runs on it; on anything else, by what it is handed.
      *
      * @param  ReflectionClass<object>  $declaring
      */
