@@ -179,6 +179,8 @@
     "app\/Http\/Resources\/DepotTierKeyedResource.php",
     "app\/Http\/Resources\/DepotTierResource.php",
     "app\/Http\/Resources\/Discriminated\/DiscriminantFormsResource.php",
+    "app\/Http\/Resources\/Discriminated\/DispatchOverridesResource.php",
+    "app\/Http\/Resources\/Discriminated\/DispatchWritesResource.php",
     "app\/Http\/Resources\/Discriminated\/FeedPlacementResource.php",
     "app\/Http\/Resources\/Discriminated\/HiddenWritesResource.php",
     "app\/Http\/Resources\/Discriminated\/HiddenWritesTopResource.php",

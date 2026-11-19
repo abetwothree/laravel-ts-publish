@@ -6272,6 +6272,28 @@ declare global {
             same_arms_kept: { pinned: boolean; v: number };
             untypable_arm_kept: { pinned: boolean; v: null };
         }
+        /**
+         * Literals whose discriminant code changes through what a call dispatches to: parent::unless(), which calls the
+         * when() this resource overrides to unpin the post, and the `tick` get hook TickingResource declares, whose
+         * `self::clearTick()` runs the parent's clearTick(), not the one here. PHP can send a value no arm admits, so each
+         * literal should publish flat (GH-174).
+         */
+        export interface DispatchOverridesResource {
+            parent_unless: { is_pinned: true; note: string; detail: string } | { is_pinned: false; note: string; detail: null };
+            parent_hook_self: { is_pinned: true; tick: boolean; detail: string } | { is_pinned: false; tick: boolean; detail: null };
+        }
+        /**
+         * Literals whose discriminant a call changes through a binding the write check does not see yet: a reference a
+         * string-keyed unpack hands a parameter before its position, a static call through `$this::`, a callable pair a
+         * helper returns with its keys out of order, and a local handed by reference to an object no scan names. PHP can
+         * send a value no arm admits, so each literal should publish flat (GH-174).
+         */
+        export interface DispatchWritesResource {
+            named_unpack: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
+            static_through_this: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
+            pair_keys_out_of_order: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
+            local_by_reference: { flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null };
+        }
         /** The placement an unpinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
         export interface FeedPlacementResource {
             published_at: string | null;
@@ -6393,9 +6415,9 @@ declare global {
          * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
          * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
          * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
-         * array_map(), when() handed a method's result on another read, a list of class names, and an untyped helper's
-         * result handed on. Nothing changes the discriminant, so each literal should publish one object per variant
-         * (GH-174).
+         * array_map(), when() handed a method's result on another read, a list of class names, an untyped helper's result
+         * handed on, and a callback holding an unused closure that returns `$this`. Nothing changes the discriminant, so
+         * each literal should publish one object per variant (GH-174).
          */
         export interface ReadingCallsResource {
             enum_method: { status: 0; color: string; detail: null } | { status: 1; color: string; detail: string };
@@ -6417,6 +6439,7 @@ declare global {
             class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
             untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
             static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
+            nested_closure_return: { is_pinned: boolean; ones: number[]; detail: string | null };
         }
         /**
          * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of

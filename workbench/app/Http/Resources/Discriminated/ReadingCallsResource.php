@@ -18,9 +18,9 @@ use Workbench\App\Models\Post;
  * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
  * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
  * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
- * array_map(), when() handed a method's result on another read, a list of class names, and an untyped helper's
- * result handed on. Nothing changes the discriminant, so each literal should publish one object per variant
- * (GH-174).
+ * array_map(), when() handed a method's result on another read, a list of class names, an untyped helper's result
+ * handed on, and a callback holding an unused closure that returns `$this`. Nothing changes the discriminant, so
+ * each literal should publish one object per variant (GH-174).
  *
  * @mixin Post
  */
@@ -128,6 +128,17 @@ class ReadingCallsResource extends JsonResource
             'static_reader' => [
                 'is_pinned' => $this->is_pinned,
                 'shout' => self::shout($this->title),
+                'detail' => $this->is_pinned ? $this->title : null,
+            ],
+            'nested_closure_return' => [
+                'is_pinned' => $this->is_pinned,
+                'ones' => array_map(function (): int {
+                    $unused = function (): self {
+                        return $this;
+                    };
+
+                    return 1;
+                }, [0]),
                 'detail' => $this->is_pinned ? $this->title : null,
             ],
         ];

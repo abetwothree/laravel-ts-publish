@@ -5,9 +5,9 @@ import type { UserResource } from '..';
  * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
  * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
  * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
- * array_map(), when() handed a method's result on another read, a list of class names, and an untyped helper's
- * result handed on. Nothing changes the discriminant, so each literal should publish one object per variant
- * (GH-174).
+ * array_map(), when() handed a method's result on another read, a list of class names, an untyped helper's result
+ * handed on, and a callback holding an unused closure that returns `$this`. Nothing changes the discriminant, so
+ * each literal should publish one object per variant (GH-174).
  *
  * @see Workbench\App\Http\Resources\Discriminated\ReadingCallsResource
  */
@@ -32,4 +32,5 @@ export interface ReadingCallsResource
     class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
     untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
     static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
+    nested_closure_return: { is_pinned: boolean; ones: number[]; detail: string | null };
 }

@@ -1,4 +1,6 @@
 export * from './discriminant-forms-resource';
+export * from './dispatch-overrides-resource';
+export * from './dispatch-writes-resource';
 export * from './feed-placement-resource';
 export * from './hidden-writes-resource';
 export * from './hidden-writes-top-resource';
