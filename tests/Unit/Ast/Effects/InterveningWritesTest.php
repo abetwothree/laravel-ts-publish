@@ -154,6 +154,22 @@ function interveningCalls(): array
             'array_map(function () { return $this->resource; }, [1])',
             true,
         ],
+        'a closure returning a local that holds a closure returning the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; return $f; })',
+            true,
+        ],
+        'a closure returning a local in an array, that local holding a closure returning the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; return [$f]; })',
+            true,
+        ],
+        'a closure returning a property it sets to a closure returning the model' => [
+            'PinWriter::unpin(function () { $this->callback = function () { return $this->resource; }; return $this->callback; })',
+            true,
+        ],
+        'a pipe into a closure returning a local that holds a closure returning the model' => [
+            'PinWriter::unpin(1 |> function ($x) { $f = function () { return $this->resource; }; return $f; })',
+            true,
+        ],
         'a method of $this named by a local' => ['array_map([$this, $name], [1])', true],
         'a writer named by [self::class, …]' => ['array_map([self::class, \'writer\'], [1])', true],
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],

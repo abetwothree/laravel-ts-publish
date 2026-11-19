@@ -60,6 +60,7 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionType;
 
@@ -196,11 +197,11 @@ final readonly class ClosureReach
             self::isPath($value) => ($this->holdsRead)($value, $inBody),
             $value instanceof Array_ => $this->handsArray($value, $declaring, $inBody, $runByBuiltIn),
             $value instanceof Pipe && self::isClosure($value->right) => array_any(
-                self::closureReturns($value->right),
+                self::handedBack($value->right),
                 $holds,
             ),
             $yields !== null => array_any($yields, $holds),
-            self::isClosure($value) => array_any(self::closureReturns($value), $holds),
+            self::isClosure($value) => array_any(self::handedBack($value), $holds),
             default => $this->mayRun($value, ValueUse::Handed, $declaring, $inBody),
         };
     }
@@ -311,6 +312,29 @@ final readonly class ClosureReach
     private static function closureReturns(ClosureExpr|ArrowFunction $closure): array
     {
         return $closure instanceof ArrowFunction ? [$closure->expr] : self::returnedValues($closure->stmts);
+    }
+
+    /**
+     * The values a closure or an arrow function written there may hand back: what it returns, or, where a value it
+     * returns reads a variable or a static property or makes a call, which may carry a closure the body builds, what
+     * every `return` in its body returns, its nested closures' included.
+     *
+     * @return list<Expr>
+     */
+    private static function handedBack(ClosureExpr|ArrowFunction $closure): array
+    {
+        $returns = self::closureReturns($closure);
+        $carries = static fn (Node $node): bool => $node instanceof Variable || $node instanceof StaticPropertyFetch
+            || $node instanceof CallLike;
+
+        if ($closure instanceof ArrowFunction || new NodeFinder()->findFirst($returns, $carries) === null) {
+            return $returns;
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (Return_ $return): ?Expr => $return->expr,
+            new NodeFinder()->findInstanceOf($closure->stmts, Return_::class),
+        )));
     }
 
     /**
