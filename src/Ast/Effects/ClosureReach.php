@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\NativeTypeNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
@@ -49,6 +51,8 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\UnaryMinus;
 use PhpParser\Node\Expr\UnaryPlus;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Expr\Yield_;
+use PhpParser\Node\Expr\YieldFrom;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\MatchArm;
@@ -79,6 +83,9 @@ final readonly class ClosureReach
 
     /** The return types, lowercased, that can hold no callable, besides a class with no `__invoke()`. */
     private const array CALLABLE_FREE = ['int', 'float', 'bool', 'null', 'void', 'never', 'false', 'true'];
+
+    /** The local an open array's unspelled method is read through, named as no source can spell a variable. */
+    private const string UNSPELLED_METHOD = 'unspelled method';
 
     /**
      * A judge for one scan.
@@ -118,26 +125,7 @@ final readonly class ClosureReach
      */
     public static function returnedValues(array $stmts): array
     {
-        $values = [];
-        $stack = $stmts;
-
-        while ($stack !== []) {
-            $node = array_pop($stack);
-
-            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
-                continue;
-            }
-
-            if ($node instanceof Return_ && $node->expr !== null) {
-                $values[] = $node->expr;
-            }
-
-            foreach ($node->getSubNodeNames() as $name) {
-                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
-            }
-        }
-
-        return $values;
+        return self::outerValues($stmts, static fn (Node $node): bool => $node instanceof Return_);
     }
 
     /**
@@ -164,7 +152,7 @@ final readonly class ClosureReach
         return match (true) {
             self::isClosure($value) => false,
             $value instanceof Pipe => $this->pipeResultMayRun($value, $use, $declaring, $inBody),
-            $value instanceof Variable && ! CallableTargets::isThis($value) => $use !== ValueUse::Handed,
+            $value instanceof Variable && ! ReadPath::isThis($value) => $use !== ValueUse::Handed,
             $spelled => $this->spelledMayRun($value, $declaring, $inBody),
             self::holdsNoClosure($value) => false,
             default => true,
@@ -193,15 +181,11 @@ final readonly class ClosureReach
             self::isPath($value) => ($this->holdsRead)($value, $inBody),
             $value instanceof Array_ => $this->handsArray($value, $declaring, $inBody, $runByBuiltIn),
             $value instanceof Pipe && self::isClosure($value->right) => array_any(
-                self::closureReturns($value->right),
+                self::handedBack($value->right),
                 $holds,
             ),
             $yields !== null => array_any($yields, $holds),
-            $value instanceof ArrowFunction => $holds($value->expr),
-            $value instanceof ClosureExpr => array_any(
-                new NodeFinder()->findInstanceOf($value->stmts, Return_::class),
-                fn (Return_ $return): bool => $holds($return->expr),
-            ),
+            self::isClosure($value) => array_any(self::handedBack($value), $holds),
             default => $this->mayRun($value, ValueUse::Handed, $declaring, $inBody),
         };
     }
@@ -237,7 +221,7 @@ final readonly class ClosureReach
     private static function holdsNoClosure(Expr $value): bool
     {
         return $value instanceof Scalar || $value instanceof ConstFetch || $value instanceof ClassConstFetch
-            || $value instanceof Array_ || CallableTargets::isThis($value)
+            || $value instanceof Array_ || ReadPath::isThis($value)
             || ($value instanceof BinaryOp && ! $value instanceof Coalesce && ! $value instanceof Pipe)
             || ($value instanceof Cast && ! $value instanceof ObjectCast)
             || $value instanceof BooleanNot || $value instanceof BitwiseNot || $value instanceof UnaryMinus
@@ -282,14 +266,15 @@ final readonly class ClosureReach
     }
 
     /**
-     * Whether an array may spell a callable pair: two items, the second a method's name, a constant, or a name the
-     * source computes in a local.
+     * Whether an array may spell a callable pair: one that may be any pair, or one whose method is a name, a constant,
+     * or a name the source computes in a local.
      */
-    private static function pairsCallable(Array_ $value): bool
+    private static function pairsCallable(CallablePair|false|null $pair): bool
     {
-        $name = count($value->items) === 2 ? $value->items[1]->value : null;
+        $name = $pair instanceof CallablePair ? $pair->method : null;
 
-        return $name instanceof String_ || $name instanceof Variable || $name instanceof ClassConstFetch;
+        return $pair === false
+            || $name instanceof String_ || $name instanceof Variable || $name instanceof ClassConstFetch;
     }
 
     /**
@@ -314,6 +299,87 @@ final readonly class ClosureReach
     }
 
     /**
+     * The values a closure or an arrow function written there may hand back: what it returns or yields, or, where such
+     * a value reads a variable or a static property or makes a call, which may carry a closure the body builds, what
+     * every `return`, `yield` and `yield from` in its body hands back, its nested closures' included.
+     *
+     * @return list<Expr>
+     */
+    private static function handedBack(ClosureExpr|ArrowFunction $closure): array
+    {
+        $own = $closure instanceof ArrowFunction
+            ? [$closure->expr]
+            : self::outerValues($closure->stmts, self::handsBack(...));
+        $carries = static fn (Node $node): bool => $node instanceof Variable || $node instanceof StaticPropertyFetch
+            || $node instanceof CallLike;
+
+        if ($closure instanceof ArrowFunction || new NodeFinder()->findFirst($own, $carries) === null) {
+            return $own;
+        }
+
+        return array_merge(...array_map(
+            self::valuesOf(...),
+            new NodeFinder()->find($closure->stmts, self::handsBack(...)),
+        ));
+    }
+
+    /**
+     * Whether a node hands its function's caller a value: a `return`, or, in a generator the caller iterates, a `yield`
+     * or a `yield from`.
+     */
+    private static function handsBack(Node $node): bool
+    {
+        return $node instanceof Return_ || $node instanceof Yield_ || $node instanceof YieldFrom;
+    }
+
+    /**
+     * The values a node hands its function's caller: what a `return` returns, the key and the value a `yield` yields,
+     * and what a `yield from` yields from; none for any other node.
+     *
+     * @return list<Expr>
+     */
+    private static function valuesOf(Node $node): array
+    {
+        return match (true) {
+            $node instanceof Return_ => array_filter([$node->expr]),
+            $node instanceof Yield_ => array_values(array_filter([$node->key, $node->value])),
+            $node instanceof YieldFrom => [$node->expr],
+            default => [],
+        };
+    }
+
+    /**
+     * The values the nodes a test picks hand back in a body, outside the closures, functions and classes it holds.
+     *
+     * @param  array<Node>  $stmts
+     * @param  Closure(Node): bool  $picks
+     * @return list<Expr>
+     */
+    private static function outerValues(array $stmts, Closure $picks): array
+    {
+        $values = [];
+        $stack = $stmts;
+
+        while ($stack !== []) {
+            $node = array_pop($stack);
+
+            if (! $node instanceof Node || $node instanceof FunctionLike || $node instanceof ClassLike) {
+                continue;
+            }
+
+            if ($picks($node)) {
+                array_push($values, ...self::valuesOf($node));
+            }
+
+            foreach ($node->getSubNodeNames() as $name) {
+                array_push($stack, ...(is_array($node->{$name}) ? $node->{$name} : [$node->{$name}]));
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * Whether an array handed to a callee may let it change the read: through any item that hands the subject, but,
      * in a pair naming a method that lands where a built-in takes a callable, the object the pair names, which the
      * built-in may only run; or through the callable the array may spell.
@@ -322,14 +388,14 @@ final readonly class ClosureReach
      */
     private function handsArray(Array_ $value, ReflectionClass $declaring, bool $inBody, bool $runByBuiltIn): bool
     {
-        $pair = self::pairsCallable($value);
-        $runOnly = $pair && $runByBuiltIn && $value->items[1]->value instanceof String_;
+        $pair = CallablePair::of($value);
+        $runOnly = $runByBuiltIn && $pair instanceof CallablePair && $pair->method instanceof String_;
 
         return array_any(
             $value->items,
             fn (ArrayItem $item): bool => ! ($runOnly && self::isPath($item->value))
                 && $this->hands($item->value, $declaring, $inBody, $runByBuiltIn),
-        ) || ($pair && $this->mayRun($value, ValueUse::Handed, $declaring, $inBody));
+        ) || (self::pairsCallable($pair) && $this->mayRun($value, ValueUse::Handed, $declaring, $inBody));
     }
 
     /**
@@ -445,26 +511,35 @@ final readonly class ClosureReach
 
     /**
      * Whether a string, an array or a joined string a callee runs may change the read: one naming a method run on
-     * `$this` by its body, one naming one by a name the source does not spell, and a pair led by an object holding
-     * the read as the model's method.
+     * `$this` by its body, one naming one by a name the source does not spell, a pair whose object holds the read, as
+     * the model's method, and an open array as a pair of any of its own items and a method the source does not spell.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function spelledMayRun(Expr $value, ReflectionClass $declaring, bool $inBody): bool
     {
+        $pair = $value instanceof Array_ ? CallablePair::of($value) : null;
+
+        if ($value instanceof Array_ && $pair === false) {
+            return array_any($value->items, fn (ArrayItem $item): bool => $this->spelledMayRun(
+                new Array_([new ArrayItem($item->value), new ArrayItem(new Variable(self::UNSPELLED_METHOD))]),
+                $declaring,
+                $inBody,
+            ));
+        }
+
         $target = $this->targets->callableTarget($value, $declaring);
-        $holder = $value instanceof Array_ && count($value->items) === 2 ? $value->items[0]->value : null;
-        $name = $holder === null ? null : $value->items[1]->value;
 
         return match (true) {
             is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
-            default => $holder !== null && ! CallableTargets::isThis($holder) && ($this->heldMethodMayWrite)(
-                $holder,
-                $name instanceof String_ ? $name->value : null,
-                $declaring,
-                $inBody,
-            ),
+            default => $pair instanceof CallablePair && ! ReadPath::isThis($pair->holder)
+                && ($this->heldMethodMayWrite)(
+                    $pair->holder,
+                    $pair->method instanceof String_ ? $pair->method->value : null,
+                    $declaring,
+                    $inBody,
+                ),
         };
     }
 

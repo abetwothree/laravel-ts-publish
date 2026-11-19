@@ -31,9 +31,9 @@ use ReflectionParameter;
 
 /**
  * The arguments a call passes to a by-reference parameter of the callee it names: a function, a method of `$this`,
- * through `->` or `?->`, of `self`, `static`, `parent` or a named class, or a named class's constructor. The property default scan and the local
- * write scan both read a call's writes through it, and the local write scan what a built-in leaves in each; the
- * discriminant's write check also reads which arguments a built-in may run.
+ * through `->`, `?->` or `::`, of `self`, `static`, `parent` or a named class, or a named class's constructor. The
+ * property default scan and the local write scan both read a call's writes through it, and the local write scan what a
+ * built-in leaves in each; the discriminant's write check also reads which arguments a built-in may run.
  *
  * @phpstan-type CallBinding = array{byReference: list<Expr>, runnable: list<Arg>}
  *
@@ -91,7 +91,7 @@ final class ByReferenceArguments
     /**
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
      *
-     * @param  array<Arg>  $passed  the call's arguments the caller asks about, keyed by position
+     * @param  array<Arg>  $passed  the call's arguments the caller asks about, matched by identity whatever their keys
      * @param  ReflectionClass<object>|null  $declaring  the class `self` names, the using class in a trait's body; null
      *                                                   names neither it nor `parent`
      * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name, but for the declaring
@@ -102,7 +102,7 @@ final class ByReferenceArguments
     {
         $callee = $passed === [] || $call->isFirstClassCallable() ? null : $this->callee($call, $declaring, $runtime);
 
-        return $callee === null ? [] : $this->byReference($callee, $passed);
+        return $callee === null ? [] : $this->byReference($callee, CallArguments::for($call, $callee), $passed);
     }
 
     /**
@@ -122,9 +122,15 @@ final class ByReferenceArguments
 
         $callee = $this->callee($call, $declaring, $runtime);
 
-        return $callee === null ? null : [
-            'byReference' => $this->byReference($callee, $call->getArgs()),
-            'runnable' => $callee->isInternal() ? $this->runnable($call, $callee) : [],
+        if ($callee === null) {
+            return null;
+        }
+
+        $arguments = CallArguments::for($call, $callee);
+
+        return [
+            'byReference' => $this->byReference($callee, $arguments, $call->getArgs()),
+            'runnable' => $callee->isInternal() ? $this->runnable($callee, $arguments) : [],
         ];
     }
 
@@ -138,25 +144,23 @@ final class ByReferenceArguments
             ? $this->namedFunction($call->name)
             : null;
         $effects = $function !== null && $function->isInternal() ? self::EFFECTS[$function->getName()] ?? [] : [];
+        $arguments = $function === null || $effects === [] ? null : CallArguments::for($call, $function);
+        $effect = $arguments === null ? null : array_find(
+            $effects,
+            static fn (ByReferenceEffect $effect, string $name): bool => $arguments->named($name)?->value === $argument,
+        );
 
-        foreach ($effects === [] ? [] : $call->getArgs() as $index => $arg) {
-            if ($arg->value === $argument) {
-                $parameter = $this->parameterAt($function?->getParameters() ?? [], $index, $arg);
-                $effect = $effects[$parameter?->getName() ?? ''] ?? ByReferenceEffect::Replaces;
-
-                // The matches type a whole variable; a key the call writes them into stays unread.
-                if ($effect === ByReferenceEffect::WritesMatches) {
-                    return $argument instanceof Variable && $this->matchesType($call) !== null ? $effect : ByReferenceEffect::Replaces;
-                }
-
-                // A string comparison puts `10` before `2`, keying a list out of order.
-                return $effect === ByReferenceEffect::KeepsAny && ! $this->comparesKeysAsNumbers($call)
-                    ? ByReferenceEffect::KeepsObject
-                    : $effect;
-            }
+        // The matches type a whole variable; a key the call writes them into stays unread.
+        if ($effect === ByReferenceEffect::WritesMatches) {
+            return $argument instanceof Variable && $this->matchesType($call) !== null ? $effect : ByReferenceEffect::Replaces;
         }
 
-        return ByReferenceEffect::Replaces;
+        // A string comparison puts `10` before `2`, keying a list out of order.
+        return match (true) {
+            $effect === null => ByReferenceEffect::Replaces,
+            $effect === ByReferenceEffect::KeepsAny && ! $this->comparesKeysAsNumbers($call) => ByReferenceEffect::KeepsObject,
+            default => $effect,
+        };
     }
 
     /**
@@ -206,28 +210,24 @@ final class ByReferenceArguments
     }
 
     /**
-     * What an unpacked argument binds by reference, as it fills the parameter at its position and each after it: a
-     * literal's `&` elements, whose referents its other elements only copy, or any other array itself.
+     * The values the given arguments pass: each one's own, and each item's of an unpacked literal among them.
      *
-     * @param  list<ReflectionParameter>  $parameters
+     * @param  array<Arg>  $passed
      * @return list<Expr>
      */
-    private static function unpackedByReference(array $parameters, int $position, Expr $unpacked): array
+    private static function passedValues(array $passed): array
     {
-        $last = $parameters === [] ? null : $parameters[array_key_last($parameters)];
-        $takesReference = array_any(
-            array_slice($parameters, $position),
-            static fn (ReflectionParameter $parameter): bool => $parameter->isPassedByReference(),
-        ) || ($last?->isVariadic() === true && $last->isPassedByReference());
+        $values = [];
 
-        if (! $takesReference) {
-            return [];
+        foreach ($passed as $arg) {
+            $values[] = $arg->value;
+
+            if ($arg->unpack && $arg->value instanceof Array_) {
+                array_push($values, ...array_map(static fn (ArrayItem $item): Expr => $item->value, $arg->value->items));
+            }
         }
 
-        return $unpacked instanceof Array_ ? array_values(array_map(
-            static fn (ArrayItem $item): Expr => $item->value,
-            array_filter($unpacked->items, static fn (ArrayItem $item): bool => $item->byRef),
-        )) : [$unpacked];
+        return $values;
     }
 
     /**
@@ -265,8 +265,13 @@ final class ByReferenceArguments
                 return $owner->getMethod($method);
             }
 
-            if ($call instanceof StaticCall && $call->class instanceof Name && $call->name instanceof Identifier) {
-                return $this->namedClass($call->class, $declaring, $runtime)?->getMethod($call->name->toString());
+            if ($call instanceof StaticCall && $call->name instanceof Identifier) {
+                // PHP looks `$this::m()` up on the class `$this` is, as it does `static::m()`.
+                $class = $call->class instanceof Variable && $call->class->name === 'this' ? new Name('static') : $call->class;
+
+                return $class instanceof Name
+                    ? $this->namedClass($class, $declaring, $runtime)?->getMethod($call->name->toString())
+                    : null;
             }
         } catch (ReflectionException) {
             return null;
@@ -277,29 +282,43 @@ final class ByReferenceArguments
 
     /**
      * The values of the given arguments that land in a by-reference parameter of a callee, but none for a built-in
-     * that only moves an array's internal pointer.
+     * that only moves an array's internal pointer: an argument written for one, or an unpacked literal's `&` item,
+     * whose other items it takes as copies; and each unpack it cannot read, where one may still take more.
      *
      * @param  array<Arg>  $passed
      * @return list<Expr>
      */
-    private function byReference(ReflectionFunctionAbstract $callee, array $passed): array
+    private function byReference(ReflectionFunctionAbstract $callee, CallArguments $arguments, array $passed): array
     {
         if ($callee instanceof ReflectionFunction && in_array($callee->getName(), self::POINTER_FUNCTIONS, true)) {
             return [];
         }
 
-        $parameters = $callee->getParameters();
-        $arguments = [];
+        $bound = [];
+        $open = false;
 
-        foreach ($passed as $index => $arg) {
-            if ($arg->unpack && is_int($index)) {
-                array_push($arguments, ...self::unpackedByReference($parameters, $index, $arg->value));
-            } elseif ($this->parameterAt($parameters, $index, $arg)?->isPassedByReference()) {
-                $arguments[] = $arg->value;
+        foreach ($callee->getParameters() as $position => $parameter) {
+            if (! $parameter->isPassedByReference()) {
+                continue;
             }
+
+            $taken = $parameter->isVariadic()
+                ? [...$arguments->from($position), ...$arguments->undeclared()]
+                : array_filter([$arguments->at($position)]);
+            // A variadic takes whatever an unpack holds past the arguments written for it.
+            $open = $open || $taken === [] || $parameter->isVariadic();
+            array_push($bound, ...array_filter(
+                $taken,
+                static fn (Arg $arg): bool => $arg->byRef || $arg->getAttribute(CallArguments::UNPACKED_ITEM) !== true,
+            ));
         }
 
-        return $arguments;
+        $passedValues = self::passedValues($passed);
+
+        return array_values(array_filter(
+            array_map(static fn (Arg $arg): Expr => $arg->value, [...$bound, ...($open ? $arguments->unexpanded() : [])]),
+            static fn (Expr $value): bool => in_array($value, $passedValues, true),
+        ));
     }
 
     /**
@@ -307,10 +326,8 @@ final class ByReferenceArguments
      *
      * @return list<Arg>
      */
-    private function runnable(CallLike $call, ReflectionFunctionAbstract $callee): array
+    private function runnable(ReflectionFunctionAbstract $callee, CallArguments $arguments): array
     {
-        $arguments = CallArguments::for($call, $callee);
-
         return array_values(array_filter(array_map(
             static fn (ReflectionParameter $parameter): ?Arg => self::declaresCallable($parameter)
                 ? $arguments->named($parameter->getName())
@@ -347,23 +364,6 @@ final class ByReferenceArguments
             $flags instanceof ConstFetch => self::PREG_FLAGS[$flags->name->toString()] ?? null,
             default => null,
         };
-    }
-
-    /**
-     * The parameter an argument at a position, or of a name, lands in.
-     *
-     * @param  list<ReflectionParameter>  $parameters
-     */
-    private function parameterAt(array $parameters, int|string $index, Arg $arg): ?ReflectionParameter
-    {
-        $named = $arg->name?->toString();
-        $last = $parameters === [] ? null : $parameters[array_key_last($parameters)];
-        $parameter = $named === null
-            ? (is_int($index) ? $parameters[$index] ?? null : null)
-            : array_find($parameters, fn (ReflectionParameter $known): bool => $known->getName() === $named);
-
-        // PHP collects a surplus positional or unknown named argument into a trailing variadic.
-        return $parameter ?? ($last?->isVariadic() ? $last : null);
     }
 
     /**

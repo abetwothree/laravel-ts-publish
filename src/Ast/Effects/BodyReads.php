@@ -162,7 +162,7 @@ final class BodyReads
 
         $declaring = $hook === null
             ? $class->getMethod($member)->getDeclaringClass()
-            : $class->getProperty($member)->getDeclaringClass();
+            : $class->getProperty($member)->getHook($hook)?->getDeclaringClass() ?? $class;
         $this->asked = [];
 
         try {

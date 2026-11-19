@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
@@ -86,7 +87,10 @@ final class InterveningWrites
     /** @var WeakMap<CallLike, array<string, CallBinding|null>> each call's binding, by the class `self` names there */
     private WeakMap $bindings;
 
-    /** Whether the read starts at a property its class declares, which a by-reference parameter binds in place. */
+    /**
+     * Whether the read starts at a property its class declares, or is a bare local, which a by-reference parameter
+     * binds in place.
+     */
     private readonly bool $bindsInPlace;
 
     /**
@@ -191,6 +195,25 @@ final class InterveningWrites
         }
 
         return $path === null ? [] : [$path];
+    }
+
+    /**
+     * The values an argument may bind by reference: its own, but an array literal's, unpacked or not, only those of
+     * its `&` items at any depth, since PHP copies every other item.
+     *
+     * @return list<Expr>
+     */
+    private static function referencedValues(Expr $value): array
+    {
+        if (! $value instanceof Array_) {
+            return [$value];
+        }
+
+        return array_merge(...array_map(static fn (ArrayItem $item): array => match (true) {
+            $item->byRef => [$item->value],
+            $item->value instanceof Array_ => self::referencedValues($item->value),
+            default => [],
+        }, $value->items));
     }
 
     /**
@@ -440,9 +463,12 @@ final class InterveningWrites
         $binding = $this->binding($call, $declaring);
         $unnamed = $binding === null && $this->bindsInPlace
             && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
-            && ! CallableTargets::isThis($call->var);
+            && ! ReadPath::isThis($call->var);
         $byReference = $unnamed
-            ? array_map(static fn (Arg $arg): Expr => $arg->value, $call->getArgs())
+            ? array_merge(...array_map(
+                static fn (Arg $arg): array => self::referencedValues($arg->value),
+                $call->getArgs(),
+            ))
             : $binding['byReference'] ?? [];
 
         return array_any(
@@ -542,14 +568,14 @@ final class InterveningWrites
                 || ($node->name->toLowerString() === '__invoke'
                     && ! ($node->var instanceof CallLike && $node->var->isFirstClassCallable())),
             $node instanceof StaticCall => ! $node->name instanceof Identifier
-                || ! ($node->class instanceof Name || CallableTargets::isThis($node->class)),
+                || ! ($node->class instanceof Name || ReadPath::isThis($node->class)),
             default => false,
         };
     }
 
     /**
-     * Whether a call PHP runs on `$this` may change the read: a resource helper through the callbacks it calls, and
-     * any other through what it is handed and the method it runs.
+     * Whether a call PHP runs on `$this` may change the read: a resource helper through the callbacks it calls and the
+     * methods of the class it dispatches to, and any other through what it is handed and the method it runs.
      *
      * @param  ReflectionClass<object>  $class  the class whose method the call runs
      * @param  ReflectionClass<object>  $declaring
@@ -561,9 +587,22 @@ final class InterveningWrites
         ReflectionClass $declaring,
         bool $inBody,
     ): bool {
-        $helper = ReadOnlyCalls::helperOn($class, $method);
+        $overrideWrites = false;
+        $helper = ReadOnlyCalls::helperOn(
+            $class,
+            $method,
+            $this->runtime,
+            function (ReflectionClass $override, string $name) use (&$overrideWrites): bool {
+                $writes = $this->reads->mayWrite($override, $name);
+                $overrideWrites = $overrideWrites || $writes;
+
+                return $writes;
+            },
+        );
 
         return match (true) {
+            // BodyReads answers each body once a scan, so a write the judge found must end the scan here.
+            $overrideWrites => true,
             $helper !== null => $this->callbacksMayWrite(CallArguments::for($call, $helper), $declaring, $inBody),
             $class->hasMethod($method) && $this->handsSubject($call, $declaring, $inBody) => true,
             default => $this->methodMayWrite($class, $method),

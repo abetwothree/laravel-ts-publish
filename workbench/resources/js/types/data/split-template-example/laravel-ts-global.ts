@@ -3309,7 +3309,7 @@ declare global {
             null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
-            not_null_spread_default?: string;
+            not_null_spread_default: string | number;
             when_no_default?: string;
             when_with_default: string | number;
             has_with_default: string | number;
@@ -6275,24 +6275,24 @@ declare global {
         /**
          * Literals whose discriminant code changes through what a call dispatches to: parent::unless(), which calls the
          * when() this resource overrides to unpin the post, and the `tick` get hook TickingResource declares, whose
-         * `self::clearTick()` runs the parent's clearTick(), not the one here. PHP can send a value no arm admits, so each
-         * literal should publish flat (GH-174).
+         * `self::clearTick()` runs the parent's clearTick(), not the one here. Each literal publishes flat, because PHP can
+         * send a value no arm admits (GH-174).
          */
         export interface DispatchOverridesResource {
-            parent_unless: { is_pinned: true; note: string; detail: string } | { is_pinned: false; note: string; detail: null };
-            parent_hook_self: { is_pinned: true; tick: boolean; detail: string } | { is_pinned: false; tick: boolean; detail: null };
+            parent_unless: { is_pinned: boolean; note: string; detail: string | null };
+            parent_hook_self: { is_pinned: boolean; tick: boolean; detail: string | null };
         }
         /**
-         * Literals whose discriminant a call changes through a binding the write check does not see yet: a reference a
-         * string-keyed unpack hands a parameter before its position, a static call through `$this::`, a callable pair a
-         * helper returns with its keys out of order, and a local handed by reference to an object no scan names. PHP can
-         * send a value no arm admits, so each literal should publish flat (GH-174).
+         * Literals whose discriminant a call changes through a binding the write check sees: a reference a string-keyed
+         * unpack hands a parameter before its position, a static call through `$this::`, a callable pair a helper returns
+         * with its keys out of order, and a local handed by reference to an object no scan names. Each literal publishes
+         * flat, because PHP can send a value no arm admits (GH-174).
          */
         export interface DispatchWritesResource {
-            named_unpack: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
-            static_through_this: { pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null };
-            pair_keys_out_of_order: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
-            local_by_reference: { flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null };
+            named_unpack: { pinned: boolean; reset: boolean; detail: string | null };
+            static_through_this: { pinned: boolean; reset: boolean; detail: string | null };
+            pair_keys_out_of_order: { is_pinned: boolean; reset: boolean; detail: string | null };
+            local_by_reference: { flag: boolean; reset: boolean; detail: string | null };
         }
         /** The placement an unpinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
         export interface FeedPlacementResource {
@@ -6432,14 +6432,14 @@ declare global {
             reading_helper: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null };
             url_of_model: { is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null };
             gate_on_model: { is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null };
-            resource_of_model: { is_pinned: true; card: app.http.resources.UserResource; detail: string } | { is_pinned: false; card: app.http.resources.UserResource; detail: null };
-            resource_of_model_make: { is_pinned: true; author: app.http.resources.UserResource; detail: string } | { is_pinned: false; author: app.http.resources.UserResource; detail: null };
+            resource_of_model: { is_pinned: true; card: app.http.resources.PostResource; detail: string } | { is_pinned: false; card: app.http.resources.PostResource; detail: null };
+            resource_of_model_make: { is_pinned: true; card: app.http.resources.PostResource; detail: string } | { is_pinned: false; card: app.http.resources.PostResource; detail: null };
             callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
             when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
             class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
             untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
             static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
-            nested_closure_return: { is_pinned: boolean; ones: number[]; detail: string | null };
+            nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
         }
         /**
          * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of

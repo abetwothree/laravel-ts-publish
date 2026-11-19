@@ -240,8 +240,11 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
   `$this->pins = new Pins($resource)` in the constructor;
 - the discriminant bound by reference to a local, such as `$r = &$this->pinned; $r = false;`, in the window or in a
   method it calls;
-- an accessor, a `getXAttribute()` method or an `Attribute` getter, that writes the discriminant when the window reads
-  its attribute;
+- an accessor, a `getXAttribute()` method or an `Attribute` getter, or a relation method, that writes the discriminant
+  when the window reads its attribute or relation, directly or through an Eloquent reader such as `getKey()`, which
+  runs it by a name it computes;
+- a model's own `__call()` that writes the discriminant, where an Eloquent reader calls a method the model lacks. On
+  Laravel 12 and 13 only `getModel()` is called that way, on the path that throws `InvalidCastException`;
 - a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
 - on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
   `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
@@ -252,6 +255,13 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
 Move that code above the first key that reads the discriminant, or below the last: the discriminant's own key and each
 key whose condition tests it. Where it cannot move, `#[TsResource(discriminated: false)]` keeps a resource's top level
 flat.
+
+The other way round, a group stays flat where its window calls an Eloquent reader, such as `getKey()` or
+`getRouteKey()`, on a model that overrides a method the reader runs, such as `getKeyName()`, `getRouteKeyName()`,
+`getCasts()`, `getConnectionName()` or `getTable()`, with a body that does more than return a literal, a constant, a
+property with no hook, or an array of those. That holds even for an override that only reads, and for one a package's
+trait adds, such as a translatable or multi-tenancy trait's. To keep the split, make the override return one of those,
+or move the reader's call above or below those keys, as above.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 

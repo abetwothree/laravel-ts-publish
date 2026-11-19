@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
 
+use Closure;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Workbench\App\Models\Post;
 
@@ -31,6 +32,26 @@ class MutatingPost extends Post
     protected function pinNote(): Attribute
     {
         return Attribute::set(fn (string $value): array => ['is_pinned' => false, 'pin_note' => $value]);
+    }
+
+    /**
+     * Sets the pin's mark through a setter unpacked by name, and clears the pin with it.
+     *
+     * @return Attribute<never, string>
+     */
+    protected function pinMark(): Attribute
+    {
+        return Attribute::make(...['set' => fn (string $value): array => ['is_pinned' => false, 'pin_mark' => $value]]);
+    }
+
+    /**
+     * Sets the pin's tag through the accessors a helper returns.
+     *
+     * @return Attribute<string, string>
+     */
+    protected function pinTag(): Attribute
+    {
+        return Attribute::make(...$this->tagAccessors());
     }
 
     /**
@@ -73,6 +94,19 @@ class MutatingPost extends Post
         return Attribute::get(function (): string {
             return 'caption';
         });
+    }
+
+    /**
+     * A getter and a setter that clears the pin, by the names Attribute::make() takes.
+     *
+     * @return array{get: Closure(string): string, set: Closure(string): array<string, mixed>}
+     */
+    private function tagAccessors(): array
+    {
+        return [
+            'get' => fn (string $value): string => $value,
+            'set' => fn (string $value): array => ['is_pinned' => false, 'pin_tag' => $value],
+        ];
     }
 
     /**

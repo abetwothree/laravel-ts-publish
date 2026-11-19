@@ -1,4 +1,4 @@
-import type { UserResource } from '..';
+import type { PostResource, UserResource } from '..';
 
 /**
  * Literals whose items between a discriminant and its dependents only read: a method of the discriminant's own enum,
@@ -25,12 +25,12 @@ export interface ReadingCallsResource
     reading_helper: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null };
     url_of_model: { is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null };
     gate_on_model: { is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null };
-    resource_of_model: { is_pinned: true; card: UserResource; detail: string } | { is_pinned: false; card: UserResource; detail: null };
-    resource_of_model_make: { is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null };
+    resource_of_model: { is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null };
+    resource_of_model_make: { is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null };
     callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
     when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
     class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
     untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
     static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
-    nested_closure_return: { is_pinned: boolean; ones: number[]; detail: string | null };
+    nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
 }

@@ -8,9 +8,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookGrandchild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -21,6 +25,7 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
+use Workbench\App\Models\CustomKeyPost;
 use Workbench\App\Models\Post;
 
 /**
@@ -41,6 +46,31 @@ function interveningCalls(): array
             'self::clearAfter(...[0, &$this->pinned])',
             true,
             '$this->pinned',
+        ],
+        'a literal\'s reference unpacked by name, after another unpacked literal' => [
+            "self::clearAfter(...['unused' => 0], ...['flag' => &\$this->pinned])",
+            true,
+            '$this->pinned',
+        ],
+        'a literal\'s reference unpacked by name into an earlier by-reference parameter' => [
+            "self::clearFirst(...['unused' => 0], ...['flag' => &\$this->pinned])",
+            true,
+            '$this->pinned',
+        ],
+        'a by-reference argument to a $this:: static method' => ['$this::clearAfter(0, $this->pinned)', true, '$this->pinned'],
+        'a local handed to a method of an object no scan names' => ['$writer->clear($flag)', true, '$flag'],
+        'another local handed to a method of an object no scan names' => ['$writer->clear($other)', false, '$flag'],
+        'a local unpacked from a literal into a method of an object no scan names' => ['$writer->clear(...[$flag])', false, '$flag'],
+        'a local in a literal handed to a method of an object no scan names' => ['$writer->clear([$flag])', false, '$flag'],
+        'a local\'s reference unpacked from a literal into a method of an object no scan names' => [
+            '$writer->clear(...[&$flag])',
+            true,
+            '$flag',
+        ],
+        'a local\'s reference in a literal handed to a method of an object no scan names' => [
+            '$writer->clear([[&$flag]])',
+            true,
+            '$flag',
         ],
         'a helper whose foreach destructures into the read' => ['$this->loopsIntoFlag()', true, '$this->pinned'],
         'a helper whose foreach key is the model\'s attribute' => ['$this->loopsIntoPin()', true],
@@ -128,6 +158,49 @@ function interveningCalls(): array
         'a writer named by \'static::\'' => ["array_map('static::writer', [1])", true],
         'a writer named by [\'parent\', …]' => ["array_map(['parent', 'baseWriter'], [1])", true],
         'a writer named by [$this, …]' => ["array_map([\$this, 'writer'], [1])", true],
+        'a writer named by a pair keyed out of order' => ["array_map([1 => 'writer', 0 => \$this], [1])", true],
+        'a writer named by a pair keyed out of order, which a helper returns' => [
+            'array_map($this->keyedWriterPair(), [1])',
+            true,
+        ],
+        'a closure returning the model, handed to array_map()' => [
+            'array_map(function () { return $this->resource; }, [1])',
+            true,
+        ],
+        'a closure returning a local that holds a closure returning the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; return $f; })',
+            true,
+        ],
+        'a closure returning a local in an array, that local holding a closure returning the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; return [$f]; })',
+            true,
+        ],
+        'a closure returning a property it sets to a closure returning the model' => [
+            'PinWriter::unpin(function () { $this->callback = function () { return $this->resource; }; return $this->callback; })',
+            true,
+        ],
+        'a pipe into a closure returning a local that holds a closure returning the model' => [
+            'PinWriter::unpin(1 |> function ($x) { $f = function () { return $this->resource; }; return $f; })',
+            true,
+        ],
+        'a closure yielding a local that holds a closure returning the model' => [
+            'PinWriter::unpin(function () { $f = function () { return $this->resource; }; yield $f; })',
+            true,
+        ],
+        'a closure returning a local that holds a closure yielding the model' => [
+            'PinWriter::unpin(function () { $g = function () { yield $this->resource; }; return $g; })',
+            true,
+        ],
+        'a closure yielding the model' => ['PinWriter::unpin(function () { yield $this->resource; })', true],
+        'a closure yielding the model as a key' => ['PinWriter::unpin(function () { yield $this->resource => 1; })', true],
+        'a closure yielding from an array holding the model' => [
+            'PinWriter::unpin(function () { yield from [$this->resource]; })',
+            true,
+        ],
+        'a pipe into a closure yielding the model' => [
+            'PinWriter::unpin(1 |> function ($x) { yield $this->resource; })',
+            true,
+        ],
         'a method of $this named by a local' => ['array_map([$this, $name], [1])', true],
         'a writer named by [self::class, …]' => ['array_map([self::class, \'writer\'], [1])', true],
         'a writer named by [static::class, …]' => ['array_map([static::class, \'writer\'], [1])', true],
@@ -177,6 +250,11 @@ function interveningCalls(): array
             false,
             '$this->pinned',
         ],
+        'a literal\'s copy unpacked by name, after another unpacked literal' => [
+            "self::clearAfter(...['unused' => 0], ...['flag' => \$this->pinned])",
+            false,
+            '$this->pinned',
+        ],
         'helpers that call each other and read' => ['$this->ping(3)', false],
         'a chain three helpers deep that reads' => ['$this->depthTwo()', false],
         'a reader\'s callable when() calls' => ['$this->when(true, $this->reader(...))', false],
@@ -214,6 +292,16 @@ function interveningCalls(): array
         'a reader\'s callable invoked' => ['$this->reader(...)->__invoke()', false],
         'a reader named by \'self::\'' => ["array_map('self::reader', ['a'])", false],
         'a reader named by [$this, …]' => ["array_map([\$this, 'reader'], ['a'])", false],
+        'a reader named by a pair keyed out of order' => ["array_map([1 => 'reader', 0 => \$this], ['a'])", false],
+        'a closure whose nested closure returns $this, which nothing calls' => [
+            'array_map(function () { $f = function () { return $this; }; return 1; }, [1])',
+            false,
+        ],
+        'a closure whose nested closure yields $this, which nothing calls' => [
+            'array_map(function () { $g = function () { yield $this; }; return 1; }, [1])',
+            false,
+        ],
+        'a closure yielding a number' => ['PinWriter::unpin(function () { yield 1; })', false],
         'a named ancestor\'s reader' => ['InterveningBase::baseReader()', false],
         'a parent:: reader' => ['parent::baseReader()', false],
         'new self of the subject' => ['new self($this->resource)', false],
@@ -283,6 +371,8 @@ it('reads a model reader as Eloquent\'s only where the model runs Eloquent\'s ow
     'getKey() the model overrides, in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", KeyWritingPost::class, true],
     'Eloquent\'s getKey(), forwarded' => ['$this->getKey()', Post::class, false],
     'Eloquent\'s getKey(), in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", Post::class, false],
+    'Eloquent\'s getKey(), past a getKeyName() that clears the pin' => ['$this->getKey()', KeyNameWritingPost::class, true],
+    'Eloquent\'s getKey(), past a getKeyName() returning a literal' => ['$this->getKey()', CustomKeyPost::class, false],
 ]);
 
 it('reads a framework helper as the class runs it, past a helper it overrides', function (
@@ -300,6 +390,21 @@ it('reads a framework helper as the class runs it, past a helper it overrides', 
     ],
     'whenLoaded(), which calls no helper the class overrides' => ["\$this->whenLoaded('author')", OwnWhenResource::class, false],
     'unless() on a class that overrides no helper' => ['$this->unless(false, 1)', InterveningResource::class, false],
+    'parent::unless(), which calls the when() the class overrides' => [
+        'parent::unless(false, 1)',
+        OwnWhenResource::class,
+        true,
+    ],
+    'unless(), past a when() the class overrides with one that only reads' => [
+        '$this->unless(false, 1)',
+        ReadingWhenResource::class,
+        false,
+    ],
+    'unless(), past a when() that only reads, handed a callback that writes' => [
+        '$this->unless(false, function () { $this->resource->is_pinned = false; })',
+        ReadingWhenResource::class,
+        true,
+    ],
 ]);
 
 it('reads each body once a publish run, whatever scan reaches it', function () {
@@ -352,6 +457,13 @@ it('reads a discriminant held by a local, which only the window can write', func
     'the local in a pair\'s second slot, handed to a writer (NB6)' => ["PinWriter::unpin(['k', \$post])", true],
     'a read of the local in a pair\'s second slot' => ["PinWriter::unpin(['k', \$post->title])", false],
     'a write through the local' => ['$post->is_pinned = false', true],
+]);
+
+it('reads a get hook\'s self:: as the class that declares the hook', function (string $subject, bool $mayWrite) {
+    expect(windowReach(['$this->tick', '$this->is_pinned ? 1 : null'], subject: $subject))->toBe($mayWrite);
+})->with([
+    'a hook the parent declares, whose clearTick() clears the pin' => [SelfHookChild::class, true],
+    'a hook the grandchild redeclares, whose inherited clearTick() reads' => [SelfHookGrandchild::class, false],
 ]);
 
 it('reads the last item for its writes and the arguments it binds by reference, not the calls after its guard', function (

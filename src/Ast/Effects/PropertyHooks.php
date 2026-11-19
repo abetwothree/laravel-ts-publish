@@ -158,12 +158,16 @@ final readonly class PropertyHooks
     /**
      * Whether the property a `$this` read starts at, past `resource` on an API resource, is one its class declares,
      * which a by-reference parameter binds in place, rather than one read through `__get()`, which hands back a copy
-     * unless it returns by reference.
+     * unless it returns by reference; a bare local binds in place.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is read
      */
     public function bindsInPlace(ReadPath $path, ReflectionClass $declaring): bool
     {
+        if ($path->root !== 'this' && $path->segments === []) {
+            return true;
+        }
+
         $index = $this->proxied && ($path->segments[0] ?? null) === 'resource' ? 1 : 0;
         [$property, $classes, $onThis] = $this->steps($path, $declaring, true)[$index] ?? ['', [], false];
         $forwarded = $index === 0 && ! $onThis;
@@ -233,7 +237,7 @@ final readonly class PropertyHooks
 
     /**
      * Whether a returned value may be an `Attribute` with a setter: anything but one Attribute's builders make with
-     * no setter or a `null` one.
+     * no setter or a `null` one; an unpack it cannot read may hold a setter.
      */
     private static function buildsSetter(Expr $built): bool
     {
@@ -256,7 +260,8 @@ final readonly class PropertyHooks
 
         $setter = $arguments->named('set')?->value;
 
-        return $setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null');
+        return $arguments->hasUnpack()
+            || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'));
     }
 
     /**

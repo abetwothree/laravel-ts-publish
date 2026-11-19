@@ -13069,8 +13069,8 @@
                 },
                 {
                     "name": "not_null_spread_default",
-                    "type": "string",
-                    "optional": true
+                    "type": "string | number",
+                    "optional": false
                 },
                 {
                     "name": "when_no_default",
@@ -14223,12 +14223,12 @@
             "properties": [
                 {
                     "name": "parent_unless",
-                    "type": "{ is_pinned: true; note: string; detail: string } | { is_pinned: false; note: string; detail: null }",
+                    "type": "{ is_pinned: boolean; note: string; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "parent_hook_self",
-                    "type": "{ is_pinned: true; tick: boolean; detail: string } | { is_pinned: false; tick: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; tick: boolean; detail: string | null }",
                     "optional": false
                 }
             ]
@@ -14238,22 +14238,22 @@
             "properties": [
                 {
                     "name": "named_unpack",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "static_through_this",
-                    "type": "{ pinned: true; reset: boolean; detail: string } | { pinned: false; reset: boolean; detail: null }",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "pair_keys_out_of_order",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
                     "name": "local_by_reference",
-                    "type": "{ flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null }",
+                    "type": "{ flag: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 }
             ]
@@ -14593,12 +14593,12 @@
                 },
                 {
                     "name": "resource_of_model",
-                    "type": "{ is_pinned: true; card: UserResource; detail: string } | { is_pinned: false; card: UserResource; detail: null }",
+                    "type": "{ is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null }",
                     "optional": false
                 },
                 {
                     "name": "resource_of_model_make",
-                    "type": "{ is_pinned: true; author: UserResource; detail: string } | { is_pinned: false; author: UserResource; detail: null }",
+                    "type": "{ is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null }",
                     "optional": false
                 },
                 {
@@ -14628,7 +14628,7 @@
                 },
                 {
                     "name": "nested_closure_return",
-                    "type": "{ is_pinned: boolean; ones: number[]; detail: string | null }",
+                    "type": "{ is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null }",
                     "optional": false
                 }
             ]

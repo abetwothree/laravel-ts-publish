@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -465,7 +466,7 @@ final class ThisPathWrites
         $callbacks = ReadOnlyCalls::callbacks($arguments);
         [$handedTo, $member] = $this->handedMember($helper, $arguments) ?? [null, null];
 
-        return ! $arguments->hasUnpack() && array_all($call->getArgs(), fn (Node\Arg $arg): bool => match (true) {
+        return ! $arguments->hasUnpack() && array_all($arguments->bound(), fn (Node\Arg $arg): bool => match (true) {
             in_array($arg->value, $callbacks, true) && ReadOnlyCalls::namesCallable($arg->value) => false,
             $arg->value !== $handedTo || $member === null => $this->safeValue($arg->value, $path, $parameters),
             $arg->value instanceof ClosureExpr || $arg->value instanceof ArrowFunction => $this->safeClosure($arg->value, $path, $parameters, $member),
@@ -569,7 +570,7 @@ final class ThisPathWrites
     private function safeArguments(CallLike $call, array $path, array $parameters): bool
     {
         return array_all($call->getArgs(), fn (Node\Arg $arg): bool => $this->safeValue($arg->value, $path, $parameters)
-            && ! ($this->chainOf($arg->value) !== null && $this->passesByReference($call, $arg->value)));
+            && ! $this->passesByReference($call, $arg));
     }
 
     /**
@@ -825,13 +826,20 @@ final class ThisPathWrites
     }
 
     /**
-     * Whether a call takes an argument by reference, as ByReferenceArguments reads a callee the call names.
+     * Whether a call takes a chain by reference from an argument, or from an item of the literal it unpacks, as
+     * ByReferenceArguments reads a callee the call names.
      */
-    private function passesByReference(CallLike $call, Expr $value): bool
+    private function passesByReference(CallLike $call, Node\Arg $arg): bool
     {
-        $passed = array_filter($call->getArgs(), fn (Node\Arg $arg): bool => $arg->value === $value);
+        $values = $arg->unpack && $arg->value instanceof Array_
+            ? array_map(static fn (Node\ArrayItem $item): Expr => $item->value, $arg->value->items)
+            : [$arg->value];
 
-        return resolve(ByReferenceArguments::class)->of($call, $passed, $this->scope->declaringClass, $this->scope->runtime->class) !== [];
+        // Only an argument holding a chain pays for reflecting the callee.
+        return array_any($values, fn (Expr $value): bool => $this->chainOf($value) !== null) && array_any(
+            resolve(ByReferenceArguments::class)->of($call, [$arg], $this->scope->declaringClass, $this->scope->runtime->class),
+            fn (Expr $bound): bool => $this->chainOf($bound) !== null,
+        );
     }
 
     /**

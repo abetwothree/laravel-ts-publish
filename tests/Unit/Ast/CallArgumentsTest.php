@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -18,7 +20,9 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\VariadicPlaceholder;
+use PhpParser\PrettyPrinter\Standard;
 
 /**
  * `$this->whenLoaded(...)` mapped against JsonResource::whenLoaded($relationship, $value, $default).
@@ -115,7 +119,7 @@ it('raises passedCount() to a named argument\'s position plus one, and no furthe
 
 it('reports a spread argument without counting it', function () {
     $value = new Arg(new String_('profile'));
-    $spread = new Arg(new Array_([]), unpack: true);
+    $spread = new Arg(new Variable('rest'), unpack: true);
 
     $args = whenLoadedArguments([$value, $spread]);
 
@@ -255,6 +259,132 @@ it('keeps same-named closures distinct, since a closure is never memoized', func
         ->and($fromB->positionOf('beta'))->toBe(0)
         ->and($fromB->positionOf('gamma'))->toBe(1)
         ->and($fromB->positionOf('alpha'))->toBeNull();
+});
+
+/**
+ * The arguments of the one call a statement makes, read against an explicit parameter-name list.
+ *
+ * @param  list<string>  $paramNames
+ */
+function parsedCallArguments(string $statement, array $paramNames): CallArguments
+{
+    return CallArguments::fromNames(parsedCall($statement)->getArgs(), $paramNames);
+}
+
+/**
+ * The one call a statement makes.
+ */
+function parsedCall(string $statement): CallLike
+{
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0] ?? null;
+    $call = $stmt instanceof Expression ? $stmt->expr : null;
+
+    if (! $call instanceof CallLike) {
+        throw new LogicException("Not a call: {$statement}");
+    }
+
+    return $call;
+}
+
+/**
+ * An argument's value printed as PHP, or null for no argument.
+ */
+function printedArgument(?Arg $arg): ?string
+{
+    return $arg === null ? null : new Standard()->prettyPrintExpr($arg->value);
+}
+
+it('binds an unpacked literal\'s string keys by name, whatever literal holds them', function () {
+    $args = parsedCallArguments("f(...['b' => 2], ...['a' => 1]);", ['a', 'b']);
+
+    expect(printedArgument($args->named('a')))->toBe('1')
+        ->and(printedArgument($args->named('b')))->toBe('2')
+        ->and(printedArgument($args->at(0)))->toBe('1')
+        ->and($args->hasUnpack())->toBeFalse()
+        ->and($args->unexpanded())->toBe([])
+        ->and($args->passedCount())->toBe(2);
+});
+
+it('continues the position count through an unpacked literal\'s keyless items', function () {
+    $args = parsedCallArguments('f(1, ...[2, 3]);', ['a', 'b', 'c']);
+
+    expect(printedArgument($args->at(0)))->toBe('1')
+        ->and(printedArgument($args->at(1)))->toBe('2')
+        ->and(printedArgument($args->at(2)))->toBe('3')
+        ->and(printedArgument($args->named('c')))->toBe('3')
+        ->and($args->passedCount())->toBe(3);
+});
+
+it('binds an unpacked literal\'s items to the reflected target\'s parameter names', function () {
+    $args = CallArguments::for(parsedCall('$this->when(...[$c, $v]);'), new ReflectionMethod(JsonResource::class, 'when'));
+
+    expect(printedArgument($args->named('condition')))->toBe('$c')
+        ->and(printedArgument($args->named('value')))->toBe('$v')
+        ->and($args->hasUnpack())->toBeFalse();
+});
+
+// PHP stores a decimal-integer string key as an int, and a repeated key keeps its first place with its last value.
+it('keys an unpacked literal as PHP stores it', function (string $statement, array $bound) {
+    $args = parsedCallArguments($statement, ['a', 'b']);
+
+    expect([printedArgument($args->at(0)), printedArgument($args->at(1))])->toBe($bound);
+})->with([
+    'an int-like string key, positional' => ["f(...['1' => \$x, '0' => \$y]);", ['$x', '$y']],
+    'a repeated int key' => ['f(...[0 => $x, 0 => $y, 1 => $z]);', ['$y', '$z']],
+    'a keyless item past an int key' => ['f(...[1 => $x, $y]);', ['$x', '$y']],
+]);
+
+it('expands each item with its own by-reference mark, flagged as an unpacked item', function () {
+    $args = parsedCallArguments('f($a, ...[&$m, $n]);', ['a', 'm', 'n']);
+
+    expect($args->at(1)?->byRef)->toBeTrue()
+        ->and($args->at(1)?->getAttribute(CallArguments::UNPACKED_ITEM))->toBeTrue()
+        ->and($args->at(2)?->byRef)->toBeFalse()
+        ->and($args->at(2)?->getAttribute(CallArguments::UNPACKED_ITEM))->toBeTrue()
+        ->and($args->at(0)?->getAttribute(CallArguments::UNPACKED_ITEM))->toBeNull();
+});
+
+it('keeps an unpack it cannot expand unexpanded', function (string $statement) {
+    $call = parsedCall($statement);
+    $args = CallArguments::fromNames($call->getArgs(), ['a', 'b']);
+
+    expect($args->hasUnpack())->toBeTrue()
+        ->and($args->unexpanded())->toBe(array_values(array_filter($call->getArgs(), fn (Arg $arg): bool => $arg->unpack)))
+        ->and($args->at(0))->toBeNull()
+        ->and($args->named('a'))->toBeNull();
+})->with([
+    'a variable' => ['f(...$xs);'],
+    'a computed key' => ['f(...[$k => 1]);'],
+    'a nested unpack' => ["f(...['a' => 1, ...\$rest]);"],
+    // The literal's place follows however many items the variable holds.
+    'a literal after an unpack it cannot expand' => ['f(...$xs, ...[1]);'],
+]);
+
+it('reads an empty unpacked literal as passing nothing', function () {
+    $args = parsedCallArguments('f(...[]);', ['a']);
+
+    expect($args->isEmpty())->toBeTrue()
+        ->and($args->hasUnpack())->toBeFalse()
+        ->and($args->passedCount())->toBe(0);
+});
+
+it('lists the positional arguments from a position on', function () {
+    $args = parsedCallArguments('f($a, $b, ...[$c, $d], e: $e);', ['a', 'b']);
+
+    expect(array_map(printedArgument(...), $args->from(1)))->toBe(['$b', '$c', '$d'])
+        ->and($args->from(4))->toBe([]);
+});
+
+it('lists every argument as the call binds it, then each unpack it cannot expand', function () {
+    $args = parsedCallArguments("f(\$a, ...[\$b, 'x' => \$c], ...\$rest, y: \$d);", ['a', 'b']);
+
+    expect(array_map(printedArgument(...), $args->bound()))->toBe(['$a', '$b', '$c', '$d', '$rest']);
+});
+
+it('lists the arguments written by a name no parameter declares', function () {
+    $args = parsedCallArguments("f(\$a, ...['b' => \$b, 'more' => \$y], extra: \$x);", ['a', 'b']);
+
+    expect(array_map(printedArgument(...), $args->undeclared()))->toBe(['$y', '$x']);
 });
 
 it('reads the value a collect() call wraps, positional or named, and nothing else', function () {

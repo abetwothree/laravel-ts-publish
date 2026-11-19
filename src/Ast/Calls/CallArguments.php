@@ -6,15 +6,20 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
+use PhpParser\Node\Scalar\String_;
 use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 
 /**
- * A call's arguments read by parameter name or by position, whichever way the caller wrote them.
+ * A call's arguments read by parameter name or by position, whichever way the caller wrote them, an unpacked array
+ * literal's items among them as PHP binds each: a string key by that name, any other key in place.
  *
  * passedCount() emulates PHP's func_num_args(): a named argument for position N counts as passing 0..N,
  * which is the test Laravel's conditional family makes to tell an omitted argument from an explicit null.
@@ -24,19 +29,23 @@ use ReflectionMethod;
  */
 final class CallArguments
 {
+    /** Marks an argument that stands for an unpacked literal's item. */
+    public const string UNPACKED_ITEM = 'unpackedItem';
+
     /** @var array<string, list<string>> Reflected parameter names by position, keyed by callable. */
     private static array $parameterNames = [];
 
     /**
-     * @param  array<int, Arg>  $positional  arguments written positionally, by position
-     * @param  array<string, Arg>  $named  arguments written by name, by that name
+     * @param  list<Arg>  $positional  arguments bound positionally, by position
+     * @param  array<string, Arg>  $named  arguments bound by name, by that name
      * @param  list<string>  $paramNames  the target's declared parameter names, by position
+     * @param  list<Arg>  $unexpanded  the unpacks it could not expand, as written
      */
     private function __construct(
         private readonly array $positional,
         private readonly array $named,
         private readonly array $paramNames,
-        private readonly bool $unpack,
+        private readonly array $unexpanded,
         private readonly int $passedCount,
     ) {}
 
@@ -60,35 +69,34 @@ final class CallArguments
     {
         $positional = [];
         $named = [];
-        $unpack = false;
+        $unexpanded = [];
         $highest = -1;
-        $position = 0;
 
         foreach ($args as $arg) {
-            if ($arg->unpack) {
-                $unpack = true;
+            // A literal after an unpack it cannot expand starts at a position the call does not spell.
+            $items = $arg->unpack ? ($unexpanded === [] ? self::unpackedItems($arg->value) : null) : [$arg];
+
+            if ($items === null) {
+                $unexpanded[] = $arg;
 
                 continue;
             }
 
-            if ($arg->name === null) {
-                $positional[$position] = $arg;
-                $highest = max($highest, $position);
-                $position++;
+            foreach ($items as $item) {
+                $name = $item->name?->toString();
+                $position = $name === null ? count($positional) : array_search($name, $paramNames, true);
 
-                continue;
-            }
+                if ($name === null) {
+                    $positional[] = $item;
+                } else {
+                    $named[$name] = $item;
+                }
 
-            $name = $arg->name->toString();
-            $named[$name] = $arg;
-            $declared = array_search($name, $paramNames, true);
-
-            if ($declared !== false) {
-                $highest = max($highest, $declared);
+                $highest = $position === false ? $highest : max($highest, $position);
             }
         }
 
-        return new self($positional, $named, $paramNames, $unpack, $highest + 1);
+        return new self($positional, $named, $paramNames, $unexpanded, $highest + 1);
     }
 
     /**
@@ -154,9 +162,39 @@ final class CallArguments
     }
 
     /**
+     * Every argument as the call binds it, positional then named, then each unpack it could not expand.
+     *
+     * @return list<Arg>
+     */
+    public function bound(): array
+    {
+        return [...$this->positional, ...array_values($this->named), ...$this->unexpanded];
+    }
+
+    /**
+     * The positional arguments from a position on, which a variadic parameter there collects.
+     *
+     * @return list<Arg>
+     */
+    public function from(int $position): array
+    {
+        return array_slice($this->positional, $position);
+    }
+
+    /**
+     * The arguments bound by a name no parameter declares, which a variadic parameter collects.
+     *
+     * @return list<Arg>
+     */
+    public function undeclared(): array
+    {
+        return array_values(array_diff_key($this->named, array_flip($this->paramNames)));
+    }
+
+    /**
      * What func_num_args() would report: the highest bound position plus one.
      *
-     * A spread argument is not counted, so this undercounts once hasUnpack() is true — check that first.
+     * An unpack it could not expand is not counted, so this undercounts once hasUnpack() is true — check that first.
      */
     public function passedCount(): int
     {
@@ -164,19 +202,72 @@ final class CallArguments
     }
 
     /**
-     * Whether any argument is a `...$spread`, which makes every position after it unknowable.
+     * Whether any argument is an unpack it could not expand, which makes every position after it unknowable.
      */
     public function hasUnpack(): bool
     {
-        return $this->unpack;
+        return $this->unexpanded !== [];
     }
 
     /**
-     * Whether the call carries no arguments at all — no positional, no named, no spread.
+     * The unpacks it could not expand, each as written: one of no array literal, or of a literal with a computed key,
+     * an unpacked item, or a place no earlier argument fixes.
+     *
+     * @return list<Arg>
+     */
+    public function unexpanded(): array
+    {
+        return $this->unexpanded;
+    }
+
+    /**
+     * Whether the call carries no arguments at all — no positional, no named, no unexpanded unpack.
      */
     public function isEmpty(): bool
     {
-        return $this->positional === [] && $this->named === [] && ! $this->unpack;
+        return $this->positional === [] && $this->named === [] && $this->unexpanded === [];
+    }
+
+    /**
+     * The arguments an unpacked array literal passes, its items keyed as PHP stores them; null for any other value, or
+     * a literal with a key no constant spells, an unpacked item, or a keyless item PHP cannot number.
+     *
+     * @return list<Arg>|null
+     */
+    private static function unpackedItems(Expr $unpacked): ?array
+    {
+        if (! $unpacked instanceof Array_) {
+            return null;
+        }
+
+        $items = [];
+
+        foreach ($unpacked->items as $item) {
+            $key = $item->key;
+
+            if ($item->unpack
+                || ($key !== null && ! $key instanceof Int_ && ! $key instanceof String_)
+                || ($key === null && array_key_exists(PHP_INT_MAX, $items))
+            ) {
+                return null;
+            }
+
+            if ($key === null) {
+                $items[] = $item;
+            } else {
+                $items[$key->value] = $item;
+            }
+        }
+
+        return array_map(
+            static fn (int|string $key): Arg => new Arg(
+                $items[$key]->value,
+                $items[$key]->byRef,
+                attributes: [...$items[$key]->getAttributes(), self::UNPACKED_ITEM => true],
+                name: is_string($key) ? new Identifier($key) : null,
+            ),
+            array_keys($items),
+        );
     }
 
     /**

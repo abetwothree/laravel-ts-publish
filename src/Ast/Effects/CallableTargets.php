@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -15,7 +18,6 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\InterpolatedStringPart;
 use PhpParser\Node\Name;
@@ -23,7 +25,6 @@ use PhpParser\Node\Scalar\InterpolatedString;
 use PhpParser\Node\Scalar\MagicConst\Class_;
 use PhpParser\Node\Scalar\String_;
 use ReflectionClass;
-use ReflectionMethod;
 
 /**
  * The method of `$this`, or of a named class, that a call or a callable value runs, read in a body whose `self` is a
@@ -44,14 +45,6 @@ final readonly class CallableTargets
      * @param  ReflectionClass<object>  $runtime
      */
     public function __construct(private ReflectionClass $runtime) {}
-
-    /**
-     * Whether an expression is `$this`.
-     */
-    public static function isThis(Node $node): bool
-    {
-        return $node instanceof Variable && $node->name === 'this';
-    }
 
     /**
      * The method a callable value runs on `$this`: a first-class callable, or a `Class::method` string or a pair naming
@@ -104,11 +97,7 @@ final readonly class CallableTargets
         }
 
         $method = $call->name->toString();
-        $class = match (true) {
-            $call instanceof StaticCall => $this->staticCallClass($call, $method, $declaring),
-            self::isThis($call->var) => AnalysisScope::memberClassOf($declaring, $this->runtime, $method, true),
-            default => null,
-        };
+        $class = AnalysisScope::thisCallClassOf($call, $method, $declaring, $this->runtime);
 
         return $class === null ? null : [$class, $method];
     }
@@ -154,7 +143,7 @@ final readonly class CallableTargets
 
         return match (true) {
             $expr->class instanceof Name => $expr->class,
-            self::isThis($expr->class) => new Name('static'),
+            ReadPath::isThis($expr->class) => new Name('static'),
             default => null,
         };
     }
@@ -170,20 +159,23 @@ final readonly class CallableTargets
 
     /**
      * The method `[$this, 'm']` runs, or `[X::class, 'm']` and `['X', 'm']` where X is `$this`'s class or an
-     * ancestor; false for a method of those the source does not spell; null for any other array.
+     * ancestor; false for a method of those the source does not spell, or an array that may be any pair; null for any
+     * other array.
      *
      * @param  ReflectionClass<object>  $declaring
      * @return CallableTarget|false|null
      */
     private function arrayTarget(Array_ $callable, ReflectionClass $declaring): array|false|null
     {
-        if (count($callable->items) !== 2) {
-            return null;
+        $pair = CallablePair::of($callable);
+
+        if (! $pair instanceof CallablePair) {
+            return $pair;
         }
 
-        [$holder, $name] = [$callable->items[0]->value, $callable->items[1]->value];
+        [$holder, $name] = [$pair->holder, $pair->method];
 
-        if (self::isThis($holder)) {
+        if (ReadPath::isThis($holder)) {
             if (! $name instanceof String_) {
                 return false;
             }
@@ -250,7 +242,7 @@ final readonly class CallableTargets
         $arguments = $part->getArgs();
 
         return $part->name->toLowerString() === 'get_class'
-            && ($arguments === [] || self::isThis($arguments[0]->value));
+            && ($arguments === [] || ReadPath::isThis($arguments[0]->value));
     }
 
     /**
@@ -297,7 +289,7 @@ final readonly class CallableTargets
     {
         if (! $callable->isFirstClassCallable() || $callable instanceof FuncCall
             || (($callable instanceof MethodCall || $callable instanceof NullsafeMethodCall)
-                && ! self::isThis($callable->var))
+                && ! ReadPath::isThis($callable->var))
         ) {
             return null;
         }
@@ -306,33 +298,5 @@ final readonly class CallableTargets
 
         return $this->thisMethod($callable, $declaring)
             ?? ($named && $callable->name instanceof Identifier ? null : false);
-    }
-
-    /**
-     * The class a static-syntax call runs a method of on `$this`: `$this::` and `static::` the runtime class,
-     * `self::` and `parent::` as the declaring class names them, and an ancestor's name for a method it does not
-     * declare static.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @return ReflectionClass<object>|null
-     */
-    private function staticCallClass(StaticCall $call, string $method, ReflectionClass $declaring): ?ReflectionClass
-    {
-        $class = $call->class;
-
-        if (! $class instanceof Name) {
-            return self::isThis($class) ? $this->runtime : null;
-        }
-
-        if ($class->isSpecialClassName()) {
-            return AnalysisScope::relativeClassOf($class, $declaring, $this->runtime);
-        }
-
-        $name = $class->toString();
-
-        return class_exists($name) && is_a($this->runtime->getName(), $name, true)
-            && (! method_exists($name, $method) || ! new ReflectionMethod($name, $method)->isStatic())
-            ? new ReflectionClass($name)
-            : null;
     }
 }

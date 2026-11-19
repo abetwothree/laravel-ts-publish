@@ -108,6 +108,16 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Clears the flag it is handed first, as a static method.
+     */
+    private static function clearFirst(bool &$flag, int $unused): bool
+    {
+        $flag = false;
+
+        return $unused === 0;
+    }
+
+    /**
      * Clears the flag it is handed.
      */
     private function clearFlag(bool &$flag): bool
@@ -269,6 +279,16 @@ class InterveningResource extends InterveningBase
     private function callableArray(): array
     {
         return [$this, 'writer'];
+    }
+
+    /**
+     * Names the writer as a pair keyed out of order, which PHP reads by its keys.
+     *
+     * @return array<int, mixed>
+     */
+    private function keyedWriterPair(): array
+    {
+        return [1 => 'writer', 0 => $this];
     }
 
     /**
