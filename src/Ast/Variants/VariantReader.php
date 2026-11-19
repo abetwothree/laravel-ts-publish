@@ -218,14 +218,12 @@ final class VariantReader
     }
 
     /**
-     * Whether a read starts at a `$this` property with a get hook, so two reads of it may send different values.
+     * Whether a read runs a get hook at any step, on `$this` or on an object a step reaches, so two reads of it may send
+     * different values.
      */
     private static function readsHook(ReadPath $read, AnalysisScope $scope): bool
     {
-        $property = $read->segments[0] ?? null;
-
-        return $read->root === 'this' && $property !== null
-            && PropertyHooks::runsGetHook($scope->thisMemberClass($property, false), $property);
+        return PropertyHooks::of($scope)->getHooks($read, $scope->declaringClass) !== [];
     }
 
     /**

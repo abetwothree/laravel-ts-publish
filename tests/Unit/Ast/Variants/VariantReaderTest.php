@@ -329,6 +329,17 @@ it('makes no group where an arm is untyped or holds a gap', function (array $tru
     'a gap' => [['type' => VisibleGaps::withArm('string', 1), 'optional' => false]],
 ]);
 
+// Each read of the discriminant runs the hook, so no group is read for it, its arms included.
+it('reads no arm for a discriminant whose read runs a get hook at any step', function () {
+    expect(readFixtureLiteral(
+        'hookedStepKept',
+        ['flag' => 'boolean', 'v' => 'string | null'],
+        static fn (): never => throw new LogicException('No arm is read.'),
+    ))->toBeNull()
+        ->and(variantsOf('other_object_step'))
+        ->toBe(['enabled' => [['true', ['v' => 'string']], ['false', ['v' => 'null']]]]);
+});
+
 it('makes no group where reading its arms leaves one out, and keeps neither the drop nor its count', function () {
     $scope = new AnalysisScope(new ReflectionClass(VariantFormsResource::class), Post::class);
     $before = DroppedUnionArms::dropped();

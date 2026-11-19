@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InheritedHookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookParent;
 use Workbench\App\Models\Post;
 
 /**
@@ -78,4 +80,11 @@ it('reads an undeclared first step on what `$this->resource` holds, but writes i
     'a read of the held object' => ['$this->resource->reads', false, [[null, 'reads']]],
     'a write the resource keeps' => ['$this->writes', true, []],
     'a write of the held object' => ['$this->resource->writes', true, [[null, 'writes']]],
+]);
+
+it('reads a private hooked property a parent declares only in the parent\'s body', function (string $declaring, array $runs) {
+    expect(hooksRun('$this->flag', false, [Post::class], PrivateHookChild::class, $declaring))->toBe($runs);
+})->with([
+    'the parent\'s body' => [PrivateHookParent::class, [[PrivateHookParent::class, 'flag']]],
+    'the child\'s body, which reads the name through the proxy' => [PrivateHookChild::class, []],
 ]);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Variants\Fixtures;
 
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use LogicException;
@@ -27,6 +28,8 @@ use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
 final class VariantFormsResource extends JsonResource
 {
     public ?PinSettings $settings = null;
+
+    public ?HookedProperties $hooked = null;
 
     public bool $live {
         get => (bool) random_int(0, 1);
@@ -525,6 +528,26 @@ final class VariantFormsResource extends JsonResource
     public function hookedKept(): array
     {
         return ['live' => $this->live, 'v' => $this->live ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a property of another object, whose get hook runs on every read.
+     *
+     * @return array<string, mixed>
+     */
+    public function hookedStepKept(): array
+    {
+        return ['flag' => $this->hooked->reads, 'v' => $this->hooked->reads ? $this->title : null];
+    }
+
+    /**
+     * A discriminant read through a plain property of another object.
+     *
+     * @return array<string, mixed>
+     */
+    public function otherObjectStep(): array
+    {
+        return ['enabled' => $this->settings->enabled, 'v' => $this->settings->enabled ? $this->title : null];
     }
 
     /**
