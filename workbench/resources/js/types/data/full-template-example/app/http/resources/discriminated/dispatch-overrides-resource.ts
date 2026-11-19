@@ -8,6 +8,6 @@
  */
 export interface DispatchOverridesResource
 {
-    parent_unless: { is_pinned: true; note: string; detail: string } | { is_pinned: false; note: string; detail: null };
+    parent_unless: { is_pinned: boolean; note: string; detail: string | null };
     parent_hook_self: { is_pinned: true; tick: boolean; detail: string } | { is_pinned: false; tick: boolean; detail: null };
 }

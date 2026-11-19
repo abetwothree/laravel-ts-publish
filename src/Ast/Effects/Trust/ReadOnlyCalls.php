@@ -4,17 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
-use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
-use AbeTwoThree\LaravelTsPublish\Ast\Effects\CallableTargets;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
-use Illuminate\Http\Resources\CollectsResources;
-use Illuminate\Http\Resources\ConditionallyLoadsAttributes;
+use Closure;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\Facades\Gate;
 use PhpParser\Node;
 use PhpParser\Node\ArrayItem;
@@ -30,7 +24,6 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
-use PhpParser\NodeFinder;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionMethod;
@@ -40,15 +33,12 @@ use ReflectionMethod;
  * callbacks they are given, its URL helpers, the Gate facade's checks, a resource's own constructor and Eloquent's
  * reading methods.
  *
+ * @phpstan-import-type UserJudge from FrameworkDispatch
+ *
  * @internal
  */
 final class ReadOnlyCalls
 {
-    /** The framework's resource classes and traits, whose helpers only read the resource. */
-    public const array READING_DECLARERS = [
-        JsonResource::class, ResourceCollection::class, ConditionallyLoadsAttributes::class, CollectsResources::class,
-    ];
-
     /** The JsonResource helpers that read what they are given, calling a closure given at most, lowercased. */
     public const array RESOURCE_HELPERS = [
         'when', 'unless', 'whenloaded', 'whennotnull', 'whennull', 'whenhas', 'whencounted', 'whenaggregated',
@@ -75,9 +65,6 @@ final class ReadOnlyCalls
      * JsonResource methods it runs.
      */
     public const array RESOURCE_BUILDERS = ['make' => ['make'], 'collection' => ['collection', 'newCollection']];
-
-    /** The namespace Eloquent's model, its concerns and the SoftDeletes trait declare MODEL_READERS in. */
-    public const string ELOQUENT = 'Illuminate\\Database\\Eloquent\\';
 
     /** Eloquent's methods that read a model and change nothing on it; `trashed()` is the SoftDeletes trait's. */
     public const array MODEL_READERS = [
@@ -110,24 +97,33 @@ final class ReadOnlyCalls
             default => null,
         };
 
-        return $class === null ? null : self::helperOn($class, $name);
+        return $class === null ? null : self::helperOn($class, $name, $scope->runtime->class);
     }
 
     /**
-     * The helper RESOURCE_HELPERS lists that a method of a class names, where the framework's resource classes
-     * declare it and each method it calls on `$this`, rather than the class overriding one.
+     * The helper RESOURCE_HELPERS lists that a method of a class names, where the framework's resource classes declare
+     * it and FrameworkDispatch trusts it as an instance of the runtime class runs it, past any method that class
+     * overrides, which $userMayWrite judges.
      *
      * @param  ReflectionClass<object>  $class
+     * @param  ReflectionClass<object>|null  $runtime  the class `$this` is an instance of; $class where null
+     * @param  UserJudge|null  $userMayWrite  whether running a method the app declares, on a class, may write
      */
-    public static function helperOn(ReflectionClass $class, string $method): ?ReflectionMethod
-    {
+    public static function helperOn(
+        ReflectionClass $class,
+        string $method,
+        ?ReflectionClass $runtime = null,
+        ?Closure $userMayWrite = null,
+    ): ?ReflectionMethod {
         if (! in_array(strtolower($method), self::RESOURCE_HELPERS, true) || ! $class->hasMethod($method)) {
             return null;
         }
 
         $helper = $class->getMethod($method);
 
-        return self::runsFrameworkCode($class, $helper, []) ? $helper : null;
+        return FrameworkDispatch::trusted(FrameworkFamily::ResourceHelpers, $helper, $runtime ?? $class, $userMayWrite)
+            ? $helper
+            : null;
     }
 
     /**
@@ -257,7 +253,7 @@ final class ReadOnlyCalls
 
     /**
      * Whether a method only reads an object of each of the classes: MODEL_READERS lists it, its name matched as PHP
-     * matches one, in any case, and each class runs Eloquent's own, which no class past Eloquent overrides.
+     * matches one, in any case, and each class runs Eloquent's own, which FrameworkDispatch trusts there.
      *
      * @param  list<ReflectionClass<object>>  $receivers
      */
@@ -266,7 +262,7 @@ final class ReadOnlyCalls
         return $receivers !== []
             && array_any(self::MODEL_READERS, static fn (string $reader): bool => strcasecmp($reader, $method) === 0)
             && array_all($receivers, static fn (ReflectionClass $class): bool => $class->hasMethod($method)
-                && str_starts_with(DeclaringFile::ofMethod($class->getMethod($method))->getName(), self::ELOQUENT));
+                && FrameworkDispatch::trusted(FrameworkFamily::Eloquent, $class->getMethod($method), $class));
     }
 
     /**
@@ -275,62 +271,6 @@ final class ReadOnlyCalls
     public static function isClassName(?Expr $expr): bool
     {
         return $expr instanceof ClassConstFetch && $expr->name instanceof Identifier && $expr->name->toLowerString() === 'class';
-    }
-
-    /**
-     * Whether a method of a class runs only the framework's resource code: the framework's resource classes declare
-     * it, and each method its body calls on `$this`, as `unless()` calls `when()`, which the class may override.
-     *
-     * @param  ReflectionClass<object>  $class
-     * @param  list<string>  $seen  the methods, lowercased, the chain already holds
-     */
-    private static function runsFrameworkCode(ReflectionClass $class, ReflectionMethod $method, array $seen): bool
-    {
-        if (! in_array(DeclaringFile::ofMethod($method)->getName(), self::READING_DECLARERS, true)) {
-            return false;
-        }
-
-        $seen[] = strtolower($method->getName());
-
-        return resolve(AnalysisMemo::class)->rememberFact(
-            'framework-helper:'.$class->getName().'::'.$method->getName(),
-            static function () use ($class, $method, $seen): bool {
-                $called = self::thisCalls($class, $method);
-
-                return $called !== null && array_all($called, static fn (?string $name): bool => $name !== null
-                    && (in_array(strtolower($name), $seen, true) || ($class->hasMethod($name)
-                        && self::runsFrameworkCode($class, $class->getMethod($name), $seen))));
-            },
-        );
-    }
-
-    /**
-     * The names of the methods a method's body calls on `$this`, each null where the call computes it; null where the
-     * body cannot be read.
-     *
-     * @param  ReflectionClass<object>  $class  the class whose method it is
-     * @return list<string|null>|null
-     */
-    private static function thisCalls(ReflectionClass $class, ReflectionMethod $method): ?array
-    {
-        $body = resolve(MethodLocator::class)->locate($class->getName(), $method->getName())?->method->stmts;
-
-        if ($body === null) {
-            return null;
-        }
-
-        $finder = new NodeFinder;
-        $calls = [
-            ...$finder->findInstanceOf($body, MethodCall::class),
-            ...$finder->findInstanceOf($body, NullsafeMethodCall::class),
-        ];
-
-        return array_values(array_map(
-            static fn (MethodCall|NullsafeMethodCall $call): ?string => $call->name instanceof Identifier
-                ? $call->name->toString()
-                : null,
-            array_filter($calls, static fn (MethodCall|NullsafeMethodCall $call): bool => CallableTargets::isThis($call->var)),
-        ));
     }
 
     /**

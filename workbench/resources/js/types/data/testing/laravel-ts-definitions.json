@@ -14223,7 +14223,7 @@
             "properties": [
                 {
                     "name": "parent_unless",
-                    "type": "{ is_pinned: true; note: string; detail: string } | { is_pinned: false; note: string; detail: null }",
+                    "type": "{ is_pinned: boolean; note: string; detail: string | null }",
                     "optional": false
                 },
                 {

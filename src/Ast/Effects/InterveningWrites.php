@@ -549,8 +549,8 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a call PHP runs on `$this` may change the read: a resource helper through the callbacks it calls, and
-     * any other through what it is handed and the method it runs.
+     * Whether a call PHP runs on `$this` may change the read: a resource helper through the callbacks it calls and the
+     * methods of the class it dispatches to, and any other through what it is handed and the method it runs.
      *
      * @param  ReflectionClass<object>  $class  the class whose method the call runs
      * @param  ReflectionClass<object>  $declaring
@@ -562,9 +562,22 @@ final class InterveningWrites
         ReflectionClass $declaring,
         bool $inBody,
     ): bool {
-        $helper = ReadOnlyCalls::helperOn($class, $method);
+        $overrideWrites = false;
+        $helper = ReadOnlyCalls::helperOn(
+            $class,
+            $method,
+            $this->runtime,
+            function (ReflectionClass $override, string $name) use (&$overrideWrites): bool {
+                $writes = $this->reads->mayWrite($override, $name);
+                $overrideWrites = $overrideWrites || $writes;
+
+                return $writes;
+            },
+        );
 
         return match (true) {
+            // BodyReads answers each body once a scan, so a write the judge found must end the scan here.
+            $overrideWrites => true,
             $helper !== null => $this->callbacksMayWrite(CallArguments::for($call, $helper), $declaring, $inBody),
             $class->hasMethod($method) && $this->handsSubject($call, $declaring, $inBody) => true,
             default => $this->methodMayWrite($class, $method),

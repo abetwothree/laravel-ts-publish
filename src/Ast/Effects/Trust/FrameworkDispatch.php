@@ -1,0 +1,203 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
+
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\CallableTargets;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use Closure;
+use PhpParser\Node;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\NullsafeMethodCall;
+use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\NodeFinder;
+use ReflectionClass;
+use ReflectionMethod;
+
+/**
+ * Whether a framework method only reads as an instance of the runtime class runs it: PHP looks most calls its body
+ * makes on `$this` up on the runtime class, so a method the app overrides there runs in place of the framework's, as
+ * the `when()` a resource overrides runs inside `unless()`.
+ *
+ * @phpstan-type Dispatched = array{ReflectionClass<object>, ReflectionMethod}
+ * @phpstan-type UserMethod = array{ReflectionClass<object>, string}
+ * @phpstan-type UserJudge = Closure(ReflectionClass<object>, string): bool
+ *
+ * @internal
+ */
+final class FrameworkDispatch
+{
+    /**
+     * Whether a method the family declares only reads where an instance of the runtime class runs it: each method of
+     * the family it dispatches to does in turn, each call it cannot name is one the family trusts, and $userMayWrite,
+     * or the family's own judge where it is null, reads each method of the app it reaches as writing nothing.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     * @param  UserJudge|null  $userMayWrite  whether running a method the app declares, on a class, may write
+     */
+    public static function trusted(
+        FrameworkFamily $family,
+        ReflectionMethod $method,
+        ReflectionClass $runtime,
+        ?Closure $userMayWrite = null,
+    ): bool {
+        if (! $family->declares($method)) {
+            return false;
+        }
+
+        if ($userMayWrite !== null) {
+            return self::judged($family, $method, $runtime, $userMayWrite);
+        }
+
+        return resolve(AnalysisMemo::class)->rememberFact(
+            'framework-trust:'.self::key($family, $method, $runtime),
+            static fn (): bool => self::judged($family, $method, $runtime, $family->userMethodMayWrite(...)),
+        );
+    }
+
+    /**
+     * Whether a framework method dispatches to no code the walk cannot follow and to no method of the app the judge
+     * reads as one that may write.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     * @param  UserJudge  $userMayWrite
+     */
+    private static function judged(
+        FrameworkFamily $family,
+        ReflectionMethod $method,
+        ReflectionClass $runtime,
+        Closure $userMayWrite,
+    ): bool {
+        $users = resolve(AnalysisMemo::class)->rememberFact(
+            'framework-dispatch:'.self::key($family, $method, $runtime),
+            static fn (): ?array => self::userMethods($family, $method, $runtime),
+        );
+
+        return $users !== null
+            && ! array_any($users, static fn (array $user): bool => $userMayWrite($user[0], $user[1]));
+    }
+
+    /**
+     * The methods the app declares that a framework method reaches on the runtime class, each with the class it runs
+     * on, through every method of the family it dispatches to; null where it reaches code the walk cannot follow: a
+     * body the locator cannot read, or, in a family that trusts none, a call whose method the walk cannot name.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     * @return list<UserMethod>|null
+     */
+    private static function userMethods(FrameworkFamily $family, ReflectionMethod $method, ReflectionClass $runtime): ?array
+    {
+        $pending = [[$method->getDeclaringClass(), $method]];
+        $seen = [];
+        $users = [];
+
+        while (($next = array_pop($pending)) !== null) {
+            [$class, $current] = $next;
+            $key = $current->getDeclaringClass()->getName().'::'.strtolower($current->getName());
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+
+            if (! $family->declares($current)) {
+                $users[] = [$class, $current->getName()];
+
+                continue;
+            }
+
+            $dispatched = self::dispatched($current, $runtime);
+
+            if ($dispatched === null || (in_array(null, $dispatched, true) && ! $family->trustsComputedCalls())) {
+                return null;
+            }
+
+            array_push($pending, ...array_filter($dispatched, static fn (?array $one): bool => $one !== null));
+        }
+
+        return $users;
+    }
+
+    /**
+     * The methods a method's body runs on `$this`, each with the class PHP looks it up on, null for a call whose method
+     * the source does not name or the class lacks, which a magic method runs; null where the body cannot be read.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     * @return list<Dispatched|null>|null
+     */
+    private static function dispatched(ReflectionMethod $method, ReflectionClass $runtime): ?array
+    {
+        $declaring = $method->getDeclaringClass();
+        $body = resolve(MethodLocator::class)->locate($declaring->getName(), $method->getName())?->method->stmts;
+
+        if ($body === null) {
+            return null;
+        }
+
+        /** @var list<MethodCall|NullsafeMethodCall|StaticCall> $calls */
+        $calls = new NodeFinder()->find($body, self::runsOnThis(...));
+
+        return array_map(static function (MethodCall|NullsafeMethodCall|StaticCall $call) use ($declaring, $runtime): ?array {
+            if (! $call->name instanceof Identifier) {
+                return null;
+            }
+
+            $name = $call->name->toString();
+            $class = self::lookupClass($call, $name, $declaring, $runtime);
+
+            return $class !== null && $class->hasMethod($name) ? [$class, $class->getMethod($name)] : null;
+        }, $calls);
+    }
+
+    /**
+     * Whether a node is a call PHP runs on `$this`: through `$this->`, `$this?->`, `$this::`, `self::`, `static::` or
+     * `parent::`.
+     */
+    private static function runsOnThis(Node $node): bool
+    {
+        return match (true) {
+            $node instanceof MethodCall, $node instanceof NullsafeMethodCall => CallableTargets::isThis($node->var),
+            $node instanceof StaticCall => CallableTargets::isThis($node->class)
+                || ($node->class instanceof Name && $node->class->isSpecialClassName()),
+            default => false,
+        };
+    }
+
+    /**
+     * The class PHP looks a call on `$this` up on from a body the declaring class holds: `self::` the declaring class,
+     * `parent::` its parent, a private method of its own the declaring class, and any other the runtime class.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
+     * @return ReflectionClass<object>|null
+     */
+    private static function lookupClass(
+        MethodCall|NullsafeMethodCall|StaticCall $call,
+        string $name,
+        ReflectionClass $declaring,
+        ReflectionClass $runtime,
+    ): ?ReflectionClass {
+        return match (true) {
+            ! $call instanceof StaticCall => AnalysisScope::memberClassOf($declaring, $runtime, $name, true),
+            $call->class instanceof Name => AnalysisScope::relativeClassOf($call->class, $declaring, $runtime),
+            default => $runtime,
+        };
+    }
+
+    /**
+     * The key a walk's answers are remembered by: the family, the runtime class and the method's declaration.
+     *
+     * @param  ReflectionClass<object>  $runtime
+     */
+    private static function key(FrameworkFamily $family, ReflectionMethod $method, ReflectionClass $runtime): string
+    {
+        return $family->name.':'.$runtime->getName().':'.$method->getDeclaringClass()->getName().'::'
+            .strtolower($method->getName());
+    }
+}

@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnpinningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
@@ -20,7 +21,9 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\PrettyPrinter\Standard;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\CustomKeyPost;
 use Workbench\App\Models\Post;
+use Workbench\App\Models\TaskAssignment;
 use Workbench\App\Models\User;
 
 it('names a helper the framework lists, run on $this', function (
@@ -44,6 +47,7 @@ it('names a helper the framework lists, run on $this', function (
     'a helper the subject overrides' => ['$this->when($c, 1)', null, OwnWhenResource::class],
     'parent::when() past the override' => ['parent::when($c, 1)', 'when', OwnWhenResource::class],
     'unless(), which calls the when() the subject overrides' => ['$this->unless($c, 1)', null, OwnWhenResource::class],
+    'parent::unless(), which calls the when() the subject overrides' => ['parent::unless($c, 1)', null, OwnWhenResource::class],
     'a method no class declares' => ['$this->missing()', null],
     'a helper\'s name on another receiver' => ['$this->resource->when($c, 1)', null],
     'a JsonResource method the framework does not list' => ['$this->resolve()', null],
@@ -55,8 +59,11 @@ it('names the helper a method of a class runs, where the framework declares it',
     string $method,
     ?string $helper,
     string $class = PostCardResource::class,
+    ?string $runtime = null,
 ) {
-    expect(ReadOnlyCalls::helperOn(new ReflectionClass($class), $method)?->getName())->toBe($helper);
+    $runtime = $runtime === null ? null : new ReflectionClass($runtime);
+
+    expect(ReadOnlyCalls::helperOn(new ReflectionClass($class), $method, $runtime)?->getName())->toBe($helper);
 })->with([
     'when()' => ['when', 'when'],
     'whenLoaded(), in another case' => ['WHENLOADED', 'whenLoaded'],
@@ -66,6 +73,21 @@ it('names the helper a method of a class runs, where the framework declares it',
     'a helper calling one the class overrides' => ['unless', null, OwnWhenResource::class],
     'merge(), whose mergeWhen() the class keeps' => ['merge', 'merge', OwnWhenResource::class],
     'whenLoaded(), calling no helper the class overrides' => ['whenLoaded', 'whenLoaded', OwnWhenResource::class],
+    'unless() on the parent, run by a class overriding when()' => ['unless', null, JsonResource::class, OwnWhenResource::class],
+    'when() on the parent, run by a class overriding it' => ['when', 'when', JsonResource::class, OwnWhenResource::class],
+]);
+
+it('names a helper calling one the class overrides where the judge reads the override as writing nothing', function (
+    bool $writes,
+    ?string $helper,
+) {
+    $judge = static fn (ReflectionClass $class, string $method): bool => $writes;
+
+    expect(ReadOnlyCalls::helperOn(new ReflectionClass(OwnWhenResource::class), 'unless', userMayWrite: $judge)?->getName())
+        ->toBe($helper);
+})->with([
+    'an override the judge reads as writing nothing' => [false, 'unless'],
+    'an override the judge reads as writing' => [true, null],
 ]);
 
 it('gives the arguments a helper calls, as its value and default', function (string $call, array $callbacks) {
@@ -194,6 +216,9 @@ it('knows the model methods that only read, as Eloquent runs them, whatever thei
     'save()' => ['save', [Post::class], false],
     'a reader a model overrides' => ['getKey', [KeyWritingPost::class], false],
     'a reader one of two models overrides' => ['getKey', [Post::class, KeyWritingPost::class], false],
+    'getKey(), past a getKeyName() returning a literal' => ['getKey', [CustomKeyPost::class], true],
+    'getKey(), past a getKeyName() that clears the pin' => ['getKey', [KeyNameWritingPost::class], false],
+    'getKey(), past a trait\'s getAttribute()' => ['getKey', [TaskAssignment::class], false],
     'a reader\'s name on a class that is no model' => ['getKey', [FinalFlags::class], false],
     'a reader on an object of no known class' => ['getKey', [], false],
     'a reader a model lacks' => ['trashed', [User::class], false],

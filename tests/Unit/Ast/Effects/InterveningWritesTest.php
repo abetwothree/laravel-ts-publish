@@ -8,9 +8,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -21,6 +23,7 @@ use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\MatchArm;
 use PhpParser\Node\Name;
+use Workbench\App\Models\CustomKeyPost;
 use Workbench\App\Models\Post;
 
 /**
@@ -313,6 +316,8 @@ it('reads a model reader as Eloquent\'s only where the model runs Eloquent\'s ow
     'getKey() the model overrides, in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", KeyWritingPost::class, true],
     'Eloquent\'s getKey(), forwarded' => ['$this->getKey()', Post::class, false],
     'Eloquent\'s getKey(), in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", Post::class, false],
+    'Eloquent\'s getKey(), past a getKeyName() that clears the pin' => ['$this->getKey()', KeyNameWritingPost::class, true],
+    'Eloquent\'s getKey(), past a getKeyName() returning a literal' => ['$this->getKey()', CustomKeyPost::class, false],
 ]);
 
 it('reads a framework helper as the class runs it, past a helper it overrides', function (
@@ -330,6 +335,21 @@ it('reads a framework helper as the class runs it, past a helper it overrides', 
     ],
     'whenLoaded(), which calls no helper the class overrides' => ["\$this->whenLoaded('author')", OwnWhenResource::class, false],
     'unless() on a class that overrides no helper' => ['$this->unless(false, 1)', InterveningResource::class, false],
+    'parent::unless(), which calls the when() the class overrides' => [
+        'parent::unless(false, 1)',
+        OwnWhenResource::class,
+        true,
+    ],
+    'unless(), past a when() the class overrides with one that only reads' => [
+        '$this->unless(false, 1)',
+        ReadingWhenResource::class,
+        false,
+    ],
+    'unless(), past a when() that only reads, handed a callback that writes' => [
+        '$this->unless(false, function () { $this->resource->is_pinned = false; })',
+        ReadingWhenResource::class,
+        true,
+    ],
 ]);
 
 it('reads each body once a publish run, whatever scan reaches it', function () {
