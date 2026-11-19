@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookGrandchild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
 use PhpParser\Node\ArrayItem;
@@ -435,9 +436,12 @@ it('reads a discriminant held by a local, which only the window can write', func
     'a write through the local' => ['$post->is_pinned = false', true],
 ]);
 
-it('reads a get hook\'s self:: as the class that declares the hook', function () {
-    expect(windowReach(['$this->tick', '$this->is_pinned ? 1 : null'], subject: SelfHookChild::class))->toBeTrue();
-});
+it('reads a get hook\'s self:: as the class that declares the hook', function (string $subject, bool $mayWrite) {
+    expect(windowReach(['$this->tick', '$this->is_pinned ? 1 : null'], subject: $subject))->toBe($mayWrite);
+})->with([
+    'a hook the parent declares, whose clearTick() clears the pin' => [SelfHookChild::class, true],
+    'a hook the grandchild redeclares, whose inherited clearTick() reads' => [SelfHookGrandchild::class, false],
+]);
 
 it('reads the last item for its writes and the arguments it binds by reference, not the calls after its guard', function (
     string $last,

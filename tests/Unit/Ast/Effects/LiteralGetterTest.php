@@ -26,5 +26,7 @@ it('tells a method that only returns a literal, a constant or a property', funct
     'a member of a property' => ['propertyMember', false],
     'an array holding a call\'s result' => ['arrayWithCall', false],
     'an array spreading a property' => ['arrayWithSpread', false],
+    'a property assigned with ??=' => ['coalesceAssigned', false],
+    'a new object' => ['built', false],
     'an empty body' => ['nothing', false],
 ]);

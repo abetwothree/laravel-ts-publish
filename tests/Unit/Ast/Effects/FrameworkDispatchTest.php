@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AttributeWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\StrictAttributesPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\AncestorCallingPlainPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\AncestorCallingPost;
@@ -33,6 +34,11 @@ it('trusts an Eloquent reader only where each model method it dispatches to only
     'getKey(), past a getKeyName() that clears the pin' => [KeyNameWritingPost::class, 'getKey', false],
     'getKey(), past a trait\'s getAttribute()' => [TaskAssignment::class, 'getKey', false],
     'trashed(), whose magic read runs a getAttribute() that clears the pin' => [AttributeWritingPost::class, 'trashed', false],
+    'getAttribute(), past a preventsAccessingMissingAttributes() it runs through static::' => [
+        StrictAttributesPost::class,
+        'getAttribute',
+        false,
+    ],
     'a reader the model overrides itself' => [KeyWritingPost::class, 'getKey', false],
     'a literal getter the model declares, no reader of Eloquent\'s' => [CustomKeyPost::class, 'getKeyName', false],
 ]);

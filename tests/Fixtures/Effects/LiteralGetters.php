@@ -190,6 +190,22 @@ class LiteralGetters
     }
 
     /**
+     * A property, set first where it is null.
+     */
+    public function coalesceAssigned(): string
+    {
+        return $this->keyName ??= 'uuid';
+    }
+
+    /**
+     * A new object.
+     */
+    public function built(): self
+    {
+        return new self;
+    }
+
+    /**
      * An empty body.
      */
     public function nothing(): void {}
