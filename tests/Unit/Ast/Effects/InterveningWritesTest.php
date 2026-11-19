@@ -34,6 +34,11 @@ function interveningCalls(): array
             '$this->clearFlag($this->resource->is_pinned)',
             true,
         ],
+        'a literal\'s reference unpacked into a later by-reference parameter' => [
+            'self::clearAfter(...[0, &$this->pinned])',
+            true,
+            '$this->pinned',
+        ],
         'the read handed to a method of an object no scan names' => ['$service->reset($this->pinned)', true, '$this->pinned'],
         'the read handed to a method of a built object' => ['(new PinWriter)->reset($this->pinned)', true, '$this->pinned'],
         'the read handed to a method of what a helper returns' => ['$this->reader()->reset($this->pinned)', true, '$this->pinned'],
@@ -147,6 +152,11 @@ function interveningCalls(): array
         'a set hook that writes only its own property' => ["\$this->trimmed = ' a '", false],
         'a plain property of another object' => ["\$this->settings->plain = 'a'", false],
         'a self-recursive helper that reads' => ['$this->countDown(3)', false],
+        'a literal\'s copy unpacked into a later by-reference parameter' => [
+            'self::clearAfter(...[0, $this->pinned])',
+            false,
+            '$this->pinned',
+        ],
         'helpers that call each other and read' => ['$this->ping(3)', false],
         'a chain three helpers deep that reads' => ['$this->depthTwo()', false],
         'a reader\'s callable when() calls' => ['$this->when(true, $this->reader(...))', false],

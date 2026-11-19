@@ -7,7 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp\BitwiseOr;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ConstFetch;
@@ -203,6 +205,31 @@ final class ByReferenceArguments
     }
 
     /**
+     * What an unpacked argument binds by reference, as it fills the parameter at its position and each after it: a
+     * literal's `&` elements, whose referents its other elements only copy, or any other array itself.
+     *
+     * @param  list<ReflectionParameter>  $parameters
+     * @return list<Expr>
+     */
+    private static function unpackedByReference(array $parameters, int $position, Expr $unpacked): array
+    {
+        $last = $parameters === [] ? null : $parameters[array_key_last($parameters)];
+        $takesReference = array_any(
+            array_slice($parameters, $position),
+            static fn (ReflectionParameter $parameter): bool => $parameter->isPassedByReference(),
+        ) || ($last?->isVariadic() === true && $last->isPassedByReference());
+
+        if (! $takesReference) {
+            return [];
+        }
+
+        return $unpacked instanceof Array_ ? array_values(array_map(
+            static fn (ArrayItem $item): Expr => $item->value,
+            array_filter($unpacked->items, static fn (ArrayItem $item): bool => $item->byRef),
+        )) : [$unpacked];
+    }
+
+    /**
      * The function or method a call names, or null when its receiver or name is computed or cannot be loaded.
      *
      * A method PHP cannot find goes to `__call()` or `__callStatic()`, which take their arguments by value.
@@ -263,7 +290,9 @@ final class ByReferenceArguments
         $arguments = [];
 
         foreach ($passed as $index => $arg) {
-            if ($this->parameterAt($parameters, $index, $arg)?->isPassedByReference()) {
+            if ($arg->unpack && is_int($index)) {
+                array_push($arguments, ...self::unpackedByReference($parameters, $index, $arg->value));
+            } elseif ($this->parameterAt($parameters, $index, $arg)?->isPassedByReference()) {
                 $arguments[] = $arg->value;
             }
         }

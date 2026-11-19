@@ -98,6 +98,16 @@ class InterveningResource extends InterveningBase
     }
 
     /**
+     * Clears the flag it is handed second, as a static method.
+     */
+    private static function clearAfter(int $unused, bool &$flag): bool
+    {
+        $flag = false;
+
+        return $unused === 0;
+    }
+
+    /**
      * Clears the flag it is handed.
      */
     private function clearFlag(bool &$flag): bool
