@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -170,18 +171,21 @@ final readonly class CallableTargets
 
     /**
      * The method `[$this, 'm']` runs, or `[X::class, 'm']` and `['X', 'm']` where X is `$this`'s class or an
-     * ancestor; false for a method of those the source does not spell; null for any other array.
+     * ancestor; false for a method of those the source does not spell, or an array that may be any pair; null for any
+     * other array.
      *
      * @param  ReflectionClass<object>  $declaring
      * @return CallableTarget|false|null
      */
     private function arrayTarget(Array_ $callable, ReflectionClass $declaring): array|false|null
     {
-        if (count($callable->items) !== 2) {
-            return null;
+        $pair = CallablePair::of($callable);
+
+        if (! $pair instanceof CallablePair) {
+            return $pair;
         }
 
-        [$holder, $name] = [$callable->items[0]->value, $callable->items[1]->value];
+        [$holder, $name] = [$pair->holder, $pair->method];
 
         if (self::isThis($holder)) {
             if (! $name instanceof String_) {

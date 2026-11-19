@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
@@ -146,15 +147,15 @@ final class ReadOnlyCalls
      */
     public static function namesCallable(Expr $value): bool
     {
-        $items = $value instanceof Array_ ? $value->items : [];
-        $class = isset($items[0]) ? $items[0]->value : null;
+        $pair = $value instanceof Array_ ? CallablePair::of($value) : null;
+        $class = $pair instanceof CallablePair ? $pair->holder : null;
 
         return match (true) {
             $value instanceof CallLike && $value->isFirstClassCallable() => true,
             $value instanceof StaticCall => $value->class instanceof Name && $value->class->toLowerString() === 'closure'
                 && $value->name instanceof Identifier && $value->name->toLowerString() === 'fromcallable',
             $value instanceof String_ => str_contains($value->value, '::') || function_exists($value->value),
-            default => count($items) === 2 && isset($items[1]) && $items[1]->value instanceof String_ && (self::isClassName($class)
+            default => $pair instanceof CallablePair && $pair->method instanceof String_ && (self::isClassName($class)
                 || ($class instanceof String_ && class_exists($class->value))),
         };
     }
@@ -190,9 +191,9 @@ final class ReadOnlyCalls
                 : null;
         }
 
-        $items = $node instanceof Array_ && count($node->items) === 2 ? $node->items : [];
-        $class = isset($items[0]) ? $items[0]->value : null;
-        $method = isset($items[1]) ? $items[1]->value : null;
+        $pair = $node instanceof Array_ ? CallablePair::of($node) : null;
+        $class = $pair instanceof CallablePair ? $pair->holder : null;
+        $method = $pair instanceof CallablePair ? $pair->method : null;
 
         return $class instanceof String_ && in_array(strtolower($class->value), ['self', 'static', 'parent'], true)
             ? [strtolower($class->value), $method instanceof String_ ? $method->value : null]

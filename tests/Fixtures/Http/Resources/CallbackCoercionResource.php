@@ -58,6 +58,7 @@ final class CallbackCoercionResource extends JsonResource
             'exists_loaded_string' => $this->whenExistsLoaded('comments', fn (string $f) => $f),
             'transform_function' => $this->transform($this->resource->title, 'strlen'),
             'transform_pair' => $this->transform($this->resource->title, [$this, 'length']),
+            'transform_keyed_pair' => $this->transform($this->resource->title, [1 => 'length', 0 => $this]),
             'alias_as_string' => collect([new AliasedToken('a')])->map(fn (string $v) => $v)->all(),
             'alias_transformed' => $this->transform(new AliasedToken('a'), fn (string $v) => $v),
             'transform_property' => $this->transform($this->resource->title, $this->lengthOf),

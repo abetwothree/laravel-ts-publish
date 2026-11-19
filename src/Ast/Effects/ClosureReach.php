@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallablePair;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\NativeTypeNames;
 use Closure;
 use PhpParser\Node;
@@ -282,14 +283,15 @@ final readonly class ClosureReach
     }
 
     /**
-     * Whether an array may spell a callable pair: two items, the second a method's name, a constant, or a name the
-     * source computes in a local.
+     * Whether an array may spell a callable pair: one that may be any pair, or one whose method is a name, a constant,
+     * or a name the source computes in a local.
      */
-    private static function pairsCallable(Array_ $value): bool
+    private static function pairsCallable(CallablePair|false|null $pair): bool
     {
-        $name = count($value->items) === 2 ? $value->items[1]->value : null;
+        $name = $pair instanceof CallablePair ? $pair->method : null;
 
-        return $name instanceof String_ || $name instanceof Variable || $name instanceof ClassConstFetch;
+        return $pair === false
+            || $name instanceof String_ || $name instanceof Variable || $name instanceof ClassConstFetch;
     }
 
     /**
@@ -322,14 +324,14 @@ final readonly class ClosureReach
      */
     private function handsArray(Array_ $value, ReflectionClass $declaring, bool $inBody, bool $runByBuiltIn): bool
     {
-        $pair = self::pairsCallable($value);
-        $runOnly = $pair && $runByBuiltIn && $value->items[1]->value instanceof String_;
+        $pair = CallablePair::of($value);
+        $runOnly = $runByBuiltIn && $pair instanceof CallablePair && $pair->method instanceof String_;
 
         return array_any(
             $value->items,
             fn (ArrayItem $item): bool => ! ($runOnly && self::isPath($item->value))
                 && $this->hands($item->value, $declaring, $inBody, $runByBuiltIn),
-        ) || ($pair && $this->mayRun($value, ValueUse::Handed, $declaring, $inBody));
+        ) || (self::pairsCallable($pair) && $this->mayRun($value, ValueUse::Handed, $declaring, $inBody));
     }
 
     /**
@@ -445,26 +447,26 @@ final readonly class ClosureReach
 
     /**
      * Whether a string, an array or a joined string a callee runs may change the read: one naming a method run on
-     * `$this` by its body, one naming one by a name the source does not spell, and a pair led by an object holding
-     * the read as the model's method.
+     * `$this` by its body, one naming one by a name the source does not spell, an array that may be any pair, and a
+     * pair whose object holds the read, as the model's method.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function spelledMayRun(Expr $value, ReflectionClass $declaring, bool $inBody): bool
     {
         $target = $this->targets->callableTarget($value, $declaring);
-        $holder = $value instanceof Array_ && count($value->items) === 2 ? $value->items[0]->value : null;
-        $name = $holder === null ? null : $value->items[1]->value;
+        $pair = $value instanceof Array_ ? CallablePair::of($value) : null;
 
         return match (true) {
             is_array($target) => ($this->methodMayWrite)($target[0], $target[1]),
             $target === false => true,
-            default => $holder !== null && ! CallableTargets::isThis($holder) && ($this->heldMethodMayWrite)(
-                $holder,
-                $name instanceof String_ ? $name->value : null,
-                $declaring,
-                $inBody,
-            ),
+            default => $pair instanceof CallablePair && ! CallableTargets::isThis($pair->holder)
+                && ($this->heldMethodMayWrite)(
+                    $pair->holder,
+                    $pair->method instanceof String_ ? $pair->method->value : null,
+                    $declaring,
+                    $inBody,
+                ),
         };
     }
 

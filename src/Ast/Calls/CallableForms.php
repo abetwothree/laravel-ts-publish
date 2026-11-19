@@ -469,20 +469,16 @@ final class CallableForms
                 : null;
         }
 
-        if (! $callable instanceof Array_ || count($callable->items) !== 2) {
-            return null;
-        }
+        $pair = $callable instanceof Array_ ? CallablePair::of($callable) : null;
 
-        [$receiver, $method] = $callable->items;
-
-        if ($receiver->key !== null || $method->key !== null || $receiver->unpack || $method->unpack || ! $method->value instanceof String_
-            || preg_match('/^'.self::IDENTIFIER.'$/', $method->value->value) !== 1
+        if (! $pair instanceof CallablePair || ! $pair->method instanceof String_
+            || preg_match('/^'.self::IDENTIFIER.'$/', $pair->method->value) !== 1
         ) {
             return null;
         }
 
-        $name = new Identifier($method->value->value);
-        $class = $receiver->value;
+        $name = new Identifier($pair->method->value);
+        $class = $pair->holder;
 
         return match (true) {
             $class instanceof ClassConstFetch && $class->class instanceof Name && $class->name instanceof Identifier

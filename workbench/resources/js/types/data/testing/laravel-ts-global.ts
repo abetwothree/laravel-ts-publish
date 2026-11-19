@@ -6291,7 +6291,7 @@ declare global {
         export interface DispatchWritesResource {
             named_unpack: { pinned: boolean; reset: boolean; detail: string | null };
             static_through_this: { pinned: boolean; reset: boolean; detail: string | null };
-            pair_keys_out_of_order: { is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null };
+            pair_keys_out_of_order: { is_pinned: boolean; reset: boolean; detail: string | null };
             local_by_reference: { flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null };
         }
         /** The placement an unpinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */

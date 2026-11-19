@@ -14248,7 +14248,7 @@
                 },
                 {
                     "name": "pair_keys_out_of_order",
-                    "type": "{ is_pinned: true; reset: boolean; detail: string } | { is_pinned: false; reset: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 },
                 {
