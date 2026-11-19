@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
 use PhpParser\Node\ArrayItem;
@@ -56,6 +57,8 @@ function interveningCalls(): array
             '$this->pinned',
         ],
         'a by-reference argument to a $this:: static method' => ['$this::clearAfter(0, $this->pinned)', true, '$this->pinned'],
+        'a local handed to a method of an object no scan names' => ['$writer->clear($flag)', true, '$flag'],
+        'another local handed to a method of an object no scan names' => ['$writer->clear($other)', false, '$flag'],
         'a helper whose foreach destructures into the read' => ['$this->loopsIntoFlag()', true, '$this->pinned'],
         'a helper whose foreach key is the model\'s attribute' => ['$this->loopsIntoPin()', true],
         'a reader\'s name on a class that is no model' => [
@@ -403,6 +406,10 @@ it('reads a discriminant held by a local, which only the window can write', func
     'a read of the local in a pair\'s second slot' => ["PinWriter::unpin(['k', \$post->title])", false],
     'a write through the local' => ['$post->is_pinned = false', true],
 ]);
+
+it('reads a get hook\'s self:: as the class that declares the hook', function () {
+    expect(windowReach(['$this->tick', '$this->is_pinned ? 1 : null'], subject: SelfHookChild::class))->toBeTrue();
+});
 
 it('reads the last item for its writes and the arguments it binds by reference, not the calls after its guard', function (
     string $last,

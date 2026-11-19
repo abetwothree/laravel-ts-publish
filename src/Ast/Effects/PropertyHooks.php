@@ -158,12 +158,16 @@ final readonly class PropertyHooks
     /**
      * Whether the property a `$this` read starts at, past `resource` on an API resource, is one its class declares,
      * which a by-reference parameter binds in place, rather than one read through `__get()`, which hands back a copy
-     * unless it returns by reference.
+     * unless it returns by reference; a bare local binds in place.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is read
      */
     public function bindsInPlace(ReadPath $path, ReflectionClass $declaring): bool
     {
+        if ($path->root !== 'this' && $path->segments === []) {
+            return true;
+        }
+
         $index = $this->proxied && ($path->segments[0] ?? null) === 'resource' ? 1 : 0;
         [$property, $classes, $onThis] = $this->steps($path, $declaring, true)[$index] ?? ['', [], false];
         $forwarded = $index === 0 && ! $onThis;

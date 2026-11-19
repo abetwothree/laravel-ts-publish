@@ -187,7 +187,8 @@ it('tells a read that starts at a declared property, which a by-reference parame
         ReferenceGetResource::class,
     ],
     'a property the held object declares, read on it' => ['$this->resource->plain', [HookedProperties::class], true],
-    'another root' => ['$post->is_pinned', [Post::class], false],
+    'a bare local' => ['$flag', [Post::class], true],
+    'a property of a local' => ['$post->is_pinned', [Post::class], false],
 ]);
 
 it('names the classes the object a path reads may be', function (string $path, array $classes) {

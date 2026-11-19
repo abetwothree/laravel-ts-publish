@@ -6280,7 +6280,7 @@ declare global {
          */
         export interface DispatchOverridesResource {
             parent_unless: { is_pinned: boolean; note: string; detail: string | null };
-            parent_hook_self: { is_pinned: true; tick: boolean; detail: string } | { is_pinned: false; tick: boolean; detail: null };
+            parent_hook_self: { is_pinned: boolean; tick: boolean; detail: string | null };
         }
         /**
          * Literals whose discriminant a call changes through a binding the write check does not see yet: a reference a
@@ -6292,7 +6292,7 @@ declare global {
             named_unpack: { pinned: boolean; reset: boolean; detail: string | null };
             static_through_this: { pinned: boolean; reset: boolean; detail: string | null };
             pair_keys_out_of_order: { is_pinned: boolean; reset: boolean; detail: string | null };
-            local_by_reference: { flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null };
+            local_by_reference: { flag: boolean; reset: boolean; detail: string | null };
         }
         /** The placement an unpinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
         export interface FeedPlacementResource {

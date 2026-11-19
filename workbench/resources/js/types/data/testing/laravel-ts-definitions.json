@@ -14228,7 +14228,7 @@
                 },
                 {
                     "name": "parent_hook_self",
-                    "type": "{ is_pinned: true; tick: boolean; detail: string } | { is_pinned: false; tick: boolean; detail: null }",
+                    "type": "{ is_pinned: boolean; tick: boolean; detail: string | null }",
                     "optional": false
                 }
             ]
@@ -14253,7 +14253,7 @@
                 },
                 {
                     "name": "local_by_reference",
-                    "type": "{ flag: true; reset: boolean; detail: string } | { flag: false; reset: boolean; detail: null }",
+                    "type": "{ flag: boolean; reset: boolean; detail: string | null }",
                     "optional": false
                 }
             ]
