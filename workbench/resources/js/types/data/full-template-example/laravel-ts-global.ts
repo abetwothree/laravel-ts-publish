@@ -6275,18 +6275,18 @@ declare global {
         /**
          * Literals whose discriminant code changes through what a call dispatches to: parent::unless(), which calls the
          * when() this resource overrides to unpin the post, and the `tick` get hook TickingResource declares, whose
-         * `self::clearTick()` runs the parent's clearTick(), not the one here. PHP can send a value no arm admits, so each
-         * literal should publish flat (GH-174).
+         * `self::clearTick()` runs the parent's clearTick(), not the one here. Each literal publishes flat, because PHP can
+         * send a value no arm admits (GH-174).
          */
         export interface DispatchOverridesResource {
             parent_unless: { is_pinned: boolean; note: string; detail: string | null };
             parent_hook_self: { is_pinned: boolean; tick: boolean; detail: string | null };
         }
         /**
-         * Literals whose discriminant a call changes through a binding the write check does not see yet: a reference a
-         * string-keyed unpack hands a parameter before its position, a static call through `$this::`, a callable pair a
-         * helper returns with its keys out of order, and a local handed by reference to an object no scan names. PHP can
-         * send a value no arm admits, so each literal should publish flat (GH-174).
+         * Literals whose discriminant a call changes through a binding the write check sees: a reference a string-keyed
+         * unpack hands a parameter before its position, a static call through `$this::`, a callable pair a helper returns
+         * with its keys out of order, and a local handed by reference to an object no scan names. Each literal publishes
+         * flat, because PHP can send a value no arm admits (GH-174).
          */
         export interface DispatchWritesResource {
             named_unpack: { pinned: boolean; reset: boolean; detail: string | null };

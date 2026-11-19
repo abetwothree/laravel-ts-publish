@@ -102,14 +102,15 @@ whether or not it is a dependent, so it decides which values the group sends. Ev
 write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
 parameter binds there ([`ByReferenceArguments`]`::bind()`). [`CallArguments`] binds an unpacked array literal's items as
 PHP does, a string key by name and any other by position, and an item binds by reference only where it is written `&`.
-An unpack it cannot expand, of a non-literal or of a literal with a computed key or a nested unpack, may bind any
-by-reference parameter left to it. A method of an object no scan names may take any argument by reference, which
-reaches a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). On an API
-resource, `$this->resource->x` and `$this->x` are one path. Every item but the last may also change it through code
-it runs. In the last item, only the code PHP may run before one of its guards reads the discriminant counts. The reader
-hands over the guards it selected that item's arms by. Code written before such a read runs first, unless it sits in a
-ternary's branch or a `match` arm's body and the read sits in another branch of that ternary or `match`, which PHP never
-reaches once it takes the first. PHP evaluates arguments in the order they are written, so
+An unpack it cannot expand may bind any by-reference parameter left to it: one of a non-literal, of a literal with a
+computed key or a nested unpack, or of any literal after such an unpack, at a place no earlier argument fixes. A method
+of an object no scan names may take any argument by reference, but of an array literal only its `&` items, which reaches
+a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). On an API resource,
+`$this->resource->x` and `$this->x` are one path. Every item but the last may also change it through code it runs. In
+the last item, only the code PHP may run before one of its guards reads the discriminant counts. The reader hands over
+the guards it selected that item's arms by. Code written before such a read runs first, unless it sits in a ternary's
+branch or a `match` arm's body and the read sits in another branch of that ternary or `match`, which PHP never reaches
+once it takes the first. PHP evaluates arguments in the order they are written, so
 `when(value: $this->clear(), condition: $this->is_pinned)` runs `clear()` first. A closure's body runs where a call runs
 it, so in the last item the call counts, not where the body is written. Code may write in these ways:
 

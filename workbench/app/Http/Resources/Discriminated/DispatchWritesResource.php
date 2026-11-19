@@ -10,10 +10,10 @@ use Workbench\App\Models\Post;
 use Workbench\App\Support\FlagWriter;
 
 /**
- * Literals whose discriminant a call changes through a binding the write check does not see yet: a reference a
- * string-keyed unpack hands a parameter before its position, a static call through `$this::`, a callable pair a
- * helper returns with its keys out of order, and a local handed by reference to an object no scan names. PHP can
- * send a value no arm admits, so each literal should publish flat (GH-174).
+ * Literals whose discriminant a call changes through a binding the write check sees: a reference a string-keyed
+ * unpack hands a parameter before its position, a static call through `$this::`, a callable pair a helper returns
+ * with its keys out of order, and a local handed by reference to an object no scan names. Each literal publishes
+ * flat, because PHP can send a value no arm admits (GH-174).
  *
  * @mixin Post
  */

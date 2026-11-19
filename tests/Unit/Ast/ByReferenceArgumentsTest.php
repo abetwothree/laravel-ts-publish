@@ -188,7 +188,7 @@ it('names no $this, self or static callee without a class', function (string $st
     'parent' => ['parent::append($a);'],
 ]);
 
-it('reads only the arguments it is asked about, by their position', function () {
+it('reads only the arguments it is asked about, matched by identity whatever their keys', function () {
     $call = new AstParser()->parseSource('<?php preg_match("/x/", $s, $m);')[0]->expr;
     $arguments = $call->getArgs();
 

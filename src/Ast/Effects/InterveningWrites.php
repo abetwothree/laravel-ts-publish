@@ -87,7 +87,10 @@ final class InterveningWrites
     /** @var WeakMap<CallLike, array<string, CallBinding|null>> each call's binding, by the class `self` names there */
     private WeakMap $bindings;
 
-    /** Whether the read starts at a property its class declares, which a by-reference parameter binds in place. */
+    /**
+     * Whether the read starts at a property its class declares, or is a bare local, which a by-reference parameter
+     * binds in place.
+     */
     private readonly bool $bindsInPlace;
 
     /**

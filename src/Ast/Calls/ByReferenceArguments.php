@@ -91,7 +91,7 @@ final class ByReferenceArguments
     /**
      * The values of the given arguments of a call that land in a by-reference parameter of the callee it names.
      *
-     * @param  array<Arg>  $passed  the call's arguments the caller asks about, keyed by position
+     * @param  array<Arg>  $passed  the call's arguments the caller asks about, matched by identity whatever their keys
      * @param  ReflectionClass<object>|null  $declaring  the class `self` names, the using class in a trait's body; null
      *                                                   names neither it nor `parent`
      * @param  ReflectionClass<object>|null  $runtime  the class `$this` and `static` name, but for the declaring
