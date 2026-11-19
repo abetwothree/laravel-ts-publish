@@ -93,12 +93,13 @@ since a union of them reads one object's queued enum for the next one's token.
 
 ### What may change a discriminant
 
-`VariantReader::rewritten()` hands [`InterveningWrites`] the window: the items from the first to the last of the
-group's keys and its droppers. A dropper is a key with an arm that throws for some value, so its guard decides which
-values the group sends. Every item may change the read through a write to it or to a path it is a member of, whatever
-operator spells each step, or through an argument a by-reference parameter binds there
-([`ByReferenceArguments`]`::bind()`). On an API resource, `$this->resource->x` and `$this->x` are one path. Every item
-but the last may also change it through code it runs, since the last item's calls run after its own guard:
+`VariantReader::rewritten()` hands [`InterveningWrites`] the window: the items from the first to the last of the group's
+keys and its droppers. A dropper is a key whose guard the discriminant decides and whose arm throws for some value,
+whether or not it is a dependent, so it decides which values the group sends. Every item may change the read through a
+write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
+parameter binds there ([`ByReferenceArguments`]`::bind()`). On an API resource, `$this->resource->x` and `$this->x` are
+one path. Every item but the last may also change it through code it runs, since the last item's calls run after its own
+guard:
 
 - A call handed `$this`, `$this->resource` or an object holding the read, or a method called on such an object, may
   write, unless [`ReadOnlyCalls`] knows it only reads: a resource helper, a model method `MODEL_READERS` lists,

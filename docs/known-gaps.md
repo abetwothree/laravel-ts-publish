@@ -228,7 +228,7 @@ Write the key once, or type it with `#[TsCasts]`.
 
 ### A discriminated union can pair a value with the wrong arm, past a write the package cannot see
 
-A literal splits only while no code between the discriminant and the keys that follow it may change the discriminant
+A group declines where code in its window may change the discriminant
 ([Variants § What may change a discriminant](./components/variants.md#what-may-change-a-discriminant)). The package
 misses these writes, so a variant can pair a value with the arm PHP sends for another value:
 
@@ -239,8 +239,8 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
 - a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
 - on PHP 8.4, a `get` hook on a discriminant such as `$this->settings->flag`, where an interface types `settings`.
 
-Move that code above the discriminant and the keys that follow it, or below them. For a hooked discriminant,
-`#[TsResource(discriminated: false)]` keeps a resource's top level flat.
+Move that code above every key that reads the discriminant, or below the last key whose condition tests it. For a
+hooked discriminant, `#[TsResource(discriminated: false)]` keeps a resource's top level flat.
 
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
