@@ -3,6 +3,7 @@ export * from './DeclaredPropsEvent';
 export * from './DispatchRelayed';
 export * from './DocblockShapedEvent';
 export * from './EnumBroadcastEvent';
+export * from './EnumWrapsBroadcast';
 export * from './FacilityAudited';
 export * from './HandoverListed';
 export * from './ManifestAssembled';

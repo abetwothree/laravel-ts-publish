@@ -85,6 +85,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\EnumWrapsBroadcast": {
+            "name": "EnumWrapsBroadcast",
+            "eventName": "EnumWrapsBroadcast",
+            "broadcastName": ".Workbench.App.Events.EnumWrapsBroadcast",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "VisibilityType | never[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\FacilityAudited": {
             "name": "FacilityAudited",
             "eventName": "FacilityAudited",
@@ -15030,6 +15047,221 @@
                 {
                     "name": "value",
                     "type": "MediaTypeType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\DeclaredWrapRowsResource": {
+            "name": "DeclaredWrapRowsResource",
+            "properties": [
+                {
+                    "name": "subject",
+                    "type": "AsEnum<typeof Status> | { s: StatusType }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\NestedWrapsResource": {
+            "name": "NestedWrapsResource",
+            "properties": [
+                {
+                    "name": "under_key",
+                    "type": "{ subject: StatusType | RoleType }",
+                    "optional": false
+                },
+                {
+                    "name": "in_list",
+                    "type": "(StatusType | RoleType)[]",
+                    "optional": false
+                },
+                {
+                    "name": "two_levels",
+                    "type": "{ outer: { inner: StatusType | RoleType } }",
+                    "optional": false
+                },
+                {
+                    "name": "three_under_key",
+                    "type": "{ subject: AsEnum<typeof Status> | RoleType | VisibilityType }",
+                    "optional": false
+                },
+                {
+                    "name": "three_top",
+                    "type": "AsEnum<typeof Role> | StatusType | VisibilityType",
+                    "optional": false
+                },
+                {
+                    "name": "three_wraps_two_enums",
+                    "type": "AsEnum<typeof Status> | PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_object_wrap",
+                    "type": "AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> }",
+                    "optional": false
+                },
+                {
+                    "name": "when_wrap_or_object_wrap",
+                    "type": "AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> }",
+                    "optional": false
+                },
+                {
+                    "name": "when_two_wraps_one_nullable",
+                    "type": "StatusType | MediaTypeType | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\RowsBesideWrapsResource": {
+            "name": "RowsBesideWrapsResource",
+            "properties": [
+                {
+                    "name": "rows_then_two_wraps",
+                    "type": "{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType",
+                    "optional": false
+                },
+                {
+                    "name": "rows_then_three_wraps",
+                    "type": "{ c: AsEnum<typeof WorkbenchStatus>; s: CrmStatusType }[] | AsEnum<typeof WorkbenchStatus> | RoleType | VisibilityType",
+                    "optional": false
+                },
+                {
+                    "name": "named_rows_then_two_wraps",
+                    "type": "{ n: string }[] | WorkbenchStatusType | RoleType",
+                    "optional": false
+                },
+                {
+                    "name": "null_then_two_wraps",
+                    "type": "WorkbenchStatusType | RoleType | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\SameNamedWrapsResource": {
+            "name": "SameNamedWrapsResource",
+            "properties": [
+                {
+                    "name": "app_or_crm_wrap",
+                    "type": "WorkbenchStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_when",
+                    "type": "WorkbenchStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_under_key",
+                    "type": "{ subject: WorkbenchStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_two_reads",
+                    "type": "AsEnum<typeof WorkbenchStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "crm_spread_over_wrap",
+                    "type": "{ c: AsEnum<typeof WorkbenchStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "literals_nested_crm",
+                    "type": "{ s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: CrmStatusType; x: null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\WalkedWrapResource": {
+            "name": "WalkedWrapResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "state",
+                    "type": "AsEnum<typeof Status> | StatusType | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\WrapBesideReadResource": {
+            "name": "WrapBesideReadResource",
+            "properties": [
+                {
+                    "name": "wrap_or_helper_offset",
+                    "type": "AsEnum<typeof MediaType>",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_nested_value",
+                    "type": "AsEnum<typeof MediaType> | string",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_nested_nullable_value",
+                    "type": "AsEnum<typeof MediaType> | null",
+                    "optional": false
+                },
+                {
+                    "name": "match_wrap_read_literal",
+                    "type": "AsEnum<typeof Status> | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "match_wrap_value_name",
+                    "type": "AsEnum<typeof Status> | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "match_wrap_value_other",
+                    "type": "AsEnum<typeof Status> | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "nested_make_or_collection_or_read",
+                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "collection_or_plain_list",
+                    "type": "AsEnum<typeof Status>[]",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_other_enum_case",
+                    "type": "RoleType | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_nested_nullable_case",
+                    "type": "AsEnum<typeof Status> | null",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_object_value",
+                    "type": "AsEnum<typeof MediaType> | { v: AsEnum<typeof MediaType> }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\WrapHelpersResource": {
+            "name": "WrapHelpersResource",
+            "properties": [
+                {
+                    "name": "picked",
+                    "type": "StatusType | VisibilityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "status_wrap",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": true
+                },
+                {
+                    "name": "card",
+                    "type": "{ stamped: boolean; [key: string]: unknown }",
                     "optional": false
                 }
             ]

@@ -6510,6 +6510,80 @@ declare global {
             mode_title: string | null;
         }
     }
+    export namespace app.http.resources.enumWraps {
+        /** A wrap, a bare read of the same enum and rows the `@return` fills (GH-160). The read sends the enum's value. */
+        export interface DeclaredWrapRowsResource {
+            subject: app.enums.StatusType | { s: app.enums.StatusType }[];
+        }
+        /**
+         * Two or more enum wraps below a top-level key, in a list, beside an object arm holding a wrap, and through `when()`
+         * (GH-160, GH-108). Each wrap sends its enum resource's object.
+         */
+        export interface NestedWrapsResource {
+            under_key: { subject: app.enums.StatusType | app.enums.RoleType };
+            in_list: (app.enums.StatusType | app.enums.RoleType)[];
+            two_levels: { outer: { inner: app.enums.StatusType | app.enums.RoleType } };
+            three_under_key: { subject: app.enums.StatusType | app.enums.RoleType | app.enums.VisibilityType };
+            three_top: app.enums.RoleType | app.enums.StatusType | app.enums.VisibilityType;
+            three_wraps_two_enums: app.enums.StatusType | app.enums.PriorityType | null;
+            wrap_or_object_wrap: app.enums.StatusType | { inner: app.enums.VisibilityType };
+            when_wrap_or_object_wrap: app.enums.StatusType | { inner: app.enums.VisibilityType };
+            when_two_wraps_one_nullable: app.enums.StatusType | app.enums.MediaTypeType | null;
+        }
+        /**
+         * Rows of the app and the CRM `Status`, or of names, in a ternary before two or three enum wraps, and a `null` first
+         * arm (GH-160). The rows send each enum's value, a wrap its object.
+         */
+        export interface RowsBesideWrapsResource {
+            rows_then_two_wraps: { c: crm.enums.StatusType; s: app.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType;
+            rows_then_three_wraps: { c: app.enums.StatusType; s: crm.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType | app.enums.VisibilityType;
+            named_rows_then_two_wraps: { n: string }[] | app.enums.StatusType | app.enums.RoleType;
+            null_then_two_wraps: app.enums.StatusType | app.enums.RoleType | null;
+        }
+        /**
+         * Wraps and reads of the app and the CRM `Status`, two enums that share a name (GH-160, GH-76). Each arm sends its own
+         * enum, so each keeps its own alias.
+         */
+        export interface SameNamedWrapsResource {
+            app_or_crm_wrap: app.enums.StatusType;
+            app_or_crm_wrap_when: app.enums.StatusType;
+            app_or_crm_wrap_under_key: { subject: app.enums.StatusType };
+            wrap_or_two_reads: app.enums.StatusType;
+            crm_spread_over_wrap: { c: app.enums.StatusType };
+            literals_nested_crm: { s: app.enums.StatusType; x: { c: crm.enums.StatusType } } | { s: crm.enums.StatusType; x: null };
+        }
+        /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
+        export interface WalkedWrapResource {
+            id: number;
+            state: app.enums.StatusType | null;
+        }
+        /**
+         * An enum wrap beside a bare read, a case, a `->value` or `->name` read, a literal or an object holding a read of the
+         * enum (GH-160, GH-108). The wrap sends its object, every other arm what it reads.
+         */
+        export interface WrapBesideReadResource {
+            wrap_or_helper_offset: app.enums.MediaTypeType;
+            wrap_or_nested_value: app.enums.MediaTypeType | string;
+            wrap_or_nested_nullable_value: app.enums.MediaTypeType | null;
+            match_wrap_read_literal: app.enums.StatusType;
+            match_wrap_value_name: app.enums.StatusType;
+            match_wrap_value_other: app.enums.StatusType;
+            nested_make_or_collection_or_read: app.enums.StatusType[] | app.enums.StatusType;
+            collection_or_plain_list: app.enums.StatusType[];
+            wrap_or_other_enum_case: app.enums.RoleType | app.enums.StatusType;
+            wrap_or_nested_nullable_case: app.enums.StatusType | null;
+            wrap_or_object_value: app.enums.MediaTypeType | { v: app.enums.MediaTypeType };
+        }
+        /**
+         * Enum wraps a helper returns or is passed (GH-108): a ternary of two wraps, a wrap over `whenHas()`, and a seed the
+         * helper writes a key into and returns.
+         */
+        export interface WrapHelpersResource {
+            picked: app.enums.StatusType | app.enums.VisibilityType | null;
+            status_wrap?: app.enums.StatusType;
+            card: { stamped: boolean; [key: string]: unknown };
+        }
+    }
     export namespace app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
         export interface AttributesPostResource {
@@ -7074,6 +7148,10 @@ declare global {
         export interface EnumBroadcastEvent {
             status: app.enums.StatusType;
             color: app.enums.ColorType;
+        }
+        export interface EnumWrapsBroadcast {
+            status: app.enums.StatusType;
+            visibility: app.enums.VisibilityType | never[];
         }
         export interface FacilityAudited {
             facility: Partial<app.models.Facility>;
