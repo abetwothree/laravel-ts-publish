@@ -162,7 +162,7 @@ final readonly class PropertyHooks
     /**
      * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the `__set()` a write it
      * cannot make in place runs, as one the runtime class's own code unsets: Eloquent's only where it runs a set
-     * mutator, or looks one up through, any other always, each with another `$this` than the path's.
+     * mutator, or looks one up through, any other always, each listed with no class, as code the scan does not read.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is written
      * @return list<HookRun>

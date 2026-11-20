@@ -247,13 +247,17 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
 - a model's own `__call()` that writes the discriminant, where an Eloquent reader calls a method the model lacks. On
   Laravel 12 and 13 only `getModel()` is called that way, on the path that throws `InvalidCastException`;
 - a model method a resource helper calls on the model it holds, such as the `getAttributes()` that `whenHas()` reads,
-  where the model overrides it with one that writes the discriminant;
+  or one Eloquent's `setAttribute()` calls on a write that reaches `__set()`, such as `hasSetMutator()`,
+  `setMutatedAttributeValue()`, `isDateAttribute()` or `hasCast()`, where the model overrides it with one that writes
+  the discriminant;
 - a `get` hook a resource adds to its own `$resource` that writes the discriminant, which runs on every read of the
   model, a resource helper's included;
 - a model's own `__get()` that writes the discriminant, run by a read of a property that code outside the model's own
-  methods unsets, such as `unset($post->keyField)` in a resource or a controller;
+  methods unsets, such as `unset($post->keyField)` in a resource or a controller, and the `__set()` and set mutator a
+  later write of such a property runs, unless the resource's own methods unset it;
 - a class cast's `set()` that writes the discriminant, or the resource's own `__set()` that does, run by a write
-  through a local that holds the resource, such as `$self->note = 'x'` after `$self = $this`;
+  through a local or an untyped property that holds the resource, such as `$self->note = 'x'` after `$self = $this`,
+  or `$this->self->note = 'x'`;
 - on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
   `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
 - a gate or policy a `Gate` check runs, or a model's route key `route()` or `url()` reads, which the package trusts to
