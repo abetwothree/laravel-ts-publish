@@ -27,9 +27,9 @@ use PhpParser\Node\Expr\Array_;
 trait ReadsCollectedItems
 {
     /**
-     * The array `collect($items)` holds: null as no items, a constant array typed as a parameter default is, and an
-     * expression typed as one list, tuple, Record or object shape as itself, the empty tuple as the empty list, and a
-     * `null` arm or a `when*()` value as no items; a value nothing types as `unknown`. Null for any other value.
+     * The array `collect($items)` holds: null as no items, a constant array typed as a parameter default is, an
+     * expression typed as one list, tuple, Record or object shape, or a union of objects, as itself, the empty tuple as
+     * the empty list, and a `null` arm or a `when*()` value as no items; `unknown` as itself. Null for any other value.
      *
      * @return ValueExpressionResult|null
      */
@@ -49,8 +49,10 @@ trait ReadsCollectedItems
         } catch (ConstExprEvaluationException) {
         }
 
+        $read = ValueResult::unsplit($engine->resolve($items));
+
         // A gap is an arm no rule typed: the items are read as without it, and it stays beside them.
-        return ValueResult::gapTransparent($engine->resolve($items), static function (array $result): ?array {
+        return ValueResult::gapTransparent($read, static function (array $result): ?array {
             $type = $result['type'];
 
             if ($type === 'unknown') {
@@ -59,13 +61,20 @@ trait ReadsCollectedItems
 
             $arms = TsTypeString::splitTopLevelUnion($type);
             $kept = array_values(array_diff($arms, ['null']));
+            $allObjects = array_all($kept, static fn (string $arm): bool => TsTypeShape::isWrapped($arm, '{', '}'));
+            $type = match (true) {
+                // The empty tuple, such as a `list{}` return, holds no element: the empty list a literal `[]` prints.
+                $kept === [] || $kept === ['[]'] => 'never[]',
+                count($kept) === 1 => $kept[0],
+                // A literal printed one object per variant keeps no one-object copy beside a null or another literal.
+                $allObjects => implode(' | ', $kept),
+                default => null,
+            };
 
-            if (count($kept) > 1) {
+            if ($type === null) {
                 return null;
             }
 
-            // The empty tuple, such as a `list{}` return, holds no element: it is the empty list a literal `[]` prints.
-            $type = $kept === [] || $kept[0] === '[]' ? 'never[]' : $kept[0];
             $listed = str_ends_with($type, '[]');
 
             if (! $listed && ! str_starts_with($type, '{') && TsTypeShape::recordArguments($type) === null) {
@@ -74,7 +83,7 @@ trait ReadsCollectedItems
 
             // collect(null), and collect() of the MissingValue a when*() call leaves, hold no items, which
             // json_encode() writes as `[]`: a list admits that, a Record or a shape does not.
-            $empties = count($arms) > 1 || $result['optional'];
+            $empties = in_array('null', $arms, true) || $result['optional'];
 
             return [...$result, 'type' => $listed || ! $empties ? $type : $type.' | never[]', 'optional' => false];
         });

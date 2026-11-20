@@ -10,7 +10,7 @@ export type ResourcePaginatedCollectionPageProps = Inertia.SharedData & { wareho
  *
  * Test page type is { warehouses: JsonResourcePaginator<WarehouseResource> }
  */
-export const resourcePaginatedCollection = annotatePageProps<ResourcePaginatedCollectionPageProps>()(defineRoute({
+export const resourcePaginatedCollection = /* @__PURE__ */ annotatePageProps<ResourcePaginatedCollectionPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'collection.resource-paginated-collection',
     url: '/collection/resource-paginated-collection',
     methods: ['get', 'head'] as const,
@@ -24,7 +24,7 @@ export type ResourceAnonymousCollectionPageProps = Inertia.SharedData & { wareho
  *
  * Test page type is { warehouse_get: AnonymousResourceCollection<WarehouseResource>, warehouse_all: AnonymousResourceCollection<WarehouseResource> }
  */
-export const resourceAnonymousCollection = annotatePageProps<ResourceAnonymousCollectionPageProps>()(defineRoute({
+export const resourceAnonymousCollection = /* @__PURE__ */ annotatePageProps<ResourceAnonymousCollectionPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'collection.resource-anon-collection',
     url: '/collection/resource-anon-collection',
     methods: ['get', 'head'] as const,
@@ -38,7 +38,7 @@ export type ResourcePageProps = Inertia.SharedData & { warehouse_first: { data: 
  *
  * Return type is { warehouse_first: WarehouseResource, warehouse_find: WarehouseResource }
  */
-export const resource = annotatePageProps<ResourcePageProps>()(defineRoute({
+export const resource = /* @__PURE__ */ annotatePageProps<ResourcePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'collection.resource',
     url: '/collection/resource',
     methods: ['get', 'head'] as const,

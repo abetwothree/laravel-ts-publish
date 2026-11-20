@@ -265,6 +265,7 @@ return [
         'enabled' => true,
         'namespace' => 'resources',
         'template' => 'laravel-ts-publish::resource',
+        'discriminated_unions' => true,
         'additional_directories' => [],
         'included' => [],
         'excluded' => [],

@@ -53,7 +53,7 @@ describe('BroadcastEventsIndexWriter', function () {
 
         $content = $writer->write($generators);
 
-        expect($content)->toContain('export const BroadcastEvents = Object.freeze({');
+        expect($content)->toContain('export const BroadcastEvents = /* @__PURE__ */ Object.freeze({');
         expect($content)->toContain('OrderShipped:');
         expect($content)->toContain('UserNotification:');
         expect($content)->toContain('} as const)');

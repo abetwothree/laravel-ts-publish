@@ -15,3 +15,4 @@ export * from './to-array-post-resource';
 export * from './to-attributes-only-plain-resource';
 export * from './user-resource';
 export * from './variable-attributes-post-resource';
+export * from './wire-attachment-post-resource';

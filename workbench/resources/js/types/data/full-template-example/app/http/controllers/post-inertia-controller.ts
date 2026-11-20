@@ -5,7 +5,7 @@ import type { Post } from '../../models';
 
 export type IndexPageProps = Inertia.SharedData & { posts: LengthAwarePaginator<Post> };
 
-export const index = annotatePageProps<IndexPageProps>()(defineRoute({
+export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts-inertia.index',
     url: '/posts-inertia',
     methods: ['get', 'head'] as const,
@@ -14,7 +14,7 @@ export const index = annotatePageProps<IndexPageProps>()(defineRoute({
 
 export type CreatePageProps = Inertia.SharedData;
 
-export const create = annotatePageProps<CreatePageProps>()(defineRoute({
+export const create = /* @__PURE__ */ annotatePageProps<CreatePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts-inertia.create',
     url: '/posts-inertia/create',
     methods: ['get', 'head'] as const,
@@ -23,7 +23,7 @@ export const create = annotatePageProps<CreatePageProps>()(defineRoute({
 
 export type StorePageProps = Inertia.SharedData & { post: Post };
 
-export const store = annotatePageProps<StorePageProps>()(defineRoute({
+export const store = /* @__PURE__ */ annotatePageProps<StorePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts-inertia.store',
     url: '/posts-inertia',
     methods: ['post'] as const,
@@ -32,7 +32,7 @@ export const store = annotatePageProps<StorePageProps>()(defineRoute({
 
 export type ShowPageProps = Inertia.SharedData & { post: Post };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts-inertia.show',
     url: '/posts-inertia/{post}',
     methods: ['get', 'head'] as const,
@@ -42,7 +42,7 @@ export const show = annotatePageProps<ShowPageProps>()(defineRoute({
 
 export type EditPageProps = Inertia.SharedData & { post: Post };
 
-export const edit = annotatePageProps<EditPageProps>()(defineRoute({
+export const edit = /* @__PURE__ */ annotatePageProps<EditPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts-inertia.edit',
     url: '/posts-inertia/{post}/edit',
     methods: ['get', 'head'] as const,
@@ -52,7 +52,7 @@ export const edit = annotatePageProps<EditPageProps>()(defineRoute({
 
 export type UpdatePageProps = Inertia.SharedData & { post: Post };
 
-export const update = annotatePageProps<UpdatePageProps>()(defineRoute({
+export const update = /* @__PURE__ */ annotatePageProps<UpdatePageProps>()(/* @__PURE__ */ defineRoute({
     name: 'posts-inertia.update',
     url: '/posts-inertia/{post}',
     methods: ['put', 'patch'] as const,
@@ -60,7 +60,7 @@ export const update = annotatePageProps<UpdatePageProps>()(defineRoute({
     component: 'Posts/Show',
 }));
 
-export const destroy = defineRoute({
+export const destroy = /* @__PURE__ */ defineRoute({
     name: 'posts-inertia.destroy',
     url: '/posts-inertia/{post}',
     methods: ['delete'] as const,

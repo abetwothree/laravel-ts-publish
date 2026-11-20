@@ -9,7 +9,7 @@ export type IndexPageProps = Inertia.SharedData & { statuses: { data: AsEnum<typ
  *
  * Result should be { statuses: { data: AsEnum<typeof Status>[] } }
  */
-export const index = annotatePageProps<IndexPageProps>()(defineRoute({
+export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'enum-resources.statuses',
     url: '/enum-resources/statuses',
     methods: ['get', 'head'] as const,
@@ -24,7 +24,7 @@ export type UnionsPageProps = Inertia.SharedData & { either: AsEnum<typeof Role>
  * Result should be { either: AsEnum<typeof Role> | AsEnum<typeof Status>,
  * mixed: AsEnum<typeof Status> | StatusType }
  */
-export const unions = annotatePageProps<UnionsPageProps>()(defineRoute({
+export const unions = /* @__PURE__ */ annotatePageProps<UnionsPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'enum-resources.unions',
     url: '/enum-resources/unions',
     methods: ['get', 'head'] as const,
@@ -38,7 +38,7 @@ export type VisibilityPageProps = Inertia.SharedData & { visibility: AsEnum<type
  *
  * Result should be { visibility: AsEnum<typeof Visibility> | never[] }
  */
-export const visibility = annotatePageProps<VisibilityPageProps>()(defineRoute({
+export const visibility = /* @__PURE__ */ annotatePageProps<VisibilityPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'enum-resources.visibility',
     url: '/enum-resources/{post}/visibility',
     methods: ['get', 'head'] as const,

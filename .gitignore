@@ -41,7 +41,8 @@ clover.xml
 .DS_Store
 
 # AI
-.claude
+.claude/*
+!.claude/rules/
 .agents
 .github/plans
 skills-lock.json

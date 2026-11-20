@@ -14,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfChild;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\Namespace_;
+use PhpParser\NodeFinder;
 use PhpParser\PrettyPrinter\Standard;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
@@ -43,6 +45,11 @@ function byReferenceArgumentsOf(string $statement, ?ReflectionClass $runtime = n
     );
 }
 
+/**
+ * Takes every argument by reference, into a variadic that collects a name no other parameter declares.
+ */
+function byReferenceCollectAll(mixed &...$into): void {}
+
 it('reports the arguments a call passes to a by-reference parameter of the callee it names', function (string $statement, array $arguments) {
     expect(byReferenceArgumentsOf($statement, new ReflectionClass(ByReferenceDefaultsSubject::class)))->toBe($arguments);
 })->with([
@@ -54,13 +61,104 @@ it('reports the arguments a call passes to a by-reference parameter of the calle
     'a by-value function' => ['strlen($s);', []],
     'a function nobody declares' => ['missing_function($a);', []],
     'a method of $this' => ['$this->fill($a);', ['$a']],
+    'a method of $this through ?->' => ['$this?->fill($a);', ['$a']],
+    // An unpacked array fills the parameter at its position and each after it; a literal's other elements are copies.
+    'a literal\'s reference unpacked into a later parameter' => ['preg_match(...["/x/", $s, &$m]);', ['$m']],
+    'a literal\'s copy unpacked into a later parameter' => ['preg_match(...["/x/", $s, $m]);', []],
+    'an array unpacked into a later parameter' => ['preg_match(...$arguments);', ['$arguments']],
+    'a literal\'s reference unpacked past every by-reference parameter' => ['preg_match("/x/", $s, $m, ...[&$f]);', ['$m']],
+    'a literal\'s reference unpacked by name before a parameter another literal fills' => [
+        "preg_match(...['subject' => \$s], ...['pattern' => '/x/', 'matches' => &\$m]);",
+        ['$m'],
+    ],
+    'a literal\'s reference unpacked by name, past its parameter\'s position' => [
+        "preg_match(...['subject' => \$s], ...['pattern' => '/x/'], ...['offset' => 0], ...['matches' => &\$m]);",
+        ['$m'],
+    ],
+    'a literal\'s reference unpacked into a by-value parameter' => ['preg_match(...["/x/", &$s, $m]);', []],
+    'a literal\'s copy unpacked by name' => ["preg_match(...['subject' => \$s, 'pattern' => '/x/', 'matches' => \$m]);", []],
+    // A variadic takes every element an array it cannot read holds, however many arguments come before it.
+    'an array unpacked into a variadic another argument fills' => ['sscanf("1 2", "%d %d", $first, ...$rest);', ['$first', '$rest']],
+    'a name no parameter declares, which a variadic collects' => ['byReferenceCollectAll($a, extra: $b);', ['$a', '$b']],
+    'a literal\'s reference unpacked by a name a variadic collects' => ["byReferenceCollectAll(...['extra' => &\$b]);", ['$b']],
+    'a literal\'s copy unpacked by a name a variadic collects' => ["byReferenceCollectAll(...['extra' => \$b]);", []],
     'a self:: method' => ['self::stash($a);', ['$a']],
     'a static:: method' => ['static::stash($a);', ['$a']],
+    'a $this:: method' => ['$this::stash($a);', ['$a']],
     'a named class constructor' => ['new '.ByReferenceDefaultsParent::class.'($a);', ['$a']],
     // PHP routes a method it cannot find to __call() or __callStatic(), which take their arguments by value.
     'a method the class does not declare' => ['self::absent($a);', []],
     'a receiver it cannot name' => ['$other->push($a);', []],
     'a first-class callable' => ['preg_match(...);', []],
+]);
+
+// PHP copies an array with the references it holds, so a callee writes through them whatever parameter takes it.
+it('reports the references a call\'s array literals hold, whatever parameter takes them', function (
+    string $statement,
+    array $held,
+) {
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0] ?? null;
+    $call = $stmt instanceof Expression ? $stmt->expr : null;
+    assert($call instanceof CallLike);
+    $printer = new Standard;
+
+    expect(array_map(
+        fn ($value): string => $printer->prettyPrintExpr($value),
+        ByReferenceArguments::heldReferences($call->getArgs()),
+    ))->toBe($held);
+})->with([
+    'a literal\'s reference' => ['f([&$a]);', ['$a']],
+    'a literal\'s copy' => ['f([$a]);', []],
+    'references at any depth' => ['f([1, [[&$a]], &$b]);', ['$a', '$b']],
+    'a reference an unpacked literal\'s array holds' => ['f(...[[&$a]]);', ['$a']],
+    'an unpacked literal\'s own reference, which only a by-reference parameter takes' => ['f(...[&$a]);', []],
+    'a copy an unpacked literal\'s array holds' => ['f(...[[$a]]);', []],
+    'a variable' => ['f($a);', []],
+]);
+
+/**
+ * What bind() reports for the one call a statement makes, each list printed as PHP; null where it names no callee.
+ *
+ * @return array{byReference: list<string>, runnable: list<string>}|null
+ */
+function byReferenceBindingOf(string $statement): ?array
+{
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0] ?? null;
+    $call = $stmt instanceof Expression ? $stmt->expr : null;
+
+    if (! $call instanceof CallLike) {
+        throw new LogicException("Not a call: {$statement}");
+    }
+
+    $subject = new ReflectionClass(ByReferenceDefaultsSubject::class);
+    $binding = resolve(ByReferenceArguments::class)->bind($call, $subject, $subject);
+    $printer = new Standard;
+
+    return $binding === null ? null : [
+        'byReference' => array_map(fn ($argument): string => $printer->prettyPrintExpr($argument), $binding['byReference']),
+        'runnable' => array_map(fn ($arg): string => $printer->prettyPrintExpr($arg->value), $binding['runnable']),
+    ];
+}
+
+it('binds a call\'s arguments by reference, and those a built-in may run, from one look-up of its callee', function (
+    string $statement,
+    ?array $binding,
+) {
+    expect(byReferenceBindingOf($statement))->toBe($binding);
+})->with([
+    'a built-in\'s callable parameter' => ['array_map($f, $a);', ['byReference' => [], 'runnable' => ['$f']]],
+    'a built-in\'s by-reference and callable parameters' => ['usort($a, $f);', ['byReference' => ['$a'], 'runnable' => ['$f']]],
+    'a built-in\'s Closure parameter, by name' => [
+        'Closure::bind(newThis: $o, closure: $f);',
+        ['byReference' => [], 'runnable' => ['$f']],
+    ],
+    'a built-in with neither' => ['strlen($s);', ['byReference' => [], 'runnable' => []]],
+    'a pointer function' => ['end($a);', ['byReference' => [], 'runnable' => []]],
+    'a method of $this, which PHP does not implement' => ['$this->fill($a);', ['byReference' => ['$a'], 'runnable' => []]],
+    'a call passing nothing, whatever it names' => ['$other->push();', ['byReference' => [], 'runnable' => []]],
+    'a receiver it cannot name' => ['$other->push($a);', null],
+    'a function nobody declares' => ['missing_function($a);', null],
+    'a first-class callable' => ['array_map(...);', ['byReference' => [], 'runnable' => []]],
 ]);
 
 it('binds parent:: to the declaring class\'s parent, not the runtime class\'s', function () {
@@ -97,15 +195,25 @@ it('reads a $this-> callee on the declaring class\'s own private method, which P
         ->and($sent->filled)->toBe(['a', 1]);
 });
 
+// PHP looks `$this::m()` up on the class `$this` is, as `static::m()`, past the declaring class's private namesake.
+it('reads a $this:: callee on the runtime class, as static:: names it', function () {
+    $child = new ReflectionClass(ByReferenceSelfChild::class);
+    $base = new ReflectionClass(ByReferenceSelfBase::class);
+
+    expect(byReferenceArgumentsOf('$this::fill($a);', $child, $base))->toBe([])
+        ->and(byReferenceArgumentsOf('$this::fill($a);', $base))->toBe(['$a']);
+});
+
 it('names no $this, self or static callee without a class', function (string $statement) {
     expect(byReferenceArgumentsOf($statement))->toBe([]);
 })->with([
     '$this' => ['$this->fill($a);'],
+    '$this::' => ['$this::fill($a);'],
     'self' => ['self::stash($a);'],
     'parent' => ['parent::append($a);'],
 ]);
 
-it('reads only the arguments it is asked about, by their position', function () {
+it('reads only the arguments it is asked about, matched by identity whatever their keys', function () {
     $call = new AstParser()->parseSource('<?php preg_match("/x/", $s, $m);')[0]->expr;
     $arguments = $call->getArgs();
 
@@ -117,7 +225,7 @@ it('reads only the arguments it is asked about, by their position', function () 
 
 it('reports what a built-in leaves in the variable it takes by reference', function (string $statement, ByReferenceEffect $effect) {
     $call = new AstParser()->parseSource('<?php namespace App; '.$statement)[0]->stmts[0]->expr;
-    $argument = array_find($call->getArgs(), fn ($arg): bool => $arg->value instanceof Variable && $arg->value->name === 'x')->value;
+    $argument = new NodeFinder()->findFirst($call->args, fn ($node): bool => $node instanceof Variable && $node->name === 'x');
 
     expect(resolve(ByReferenceArguments::class)->effect($call, $argument))->toBe($effect);
 })->with([
@@ -130,6 +238,11 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     'array_shift()' => ['array_shift($x);', ByReferenceEffect::KeepsList],
     'array_splice()' => ['array_splice($x, 1, 1, ["z"]);', ByReferenceEffect::Appends],
     'sort(), named' => ['sort(array: $x);', ByReferenceEffect::KeepsList],
+    'sort(), unpacked by name' => ["sort(...['array' => &\$x]);", ByReferenceEffect::KeepsList],
+    'ksort() with flags unpacked by name, which compare keys as strings' => [
+        "ksort(...['flags' => SORT_STRING, 'array' => &\$x]);",
+        ByReferenceEffect::KeepsObject,
+    ],
     'asort()' => ['asort($x);', ByReferenceEffect::KeepsObject],
     'str_replace()\'s count' => ['str_replace("a", "b", "c", $x);', ByReferenceEffect::KeepsNumber],
     'preg_replace_callback()\'s count, named' => ['preg_replace_callback("/a/", "f", "c", count: $x);', ByReferenceEffect::KeepsNumber],
@@ -138,6 +251,7 @@ it('reports what a built-in leaves in the variable it takes by reference', funct
     'array_walk_recursive()' => ['array_walk_recursive($x, "f");', ByReferenceEffect::WritesLeaves],
     'preg_match()\'s matches' => ['preg_match("/(a)(b)?/", "b", $x);', ByReferenceEffect::WritesMatches],
     'preg_match()\'s matches, named' => ['preg_match(subject: "b", matches: $x, pattern: "/a/");', ByReferenceEffect::WritesMatches],
+    'preg_match()\'s matches, unpacked' => ['preg_match(...["/a/", "b", &$x]);', ByReferenceEffect::WritesMatches],
     'preg_match()\'s matches past a lookbehind' => ['preg_match("/(?<=a)(?<!c)b/", "ab", $x);', ByReferenceEffect::WritesMatches],
     'preg_match()\'s matches with a flag' => ['preg_match("/a/", "b", $x, PREG_OFFSET_CAPTURE);', ByReferenceEffect::WritesMatches],
     'preg_match()\'s matches with a zero flag and an offset' => ['preg_match("/a/", "b", $x, 0, 1);', ByReferenceEffect::WritesMatches],
@@ -465,7 +579,7 @@ it('reads a pattern\'s leading options alike with PCRE\'s JIT on and off', funct
 
 it('tells a call that leaves every string key of the variable it takes by reference', function (string $statement, bool $keeps) {
     $call = new AstParser()->parseSource('<?php namespace App; '.$statement)[0]->stmts[0]->expr;
-    $argument = array_find($call->getArgs(), fn ($arg): bool => $arg->value instanceof Variable && $arg->value->name === 'x')->value;
+    $argument = new NodeFinder()->findFirst($call->args, fn ($node): bool => $node instanceof Variable && $node->name === 'x');
 
     expect(resolve(ByReferenceArguments::class)->keepsStringKeys($call, $argument))->toBe($keeps);
 })->with([
@@ -486,6 +600,45 @@ it('reports what a built-in leaves in a key of a variable it takes by reference'
     expect(resolve(ByReferenceArguments::class)->effect($call, $call->getArgs()[0]->value))->toBe(ByReferenceEffect::KeepsList);
 });
 
+it('records the file of a user function, whose declaration says which parameters take a reference', function (string $statement, string $function) {
+    require_once dirname(__DIR__, 2).'/Fixtures/Stubs/ByReferenceHelperFunction.php.stub';
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0];
+    $call = ($stmt instanceof Namespace_ ? $stmt->stmts[0] : $stmt)->expr;
+    DependencyRecorder::start();
+
+    try {
+        resolve(ByReferenceArguments::class)->of($call, $call->getArgs(), null, null);
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toBe([(string) new ReflectionFunction($function)->getFileName()]);
+})->with([
+    'a global function' => ['byReferenceCollectAll($a);', 'byReferenceCollectAll'],
+    'a namespaced function, by its full name' => [
+        '\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper($a);',
+        'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper',
+    ],
+    'a namespaced function, unqualified in its namespace' => [
+        'namespace AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs; byReferenceHelper($a);',
+        'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper',
+    ],
+]);
+
+it('records no file for a built-in function', function () {
+    DependencyRecorder::start();
+
+    try {
+        byReferenceArgumentsOf('preg_match("/x/", $s, $m);');
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toBe([]);
+});
+
 it('records the class whose declaration says which parameters take a reference', function (string $statement, string $class) {
     DependencyRecorder::start();
 
@@ -501,4 +654,5 @@ it('records the class whose declaration says which parameters take a reference',
     'a named class constructor' => ['new '.ByReferenceDefaultsParent::class.'($a);', ByReferenceDefaultsParent::class],
     'a method of $this' => ['$this->fill($a);', ByReferenceDefaultsSubject::class],
     'a self:: method' => ['self::stash($a);', ByReferenceDefaultsSubject::class],
+    'a $this:: method' => ['$this::stash($a);', ByReferenceDefaultsSubject::class],
 ]);

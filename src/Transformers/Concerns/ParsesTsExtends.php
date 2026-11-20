@@ -5,22 +5,34 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
 
 /**
- * Parses #[TsExtends] attributes and config entries into merged extends clauses and imports.
+ * Parses #[TsExtends] attributes and config entries into merged extends clauses and imports, and a resource's
+ * #[TsIntersect] attributes into its intersected types beside them.
  *
- * A type name reachable from two different import paths is aliased with that path's last segment
- * (`Routable` from `@/types/routing` → `RoutingRoutable`), and its extends clause is rewritten.
+ * A type name reachable from two different import paths, across every clause settled together, is aliased with that
+ * path's last segment (`Routable` from `@/types/routing` → `RoutingRoutable`), and its clause is rewritten.
  *
- * @phpstan-type RawEntry = array{extends: string, import: string|null, types: list<string>}
- * @phpstan-type TsExtendsResult = array{
- *     extends: list<string>,
- *     imports: array<string, list<string>>,
+ * @phpstan-import-type TypesImportMap from Datable
+ *
+ * @phpstan-type ClauseAttribute = class-string<TsExtends|TsIntersect>
+ * @phpstan-type ConfigScope = 'broadcast_events'|'form_requests'|'models'|'resources'
+ * @phpstan-type ClauseEntry = array{
+ *     attribute: ClauseAttribute,
+ *     clause: string,
+ *     import: string|null,
+ *     types: list<string>,
+ *     listed: list<string>,
  * }
+ * @phpstan-type TsExtendsResult = array{extends: list<string>, imports: array<string, list<string>>}
+ * @phpstan-type ClauseSets = array{clauses: array<ClauseAttribute, list<string>>, imports: array<string, list<string>>}
  */
 trait ParsesTsExtends
 {
@@ -30,17 +42,137 @@ trait ParsesTsExtends
      * @template T of object
      *
      * @param  ReflectionClass<T>  $reflection
-     * @param  'broadcast_events'|'form_requests'|'models'|'resources'  $scope
+     * @param  ConfigScope  $scope
      * @return TsExtendsResult
      */
     protected function parseTsExtendsFromReflection(ReflectionClass $reflection, string $scope): array
     {
-        /** @var list<RawEntry> $rawEntries */
-        $rawEntries = [];
+        $result = $this->settleClauses($this->readClauses($reflection, [TsExtends::class => $scope]));
 
-        $this->collectTsExtendsAttributes($reflection, $rawEntries);
+        return ['extends' => $result['clauses'][TsExtends::class], 'imports' => $result['imports']];
+    }
 
-        // Traits and parent classes, breadth-first.
+    /**
+     * Read clause attributes from a class, its traits and its parents, breadth-first, each followed by the config
+     * entries of its scope, if it has one.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $reflection
+     * @param  array<ClauseAttribute, ConfigScope|null>  $attributes  each attribute => its config scope
+     * @return list<ClauseEntry>
+     */
+    protected function readClauses(ReflectionClass $reflection, array $attributes): array
+    {
+        $entries = [];
+        $classes = $this->clauseClasses($reflection);
+
+        foreach ($attributes as $attribute => $configScope) {
+            foreach ($classes as $class) {
+                foreach ($class->getAttributes($attribute) as $attr) {
+                    $instance = $attr->newInstance();
+                    $clause = $instance instanceof TsIntersect ? $instance->type : $instance->extends;
+                    $entries[] = $this->clauseEntry($attribute, $clause, $instance->import, $instance->types);
+                }
+            }
+
+            /** @var list<string|array{extends: string, import?: string, types?: list<string>}> $configEntries */
+            $configEntries = $configScope === null ? [] : array_values(array_filter(
+                Config::array("ts-publish.ts_extends.{$configScope}", []),
+                fn (mixed $v): bool => is_string($v) || is_array($v),
+            ));
+
+            foreach ($configEntries as $entry) {
+                $entry = is_string($entry) ? ['extends' => $entry] : $entry;
+                $import = $entry['import'] ?? null;
+                $entries[] = $this->clauseEntry($attribute, $entry['extends'], $import, $entry['types'] ?? null);
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Deduplicate the clauses and alias each name two import paths bring, leaving out each name a clause only builds on
+     * that the file binds by other means: another import, or the package's own import of it. A name the clause lists,
+     * its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it, and a name
+     * the file declares is aliased apart from that declaration.
+     *
+     * @param  list<ClauseEntry>  $entries
+     * @param  TypesImportMap  $imports  the file's other imports, path => names
+     * @param  list<string>  $packageNames  the names the package's own imports bind in the file
+     * @param  list<string>  $declaredNames  the names the file declares
+     * @return ClauseSets
+     */
+    protected function settleClauses(
+        array $entries,
+        array $imports = [],
+        array $packageNames = [],
+        array $declaredNames = [],
+    ): array {
+        $paths = [];
+
+        foreach ($imports as $path => $names) {
+            foreach ($names as $name) {
+                $paths[ImportMaps::localName($name)][] = $path;
+            }
+        }
+
+        $unbound = [];
+
+        foreach ($entries as $entry) {
+            $unbound[] = [...$entry, 'types' => array_values(array_filter(
+                $entry['types'],
+                static fn (string $name): bool => in_array($name, $entry['listed'], true)
+                    ? ! in_array($entry['import'], $paths[$name] ?? [], true)
+                    : ! isset($paths[$name]) && ! in_array($name, $packageNames, true),
+            ))];
+        }
+
+        return $this->deduplicateAndAliasClauses($unbound, [...array_keys($paths), ...$declaredNames]);
+    }
+
+    /**
+     * The names a clause with an import and no `types` imports: its top-level arms, as extractImportableTypes() reads
+     * them, unless its publisher reads more.
+     *
+     * @return list<string>
+     */
+    protected function clauseTypeNames(string $clause): array
+    {
+        return TsTypeString::extractImportableTypes($clause);
+    }
+
+    /**
+     * The names a clause lists whole: each top-level arm that is one name, such as `Meta` or `Meta[]`.
+     *
+     * @return list<string>
+     */
+    protected function listedTypeNames(string $clause): array
+    {
+        $names = [];
+
+        // An arm holding a `|` holds a nested union, so it is no name whole; extractImportableTypes() reads each other.
+        foreach (TsTypeString::splitTopLevelUnion($clause) as $arm) {
+            if (! str_contains($arm, '|')) {
+                array_push($names, ...TsTypeString::extractImportableTypes($arm));
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * The class, then its traits and parent classes, breadth-first, each once: where its clause attributes are read.
+     *
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $reflection
+     * @return list<ReflectionClass<object>>
+     */
+    private function clauseClasses(ReflectionClass $reflection): array
+    {
+        $classes = [$reflection];
         $queue = [...array_values($reflection->getTraits())];
         if ($parent = $reflection->getParentClass()) {
             $queue[] = $parent;
@@ -53,8 +185,7 @@ trait ParsesTsExtends
                 continue;
             }
             $visited[$name] = true;
-
-            $this->collectTsExtendsAttributes($current, $rawEntries);
+            $classes[] = $current;
 
             foreach ($current->getTraits() as $trait) {
                 $queue[] = $trait;
@@ -64,67 +195,43 @@ trait ParsesTsExtends
             }
         }
 
-        /** @var list<string|array{extends: string, import?: string, types?: list<string>}> $configEntries */
-        $configEntries = array_values(array_filter(
-            Config::array("ts-publish.ts_extends.{$scope}", []),
-            fn (mixed $v): bool => is_string($v) || is_array($v),
-        ));
-
-        foreach ($configEntries as $entry) {
-            if (is_string($entry)) {
-                $rawEntries[] = ['extends' => $entry, 'import' => null, 'types' => []];
-            } else {
-                /** @var array{extends: string, import?: string, types?: list<string>} $entry */
-                $typeNames = isset($entry['import'])
-                    ? ($entry['types'] ?? TsTypeString::extractImportableTypes($entry['extends']))
-                    : [];
-                $rawEntries[] = [
-                    'extends' => $entry['extends'],
-                    'import' => $entry['import'] ?? null,
-                    'types' => $typeNames,
-                ];
-            }
-        }
-
-        return $this->deduplicateAndResolveExtendsConflicts($rawEntries);
+        return $classes;
     }
 
     /**
-     * Collect #[TsExtends] attributes from a single reflection class into the entries list.
+     * One clause as read. With an import it brings its `types`, or else the names clauseTypeNames() reads, and it
+     * lists its `types`, or else the names listedTypeNames() reads.
      *
-     * @template T of object
-     *
-     * @param  ReflectionClass<T>  $reflection
-     * @param  list<RawEntry>  $entries
+     * @param  ClauseAttribute  $attribute
+     * @param  list<string>|null  $types
+     * @return ClauseEntry
      */
-    private function collectTsExtendsAttributes(ReflectionClass $reflection, array &$entries): void
+    private function clauseEntry(string $attribute, string $clause, ?string $import, ?array $types): array
     {
-        foreach ($reflection->getAttributes(TsExtends::class) as $attr) {
-            $instance = $attr->newInstance();
-            $typeNames = $instance->import !== null
-                ? ($instance->types ?? TsTypeString::extractImportableTypes($instance->extends))
-                : [];
-            $entries[] = [
-                'extends' => $instance->extends,
-                'import' => $instance->import,
-                'types' => $typeNames,
-            ];
-        }
+        return [
+            'attribute' => $attribute,
+            'clause' => $clause,
+            'import' => $import,
+            'types' => $import === null ? [] : ($types ?? $this->clauseTypeNames($clause)),
+            'listed' => $import === null ? [] : ($types ?? $this->listedTypeNames($clause)),
+        ];
     }
 
     /**
-     * Deduplicate entries and resolve type name conflicts across import paths.
+     * Deduplicate the clauses of both attributes and alias each name two import paths bring, across all of them.
      *
-     * @param  list<RawEntry>  $rawEntries
-     * @return TsExtendsResult
+     * @param  list<ClauseEntry>  $rawEntries
+     * @param  list<string>  $taken  the names another import of the file binds or the file declares, which a clause's
+     *                               import of them aliases
+     * @return ClauseSets
      */
-    private function deduplicateAndResolveExtendsConflicts(array $rawEntries): array
+    private function deduplicateAndAliasClauses(array $rawEntries, array $taken = []): array
     {
         $deduped = [];
         $seenPairs = [];
 
         foreach ($rawEntries as $entry) {
-            $key = $entry['extends']."\0".($entry['import'] ?? '');
+            $key = $entry['attribute']."\0".$entry['clause']."\0".($entry['import'] ?? '');
             if (! isset($seenPairs[$key])) {
                 $seenPairs[$key] = true;
                 $deduped[] = $entry;
@@ -148,7 +255,7 @@ trait ParsesTsExtends
         /** @var array<string, string> $aliasMap */
         $aliasMap = [];
         foreach ($typeToImportPaths as $typeName => $importPaths) {
-            if (count($importPaths) <= 1) {
+            if (count($importPaths) <= 1 && ! in_array($typeName, $taken, true)) {
                 continue;
             }
             foreach ($importPaths as $importPath) {
@@ -157,29 +264,27 @@ trait ParsesTsExtends
             }
         }
 
-        $extendsClauses = [];
+        $clauses = array_fill_keys([TsExtends::class, TsIntersect::class], []);
         /** @var array<string, list<string>> $imports */
         $imports = [];
 
         foreach ($deduped as $entry) {
-            $extendsClause = $entry['extends'];
+            $clause = $entry['clause'];
 
             if ($entry['import'] !== null) {
                 $typeNamesToImport = [];
+                $aliases = [];
                 foreach ($entry['types'] as $typeName) {
                     $aliasKey = $typeName."\0".$entry['import'];
                     if (isset($aliasMap[$aliasKey])) {
-                        $alias = $aliasMap[$aliasKey];
-                        $extendsClause = preg_replace(
-                            '/\b'.preg_quote($typeName, '/').'\b/',
-                            $alias,
-                            $extendsClause,
-                        ) ?? $extendsClause;
-                        $typeNamesToImport[] = $typeName.' as '.$alias;
+                        $aliases[$typeName] = $aliasMap[$aliasKey];
+                        $typeNamesToImport[] = $typeName.' as '.$aliasMap[$aliasKey];
                     } else {
                         $typeNamesToImport[] = $typeName;
                     }
                 }
+
+                $clause = TsTypeString::aliasReferences($clause, $aliases);
 
                 $existing = $imports[$entry['import']] ?? [];
                 foreach ($typeNamesToImport as $tn) {
@@ -193,9 +298,9 @@ trait ParsesTsExtends
                 }
             }
 
-            $extendsClauses[] = $extendsClause;
+            $clauses[$entry['attribute']][] = $clause;
         }
 
-        return ['extends' => $extendsClauses, 'imports' => $imports];
+        return ['clauses' => $clauses, 'imports' => $imports];
     }
 }

@@ -4,7 +4,7 @@ import type { Address } from '../resources';
 
 export type ShowPageProps = Inertia.SharedData & { address: { data: Address } };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'addresses.show',
     url: '/addresses/{address}',
     methods: ['get', 'head'] as const,

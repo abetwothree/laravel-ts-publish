@@ -6,7 +6,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\MembershipLevel
  */
-export const MembershipLevel = defineEnum({
+export const MembershipLevel = /* @__PURE__ */ defineEnum({
     Free: 'Free',
     Basic: 'Basic',
     Premium: 'Premium',

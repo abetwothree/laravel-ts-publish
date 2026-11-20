@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectPropertyTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -81,6 +82,7 @@ final readonly class ResponseExtras
     public static function ofValue(array $value): self
     {
         // A gap arm, which no rule typed, sends keys no rule names, which the extras read as they read none.
+        $value = ValueResult::unsplit($value);
         $value = [...$value, 'type' => VisibleGaps::aside($value['type'])[0]];
 
         if ($value['type'] === 'never[]') {
@@ -161,7 +163,8 @@ final readonly class ResponseExtras
             return $complete ? self::none() : new self(null, null, false);
         }
 
-        $object = resolve(InlineObjectResult::class)->of($analysis);
+        // The keys merge into the response's own object, so they read as one object, whatever variants they follow.
+        $object = ValueResult::unsplit(resolve(InlineObjectResult::class)->of($analysis));
         $members = TsTypeShape::members($object['type']) ?? [];
         $required = array_any($analysis->properties, fn (array $property): bool => ! $property['optional']);
 

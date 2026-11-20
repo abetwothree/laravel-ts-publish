@@ -35,7 +35,7 @@ final class BranchJoin
     /**
      * Join branch analyses into an empty target: a key some branch lacks is optional and absent, a value any branch may
      * remove stays so, channels merge as MethodAnalysis::merge() does, a cast survives only where every branch setting
-     * its key casts it alike, and flatTypeAlias is the first non-null.
+     * its key casts it alike, flatTypeAlias is the first non-null, and a lone branch's variants stay.
      *
      * A spread helper, a merge call and a literal's key with several sources drop an untyped branch
      * ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
@@ -191,6 +191,7 @@ final class BranchJoin
         $target->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
         $target->closedToDottedKeys = array_fill_keys(array_keys(array_filter($closed)), true);
         $target->declaredTokenFqcns = $slots;
+        $target->variants = count($analyses) === 1 ? $analyses[0]->variants : null;
         $target->queueSplitClasses($analyses);
 
         // No class stands behind a token of a key its branches spell unalike, so the key, now unknown, keeps none.

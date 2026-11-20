@@ -13,6 +13,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantUnions;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
+use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsResource;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsResourceDto;
@@ -24,6 +27,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
+use AbeTwoThree\LaravelTsPublish\Support\VariantRows;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
@@ -46,6 +50,7 @@ use ReflectionClass;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
  * @phpstan-import-type Slots from TokenSlots
+ * @phpstan-import-type ClauseEntry from ParsesTsExtends
  *
  * @phpstan-type EnumResourcePropertyInfo = array{
  *     fqcn: class-string, nullable: bool, isCollection: bool, wrapIsCollection: bool, directIsArray: bool
@@ -77,8 +82,11 @@ class ResourceTransformer extends CoreTransformer
     /** @var ReflectionClass<JsonResource> */
     public protected(set) ReflectionClass $reflectionResource;
 
-    /** @var PropertiesList */
+    /** @var PropertiesList the rows every arm shares, once transform() has moved the variant rows out */
     public protected(set) array $properties = [];
+
+    /** @var list<string> each group's union of one object per value of the key the group follows */
+    public protected(set) array $variants = [];
 
     /** @var TypesImportMap */
     public protected(set) array $typeImports = [];
@@ -89,8 +97,14 @@ class ResourceTransformer extends CoreTransformer
     /** @var list<string> TypeScript extends clauses */
     public protected(set) array $tsExtends = [];
 
+    /** @var list<string> the TypeScript types the resource's type is intersected with */
+    public protected(set) array $intersections = [];
+
     /** @var string|null TypeScript type alias (e.g. `export type X = SingularResource[]`) emitted instead of an interface */
     public protected(set) ?string $typeAlias = null;
+
+    /** Whether the resource's own #[TsResource] turns its variants on or off; null leaves it to the config. */
+    protected ?bool $discriminated = null;
 
     /** @var array<array-key, string> property name => custom type override */
     protected array $tsTypeOverrides = [];
@@ -100,6 +114,9 @@ class ResourceTransformer extends CoreTransformer
 
     /** @var ImportMapType custom imports the AST analysis carried, kept apart until overrides have replaced types */
     protected array $analysisCustomImports = [];
+
+    /** @var list<ClauseEntry> the clauses as read, whose imports wait for the names the file binds by other means */
+    protected array $clauseEntries = [];
 
     /** @var array<array-key, bool> property name => optional override */
     protected array $optionalOverrides = [];
@@ -198,11 +215,13 @@ class ResourceTransformer extends CoreTransformer
             ->pruneOverriddenAnalysisImports()
             ->resolveMultiClassAccessorFqcns()
             ->resolveMultiEnumAccessorFqcns()
+            ->settleClauseImports()
             ->resolveImportConflicts()
             ->keepWrittenInlineWraps()
             ->rewriteEnumResourceTypes()
             ->pruneUnspelledImports()
-            ->buildResolvedImports();
+            ->buildResolvedImports()
+            ->splitVariants();
 
         return $this;
     }
@@ -222,6 +241,8 @@ class ResourceTransformer extends CoreTransformer
             modelClass: $this->modelClass,
             tsExtends: $this->tsExtends,
             typeAlias: $this->typeAlias,
+            variants: $this->variants,
+            intersections: $this->intersections,
         );
     }
 
@@ -333,6 +354,7 @@ class ResourceTransformer extends CoreTransformer
             $this->description = $tsResourceInstance->description !== ''
                 ? $tsResourceInstance->description
                 : JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
+            $this->discriminated = $tsResourceInstance->discriminated;
         } else {
             $this->resourceName = $this->reflectionResource->getShortName();
             $this->description = JsEmitter::parseDocBlockDescription($this->reflectionResource->getDocComment());
@@ -341,17 +363,78 @@ class ResourceTransformer extends CoreTransformer
         return $this;
     }
 
+    /**
+     * Read the resource's #[TsExtends] clauses and config entries and its #[TsIntersect] types. Until
+     * settleClauseImports() runs, each step before it reads every clause as written.
+     */
     protected function parseTsExtends(): self
     {
-        $result = $this->parseTsExtendsFromReflection($this->reflectionResource, 'resources');
+        $this->clauseEntries = $this->readClauses(
+            $this->reflectionResource,
+            [TsExtends::class => 'resources', TsIntersect::class => null],
+        );
+        $texts = array_fill_keys([TsExtends::class, TsIntersect::class], []);
 
-        $this->tsExtends = $result['extends'];
+        foreach ($this->clauseEntries as $entry) {
+            $texts[$entry['attribute']][] = $entry['clause'];
+        }
+
+        $this->tsExtends = $texts[TsExtends::class];
+        $this->intersections = $texts[TsIntersect::class];
+
+        return $this;
+    }
+
+    /**
+     * Every name a clause spells, #104's reading, beside each name it lists whole, such as a global's name a clause is:
+     * settleClauseImports() leaves to the file each name it binds itself.
+     *
+     * @return list<string>
+     */
+    protected function clauseTypeNames(string $clause): array
+    {
+        $names = [...$this->listedTypeNames($clause), ...TsTypeString::referencedTypeNames($clause)];
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Settle the clauses once every other import and the package's own are known: a name the file binds by those
+     * keeps that binding, and every other name imports from its clause's path, aliased across both attributes and
+     * apart from the name the file declares.
+     */
+    protected function settleClauseImports(): self
+    {
+        $consts = $this->shouldGenerateHasEnums() ? array_flip($this->enumPropertyFqcns()) : [];
+        $names = [
+            ...array_values($this->resourceFqcnMap),
+            ...array_values($this->modelFqcnMap),
+            ...array_merge([], ...array_map(ValueResult::enumNames(...), array_keys($this->enumFqcnMap))),
+            ...array_values(array_intersect_key($this->enumConstMap, $consts)),
+        ];
+        // Two classes of one name are both aliased, so that name binds neither.
+        $classes = array_keys(array_filter(array_count_values($names), static fn (int $count): bool => $count === 1));
+        // The template imports `AsEnum` from the package beside an enum's const; a clause spelling it reads that one.
+        $packageNames = [...array_map(strval(...), $classes), ...($consts === [] ? [] : ['AsEnum'])];
+        $result = $this->settleClauses($this->clauseEntries, $this->customImports, $packageNames, $this->declaredNames());
+        $this->tsExtends = $result['clauses'][TsExtends::class];
+        $this->intersections = $result['clauses'][TsIntersect::class];
 
         foreach ($result['imports'] as $importPath => $typeNames) {
             $this->customImports[$importPath] = [...($this->customImports[$importPath] ?? []), ...$typeNames];
         }
 
         return $this;
+    }
+
+    /**
+     * The extends clauses and the intersected types, which name a type as surely as a property does.
+     *
+     * @return list<string>
+     */
+    protected function clauses(): array
+    {
+        return [...$this->tsExtends, ...$this->intersections];
     }
 
     /**
@@ -431,6 +514,10 @@ class ResourceTransformer extends CoreTransformer
 
         $castKeys = $this->castKeys($analysis);
         $this->castsInForce = $this->collectCastsInForce($castKeys, $analysis);
+
+        if ($this->publishesVariants()) {
+            VariantUnions::apply($analysis, array_map(strval(...), array_keys($this->castsInForce)));
+        }
 
         // applyOverrides() lays the casts over the analysis, and an extends clause adds keys no analysis sees. A method
         // cast counts too, since CastChannels::fit() settles its key's import channels only after the reconcile.
@@ -537,6 +624,15 @@ class ResourceTransformer extends CoreTransformer
         $this->analysisCustomImports = $analysis->customImports;
 
         return $this;
+    }
+
+    /**
+     * Whether the resource publishes each group of keys that follow a key it sends as one arm per value: its own
+     * #[TsResource] says, else the config.
+     */
+    protected function publishesVariants(): bool
+    {
+        return $this->discriminated ?? Config::boolean('ts-publish.resources.discriminated_unions', true);
     }
 
     /**
@@ -783,7 +879,7 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Drops the enum-map entries no property or extends clause still needs after #[TsCasts] overrides.
+     * Drops the enum-map entries no property or clause still needs after #[TsCasts] overrides.
      *
      * @return $this
      */
@@ -803,27 +899,27 @@ class ResourceTransformer extends CoreTransformer
         $enumTypeName = ValueResult::enumTypeName(...);
 
         // A bare read keeps the enum's type import when rewriteEnumResourceTypes() wraps another key's same enum.
-        foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->tsExtends, $enumTypeName) as $fqcn => $typeName) {
+        foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->clauses(), $enumTypeName) as $fqcn => $typeName) {
             $this->enumFqcnMap[$fqcn] ??= $typeName;
             $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
             $this->directEnumProperties[$fqcn] = $fqcn;
         }
 
-        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->tsExtends, ValueResult::enumNames(...));
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->clauses(), ValueResult::enumNames(...));
 
         return $this;
     }
 
     /**
-     * Drops the model and resource imports no property or extends clause still needs after #[TsCasts] overrides, and
+     * Drops the model and resource imports no property or clause still needs after #[TsCasts] overrides, and
      * keeps each custom import the analysis carried while a type spells its name.
      *
      * @return $this
      */
     protected function pruneOverriddenAnalysisImports(): self
     {
-        // An extends clause names a type as surely as a property does, and can rely on the same import.
-        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
+        // A clause names a type as surely as a property does, and can rely on the same import.
+        $types = [...array_column($this->properties, 'type'), ...$this->clauses()];
 
         $models = [];
         $resources = [];
@@ -840,10 +936,10 @@ class ResourceTransformer extends CoreTransformer
         }
 
         // A collection's flat type alias spells the resource it collects, with no property behind it.
-        $resourceExtra = [...$this->tsExtends, ...array_filter([$this->typeAlias])];
+        $resourceExtra = [...$this->clauses(), ...array_filter([$this->typeAlias])];
         $resourceName = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
 
-        foreach ($this->carriedInUse('models', $this->modelFqcnMap, $models, $this->tsExtends, class_basename(...)) as $fqcn => $name) {
+        foreach ($this->carriedInUse('models', $this->modelFqcnMap, $models, $this->clauses(), class_basename(...)) as $fqcn => $name) {
             $this->modelFqcnMap[$fqcn] ??= $name;
         }
 
@@ -853,7 +949,7 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        $this->modelFqcnMap = $this->keepSpelled($this->modelFqcnMap, $models, $this->tsExtends);
+        $this->modelFqcnMap = $this->keepSpelled($this->modelFqcnMap, $models, $this->clauses());
         $this->resourceFqcnMap = $this->keepSpelled($this->resourceFqcnMap, $resources, $resourceExtra);
 
         foreach ($this->analysisCustomImports as $importPath => $typeNames) {
@@ -868,7 +964,7 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Keeps each class an extends clause or type alias spells, or a property whose type spells it and whose own import
+     * Keeps each class a clause or type alias spells, or a property whose type spells it and whose own import
      * channels carry it or no other class of its name: a class no key reads, as a cast displaced it, then never forces
      * an alias on the one a key reads.
      *
@@ -876,7 +972,7 @@ class ResourceTransformer extends CoreTransformer
      *
      * @param  array<TFqcn, string>  $map  FQCN => unaliased name
      * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
-     * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @param  list<string>  $extra  the clauses, and for resources the type alias
      * @param  (Closure(TFqcn): list<string>)|null  $namesOf  every name a class's tokens are spelled with; null for
      *                                                        its unaliased name alone
      * @return array<TFqcn, string>
@@ -906,7 +1002,7 @@ class ResourceTransformer extends CoreTransformer
      * @param  'enums'|'models'|'resources'  $kind
      * @param  array<string, string>  $map  FQCN => unaliased name, of this kind's registered classes
      * @param  array<array-key, list<string>>  $attributed  property => this kind's classes its import channels carry
-     * @param  list<string>  $extra  the extends clauses, and for resources the type alias
+     * @param  list<string>  $extra  the clauses, and for resources the type alias
      * @param  Closure(class-string): string  $nameOf
      * @return array<class-string, string>
      */
@@ -939,13 +1035,13 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Drops each model, resource, enum type and custom import whose name, as this file spells it after aliasing, no
-     * property type, extends clause or type alias still names: the earlier prunes read names before aliasing.
+     * property type, clause or type alias still names: the earlier prunes read names before aliasing.
      *
      * @return $this
      */
     protected function pruneUnspelledImports(): self
     {
-        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
+        $types = [...array_column($this->properties, 'type'), ...$this->clauses(), ...array_filter([$this->typeAlias])];
 
         $spelled = fn (string $typeName, string $fqcn): bool => array_any(
             $this->localImportNames($fqcn, $typeName),
@@ -980,7 +1076,7 @@ class ResourceTransformer extends CoreTransformer
         $valueImports = [];
         $hasEnums = $this->shouldGenerateHasEnums();
 
-        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends, ...array_filter([$this->typeAlias])];
+        $types = [...array_column($this->properties, 'type'), ...$this->clauses(), ...array_filter([$this->typeAlias])];
 
         $typeImports = [
             ...$this->collectModularTypeImports($this->enumFqcnMap, $types),
@@ -996,6 +1092,17 @@ class ResourceTransformer extends CoreTransformer
 
         $this->typeImports = $this->deduplicateAndSortImports($typeImports);
         $this->valueImports = $this->deduplicateAndSortImports($valueImports);
+
+        return $this;
+    }
+
+    /**
+     * Move each variant row out of the properties into the variants, so no reader of the published rows, a template
+     * published before variants existed among them, meets a reserved row's name.
+     */
+    protected function splitVariants(): self
+    {
+        [$this->properties, $this->variants] = VariantRows::split($this->properties);
 
         return $this;
     }
@@ -1275,7 +1382,7 @@ class ResourceTransformer extends CoreTransformer
     }
 
     /**
-     * Import a model attribute's #[TsType(import:)] names, but only those the emitted property or an extends clause
+     * Import a model attribute's #[TsType(import:)] names, but only those the emitted property or a clause
      * still uses.
      *
      * A resource may override the model's type, and an unused import is a tsc error under noUnusedLocals.
@@ -1292,7 +1399,7 @@ class ResourceTransformer extends CoreTransformer
                 $type = $this->properties[$propName]['type'] ?? '';
 
                 if (! in_array($name, $brought, true)
-                    && TsTypeString::typeNameOccursIn($name, $type, ...$this->tsExtends)) {
+                    && TsTypeString::typeNameOccursIn($name, $type, ...$this->clauses())) {
                     $this->customImports[$path][] = $name;
                 }
             }

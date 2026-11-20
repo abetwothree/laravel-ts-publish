@@ -56,9 +56,16 @@ properties, including one inside `declare global`.
 An inline `{ … }` object also gives each member a key beside the parent's: `prop.member` for one object, and
 `prop[i].member` for each arm of a union of objects. Member keys stop an already-`unknown` sibling from masking a
 member's regression, and the parent key catches a whole object that collapses to `unknown`. `detect_regressions()`
-skips the parent when all its head members existed at the base, so a regression reports once. A member new at the
-head has no base key, so an object that gains an `unknown` member fails on its parent. Treat that as a real question,
-not noise. A `Pick<Model, K>` value has no `{` to split and stays one key, and the model's own file checks its members.
+skips the parent when all its head members existed at the base, so a regression reports once, unless the parent holds
+an `unknown` no member key holds: an arm such as `unknown[]` or `Record<string, unknown>`, or an index signature. A
+member new at the head has no base key, so an object that gains an `unknown` member fails on its parent. Treat that as
+a real question, not noise. A `Pick<Model, K>` value has no `{` to split and stays one key, and the model's own file
+checks its members.
+
+A resource split into arms, `export type X = { … } & ( | { … } | { … } );` or bare `| { … }` arms after
+`export type X =`, keys its shared rows under `X` as an interface does. A key several arms send is keyed once, its
+arms' distinct values joined with ` | ` in arm order, so it compares with the flat key the resource published before
+the split, and an inline object in that value splits as any other.
 
 ### Self-tests
 
@@ -171,8 +178,8 @@ hide inside an unrelated change to the bare count.
 
 ### The app-side stubs
 
-The trees import modules that belong to the consuming app, named by `#[TsCasts]`, `#[TsExtends]` and `#[TsType]`. The
-`paths` in `tsconfig.json` point those aliases at hand-written stubs:
+The trees import modules that belong to the consuming app, named by `#[TsCasts]`, `#[TsExtends]`, `#[TsIntersect]` and
+`#[TsType]`. The `paths` in `tsconfig.json` point those aliases at hand-written stubs:
 
 | Alias | Stub |
 | --- | --- |
@@ -305,7 +312,8 @@ generic arguments, tuple elements, parenthesized groups and arrow returns), and 
 - **A literal beside its enum alias**: a string or number literal the alias's `export type X = …` lists. `'image'`
   and `"image"` match, and `1` and `'1'` do not. A property that also wraps that enum in `AsEnum<typeof X>` keeps the
   literal, as the package does, so `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }` passes. A property is
-  an interface's key, or a member of an inline type alias such as a page's props.
+  an interface's key, a member of an inline type alias such as a page's props, or a member of one arm of a split
+  resource, read in a scope of its own, `X[i]`, since two arms' values joined would form a union nothing publishes.
 - **Two arms spelled alike**.
 
 A name, an alias or an enum's const, resolves through the file's relative `import` to the one enum file in that
@@ -431,6 +439,9 @@ The gates miss these cases:
   when the object then collapses to `unknown` no member key is left to match.
 - **A parent beside a quoted `'x.*'` sibling**: when `x`'s own value is an inline object, `exhausted()` counts the
   sibling among `x`'s members, so a regression of `x` itself can still be masked.
+- **Literal text holding a separator or a bracket**: `split_members()` and the bracket scanners, which both gates
+  share, read every `;`, `,` and bracket, inside a string literal too. A member whose type holds `'a;b'` or `'}'`, such
+  as a split resource's string discriminant, splits there, and a member past the split can regress unseen.
 - **Reordered union arms**: `prop[i]` indexes arms by position, so swapping two arms can mask a regression. A key a
   `@return` types reorders often: the merge lists the body's arms first and the declared arms it adds after them, so
   an object arm can sit at another index than at the base, and a key that gains a second object arm renames each

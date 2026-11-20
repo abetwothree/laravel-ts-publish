@@ -7,14 +7,11 @@ import type { PostResource } from '.';
  *
  * @see Workbench\App\Http\Resources\CategoryResource
  */
-export interface CategoryResource
-{
+export type CategoryResource = {
     id: number;
     name: string;
     slug: string;
-    description?: string | null;
     sort_order: number;
-    is_active: boolean;
     parent?: CategoryResource | null;
     children?: CategoryResource[];
     posts?: PostResource[];
@@ -32,4 +29,7 @@ export interface CategoryResource
     parent_when_resource_self?: CategoryResource | null;
     children_with_default: Category[];
     posts_with_default: PostResource[];
-}
+} & (
+    | { description: string | null; is_active: true }
+    | { description?: never; is_active: false }
+);

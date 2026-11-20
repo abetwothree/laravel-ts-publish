@@ -11373,16 +11373,6 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "owner",
                     "type": "UserResource",
                     "optional": true
@@ -11402,6 +11392,9 @@
                     "type": "Record<string, unknown> | null",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\BooleanExprResource": {
@@ -12188,18 +12181,8 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
                     "name": "sort_order",
                     "type": "number",
-                    "optional": false
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
                     "optional": false
                 },
                 {
@@ -12287,6 +12270,9 @@
                     "type": "PostResource[]",
                     "optional": false
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\ChildInlineFqcnResource": {
@@ -13083,8 +13069,8 @@
                 },
                 {
                     "name": "not_null_spread_default",
-                    "type": "string",
-                    "optional": true
+                    "type": "string | number",
+                    "optional": false
                 },
                 {
                     "name": "when_no_default",
@@ -14098,6 +14084,683 @@
                 {
                     "name": "42",
                     "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\DiscriminantFormsResource": {
+            "name": "DiscriminantFormsResource",
+            "properties": [
+                {
+                    "name": "negated",
+                    "type": "{ pinned: true; v: number } | { pinned: false; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "strict_true",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null }",
+                    "optional": false
+                },
+                {
+                    "name": "strict_false",
+                    "type": "{ pinned: true; v: number } | { pinned: false; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "case_compare",
+                    "type": "{ status: 0; v: null } | { status: 1; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "case_not_equal",
+                    "type": "{ status: 0; v: number } | { status: 1; v: string }",
+                    "optional": false
+                },
+                {
+                    "name": "value_read",
+                    "type": "{ status: 0; v: string | null } | { status: 1; v: number }",
+                    "optional": false
+                },
+                {
+                    "name": "unit_enum_default",
+                    "type": "{ visibility: 'Public'; v: string } | { visibility: 'Private' | 'Protected' | 'Internal' | 'Draft' | null; v: null }",
+                    "optional": false
+                },
+                {
+                    "name": "match_true",
+                    "type": "{ status: 0; v: string | null } | { status: 1; v: number }",
+                    "optional": false
+                },
+                {
+                    "name": "when_dependent",
+                    "type": "{ pinned: true; until: string | null } | { pinned: false; until?: never }",
+                    "optional": false
+                },
+                {
+                    "name": "when_closure",
+                    "type": "{ pinned: true; until: number } | { pinned: false; until?: never }",
+                    "optional": false
+                },
+                {
+                    "name": "unless_default",
+                    "type": "{ pinned: true; v: number } | { pinned: false; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_dependents",
+                    "type": "{ a: string; pinned: true; b: null } | { a: null; pinned: false; b: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_ternary",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: string | number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_discriminants",
+                    "type": "{ pinned: true; status: 0; a: string; b: string | null } | { pinned: true; status: 1; a: string; b: number } | { pinned: false; status: 0; a: null; b: string | null } | { pinned: false; status: 1; a: null; b: number }",
+                    "optional": false
+                },
+                {
+                    "name": "throw_arm",
+                    "type": "{ priority: 0; v: string } | { priority: 2; v: number }",
+                    "optional": false
+                },
+                {
+                    "name": "shared_keys",
+                    "type": "{ id: number; pinned: true; v: string; title: string } | { id: number; pinned: false; v: number; title: string }",
+                    "optional": false
+                },
+                {
+                    "name": "cast_discriminant_kept",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "method_condition_kept",
+                    "type": "{ featured: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "unpublished_condition_kept",
+                    "type": "{ id: number; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "string_discriminant_kept",
+                    "type": "{ title: string; v: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "wrapped_discriminant_kept",
+                    "type": "{ status: AsEnum<typeof Status>; v: number | null }",
+                    "optional": false
+                },
+                {
+                    "name": "optional_discriminant_kept",
+                    "type": "{ pinned?: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "undecidable_kept",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "same_arms_kept",
+                    "type": "{ pinned: boolean; v: number }",
+                    "optional": false
+                },
+                {
+                    "name": "untypable_arm_kept",
+                    "type": "{ pinned: boolean; v: null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\DispatchOverridesResource": {
+            "name": "DispatchOverridesResource",
+            "properties": [
+                {
+                    "name": "parent_unless",
+                    "type": "{ is_pinned: boolean; note: string; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "parent_hook_self",
+                    "type": "{ is_pinned: boolean; tick: boolean; detail: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\DispatchWritesResource": {
+            "name": "DispatchWritesResource",
+            "properties": [
+                {
+                    "name": "named_unpack",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_through_this",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "pair_keys_out_of_order",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "local_by_reference",
+                    "type": "{ flag: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\FeedPlacementResource": {
+            "name": "FeedPlacementResource",
+            "properties": [
+                {
+                    "name": "published_at",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "rating",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\HiddenWritesResource": {
+            "name": "HiddenWritesResource",
+            "properties": [
+                {
+                    "name": "by_reference",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_reference_in_helper",
+                    "type": "{ pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "callable_in_when",
+                    "type": "{ is_pinned: boolean; cleared?: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "write_before_dropper",
+                    "type": "{ maybe: boolean | null; detail: string | null; reset: boolean; check: string }",
+                    "optional": false
+                },
+                {
+                    "name": "write_before_dropper_enum",
+                    "type": "{ priority: PriorityType | null; detail: string | null; reset: boolean; check: string }",
+                    "optional": false
+                },
+                {
+                    "name": "call_in_arm",
+                    "type": "{ is_pinned: boolean; changed: string | null; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "hooked",
+                    "type": "{ flag: boolean; detail: string | number }",
+                    "optional": false
+                },
+                {
+                    "name": "handed_model",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_helpers_down",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_fills_model",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "closure_in_when",
+                    "type": "{ is_pinned: boolean; cleared?: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_writer",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "local_callable_in_when",
+                    "type": "{ is_pinned: boolean; cleared: boolean; detail: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "pair_holding_subject",
+                    "type": "{ is_pinned: boolean; reset: boolean; detail: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\HiddenWritesTopResource": {
+            "name": "HiddenWritesTopResource",
+            "properties": [
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "changed",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "detail",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "priority",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "level",
+                    "type": "string | boolean | null",
+                    "optional": false
+                },
+                {
+                    "name": "check",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\IntersectedPostResource": {
+            "name": "IntersectedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "is_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "placement",
+                    "type": "PinnedPlacementResource | FeedPlacementResource",
+                    "optional": false
+                }
+            ],
+            "intersections": [
+                "PostPlacementVariants"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\NumericKeysResource": {
+            "name": "NumericKeysResource",
+            "properties": [
+                {
+                    "name": "nested",
+                    "type": "{ pinned: true; \"0\": string; \"7\": 0; note: string } | { pinned: true; \"0\": string; \"7\": 1; note: number } | { pinned: false; \"0\": null; \"7\": 0; note: string } | { pinned: false; \"0\": null; \"7\": 1; note: number }",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ is_pinned: true; \"0\": string } | { is_pinned: false; \"0\": null }",
+                "{ \"7\": 0; note: string } | { \"7\": 1; note: number }"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedPlacementResource": {
+            "name": "PinnedPlacementResource",
+            "properties": [
+                {
+                    "name": "rank",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "pinned_at",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedPostResource": {
+            "name": "PinnedPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PinnedWrapsResource": {
+            "name": "PinnedWrapsResource",
+            "properties": [],
+            "variants": [
+                "{ is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource } | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never }"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\PostPriorityResource": {
+            "name": "PostPriorityResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ priority: 0 | 1; badge: null; escalated_at?: never } | { priority: 2; badge: string; escalated_at?: never } | { priority: 3; badge: UserResource; escalated_at: string | null } | { priority: null; badge: never[]; escalated_at?: never }"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\ReadBackResource": {
+            "name": "ReadBackResource",
+            "properties": [
+                {
+                    "name": "stamped",
+                    "type": "{ pinned: boolean; v: string | null; at: number }",
+                    "optional": false
+                },
+                {
+                    "name": "stamped_enum",
+                    "type": "{ status: StatusType; v: string | null; at: number }",
+                    "optional": false
+                },
+                {
+                    "name": "stamped_local",
+                    "type": "{ pinned: boolean; v: string | null; at: number }",
+                    "optional": false
+                },
+                {
+                    "name": "collected",
+                    "type": "{ pinned: boolean; v: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null } | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_ternary",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null } | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_all",
+                    "type": "{ pinned: true; v: string } | { pinned: false; v: null } | never[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_either",
+                    "type": "{ a: number } | { b: string }",
+                    "optional": false
+                },
+                {
+                    "name": "spread",
+                    "type": "{ pinned: boolean; v: string | null; x: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_pinned",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "read_v",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\ReadingCallsResource": {
+            "name": "ReadingCallsResource",
+            "properties": [
+                {
+                    "name": "enum_method",
+                    "type": "{ status: 0; color: string; detail: null } | { status: 1; color: string; detail: string }",
+                    "optional": false
+                },
+                {
+                    "name": "forwarded_key",
+                    "type": "{ is_pinned: true; key: number; detail: string } | { is_pinned: false; key: number; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "forwarded_key_in_arm",
+                    "type": "{ is_pinned: true; key: number; detail: string } | { is_pinned: false; key: null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "relation_check",
+                    "type": "{ is_pinned: true; loaded: boolean; detail: string } | { is_pinned: false; loaded: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "forwarded_check_in_when",
+                    "type": "{ is_pinned: true; author_title?: string; detail: string } | { is_pinned: false; author_title?: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_resource",
+                    "type": "{ is_pinned: true; author?: UserResource; detail: string } | { is_pinned: false; author?: UserResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_callable_in_when",
+                    "type": "{ is_pinned: true; label?: string; detail: string } | { is_pinned: false; label?: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "dropper_outside_group",
+                    "type": "{ id: number; priority: 0; detail: string; stage: string } | { id: number; priority: 1 | 2 | 3; detail: null; stage: string }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_call_in_arm",
+                    "type": "{ is_pinned: true; label: string; detail: string } | { is_pinned: false; label: null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "reading_helper",
+                    "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "url_of_model",
+                    "type": "{ is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "gate_on_model",
+                    "type": "{ is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "resource_of_model",
+                    "type": "{ is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "resource_of_model_make",
+                    "type": "{ is_pinned: true; card: PostResource; detail: string } | { is_pinned: false; card: PostResource; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "callable_to_map",
+                    "type": "{ is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "when_value_of_another_read",
+                    "type": "{ is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "class_list_check",
+                    "type": "{ is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "untyped_helper_handed",
+                    "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "static_reader",
+                    "type": "{ is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_closure_return",
+                    "type": "{ is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedEnumsResource": {
+            "name": "SwappedEnumsResource",
+            "properties": [
+                {
+                    "name": "priority",
+                    "type": "PriorityType | null",
+                    "optional": false
+                },
+                {
+                    "name": "stages",
+                    "type": "{ primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType } | null",
+                    "optional": false
+                },
+                {
+                    "name": "meta",
+                    "type": "{ priority: PriorityType | null; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } | null }",
+                    "optional": false
+                },
+                {
+                    "name": "shared",
+                    "type": "{ status: WorkbenchStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedResourcesResource": {
+            "name": "SwappedResourcesResource",
+            "properties": [
+                {
+                    "name": "meta",
+                    "type": "{ priority: 0; pair: { primary: WorkbenchUserResource; secondary: CrmUserResource } } | { priority: 1; pair: { primary: CrmUserResource; secondary: WorkbenchUserResource } } | { priority: 2 | 3 | null; pair: null }",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ priority: 0; pair: { primary: WorkbenchUserResource; secondary: CrmUserResource } } | { priority: 1; pair: { primary: CrmUserResource; secondary: WorkbenchUserResource } } | { priority: 2 | 3 | null; pair: null }"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\UnseenWritesResource": {
+            "name": "UnseenWritesResource",
+            "properties": [
+                {
+                    "name": "by_helper",
+                    "type": "{ is_pinned: boolean; reset: boolean; title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_proxy",
+                    "type": "{ is_pinned: boolean; reset: boolean; title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_arrow",
+                    "type": "{ enabled: boolean | null; off: boolean; title: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "by_reader",
+                    "type": "{ is_pinned: true; label: string; title: string } | { is_pinned: false; label: string; title: null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\WrapArmsResource": {
+            "name": "WrapArmsResource",
+            "properties": [
+                {
+                    "name": "beside_group",
+                    "type": "{ pinned: true; until: string | null; status: AsEnum<typeof WorkbenchStatus> } | { pinned: false; until?: never; status: AsEnum<typeof WorkbenchStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "in_arm",
+                    "type": "{ pinned: true; e: AsEnum<typeof WorkbenchStatus> } | { pinned: false; e: null }",
+                    "optional": false
+                },
+                {
+                    "name": "two_wraps",
+                    "type": "{ pinned: true; e: AsEnum<typeof WorkbenchStatus> } | { pinned: false; e: AsEnum<typeof Visibility> | null }",
+                    "optional": false
+                },
+                {
+                    "name": "beside_same_named",
+                    "type": "{ pinned: true; e: AsEnum<typeof WorkbenchStatus>; c: StatusType; v: number } | { pinned: false; e: AsEnum<typeof WorkbenchStatus>; c: StatusType; v: null }",
+                    "optional": false
+                },
+                {
+                    "name": "literals_ternary",
+                    "type": "{ e: AsEnum<typeof WorkbenchStatus>; x: number } | { e: null; x: string }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\WrapOrReadResource": {
+            "name": "WrapOrReadResource",
+            "properties": [
+                {
+                    "name": "reordered",
+                    "type": "{ priority: 0; status: AsEnum<typeof Status>; tally: number } | { priority: 1; status: StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string }",
+                    "optional": false
+                }
+            ],
+            "variants": [
+                "{ priority: 0; status: AsEnum<typeof Status>; tally: number } | { priority: 1; status: StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string }",
+                "{ is_pinned: true; stage: AsEnum<typeof Status> } | { is_pinned: false; stage: StatusType }"
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Discriminated\\WrappedFlagResource": {
+            "name": "WrappedFlagResource",
+            "properties": [
+                {
+                    "name": "flag",
+                    "type": "boolean",
+                    "optional": false
+                },
+                {
+                    "name": "flag_title",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "mode",
+                    "type": "'on' | 'off'",
+                    "optional": false
+                },
+                {
+                    "name": "mode_title",
+                    "type": "string | null",
                     "optional": false
                 }
             ]
@@ -15632,6 +16295,26 @@
                 {
                     "name": "attributes",
                     "type": "{ title: string; word_count: number | null; content?: string; is_long: boolean }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\JsonApi\\WireAttachmentPostResource": {
+            "name": "WireAttachmentPostResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "type",
+                    "type": "'wire_attachment_posts'",
+                    "optional": false
+                },
+                {
+                    "name": "attributes",
+                    "type": "{ priority: PriorityType | null; attachment: AttachmentResource | null }",
                     "optional": false
                 }
             ]
@@ -18511,16 +19194,6 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "owner",
                     "type": "UserResource",
                     "optional": true
@@ -18540,6 +19213,9 @@
                     "type": "Record<string, unknown> | null",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\ProductAggregateCastResource": {
@@ -21355,16 +22031,6 @@
                     "optional": false
                 },
                 {
-                    "name": "description",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
-                    "name": "is_active",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
                     "name": "owner",
                     "type": "UserResource",
                     "optional": true
@@ -21384,6 +22050,9 @@
                     "type": "Record<string, unknown> | null",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ description: string | null; is_active: true } | { description?: never; is_active: false }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\TeamStatusAuditResource": {
@@ -22820,16 +23489,6 @@
                     "optional": false
                 },
                 {
-                    "name": "is_featured",
-                    "type": "boolean",
-                    "optional": false
-                },
-                {
-                    "name": "featured_image",
-                    "type": "string | null",
-                    "optional": true
-                },
-                {
                     "name": "meta_description",
                     "type": "string",
                     "optional": true
@@ -22859,6 +23518,9 @@
                     "type": "number",
                     "optional": true
                 }
+            ],
+            "variants": [
+                "{ is_featured: true; featured_image: string | null } | { is_featured: false; featured_image?: never }"
             ]
         },
         "Workbench\\Blog\\Http\\Resources\\ReactionResource": {
@@ -22950,11 +23612,6 @@
                     "optional": false
                 },
                 {
-                    "name": "crm_status",
-                    "type": "CrmStatusType",
-                    "optional": false
-                },
-                {
                     "name": "crm_enum",
                     "type": "AsEnum<typeof CrmStatus>",
                     "optional": false
@@ -22983,12 +23640,10 @@
                     "name": "admin_resource",
                     "type": "WorkbenchUserResource",
                     "optional": true
-                },
-                {
-                    "name": "closed_at",
-                    "type": "string | null",
-                    "optional": true
                 }
+            ],
+            "variants": [
+                "{ crm_status: 'lead' | 'prospect' | 'active'; closed_at?: never } | { crm_status: 'churned'; closed_at: string | null }"
             ]
         },
         "Workbench\\Crm\\Http\\Resources\\UserResource": {

@@ -1,7 +1,7 @@
 import { defineEnum } from '@tolki/ts';
 
 /** @see Workbench\Blog\Enums\ArticleStatus */
-export const ArticleStatus = defineEnum({
+export const ArticleStatus = /* @__PURE__ */ defineEnum({
     Draft: 'draft',
     InReview: 'in_review',
     Published: 'published',

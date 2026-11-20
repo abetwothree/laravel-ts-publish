@@ -202,3 +202,35 @@ it('asks whether a class is queued later only once nothing else keeps alike arms
     EnumValueTypes::absorbRules([Priority::class], [], [], [], false, $queuesLater);
     expect($asked)->toBe(1);
 });
+
+it('gives each case\'s name beside the scalar an alias spells it with, in case order', function (
+    string $enum,
+    string $alias,
+    array $literals,
+) {
+    expect(EnumValueTypes::caseLiterals($enum, $alias))->toBe($literals);
+})->with([
+    'a backed enum\'s values' => [MediaType::class, 'MediaTypeType', [
+        'Image' => 'image', 'Video' => 'video', 'Audio' => 'audio', 'Document' => 'document', 'Archive' => 'archive',
+    ]],
+    'an int-backed enum\'s values' => [Priority::class, 'PriorityType', ['Low' => 0, 'Medium' => 1, 'High' => 2, 'Critical' => 3]],
+    'a backed enum\'s names' => [Status::class, 'StatusKind', ['Draft' => 'Draft', 'Published' => 'Published']],
+    'a pure enum\'s names' => [Visibility::class, 'VisibilityType', [
+        'Public' => 'Public', 'Private' => 'Private', 'Protected' => 'Protected', 'Internal' => 'Internal', 'Draft' => 'Draft',
+    ]],
+]);
+
+it('gives no case literals for an alias the enum cannot use or does not spell', function (string $enum, string $alias) {
+    $this->mock(EnumsCollector::class)->shouldReceive('collect')->andReturn(collect([$enum]));
+
+    expect(EnumValueTypes::caseLiterals($enum, $alias))->toBeNull();
+})->with([
+    'a revalued case' => [BackedRevaluedCases::class, 'BackedRevaluedCasesType'],
+    'a value past the safe integer range' => [UnsafeIntegerBackedStatus::class, 'UnsafeIntegerBackedStatusType'],
+    'a pure enum\'s missing kind' => [Visibility::class, 'VisibilityKind'],
+    'another enum\'s alias' => [MediaType::class, 'StatusType'],
+]);
+
+it('gives no case literals for an enum ts:publish writes no file for', function () {
+    expect(EnumValueTypes::caseLiterals(BackedRenamedCases::class, 'BackedRenamedCasesType'))->toBeNull();
+});

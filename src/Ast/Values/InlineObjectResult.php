@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Config;
  * attributes all publish their object through it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type ObjectPrint from ExpressionHandler
  * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
  * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ClassMapType from MethodAnalysis
@@ -67,7 +68,31 @@ final class InlineObjectResult
     }
 
     /**
-     * An analysis as the inline object type it publishes, carrying the import channels of every class it names.
+     * Whether a union of an object with others reads each enum token of it from its own place in the queue: no enum a
+     * member nests shares its name with another enum the object holds, as memberEnumFqcns() queues a nested enum
+     * again after the members, where such a union reads it as the next object's token.
+     */
+    public static function queuesEnumsApart(MethodAnalysis $object): bool
+    {
+        $held = [
+            ...array_values($object->directEnumFqcns),
+            ...array_values($object->enumResources),
+            ...array_merge(...array_values($object->inlineEnumFqcns)),
+            ...array_merge(...array_values($object->multiEnumResourceFqcns)),
+            ...array_merge(...array_values($object->inlineEnumResourceFqcns)),
+        ];
+        $nested = array_diff_key($object->directEnumFqcns, array_flip(array_column($object->properties, 'name')));
+
+        return ! array_any($nested, static fn (string $enum): bool => array_any(
+            $held,
+            static fn (string $other): bool => $other !== $enum
+                && ValueResult::enumTypeName($other) === ValueResult::enumTypeName($enum),
+        ));
+    }
+
+    /**
+     * An analysis as the inline object type it publishes, carrying the import channels of every class it names: one
+     * object per variant where the literal's rows still hold its groups (LiteralVariants), else one object.
      *
      * A JSON:API resource object publishes its `attributes` analysis through this, whatever source built it.
      *
@@ -75,6 +100,44 @@ final class InlineObjectResult
      * @return ValueExpressionResult
      */
     public function of(MethodAnalysis $analysis, array $spreadArms = []): array
+    {
+        $variants = $analysis->variants;
+        $objects = $variants !== null && $variants->holdsFor($analysis) ? $variants->objects() : [];
+
+        if ($objects === [] || ! array_all($objects, self::queuesEnumsApart(...))) {
+            return $this->oneObject($analysis, $spreadArms);
+        }
+
+        // Each print takes its own copy, as one object would otherwise carry a spread arm's imports once per print.
+        $union = ValueResult::unionResults(array_map(
+            fn (MethodAnalysis $object): array => $this->oneObject(clone $object, $spreadArms),
+            $objects,
+        ));
+
+        // A reader that takes the keys back reads them from one object, as ValueResult::unsplit() hands it over.
+        return [...$union, 'unsplit' => ['of' => $union['type'], 'print' => $this->oneObject($analysis, $spreadArms)]];
+    }
+
+    /**
+     * A result's classes of one kind: its single-entry import channel's class, then its embedded queue.
+     *
+     * @param  class-string|null  $single
+     * @param  list<class-string>  $embedded
+     * @return list<class-string>
+     */
+    private static function channelFqcns(?string $single, array $embedded): array
+    {
+        return [...($single !== null ? [$single] : []), ...$embedded];
+    }
+
+    /**
+     * An analysis as the one inline object type its rows print, whatever variants it holds, carrying the import
+     * channels of every class it names.
+     *
+     * @param  list<InlineSpreadArm|ObjectSpreadArm>  $spreadArms  the arms the object type intersects with
+     * @return ObjectPrint
+     */
+    private function oneObject(MethodAnalysis $analysis, array $spreadArms): array
     {
         self::readFillsClassLess($analysis);
 
@@ -256,18 +319,6 @@ final class InlineObjectResult
         }
 
         return $result;
-    }
-
-    /**
-     * A result's classes of one kind: its single-entry import channel's class, then its embedded queue.
-     *
-     * @param  class-string|null  $single
-     * @param  list<class-string>  $embedded
-     * @return list<class-string>
-     */
-    private static function channelFqcns(?string $single, array $embedded): array
-    {
-        return [...($single !== null ? [$single] : []), ...$embedded];
     }
 
     /**

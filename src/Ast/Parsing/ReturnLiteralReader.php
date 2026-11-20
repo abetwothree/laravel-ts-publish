@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\NamedFunction;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -44,7 +45,6 @@ use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
-use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -278,7 +278,7 @@ final class ReturnLiteralReader
         }
 
         $callee = match (true) {
-            $expr instanceof FuncCall && $expr->name instanceof Name => $this->namedFunction($expr->name),
+            $expr instanceof FuncCall && $expr->name instanceof Name => NamedFunction::resolve($expr->name),
             $expr instanceof MethodCall && $expr->var instanceof Variable && $expr->var->name === 'this'
                 && $expr->name instanceof Identifier => $this->thisMethod($class, $declaring, $expr->name->name),
             $expr instanceof StaticCall && $expr->class instanceof Name && $expr->name instanceof Identifier
@@ -287,22 +287,6 @@ final class ReturnLiteralReader
         };
 
         return $callee !== null && $this->declaresNever($callee);
-    }
-
-    /**
-     * The function a name calls, tried in its namespace first, then globally, as PHP does.
-     */
-    private function namedFunction(Name $name): ?ReflectionFunction
-    {
-        $namespaced = $name->getAttribute('namespacedName');
-
-        foreach ([$namespaced instanceof Name ? $namespaced->toString() : null, $name->toString()] as $candidate) {
-            if ($candidate !== null && function_exists($candidate)) {
-                return new ReflectionFunction($candidate);
-            }
-        }
-
-        return null;
     }
 
     /**

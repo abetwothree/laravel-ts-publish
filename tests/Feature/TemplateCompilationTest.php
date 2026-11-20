@@ -185,3 +185,11 @@ test('a run leaves the app\'s Blade engine as it found it, even when a template 
     expect(Artisan::call('ts:publish', ['--only-enums' => true, '--quiet' => true]))->toBe(1)
         ->and(View::getEngineResolver()->resolve('blade'))->toBe($engine);
 });
+
+test('ts:publish names a published resource template that prints no variants', function () {
+    copy(__DIR__.'/../views/resource-published-before-variants.blade.php', $this->views.'/resource.blade.php');
+
+    $this->artisan('ts:publish', ['--only-resources' => true])
+        ->assertSuccessful()
+        ->expectsOutputToContain($this->views.'/resource.blade.php: Prints no variants');
+});

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeTokens;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
@@ -30,6 +31,9 @@ class TsTypeString
     /** The spelling of an object with no keys: TypeScript's `{}` accepts any value but null and undefined. */
     public const string EMPTY_OBJECT = 'Record<string, never>';
 
+    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
+    public const array KEYWORD_TYPES = ['true', 'false', 'this'];
+
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
@@ -42,9 +46,6 @@ class TsTypeString
      */
     protected const string IDENTIFIER_CHARACTER_FALLBACK = '(?:(?!\x{2E2F})[\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}$'
         .'\x{200C}\x{200D}\x{B7}\x{387}\x{1369}-\x{1371}\x{19DA}\x{2118}\x{212E}\x{309B}\x{309C}\x{30FB}\x{FF65}])';
-
-    /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
-    protected const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
     protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
@@ -165,6 +166,28 @@ class TsTypeString
         }
 
         return array_values(array_unique($importable));
+    }
+
+    /**
+     * The names a type string references in a type position, each once in the order it first spells them: the names a
+     * file must bind for the type to compile, as TypeTokens reads them.
+     *
+     * @return list<string>
+     */
+    public function referencedTypeNames(string $type): array
+    {
+        return $this->typeTokens()->referencedTypeNames($type);
+    }
+
+    /**
+     * Respell each occurrence of a name that stands as a type or a binder declares by its alias, as TypeTokens reads
+     * them: never literal text, a member's own name or a name after a `.`.
+     *
+     * @param  array<string, string>  $aliases  name => alias
+     */
+    public function aliasReferences(string $type, array $aliases): string
+    {
+        return $this->typeTokens()->aliasReferences($type, $aliases);
     }
 
     /**
@@ -712,6 +735,14 @@ class TsTypeString
             // next name. One naming no Unicode scalar value (a surrogate, past U+10FFFF) stays; TypeScript rejects it.
             return $char === false ? $match[0] : $char;
         }, $type);
+    }
+
+    /**
+     * The token reader on the identifier pattern and escape decoder this PCRE2 settles on.
+     */
+    protected function typeTokens(): TypeTokens
+    {
+        return new TypeTokens($this->identifierCharacter(), $this->decodeIdentifierEscapes(...));
     }
 
     /**

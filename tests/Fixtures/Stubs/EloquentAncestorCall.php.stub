@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * A trait declared in Eloquent's namespace, which the dispatch walk trusts as Eloquent's own code, so a test can walk a
+ * framework method that names an ancestor: keyThroughModel() runs Model::getKey() on `$this`, as parent:: would.
+ *
+ * A `.php.stub` file, since no autoloader maps this namespace to the tests.
+ */
+
+namespace Illuminate\Database\Eloquent;
+
+trait TsPublishAncestorCall
+{
+    /**
+     * The key, read through Model::getKey() on `$this`.
+     */
+    public function keyThroughModel(): mixed
+    {
+        return Model::getKey();
+    }
+}

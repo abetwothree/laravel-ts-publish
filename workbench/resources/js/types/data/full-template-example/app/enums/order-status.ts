@@ -6,7 +6,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\OrderStatus
  */
-export const OrderStatus = defineEnum({
+export const OrderStatus = /* @__PURE__ */ defineEnum({
     /** Order has been placed but not yet processed */
     Pending: 0,
     /** Order is being prepared */

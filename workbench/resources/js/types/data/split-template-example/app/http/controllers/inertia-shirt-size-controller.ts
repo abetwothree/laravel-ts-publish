@@ -4,7 +4,7 @@ import type { SizeType } from '../../enums';
 
 export type ShowPageProps = Inertia.SharedData & { size: SizeType };
 
-export const show = annotatePageProps<ShowPageProps>()(defineRoute({
+export const show = /* @__PURE__ */ annotatePageProps<ShowPageProps>()(/* @__PURE__ */ defineRoute({
     name: 'shirts.show',
     url: '/shirts/{image}',
     methods: ['get', 'head'] as const,

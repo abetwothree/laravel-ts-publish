@@ -40,7 +40,8 @@ use ReflectionClass;
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
- *      keepsKeys?: bool
+ *      keepsKeys?: bool,
+ *      typedByClass?: true
  * }
  *
  * @internal
@@ -49,6 +50,12 @@ final class ValueResult
 {
     /** The members that send no value of their own: `null`, and the `[]` an enum wrap around null may be sent as. */
     public const array EMPTY_ARMS = ['null', 'never[]'];
+
+    /** The keys of a result that say what the value is, not which classes or keys its printed objects hold. */
+    private const array VALUE_FACTS = [
+        'optional', 'absent', 'removed', 'unnamedKeys', 'listKeys', 'absentReadsNull', 'absentKeys', 'heldObject',
+        'mayHoldObject', 'heldProp', 'returnsCallable', 'closedToDottedKeys', 'resolvedFqcn',
+    ];
 
     /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
     private static array $enumNames = [];
@@ -61,6 +68,16 @@ final class ValueResult
     public static function unknown(): array
     {
         return ['type' => 'unknown', 'optional' => false];
+    }
+
+    /**
+     * The value of a key an arm removes: PHP never sends it, so it prints as a key that may be absent, holding nothing.
+     *
+     * @return ValueExpressionResult
+     */
+    public static function removed(): array
+    {
+        return ['type' => 'never', 'optional' => true, 'removed' => true];
     }
 
     /**
@@ -226,6 +243,10 @@ final class ValueResult
             $result['keepsKeys'] = true;
         }
 
+        if ($attribute['typedByClass'] ?? false) {
+            $result['typedByClass'] = true;
+        }
+
         return $result;
     }
 
@@ -359,6 +380,63 @@ final class ValueResult
 
         return $closed !== null && TsTypeString::withoutNullArm(VisibleGaps::stripped($closed)[0])
             === TsTypeString::withoutNullArm(VisibleGaps::stripped($result['type'])[0]);
+    }
+
+    /**
+     * The result as the one object its literal prints, whatever variants it holds, with that print's own classes, while
+     * its type is still the union printed beside it; else the result as it is. A reader that takes a value's keys back
+     * reads it through this, as the keys follow one object, not each variant's.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function unsplit(array $result): array
+    {
+        $unsplit = $result['unsplit'] ?? null;
+
+        if ($unsplit === null || ! self::isSplit($result)) {
+            return $result;
+        }
+
+        $print = $unsplit['print'];
+        // Facts recorded on the result for the print's own text since it was printed join the print's.
+        $presence = $print['keyPresence'] ?? [];
+
+        foreach ($result['keyPresence'] ?? [] as $object => $facts) {
+            $presence[$object] = [...$presence[$object] ?? [], ...$facts];
+        }
+
+        $read = $print;
+
+        // Only what the value itself is stays from the union: every class and key fact is the print's own.
+        foreach (self::VALUE_FACTS as $fact) {
+            if (array_key_exists($fact, $result)) {
+                $read[$fact] = $result[$fact];
+            }
+        }
+
+        return $presence === [] ? $read : [...$read, 'keyPresence' => $presence];
+    }
+
+    /**
+     * Whether a result is a literal printed one object per variant, each an array PHP holds, while its type is still
+     * that union.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function isSplit(array $result): bool
+    {
+        return ($result['unsplit']['of'] ?? null) === $result['type'];
+    }
+
+    /**
+     * The type a reader that takes a value's keys back reads: its one-object print, as unsplit() reads it.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function unsplitType(array $result): string
+    {
+        return self::unsplit($result)['type'];
     }
 
     /**
@@ -910,6 +988,9 @@ final class ValueResult
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
+        // Never deduped either: aliasTypeofConst() walks it against each `typeof X` an arm's object spells, in order.
+        /** @var list<class-string> $embeddedEnumResourceFqcns the enums nested objects wrap in an enum resource */
+        $embeddedEnumResourceFqcns = [];
         // One queue entry per rendered token, built in branch order because aliasPropertyType() walks it
         // against the rendered type left to right. A whole-branch model is appended in loop position, and
         // deduped: analyzeClosureUnion() collapses branches rendering the same string, leaving no token.
@@ -949,6 +1030,8 @@ final class ValueResult
             if (isset($inner['embeddedEnumFqcns'])) {
                 array_push($embeddedEnumFqcns, ...$inner['embeddedEnumFqcns']);
             }
+
+            array_push($embeddedEnumResourceFqcns, ...$inner['embeddedEnumResourceFqcns'] ?? []);
 
             if (isset($inner['modelFqcn']) && ! in_array($inner['modelFqcn'], $branchModelFqcns, true)) {
                 $branchModelFqcns[] = $inner['modelFqcn'];
@@ -1018,6 +1101,10 @@ final class ValueResult
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
+        }
+
+        if ($embeddedEnumResourceFqcns !== []) {
+            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
         }
 
         if ($embeddedModelFqcns !== []) {

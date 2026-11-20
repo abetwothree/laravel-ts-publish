@@ -14,6 +14,7 @@ import type { MenuSettingsType } from '@js/types/settings';
 import type { PostSnapshot } from '@js/types/snapshots';
 import type { UiAmount, UiDial, UiGauge, UiHello, UiIcon, UiNode, UiToneDto } from '@js/types/ui';
 import type { WidgetConfigType } from '@js/types/widget-config';
+import type { AttachmentResource } from '@js/types/wire';
 import type { CursorPaginator, JsonApiToManyRelationship, JsonApiToOneRelationship, LengthAwarePaginator, SimplePaginator } from '@tolki/types';
 import type { Auditable } from '@/types/audit';
 import type { BaseResource } from '@/types/base';
@@ -22,6 +23,7 @@ import type { HasTimestamps } from '@/types/common';
 import type { GeoBounds, GeoPoint } from '@/types/geo';
 import type { ParentModelInterface } from '@/types/model-parent';
 import type { TraitInterface } from '@/types/model-trait';
+import type { PostPlacementVariants } from '@/types/placement';
 import type { FormRequestBase } from '@/types/requests';
 import type { ResourceRoutes } from '@/types/resources';
 import type { Routable } from '@/types/routing';
@@ -2805,17 +2807,18 @@ declare global {
          * Declares no toArray() of its own — pins that the analyzer walks up to the nearest ancestor
          * that does, rather than emitting an empty interface. Carries its own @mixin.
          */
-        export interface BodylessTeamResource {
+        export type BodylessTeamResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
-            is_active: boolean;
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /** Exercises comparison and boolean operator expressions. */
         export interface BooleanExprResource {
             is_recent: boolean;
@@ -3049,13 +3052,11 @@ declare global {
          * Exercises: self-referencing Resource::make and Resource::collection,
          * when conditional, whenCounted, cross-resource PostResource::collection.
          */
-        export interface CategoryResource {
+        export type CategoryResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
             sort_order: number;
-            is_active: boolean;
             parent?: CategoryResource | null;
             children?: CategoryResource[];
             posts?: PostResource[];
@@ -3073,7 +3074,10 @@ declare global {
             parent_when_resource_self?: CategoryResource | null;
             children_with_default: app.models.Category[];
             posts_with_default: PostResource[];
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /**
          * Regression fixture, two-sided:
          *
@@ -3305,7 +3309,7 @@ declare global {
             null_with_default: string | null;
             not_null_explicit_null_default: string | null;
             not_null_named_default: string | number;
-            not_null_spread_default?: string;
+            not_null_spread_default: string | number;
             when_no_default?: string;
             when_with_default: string | number;
             has_with_default: string | number;
@@ -4966,17 +4970,18 @@ declare global {
          * Singular resource whose ::collection() preserves keys via $preserveKeys — exercises the
          * anonymous (static-collection) Inertia path. Delegates to TeamResource's toArray() shape.
          */
-        export interface PreserveKeysTeamResource {
+        export type PreserveKeysTeamResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
-            is_active: boolean;
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /** Aggregates whose alias the parent model casts: `decimal:2` writes a string, and `timestamp` the Unix integer. */
         export interface ProductAggregateCastResource {
             first_sold_ts?: number | null;
@@ -5806,17 +5811,18 @@ declare global {
          * Exercises: when, whenLoaded + Resource::make, Resource::collection,
          * whenCounted, mergeWhen.
          */
-        export interface TeamResource {
+        export type TeamResource = {
             id: number;
             name: string;
             slug: string;
-            description?: string | null;
-            is_active: boolean;
             owner?: UserResource;
             members?: TeamMemberResource[];
             members_count?: number;
             settings?: Record<string, unknown> | null;
-        }
+        } & (
+            | { description: string | null; is_active: true }
+            | { description?: never; is_active: false }
+        );
         /**
          * A mixed EnumResource/direct-access ternary nested one level down, where both arms read the same
          * list-shaped accessor: they render the same string and the union merge collapses them, so only
@@ -6234,6 +6240,276 @@ declare global {
             data: Store[];
         }
     }
+    export namespace app.http.resources.discriminated {
+        /**
+         * Nested literals whose keys follow a sibling key's value, one condition form per key (GH-157). Each `*_kept` key is
+         * a control that stays one object: its test reads no sibling with a finite set of values, or cannot be decided.
+         */
+        export interface DiscriminantFormsResource {
+            negated: { pinned: true; v: number } | { pinned: false; v: string | null };
+            strict_true: { pinned: true; v: string } | { pinned: false; v: null };
+            strict_false: { pinned: true; v: number } | { pinned: false; v: string | null };
+            case_compare: { status: 0; v: null } | { status: 1; v: string | null };
+            case_not_equal: { status: 0; v: number } | { status: 1; v: string };
+            value_read: { status: 0; v: string | null } | { status: 1; v: number };
+            unit_enum_default: { visibility: 'Public'; v: string } | { visibility: 'Private' | 'Protected' | 'Internal' | 'Draft' | null; v: null };
+            match_true: { status: 0; v: string | null } | { status: 1; v: number };
+            when_dependent: { pinned: true; until: string | null } | { pinned: false; until?: never };
+            when_closure: { pinned: true; until: number } | { pinned: false; until?: never };
+            unless_default: { pinned: true; v: number } | { pinned: false; v: string | null };
+            two_dependents: { a: string; pinned: true; b: null } | { a: null; pinned: false; b: string | null };
+            nested_ternary: { pinned: true; v: string } | { pinned: false; v: string | number | null };
+            two_discriminants: { pinned: true; status: 0; a: string; b: string | null } | { pinned: true; status: 1; a: string; b: number } | { pinned: false; status: 0; a: null; b: string | null } | { pinned: false; status: 1; a: null; b: number };
+            throw_arm: { priority: 0; v: string } | { priority: 2; v: number };
+            shared_keys: { id: number; pinned: true; v: string; title: string } | { id: number; pinned: false; v: number; title: string };
+            cast_discriminant_kept: { pinned: boolean; v: string | null };
+            method_condition_kept: { featured: boolean; v: string | null };
+            unpublished_condition_kept: { id: number; v: string | null };
+            string_discriminant_kept: { title: string; v: number | null };
+            wrapped_discriminant_kept: { status: app.enums.StatusType; v: number | null };
+            optional_discriminant_kept: { pinned?: boolean; v: string | null };
+            undecidable_kept: { pinned: boolean; v: string | null };
+            same_arms_kept: { pinned: boolean; v: number };
+            untypable_arm_kept: { pinned: boolean; v: null };
+        }
+        /**
+         * Literals whose discriminant code changes through what a call dispatches to: parent::unless(), which calls the
+         * when() this resource overrides to unpin the post, and the `tick` get hook TickingResource declares, whose
+         * `self::clearTick()` runs the parent's clearTick(), not the one here. Each literal publishes flat, because PHP can
+         * send a value no arm admits (GH-174).
+         */
+        export interface DispatchOverridesResource {
+            parent_unless: { is_pinned: boolean; note: string; detail: string | null };
+            parent_hook_self: { is_pinned: boolean; tick: boolean; detail: string | null };
+        }
+        /**
+         * Literals whose discriminant a call changes through a binding the write check sees: a reference a string-keyed
+         * unpack hands a parameter before its position, a static call through `$this::`, a callable pair a helper returns
+         * with its keys out of order, and a local handed by reference to an object no scan names. Each literal publishes
+         * flat, because PHP can send a value no arm admits (GH-174).
+         */
+        export interface DispatchWritesResource {
+            named_unpack: { pinned: boolean; reset: boolean; detail: string | null };
+            static_through_this: { pinned: boolean; reset: boolean; detail: string | null };
+            pair_keys_out_of_order: { is_pinned: boolean; reset: boolean; detail: string | null };
+            local_by_reference: { flag: boolean; reset: boolean; detail: string | null };
+        }
+        /** The placement an unpinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
+        export interface FeedPlacementResource {
+            published_at: string | null;
+            rating: string | null;
+        }
+        /**
+         * Literals whose discriminant a write changes between two of its reads, where the write check does not see it yet: a
+         * by-reference argument, a callable a helper calls, a write before a key that drops a value, a call inside an arm, a
+         * get hook, the model handed to a function, helpers that write two levels down or through the model, a closure a
+         * helper calls, the model handed to another class's static method, a local closure's callable a helper calls, and the
+         * resource handed second in a pair.
+         * PHP can send a value no arm admits, so each literal should publish flat (GH-174).
+         */
+        export interface HiddenWritesResource {
+            by_reference: { pinned: boolean; reset: boolean; detail: string | null };
+            by_reference_in_helper: { pinned: boolean; reset: boolean; detail: string | null };
+            callable_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
+            write_before_dropper: { maybe: boolean | null; detail: string | null; reset: boolean; check: string };
+            write_before_dropper_enum: { priority: app.enums.PriorityType | null; detail: string | null; reset: boolean; check: string };
+            call_in_arm: { is_pinned: boolean; changed: string | null; detail: string | null };
+            hooked: { flag: boolean; detail: string | number };
+            handed_model: { is_pinned: boolean; reset: boolean; detail: string | null };
+            two_helpers_down: { is_pinned: boolean; reset: boolean; detail: string | null };
+            helper_fills_model: { is_pinned: boolean; reset: boolean; detail: string | null };
+            closure_in_when: { is_pinned: boolean; cleared?: boolean; detail: string | null };
+            static_writer: { is_pinned: boolean; reset: boolean; detail: string | null };
+            local_callable_in_when: { is_pinned: boolean; cleared: boolean; detail: string | null };
+            pair_holding_subject: { is_pinned: boolean; reset: boolean; detail: string | null };
+        }
+        /**
+         * A top-level literal whose discriminants a call inside an arm writes between two of their reads: `changed` clears
+         * the pin before `detail` reads it, and the arm `level` takes for `null` sets the priority before `check`, which
+         * throws for `null`, reads it. PHP can send a value no arm admits, so the literal publishes flat (GH-174).
+         */
+        export interface HiddenWritesTopResource {
+            is_pinned: boolean;
+            changed: string | null;
+            detail: string | null;
+            priority: app.enums.PriorityType | null;
+            level: string | boolean | null;
+            check: string;
+        }
+        /**
+         * GH-157's escape hatch: the keys publish flat, and a union written by hand is intersected with them, so `is_pinned`
+         * still narrows `placement`.
+         */
+        export type IntersectedPostResource = {
+            id: number;
+            is_pinned: boolean;
+            placement: PinnedPlacementResource | FeedPlacementResource;
+        } & (PostPlacementVariants);
+        /**
+         * Numeric keys in groups that follow a sibling key's value (GH-157): one as a dependent, one as the discriminant, at
+         * the top level and inside a nested literal. Each keeps its quoted name in every arm.
+         */
+        export type NumericKeysResource = {
+            nested: { pinned: true; "0": string; "7": 0; note: string } | { pinned: true; "0": string; "7": 1; note: number } | { pinned: false; "0": null; "7": 0; note: string } | { pinned: false; "0": null; "7": 1; note: number };
+        } & (
+            | { is_pinned: true; "0": string }
+            | { is_pinned: false; "0": null }
+        ) & (
+            | { "7": 0; note: string }
+            | { "7": 1; note: number }
+        );
+        /** The placement a pinned post sends: one arm of PinnedPostResource's discriminated union (GH-157). */
+        export interface PinnedPlacementResource {
+            rank: app.enums.PriorityType | null;
+            pinned_at: string | null;
+        }
+        /**
+         * GH-157's own report: one key's resource follows a boolean the resource also sends, so `is_pinned` should narrow
+         * `placement`.
+         */
+        export type PinnedPostResource = {
+            id: number;
+        } & (
+            | { is_pinned: true; placement: PinnedPlacementResource }
+            | { is_pinned: false; placement: FeedPlacementResource }
+        );
+        /**
+         * Keys a boolean the resource sends picks, whose arms need imports: an enum resource of two enums, two same-named
+         * enums and a resource only one arm sends (GH-157).
+         */
+        export type PinnedWrapsResource =
+            | { is_pinned: true; state: app.enums.StatusType; stage: app.enums.StatusType; author: app.http.resources.UserResource }
+            | { is_pinned: false; state: app.enums.VisibilityType | null; stage: crm.enums.StatusType; author?: never };
+        /**
+         * A nullable enum the resource sends picks two keys: a `match` with grouped cases and a `null` arm, and a `when()`
+         * whose key is present for one case only (GH-157).
+         */
+        export type PostPriorityResource = {
+            id: number;
+        } & (
+            | { priority: 0 | 1; badge: null; escalated_at?: never }
+            | { priority: 2; badge: string; escalated_at?: never }
+            | { priority: 3; badge: app.http.resources.UserResource; escalated_at: string | null }
+            | { priority: null; badge: never[]; escalated_at?: never }
+        );
+        /**
+         * Literals whose keys follow a sibling key's value, read back as keys (GH-157): a helper that writes into one, a
+         * collection, a spread and a key read. Each reads the literal as one object, as it did before the literal split; a
+         * collection of a value that may be null, or either of two literals, holds one item shape per arm.
+         */
+        export interface ReadBackResource {
+            stamped: { pinned: boolean; v: string | null; at: number };
+            stamped_enum: { status: app.enums.StatusType; v: string | null; at: number };
+            stamped_local: { pinned: boolean; v: string | null; at: number };
+            collected: { pinned: boolean; v: string | null };
+            collected_nullable: { pinned: true; v: string } | { pinned: false; v: null } | never[];
+            collected_ternary: { pinned: true; v: string } | { pinned: false; v: null } | never[];
+            collected_all: { pinned: true; v: string } | { pinned: false; v: null } | never[];
+            collected_either: { a: number } | { b: string };
+            spread: { pinned: boolean; v: string | null; x: number };
+            read_pinned: boolean;
+            read_v: string | null;
+        }
+        /**
+         * Literals whose items between a discriminant and its dependents only read: a method of the discriminant's own enum,
+         * model methods the resource forwards, a relation check, a nested resource, a reading helper's callable, a key that
+         * drops a value outside the group, reading calls inside an arm, a helper that reads, the model handed to a URL, a Gate
+         * check and a resource, built with `new` or make(), a static helper, a reading helper's callable handed to
+         * array_map(), when() handed a method's result on another read, a list of class names, an untyped helper's result
+         * handed on, and a callback holding an unused closure that returns `$this`. Nothing changes the discriminant, so
+         * each literal should publish one object per variant (GH-174).
+         */
+        export interface ReadingCallsResource {
+            enum_method: { status: 0; color: string; detail: null } | { status: 1; color: string; detail: string };
+            forwarded_key: { is_pinned: true; key: number; detail: string } | { is_pinned: false; key: number; detail: null };
+            forwarded_key_in_arm: { is_pinned: true; key: number; detail: string } | { is_pinned: false; key: null; detail: null };
+            relation_check: { is_pinned: true; loaded: boolean; detail: string } | { is_pinned: false; loaded: boolean; detail: null };
+            forwarded_check_in_when: { is_pinned: true; author_title?: string; detail: string } | { is_pinned: false; author_title?: string; detail: null };
+            nested_resource: { is_pinned: true; author?: app.http.resources.UserResource; detail: string } | { is_pinned: false; author?: app.http.resources.UserResource; detail: null };
+            reading_callable_in_when: { is_pinned: true; label?: string; detail: string } | { is_pinned: false; label?: string; detail: null };
+            dropper_outside_group: { id: number; priority: 0; detail: string; stage: string } | { id: number; priority: 1 | 2 | 3; detail: null; stage: string };
+            reading_call_in_arm: { is_pinned: true; label: string; detail: string } | { is_pinned: false; label: null; detail: null };
+            reading_helper: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created: string | null; detail: null };
+            url_of_model: { is_pinned: true; url: string; detail: string } | { is_pinned: false; url: string; detail: null };
+            gate_on_model: { is_pinned: true; can_view: boolean; detail: string } | { is_pinned: false; can_view: boolean; detail: null };
+            resource_of_model: { is_pinned: true; card: app.http.resources.PostResource; detail: string } | { is_pinned: false; card: app.http.resources.PostResource; detail: null };
+            resource_of_model_make: { is_pinned: true; card: app.http.resources.PostResource; detail: string } | { is_pinned: false; card: app.http.resources.PostResource; detail: null };
+            callable_to_map: { is_pinned: true; labels: string[]; detail: string } | { is_pinned: false; labels: string[]; detail: null };
+            when_value_of_another_read: { is_pinned: true; created: string | null; detail: string } | { is_pinned: false; created?: never; detail: null };
+            class_list_check: { is_pinned: true; is_post: boolean; detail: string } | { is_pinned: false; is_post: boolean; detail: null };
+            untyped_helper_handed: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
+            static_reader: { is_pinned: true; shout: string; detail: string } | { is_pinned: false; shout: string; detail: null };
+            nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
+        }
+        /**
+         * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
+         * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
+         * another text, and a shared key beside a dependent's nested enum (GH-157).
+         */
+        export interface SwappedEnumsResource {
+            priority: app.enums.PriorityType | null;
+            stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } | { primary: crm.enums.StatusType; secondary: app.enums.StatusType } | null;
+            meta: { priority: app.enums.PriorityType | null; stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } | { primary: crm.enums.StatusType; secondary: app.enums.StatusType; extra: boolean } | null };
+            shared: { status: app.enums.StatusType; is_pinned: boolean; lead: { stage: crm.enums.StatusType } | null };
+        }
+        /**
+         * Arms that spell one text, each binding the two same-named resources in the other order: Low and Medium stay apart,
+         * at the top level and nested (GH-157).
+         */
+        export type SwappedResourcesResource = {
+            meta: { priority: 0; pair: { primary: app.http.resources.UserResource; secondary: crm.http.resources.UserResource } } | { priority: 1; pair: { primary: crm.http.resources.UserResource; secondary: app.http.resources.UserResource } } | { priority: 2 | 3 | null; pair: null };
+        } & (
+            | { priority: 0; pair: { primary: app.http.resources.UserResource; secondary: crm.http.resources.UserResource } }
+            | { priority: 1; pair: { primary: crm.http.resources.UserResource; secondary: app.http.resources.UserResource } }
+            | { priority: 2 | 3 | null; pair: null }
+        );
+        /**
+         * Literals whose read an item between its keys writes where the literal cannot see it: a helper's body, the model
+         * through `$this->resource`, and a `->` write of a `?->` read. Each stays flat, while a helper writing nothing keeps
+         * its literal split (GH-157).
+         */
+        export interface UnseenWritesResource {
+            by_helper: { is_pinned: boolean; reset: boolean; title: string | null };
+            by_proxy: { is_pinned: boolean; reset: boolean; title: string | null };
+            by_arrow: { enabled: boolean | null; off: boolean; title: string | null };
+            by_reader: { is_pinned: true; label: string; title: string } | { is_pinned: false; label: string; title: null };
+        }
+        /**
+         * Enum resources inside literals that print one object per arm (GH-157): beside a group, as a group's arm, two in its
+         * arms, beside a same-named enum read directly, and in a ternary of two literals. Each wrap keeps its value import.
+         */
+        export interface WrapArmsResource {
+            beside_group: { pinned: true; until: string | null; status: app.enums.StatusType } | { pinned: false; until?: never; status: app.enums.StatusType };
+            in_arm: { pinned: true; e: app.enums.StatusType } | { pinned: false; e: null };
+            two_wraps: { pinned: true; e: app.enums.StatusType } | { pinned: false; e: app.enums.VisibilityType | null };
+            beside_same_named: { pinned: true; e: app.enums.StatusType; c: crm.enums.StatusType; v: number } | { pinned: false; e: app.enums.StatusType; c: crm.enums.StatusType; v: null };
+            literals_ternary: { e: app.enums.StatusType; x: number } | { e: null; x: string };
+        }
+        /**
+         * Keys whose arms send one enum wrapped in an enum resource for one value and read directly for another (GH-157):
+         * each value keeps its own arm, at the top level, in a nested literal and with the arms written in another order.
+         */
+        export type WrapOrReadResource = {
+            reordered: { priority: 0; status: app.enums.StatusType; tally: number } | { priority: 1; status: app.enums.StatusType; tally: number } | { priority: 2 | 3 | null; status: null; tally: string };
+        } & (
+            | { priority: 0; status: app.enums.StatusType; tally: number }
+            | { priority: 1; status: app.enums.StatusType; tally: number }
+            | { priority: 2 | 3 | null; status: null; tally: string }
+        ) & (
+            | { is_pinned: true; stage: app.enums.StatusType }
+            | { is_pinned: false; stage: app.enums.StatusType }
+        );
+        /**
+         * Typed properties PHP holds as objects whose override types them as scalars: a guard tests the object, not what
+         * json_encode() writes, so neither is a discriminant and every key publishes flat (GH-157).
+         */
+        export interface WrappedFlagResource {
+            flag: boolean;
+            flag_title: string | null;
+            mode: 'on' | 'off';
+            mode_title: string | null;
+        }
+    }
     export namespace app.http.resources.jsonApi {
         /** A JSON:API resource whose attributes come from a toAttributes() override, one of them conditional. */
         export interface AttributesPostResource {
@@ -6355,6 +6631,15 @@ declare global {
             type: 'variable_attributes_posts';
             attributes: { title: string; word_count: number | null; content?: string; is_long: boolean };
         }
+        /**
+         * A JSON:API resource whose class cast keeps the text inference gives an attribute the priority picks, but imports its
+         * class from elsewhere: the attributes publish flat, with the cast's class (GH-157).
+         */
+        export interface WireAttachmentPostResource {
+            id: string;
+            type: 'wire_attachment_posts';
+            attributes: { priority: app.enums.PriorityType | null; attachment: AttachmentResource | null };
+        }
     }
     export namespace app.http.resources.reportCards {
         /** Lives under a multi-word namespace segment, which the globals file must spell as an identifier. */
@@ -6392,7 +6677,7 @@ declare global {
          * whenLoaded bare (cross-module App\User as author), whenNotNull, whenCounted,
          * whenAggregated, when conditional with direct property.
          */
-        export interface ArticleResource {
+        export type ArticleResource = {
             id: number;
             title: string;
             slug: string;
@@ -6400,15 +6685,16 @@ declare global {
             body: string;
             status: blog.enums.ArticleStatusType;
             content_type: blog.enums.ContentTypeType;
-            is_featured: boolean;
-            featured_image?: string | null;
             meta_description?: string;
             published_at?: string;
             author?: app.models.User;
             reactions?: ReactionResource[];
             reactions_count?: number;
             reactions_avg?: number;
-        }
+        } & (
+            | { is_featured: true; featured_image: string | null }
+            | { is_featured: false; featured_image?: never }
+        );
         /**
          * Exercises: multiple whenLoaded bare — both same-module (Article)
          * and cross-module (App\User) model type resolution.
@@ -6446,21 +6732,22 @@ declare global {
          * resource wrapping with colliding resource names, dual EnumResource::make,
          * both same-named consts wrapped again inside one inline object (status_pair).
          */
-        export interface DealResource {
+        export type DealResource = {
             id: number;
             title: string;
             value: string;
             status: app.enums.StatusType;
             status_enum: app.enums.StatusType;
-            crm_status: crm.enums.StatusType;
             crm_enum: crm.enums.StatusType;
             status_pair: { app: app.enums.StatusType; crm: crm.enums.StatusType };
             customer?: crm.models.User;
             admin?: app.models.User;
             customer_resource?: UserResource;
             admin_resource?: app.http.resources.UserResource;
-            closed_at?: string | null;
-        }
+        } & (
+            | { crm_status: 'lead' | 'prospect' | 'active'; closed_at?: never }
+            | { crm_status: 'churned'; closed_at: string | null }
+        );
         export interface UserResource {
             id: number;
             name: string;

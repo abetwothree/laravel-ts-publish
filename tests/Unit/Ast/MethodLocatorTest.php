@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InheritedHookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\AliasedHelperController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOfParentOwnedMethod;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ChildOverridesParentWithTrait;
@@ -17,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesInsteadofTraits;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesLabelledTrait;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UsesNestedTraitAlias;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
+use PhpParser\PrettyPrinter\Standard;
 use Workbench\App\Http\Resources\BodylessTeamResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\TraitShapedChildResource;
@@ -275,3 +278,23 @@ it('keeps a class\'s own method over the trait alias of its name', function () u
     expect($literal($locator->locate(ShadowsTraitAlias::class, 'tag')))->toBe('own')
         ->and($literal($locator->locateOwn(ShadowsTraitAlias::class, 'tag')))->toBe('own');
 });
+
+it('locates the hook a property runs, by the last line reflection reports for it', function (
+    string $class,
+    string $property,
+    PropertyHookType $type,
+    ?string $returns,
+) {
+    $statements = new MethodLocator(new AstParser)->locateHook($class, $property, $type)?->getStmts();
+    $first = $statements[0] ?? null;
+
+    expect($first === null ? null : new Standard()->prettyPrint([$first]))->toBe($returns);
+})->with([
+    'a get hook' => [HookedProperties::class, 'reads', PropertyHookType::Get, 'return 1;'],
+    'a set hook, assigning its property' => [HookedProperties::class, 'writes', PropertyHookType::Set, '$this->writes = strtolower($value);'],
+    'a get hook an attribute marks' => [HookedProperties::class, 'marked', PropertyHookType::Get, 'return 2;'],
+    'an inherited get hook' => [InheritedHookedProperties::class, 'reads', PropertyHookType::Get, 'return 1;'],
+    'a kind the property lacks' => [HookedProperties::class, 'reads', PropertyHookType::Set, null],
+    'a property with no hook' => [HookedProperties::class, 'plain', PropertyHookType::Get, null],
+    'a property the class lacks' => [HookedProperties::class, 'missing', PropertyHookType::Get, null],
+]);

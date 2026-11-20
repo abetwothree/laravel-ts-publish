@@ -38,6 +38,7 @@ use UnitEnum;
  *     revalued: bool,
  * }
  * @phpstan-type AbsorbRules = array{AliasLiterals, bool}
+ * @phpstan-type CaseLiterals = array<string, int|string>
  *
  * @internal
  */
@@ -205,6 +206,20 @@ final class EnumValueTypes
         }
 
         return array_diff_key(array_intersect_key($admitted, $usable), array_flip($takenNames));
+    }
+
+    /**
+     * Each case's name beside the scalar one alias of the enum spells it with, in case order; null for an alias
+     * ownAliasLiterals() leaves out: one aliasUsable() rules out, or one the enum does not publish.
+     *
+     * @return CaseLiterals|null
+     */
+    public static function caseLiterals(string $enum, string $alias): ?array
+    {
+        $scalars = self::ownAliasLiterals($enum)[$alias] ?? null;
+        $cases = self::cases($enum);
+
+        return $scalars === null || $cases === null ? null : array_combine($cases['names'], $scalars);
     }
 
     /**

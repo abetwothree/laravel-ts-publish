@@ -1,7 +1,7 @@
 import { defineEnum } from '@tolki/ts';
 
 /** @see Workbench\App\Enums\Role */
-export const Role = defineEnum({
+export const Role = /* @__PURE__ */ defineEnum({
     Admin: 'Admin',
     User: 'User',
     Guest: 'Guest',

@@ -14,17 +14,20 @@ folder by role, and a new class joins the folder whose role it shares:
 | Folder | Holds |
 | --- | --- |
 | `Analysis/` | One analysis's state: the scope, the `MethodAnalysis` DTO, the run memo and the dropped-arm record; and the write and fill scans a body's seeding reads |
-| `Calls/` | Reading a call: its arguments, parameter binding, by-reference writes and macros |
+| `Calls/` | Reading a call: its arguments, an unpacked literal's among them, parameter binding, by-reference writes, callable arrays and macros |
 | `Composition/` | Turning a finished analysis into published types and imports, `#[TsCasts]` included, and merging a key with its method's `@return` (`ReturnShape/`) |
 | `Concerns/`, `Contracts/` | Shared traits, grouped by what they read (`Narrowing/`, `Collections/`, `Callbacks/`, `Models/`, `Resources/`, `Bodies/`), and the handler and engine interfaces |
 | `Dispatch/` | The dispatcher and its ordered handler profiles |
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
+| `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]) and a discriminant's read ([`InterveningWrites`]), which share the code `Trust/` knows only reads. For a discriminant: what a callable value may run ([`ClosureReach`], [`ValueUse`]), the method a callable names ([`CallableTargets`]), the `$this` method and hook bodies read, three levels deep and once a run ([`BodyReads`]), and property hooks and model set mutators ([`PropertyHooks`]) |
+| `Effects/Trust/` | What the write checks trust to only read: the framework calls they know ([`ReadOnlyCalls`]), and a resource helper or Eloquent reader walked as the runtime class dispatches it ([`FrameworkDispatch`]), by its family's rules ([`FrameworkFamily`], [`LiteralGetter`]): [Variants § The dispatch walk](variants.md#the-dispatch-walk) |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
 | `Receivers/` | Which class an expression holds, and the methods called on it |
 | `Resources/` | API resource facts: backing model, collections, response body and extras, resolved body, JSON:API |
 | `Values/` | Value results and the readers that type a value: constants, reflection, aggregates |
+| `Variants/` | The keys of one literal that follow a sibling key's value, read and printed one object per variant: [Variants](variants.md) |
 
 These are the classes a change to the engine usually touches:
 
@@ -527,7 +530,8 @@ bound by reference, a by-reference destructuring included, or to any local once 
 `include`, `extract()`, a variable variable), and a write or `unset()` through another `$this` chain of a member the
 tested chain reads through (`mayShareObject()`), since two chains can hold one object, end its proof, and so does every
 call `safeCall()` does not know to be safe, a call naming the subject's own or an ancestor's class among them
-(`bindsThis()`). A closure argument counts by its whole body; the first parameter of a helper callback handed a member
+(`bindsThis()`). `safeCall()` takes the framework calls it knows from [`ReadOnlyCalls`], which [`InterveningWrites`]
+shares. A closure argument counts by its whole body; the first parameter of a helper callback handed a member
 of the resource reads as that member's chain (`handedMember()`). Only a write through the chain itself keeps it, by
 `keepsProvenClass()`'s rule. On an API resource a chain the subject does not declare reads through `$this->resource`. An
 `if` proof on a chain no class names reads as its classes, guarded, so no conditional guess publishes.
@@ -768,7 +772,7 @@ member that does not exist yet still records its class. The readers are `Receive
 `ReceiverMemberReader::classes()`, `LaravelTsPublish::toTsType()` and its three member readers,
 `StringSerialization::jsonStringType()`,
 `ModelAttributeResolver`'s contexts and caster reads, `ModelAttributeResolver::subclassKeyTsType()`, which records every
-published model, `ByReferenceArguments` for the class whose method it reads by-reference parameters from, and
+published model, `ByReferenceArguments` for the class or user function file it reads by-reference parameters from, and
 `MacroCallResolver::reflect()`, which records the file that declares a closure or function macro. A cache in front of
 such a read records before its lookup, or replays what it recorded, as `resolveAttributeClass()` and
 `TypeAliases::find()`, which reads each class an alias import names, do. Recording never
@@ -935,8 +939,9 @@ left out: `$this->resource` read whole under its own `instanceof` proof, as the 
 leaves the ternary `unknown`.
 
 Recording is off until a test calls `start()`, but the count always runs. `AccessorBodyAnalyzer` and `VariableHandler`
-compare it around a read to tell a dropped arm's `null` from a literal one, and `AnalysisMemo` replays it for a reused
-answer.
+compare it around a read to tell a dropped arm's `null` from a literal one, `AnalysisMemo` replays it for a reused
+answer, and `VariantReader` declines a group whose arm reads grew it
+([Variants § Where a group declines](variants.md#where-a-group-declines)).
 
 Each site hands its union and each arm it left out, paired with its site, to `DroppedUnionArms::leftOut()`, which
 records each arm. Where a drop leaves the union only `null` and/or `never[]`, it adds one run-output warning per arm
@@ -1126,6 +1131,7 @@ These pages cover the engine's neighbors:
 
 - [Receiver types](receiver-types.md): how the engine names the class a `$x->m()` or `$x->prop` receiver holds.
 - [ResourceAstAnalyzer](resource-ast-analyzer.md): the resource-specific rules the handlers implement.
+- [Variants](variants.md): the keys of a literal that follow a sibling key's value, printed one object per variant.
 - [AccessorBodyAnalyzer](accessor-body-analyzer.md) and [Model metadata](model-metadata.md): the two model-side
   consumers.
 - [ImportNameRegistry](import-name-registry.md): aliasing two same-basename imports.
@@ -1145,20 +1151,29 @@ These pages cover the engine's neighbors:
 [`ArrayArm`]: ../../src/Ast/Members/ArrayArm.php
 [`AstEngine`]: ../../src/Ast/AstEngine.php
 [`AstParser`]: ../../src/Ast/Parsing/AstParser.php
+[`BodyReads`]: ../../src/Ast/Effects/BodyReads.php
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
+[`CallableTargets`]: ../../src/Ast/Effects/CallableTargets.php
+[`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Values/EnumValueTypes.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
+[`FrameworkDispatch`]: ../../src/Ast/Effects/Trust/FrameworkDispatch.php
+[`FrameworkFamily`]: ../../src/Ast/Effects/Trust/FrameworkFamily.php
+[`InterveningWrites`]: ../../src/Ast/Effects/InterveningWrites.php
+[`LiteralGetter`]: ../../src/Ast/Effects/Trust/LiteralGetter.php
 [`MethodAnalysis`]: ../../src/Ast/Analysis/MethodAnalysis.php
 [`MethodLocator`]: ../../src/Ast/Parsing/MethodLocator.php
 [`ParameterBinder`]: ../../src/Ast/Calls/ParameterBinder.php
 [`PaginatorSteps`]: ../../src/Ast/Receivers/PaginatorSteps.php
 [`ParentCallChain`]: ../../src/Ast/Parsing/ParentCallChain.php
+[`PropertyHooks`]: ../../src/Ast/Effects/PropertyHooks.php
 [`PropertyWriteSites`]: ../../src/Ast/Members/PropertyWriteSites.php
+[`ReadOnlyCalls`]: ../../src/Ast/Effects/Trust/ReadOnlyCalls.php
 [`Reading`]: ../../src/Ast/Analysis/Reading.php
 [`ReadsReturnedVariables`]: ../../src/Ast/Concerns/Bodies/ReadsReturnedVariables.php
 [`RedundantArms::admits()`]: ../../src/Support/TypeStrings/RedundantArms.php
@@ -1170,7 +1185,8 @@ These pages cover the engine's neighbors:
 [`ReturnLiteralReader`]: ../../src/Ast/Parsing/ReturnLiteralReader.php
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
-[`ThisPathWrites`]: ../../src/Ast/Analysis/ThisPathWrites.php
+[`ThisPathWrites`]: ../../src/Ast/Effects/ThisPathWrites.php
+[`ValueUse`]: ../../src/Ast/Effects/ValueUse.php
 [`VisibleGaps`]: ../../src/Support/TypeStrings/VisibleGaps.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
 [attribute-filters]: resource-ast-analyzer.md#attribute-filters-on-any-model-receiver

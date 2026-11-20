@@ -18,6 +18,7 @@ use Workbench\App\Http\Controllers\ExcludedController;
 use Workbench\App\Http\Controllers\InertiaAddressController;
 use Workbench\App\Http\Controllers\InertiaCallablePropsController;
 use Workbench\App\Http\Controllers\InertiaController;
+use Workbench\App\Http\Controllers\InertiaDiscriminatedController;
 use Workbench\App\Http\Controllers\InertiaEnumCaseController;
 use Workbench\App\Http\Controllers\InertiaEnumResourceController;
 use Workbench\App\Http\Controllers\InertiaFacilityController;
@@ -130,6 +131,8 @@ Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->n
 Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 Route::get('/posts/{post}/enum-case', [InertiaEnumCaseController::class, 'show'])->name('posts.enum-case');
 Route::get('/posts/{post}/redundant-arms', [InertiaRedundantArmsController::class, 'show'])->name('posts.redundant-arms');
+Route::get('/posts/{post}/discriminated', [InertiaDiscriminatedController::class, 'show'])->name('posts.discriminated');
+Route::get('/posts/{post}/discriminated/read-back', [InertiaDiscriminatedController::class, 'readBack'])->name('posts.discriminated.read-back');
 Route::get('/deals/{deal}/same-named-enums', [InertiaSameNamedEnumsController::class, 'pair'])->name('deals.same-named-enums');
 Route::get('/deals/{deal}/same-named-enum-names', [InertiaSameNamedEnumsController::class, 'names'])->name('deals.same-named-enum-names');
 Route::get('/enum-resources/statuses', [InertiaEnumResourceController::class, 'index'])->name('enum-resources.statuses');

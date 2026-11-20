@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\LiteralKindPostResource;
 use AbeTwoThree\LaravelTsPublish\Writers\GlobalsWriter;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\View as ViewInstance;
 use Workbench\App\Enums\Status;
@@ -524,6 +525,10 @@ test('the globals template qualifies each name through its own transformer\'s ma
 
         public array $properties = ['widget' => ['type' => 'PropertyName', 'description' => '', 'optional' => false]];
 
+        public array $variants = [];
+
+        public array $intersections = [];
+
         public function globalTypeReferenceMap(): array
         {
             return ['PropertyName' => 'own.elsewhere.PropertyName'];
@@ -655,3 +660,91 @@ test('reads two composed classes of one name as the first in the globals file, a
         ->and(array_column(AnalysisWarnings::all(), 'message', 'subject')[UiTwoChartsResource::class] ?? '')
         ->toContain('reads them all as ['.Chart::class.']');
 });
+
+test('the globals file publishes a resource\'s arms as a type, each arm qualified as a property is', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = new GlobalsWriter(new Filesystem)->write($runner);
+
+    expect($content)->toContain(<<<'TS'
+                export type PinnedPostResource = {
+                    id: number;
+                } & (
+                    | { is_pinned: true; placement: PinnedPlacementResource }
+                    | { is_pinned: false; placement: FeedPlacementResource }
+                );
+        TS)
+        ->toContain(<<<'TS'
+                export type PinnedWrapsResource =
+                    | { is_pinned: true; state: workbench.app.enums.StatusType; stage: workbench.app.enums.StatusType; author: workbench.app.http.resources.UserResource }
+                    | { is_pinned: false; state: workbench.app.enums.VisibilityType | null; stage: workbench.crm.enums.StatusType; author?: never };
+        TS)
+        ->not->toContain('export interface PinnedPostResource');
+});
+
+test('the globals file publishes a resource intersected with a type as a type, the type last and imported once', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $content = new GlobalsWriter(new Filesystem)->write($runner);
+
+    expect(substr_count($content, "import type { PostPlacementVariants } from '@/types/placement';"))->toBe(1)
+        ->and($content)->toContain(<<<'TS'
+                export type IntersectedPostResource = {
+                    id: number;
+                    is_pinned: boolean;
+                    placement: PinnedPlacementResource | FeedPlacementResource;
+                } & (PostPlacementVariants);
+        TS)
+        ->not->toContain('export interface IntersectedPostResource');
+});
+
+test('the globals file warns once of a published template that prints no variants, and still publishes through it', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    $published = publishPackageView('globals', __DIR__.'/../../views/globals-published-before-variants.blade.php');
+
+    try {
+        $runner = resolve(Runner::class);
+        $runner->run();
+        $content = new GlobalsWriter(new Filesystem)->write($runner);
+    } finally {
+        File::deleteDirectory(dirname($published));
+    }
+
+    $warnings = array_values(array_filter(AnalysisWarnings::all(), fn (array $warning): bool => $warning['subject'] === $published));
+
+    expect($warnings)->toHaveCount(1)
+        ->and($warnings[0]['message'])->toContain('variants')->toContain('--tag=laravel-ts-publish-views')
+        ->and($content)->toContain("        export interface PinnedPostResource {\n            id: number;\n        }\n");
+});
+
+test('the globals file does not warn of the package\'s own template, or of a published copy that prints variants', function (bool $publish) {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+    $published = $publish ? publishPackageView('globals', __DIR__.'/../../../resources/views/globals.blade.php') : null;
+
+    try {
+        $runner = resolve(Runner::class);
+        $runner->run();
+        $content = new GlobalsWriter(new Filesystem)->write($runner);
+    } finally {
+        if ($published !== null) {
+            File::deleteDirectory(dirname($published));
+        }
+    }
+
+    expect(array_filter(array_column(AnalysisWarnings::all(), 'subject'), fn (string $subject): bool => str_ends_with($subject, '.blade.php')))
+        ->toBe([])
+        ->and($content)->toContain('        export type PinnedPostResource = {');
+})->with([
+    'the package\'s own' => false,
+    'a published copy' => true,
+]);

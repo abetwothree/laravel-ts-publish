@@ -73,11 +73,11 @@ test('route writer generates export const for each action', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
 
     expect($generator->content)
-        ->toContain('export const index = defineRoute(')
-        ->toContain('export const show = defineRoute(')
-        ->toContain('export const store = annotateRequestPayload<StorePostRequest>()(defineRoute(')
-        ->toContain('export const update = annotateRequestPayload<UpdatePostRequest>()(defineRoute(')
-        ->toContain('export const destroy = defineRoute(');
+        ->toContain('export const index = /* @__PURE__ */ defineRoute(')
+        ->toContain('export const show = /* @__PURE__ */ defineRoute(')
+        ->toContain('export const store = /* @__PURE__ */ annotateRequestPayload<StorePostRequest>()(/* @__PURE__ */ defineRoute(')
+        ->toContain('export const update = /* @__PURE__ */ annotateRequestPayload<UpdatePostRequest>()(/* @__PURE__ */ defineRoute(')
+        ->toContain('export const destroy = /* @__PURE__ */ defineRoute(');
 });
 
 test('route writer includes route URL in output', function () {
@@ -181,7 +181,7 @@ test('pure invokable controller references the invoke export as the default', fu
     $generator = resolve(RouteGenerator::class, ['findable' => InvokableController::class]);
 
     expect($generator->content)
-        ->toContain('export const invoke = defineRoute(')
+        ->toContain('export const invoke = /* @__PURE__ */ defineRoute(')
         ->toContain('const InvokableController = invoke;')
         ->toContain('export default InvokableController;')
         ->not->toContain("'__invoke'");
@@ -191,7 +191,7 @@ test('named invokable controller references the invoke export as the default', f
     $generator = resolve(RouteGenerator::class, ['findable' => NamedInvokableController::class]);
 
     expect($generator->content)
-        ->toContain('export const invoke = defineRoute(')
+        ->toContain('export const invoke = /* @__PURE__ */ defineRoute(')
         ->toContain("name: 'named.invokable'")
         ->toContain('const NamedInvokableController = invoke;')
         ->toContain('export default NamedInvokableController;');
@@ -201,10 +201,10 @@ test('invokable-plus controller wraps the invoke export with Object.assign', fun
     $generator = resolve(RouteGenerator::class, ['findable' => InvokableModelBoundPlusController::class]);
 
     expect($generator->content)
-        ->toContain('export const invoke = defineRoute(')
-        ->toContain('export const extra = defineRoute(')
-        ->toContain('export const surprise = defineRoute(')
-        ->toContain('const InvokableModelBoundPlusController = Object.assign(invoke, {')
+        ->toContain('export const invoke = /* @__PURE__ */ defineRoute(')
+        ->toContain('export const extra = /* @__PURE__ */ defineRoute(')
+        ->toContain('export const surprise = /* @__PURE__ */ defineRoute(')
+        ->toContain('const InvokableModelBoundPlusController = /* @__PURE__ */ Object.assign(invoke, {')
         ->toContain('    extra,')
         ->toContain('    surprise,')
         ->toContain('export default InvokableModelBoundPlusController;')
@@ -266,8 +266,8 @@ test('route writer does not emit reserved keyword as const name', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => DeleteController::class]);
 
     expect($generator->content)
-        ->toContain('export const deleteMethod = defineRoute(')
-        ->toContain('export const exportMethod = defineRoute(')
+        ->toContain('export const deleteMethod = /* @__PURE__ */ defineRoute(')
+        ->toContain('export const exportMethod = /* @__PURE__ */ defineRoute(')
         ->not->toContain('export const delete ')
         ->not->toContain('export const export ');
 });
@@ -525,7 +525,7 @@ test('route output emits annotatePageProps annotation for single-component no-ar
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
 
     expect($generator->content)
-        ->toContain('export const dashboard = annotatePageProps<DashboardPageProps>()(defineRoute({')
+        ->toContain('export const dashboard = /* @__PURE__ */ annotatePageProps<DashboardPageProps>()(/* @__PURE__ */ defineRoute({')
         ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
 });
 
@@ -649,7 +649,7 @@ test('route output emits annotatePageProps with union type for multi-component i
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
 
     expect($generator->content)
-        ->toContain('export const conditional = annotatePageProps<ConditionalAuthenticatedPageProps | ConditionalGuestPageProps>()(defineRoute({')
+        ->toContain('export const conditional = /* @__PURE__ */ annotatePageProps<ConditionalAuthenticatedPageProps | ConditionalGuestPageProps>()(/* @__PURE__ */ defineRoute({')
         ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
 });
 
@@ -691,7 +691,7 @@ test('route output emits annotatePageProps for inertia route with args', functio
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaController::class]);
 
     expect($generator->content)
-        ->toContain('export const post = annotatePageProps<PostPageProps>()(defineRoute({')
+        ->toContain('export const post = /* @__PURE__ */ annotatePageProps<PostPageProps>()(/* @__PURE__ */ defineRoute({')
         ->toContain("import { defineRoute, annotatePageProps } from '@tolki/ts'");
 });
 
@@ -845,7 +845,7 @@ test('route writer wraps verify action with annotateRequestPayload<VerifyTwoFact
     $generator = resolve(RouteGenerator::class, ['findable' => TwoFactorController::class]);
 
     expect($generator->content)
-        ->toContain('export const verify = annotateRequestPayload<VerifyTwoFactorRequest>()(defineRoute(');
+        ->toContain('export const verify = /* @__PURE__ */ annotateRequestPayload<VerifyTwoFactorRequest>()(/* @__PURE__ */ defineRoute(');
 });
 
 test('route writer includes VerifyTwoFactorRequest import type for TwoFactorController', function () {
@@ -860,16 +860,16 @@ test('route writer does not wrap setup action with annotateRequestPayload', func
 
     // setup is a GET with no FormRequest — must use plain defineRoute, not annotateRequestPayload
     expect($generator->content)
-        ->toContain('export const setup = defineRoute(')
-        ->not->toContain('export const setup = annotateRequestPayload');
+        ->toContain('export const setup = /* @__PURE__ */ defineRoute(')
+        ->not->toContain('export const setup = /* @__PURE__ */ annotateRequestPayload');
 });
 
 test('route writer index action uses plain defineRoute without annotateRequestPayload', function () {
     $generator = resolve(RouteGenerator::class, ['findable' => PostController::class]);
 
     expect($generator->content)
-        ->toContain('export const index = defineRoute(')
-        ->not->toContain('index = annotateRequestPayload');
+        ->toContain('export const index = /* @__PURE__ */ defineRoute(')
+        ->not->toContain('index = /* @__PURE__ */ annotateRequestPayload');
 });
 
 test('route writer controller with no FormRequest has no import type statement', function () {
@@ -899,7 +899,7 @@ test('route writer combined Inertia and FormRequest wraps store with nested anno
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
 
     expect($generator->content)
-        ->toContain('export const store = annotateRequestPayload<StorePostRequest>()(annotatePageProps<StorePageProps>()(defineRoute(')
+        ->toContain('export const store = /* @__PURE__ */ annotateRequestPayload<StorePostRequest>()(/* @__PURE__ */ annotatePageProps<StorePageProps>()(/* @__PURE__ */ defineRoute(')
         ->toContain('})));')
         ->not->toContain('}));')
         ->toContain("import type { StorePostRequest } from '../requests/store-post-request';")
@@ -927,8 +927,38 @@ test('route writer combined create action with no request and Inertia pageType u
     $generator = resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class]);
 
     expect($generator->content)
-        ->toContain('export const create = annotatePageProps<CreatePageProps>()(defineRoute(')
-        ->not->toContain('create = annotateRequestPayload');
+        ->toContain('export const create = /* @__PURE__ */ annotatePageProps<CreatePageProps>()(/* @__PURE__ */ defineRoute(')
+        ->not->toContain('create = /* @__PURE__ */ annotateRequestPayload');
+});
+
+test('route writer marks every helper call pure, each call of a curried chain included', function () {
+    config()->set('ts-publish.inertia.enabled', true);
+
+    $mockAnalyzer = Mockery::mock(InertiaPageAnalyzer::class);
+    $mockAnalyzer->shouldReceive('analyze')
+        ->andReturnUsing(fn (array $action): ?array => match (true) {
+            str_contains((string) $action['uses'], 'InertiaFormRequestController@create') => [
+                'component' => 'InertiaFormRequest/Create',
+                'pageType' => 'Inertia.SharedData',
+                'classFqcns' => [],
+            ],
+            str_contains((string) $action['uses'], 'InertiaFormRequestController@store') => [
+                'component' => 'InertiaFormRequest/Success',
+                'pageType' => 'Inertia.SharedData & { title: string }',
+                'classFqcns' => [],
+            ],
+            default => null,
+        });
+    app()->instance(InertiaPageAnalyzer::class, $mockAnalyzer);
+
+    // Plain and request-only shapes live in PostController, page-only and nested in InertiaFormRequestController.
+    $content = resolve(RouteGenerator::class, ['findable' => PostController::class])->content
+        .resolve(RouteGenerator::class, ['findable' => InertiaFormRequestController::class])->content;
+
+    foreach (['defineRoute(' => 7, 'annotatePageProps<' => 2, 'annotateRequestPayload<' => 3] as $call => $count) {
+        expect(substr_count($content, $call))->toBe($count, "{$call} total")
+            ->and(substr_count($content, '/* @__PURE__ */ '.$call))->toBe($count, "{$call} marked");
+    }
 });
 
 test('route output emits Inertia UI Table page prop imports and annotation', function () {
@@ -957,7 +987,7 @@ test('route output emits Inertia UI Table page prop imports and annotation', fun
         ->toContain("import type { TableResource } from '@inertiaui/table-vue';")
         ->toContain("import type { Post } from '../../models';")
         ->toContain('export type DashboardPageProps = Inertia.SharedData & { posts: TableResource<Post> };')
-        ->toContain('annotatePageProps<DashboardPageProps>()(defineRoute(');
+        ->toContain('annotatePageProps<DashboardPageProps>()(/* @__PURE__ */ defineRoute(');
 });
 
 test('route writer renders multi-line controller description with * prefix on each line', function () {

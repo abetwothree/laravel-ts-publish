@@ -249,3 +249,43 @@ test('json models list a column, an append and a mutator a relation shares once,
         ->and($parcel->where('name', 'sender')->pluck('type')->all())->toBe(['User'])
         ->and($post->where('name', 'author')->pluck('type')->all())->toBe(['User']);
 });
+
+test('json resources list a resource\'s arms beside its shared keys', function () {
+    config()->set('ts-publish.json.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $decoded = json_decode(new JsonWriter(new Filesystem)->write($runner), true);
+
+    expect($decoded['resources']['Workbench\App\Http\Resources\Discriminated\PinnedPostResource'])->toBe([
+        'name' => 'PinnedPostResource',
+        'properties' => [['name' => 'id', 'type' => 'number', 'optional' => false]],
+        'variants' => [
+            '{ is_pinned: true; placement: PinnedPlacementResource } | { is_pinned: false; placement: FeedPlacementResource }',
+        ],
+    ])->and($decoded['resources']['Workbench\App\Http\Resources\Discriminated\PinnedPlacementResource'])
+        ->not->toHaveKey('variants');
+});
+
+test('json resources list the types a resource is intersected with beside its keys', function () {
+    config()->set('ts-publish.json.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    $decoded = json_decode(new JsonWriter(new Filesystem)->write($runner), true);
+
+    expect($decoded['resources']['Workbench\App\Http\Resources\Discriminated\IntersectedPostResource'])->toBe([
+        'name' => 'IntersectedPostResource',
+        'properties' => [
+            ['name' => 'id', 'type' => 'number', 'optional' => false],
+            ['name' => 'is_pinned', 'type' => 'boolean', 'optional' => false],
+            ['name' => 'placement', 'type' => 'PinnedPlacementResource | FeedPlacementResource', 'optional' => false],
+        ],
+        'intersections' => ['PostPlacementVariants'],
+    ])->and($decoded['resources']['Workbench\App\Http\Resources\Discriminated\PinnedPostResource'])
+        ->not->toHaveKey('intersections');
+});

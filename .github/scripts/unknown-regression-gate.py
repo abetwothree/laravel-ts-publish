@@ -18,6 +18,10 @@ b[k]` test reads the parent's whole rendered value, so an object already holding
 an `unknown` member disarms its own parent key and its wholesale collapse still
 reports nothing. See docs/testing/type-inference-gates.md.
 
+A resource split into arms, `type X = { rows } & ( | { arm } | { arm } );`, keys
+its rows and arm members under X as an interface's; a key several arms send is
+keyed once, its arms' distinct values joined, to compare with the flat key.
+
 Usage: unknown-regression-gate.py [BASE_REV] [HEAD_REV]
 Exit 1 if any property regressed. Self-test: --selftest RANGE expects a FAIL.
 Parser self-test: --parsetest checks the member-splitting logic in isolation.
@@ -31,6 +35,8 @@ ROOT = "workbench/resources/js/types/data"
 NAME = r"""(?:"(?P<dq>[^"]+)"|'(?P<sq>[^']+)'|(?P<name>[A-Za-z_$][\w$]*))"""
 PROP = re.compile(rf"^\s*{NAME}\??:\s*(?P<value>.+?);\s*$")
 ALIAS = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<value>.+?);\s*$")
+ALIAS_OPEN = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=")
+ARM = re.compile(r"^\s*\|\s*(?P<value>.+?);?\s*$")
 MEMBER = re.compile(rf"^{NAME}\??:\s*(?P<value>.+)$")
 BLOCK = re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?(interface|namespace|module)\s+([^\s{]+)")
 OPENERS, CLOSERS = "{[(<", "}])>"
@@ -114,22 +120,51 @@ def expand(name: str, value: str) -> dict[str, str]:
     return out
 
 
-def parse_source(body: str) -> dict[tuple[str, str], str]:
+def arm_members(arm: str) -> dict[str, str]:
+    """An arm's member values by name, or none when the arm is not one inline object."""
+    if scan_objects(arm) != [(0, len(arm) - 1)]:
+        return {}
+    return {name_of(m): m.group("value").strip() for m in map(MEMBER.match, split_members(arm[1:-1])) if m}
+
+
+def fold_arms(scope: str, arms: list[dict[str, str]], per_arm: bool) -> dict[tuple[str, str], str]:
+    """A split alias's arm keys: each name once, its arms' distinct values joined in arm order, or one scope per arm."""
+    if per_arm:
+        return {
+            (f"{scope}[{i}]", key): val
+            for i, arm in enumerate(arms) for name, value in arm.items() for key, val in expand(name, value).items()
+        }
+    out: dict[tuple[str, str], str] = {}
+    for name in dict.fromkeys(name for arm in arms for name in arm):
+        joined = " | ".join(dict.fromkeys(arm[name] for arm in arms if name in arm))
+        out.update(((scope, key), val) for key, val in expand(name, joined).items())
+    return out
+
+
+def parse_source(body: str, per_arm: bool = False) -> dict[tuple[str, str], str]:
+    """Each property's value by scope and key; `per_arm` keys a split alias's arms apart, as `X[i]` scopes."""
     out: dict[tuple[str, str], str] = {}
     stack: list[tuple[str, int]] = []  # (name, brace depth at which it opened)
     pending: str | None = None  # block header whose '{' is on a later line
+    alias: tuple[str, int] | None = None  # a multi-line `type X =` and the brace depth it opened at
+    arms: list[dict[str, str]] = []
     depth = 0
     for raw in body.splitlines():
         line = raw.split("//")[0]
+        scope = ".".join([n for n, _ in stack] + ([alias[0]] if alias else [])) or "<root>"
         block = BLOCK.match(line)
+        arm = ARM.match(raw) if alias else None
         if block:
             pending = block.group(2)
-        if not block:
+        elif arm:
+            arms.append(arm_members(arm.group("value")))
+        else:
             match = PROP.match(raw) or ALIAS.match(raw)
             if match:
-                scope = ".".join(n for n, _ in stack) or "<root>"
                 for key, val in expand(name_of(match), match.group("value")).items():
                     out[(scope, key)] = val
+            elif opened := ALIAS_OPEN.match(line):
+                alias = (opened.group("name"), depth)
         opens = line.count("{")
         # Push only once the brace is seen: this repo puts `interface Foo` and `{` on separate
         # lines, and pushing at the header's depth pops it again on that very line.
@@ -139,6 +174,9 @@ def parse_source(body: str) -> dict[tuple[str, str], str]:
         depth += opens - line.count("}")
         while stack and depth <= stack[-1][1]:
             stack.pop()
+        if alias and depth <= alias[1] and line.rstrip().endswith(";"):
+            out.update(fold_arms(scope, arms, per_arm))
+            alias, arms = None, []
     return out
 
 
@@ -158,14 +196,26 @@ def snapshot(rev: str) -> dict[tuple[str, str, str], str]:
     return out
 
 
+def holds_unkeyed_unknown(value: str) -> bool:
+    """Whether `unknown` sits where no member key holds it: outside every inline object, or in a member MEMBER cannot
+    name, such as an index signature. Quotes are not tracked, so a brace inside a string literal type misleads it."""
+    rest, last = [], 0
+    for start, end in scan_objects(value):
+        rest.append(value[last:start])
+        rest.extend(part for part in split_members(value[start + 1:end]) if not MEMBER.match(part))
+        last = end + 1
+    rest.append(value[last:])
+    return any("unknown" in part for part in rest)
+
+
 def detect_regressions(b: dict, h: dict) -> list:
     head_keys = list(h)
 
     def exhausted(k: tuple) -> bool:
-        # True when every head member of k existed in base, so members alone are compared; a new member keeps k checked.
-        # An inline-object parent counts a quoted `'tags.*'` sibling as a member, since it shares the `tags.` prefix, so
-        # the sibling can mask it (type-inference-gates.md); a parent that is no inline object has no members.
-        if "{" not in h[k]:
+        # True when k's members report its regression: each `unknown` sits in a member key and each head member existed
+        # in base. A quoted `'tags.*'` sibling counts as a member of an inline-object `tags` and can mask it, and a
+        # parent that is no inline object holds its `unknown` unkeyed (type-inference-gates.md).
+        if holds_unkeyed_unknown(h[k]):
             return False
         members = [
             other for other in head_keys
@@ -238,6 +288,65 @@ PARSE_CASES = [
     ),
 ]
 
+SPLIT_ROWS = "export type P = {\n    id: number;\n} & (\n"
+# Cases matched exactly, so a split alias also keys nothing beyond its rows and arms.
+SPLIT_CASES = [
+    (
+        "split resource: shared rows and arms (pinned-post-resource.ts:9)",
+        SPLIT_ROWS + "    | { k: true; v: A }\n    | { k: false; v: B }\n);\n",
+        {("P", "id"): "number", ("P", "k"): "true | false", ("P", "v"): "A | B"},
+    ),
+    (
+        "split resource in a namespace, beside a later interface (laravel-ts-global.ts:6287)",
+        "export namespace n {\n    export type P = {\n        id: number;\n    } & (\n"
+        "        | { k: true; v: A }\n        | { k: false; v: B }\n    );\n"
+        "    export interface Q {\n        id: string;\n    }\n}\n",
+        {
+            ("n.P", "id"): "number", ("n.P", "k"): "true | false", ("n.P", "v"): "A | B",
+            ("n.Q", "id"): "string",
+        },
+    ),
+    (
+        "split resource: a key one arm sends (post-priority-resource.ts:9)",
+        SPLIT_ROWS + "    | { k: true; until: string | null }\n    | { k: false; until?: never }\n);\n",
+        {("P", "id"): "number", ("P", "k"): "true | false", ("P", "until"): "string | null | never"},
+    ),
+    (
+        "split resource with no shared rows (pinned-wraps-resource.ts:14)",
+        "export type P =\n    | { k: true; v: A }\n    | { k: false; v: B };\n",
+        {("P", "k"): "true | false", ("P", "v"): "A | B"},
+    ),
+    (
+        "split resource led by #[TsExtends], with two groups and one value in two arms",
+        "export type P = Ext & Pick<R, \"a\" | \"b\"> & {\n    id: number;\n} & (\n"
+        "    | { a: 0; x?: never }\n    | { a: 1; x: A }\n    | { a: 2; x?: never }\n) & (\n"
+        "    | { b: true; y: B }\n    | { b: false; y: C }\n);\n",
+        {
+            ("P", "id"): "number", ("P", "a"): "0 | 1 | 2", ("P", "x"): "never | A",
+            ("P", "b"): "true | false", ("P", "y"): "B | C",
+        },
+    ),
+    (
+        "split resource led by #[TsExtends], with no shared rows",
+        "export type P = Ext & (\n    | { k: true; v: A }\n    | { k: false; v: B }\n);\n",
+        {("P", "k"): "true | false", ("P", "v"): "A | B"},
+    ),
+    (
+        "split resource: an arm's inline object splits as the flat key's does",
+        "export type P =\n    | { k: true; meta: { id: number; note: string } }\n    | { k: false; meta?: never };\n",
+        {
+            ("P", "k"): "true | false", ("P", "meta"): "{ id: number; note: string } | never",
+            ("P", "meta.id"): "number", ("P", "meta.note"): "string",
+        },
+    ),
+    (
+        "control: an alias of arms that are no object keys nothing (broadcast-channels.ts:1)",
+        "export type C =\n    | `orders.${string | number}`\n    | { x: number }[];\n"
+        "export interface Q\n{\n    x: string;\n}\n",
+        {("Q", "x"): "string"},
+    ),
+]
+
 REGRESS_BASE = (
     "    last_checked_by_mostly: { id: number; imageable_type: string; imageable_id: number; url: string;"
     " alt_text: string | null; disk: string; path: string; mime_type: string; size_bytes: number;"
@@ -271,11 +380,56 @@ SIBLING_BASE = "export interface StorePostRequestProbe {\n    tags: string[];\n 
 SIBLING_HEAD = "export interface StorePostRequestProbe {\n    tags: unknown;\n    'tags.*': string;\n}\n"
 
 
+FLAT_BASE = "export interface P\n{\n    id: number;\n    k: boolean;\n    v: A | B;\n}\n"
+FOLD_BASE = "export interface R\n{\n    meta: { id: number };\n}\n"
+
+
+def fold_head(first: str, second: str) -> str:
+    """A split alias whose two arms carry `meta` as the given values, to fold against `FOLD_BASE`."""
+    return f"export type R = (\n    | {{ meta: {first}; k: 1 }}\n    | {{ meta: {second}; k: 2 }}\n);\n"
+
+
+# A folded parent beside the arms its `meta` takes, and the regressions it must report against `FOLD_BASE`.
+FOLD_CASES = [
+    ("an object beside a direct unknown arm", ("{ id: number }", "unknown"), ["R.meta"]),
+    ("an object beside an `unknown[]` arm", ("{ id: number }", "unknown[]"), ["R.meta"]),
+    ("an object beside a `Record<string, unknown>` arm", ("{ id: number }", "Record<string, unknown>"), ["R.meta"]),
+    ("the same object in both arms", ("{ id: number }", "{ id: number }"), []),
+]
+
+
+def interface(value: str) -> str:
+    """An interface whose one property `p` holds the given value."""
+    return f"export interface A {{\n    p: {value};\n}}\n"
+
+
+# A parent's base and head values, and what they must report: an `unknown` no member key holds is the parent's.
+NESTED_CASES = [
+    ("an object array gaining an unknown arm inside its parens", "{ id: number }[]",
+     "({ id: number } | unknown)[]", ["A.p"]),
+    ("an object gaining an unknown index signature", "{ id: number }",
+     "{ id: number; [key: string]: unknown }", ["A.p"]),
+    ("control: an object's own unknown member inside a generic", "Record<string, { id: number }>",
+     "Record<string, { id: unknown }>", ["A.p.id"]),
+]
+
+
+SPLIT_HEAD = "export type P = {\n    id: unknown;\n} & (\n    | { k: true; v: A }\n    | { k: false; v: unknown }\n);\n"
+
+
 def run_parsetest() -> int:
     failed = 0
     for name, source, want in PARSE_CASES:
         got = parse_source(source)
         if all(got.get(k) == v for k, v in want.items()):
+            print(f"PASS - {name}")
+        else:
+            failed += 1
+            print(f"FAIL - {name}\n  want: {want}\n  got:  {got}")
+
+    for name, source, want in SPLIT_CASES:
+        got = parse_source(source)
+        if got == want:
             print(f"PASS - {name}")
         else:
             failed += 1
@@ -333,7 +487,32 @@ def run_parsetest() -> int:
         failed += 1
         print(f"FAIL - property regressing beside a quoted 'tags.*' sibling (store-post-request.ts:10)\n  got: {bad}")
 
-    total = len(PARSE_CASES) + 6
+    base, head = parse_source(FLAT_BASE), parse_source(SPLIT_HEAD)
+    bad = detect_regressions(base, head)
+    if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == ["P.id", "P.v"]:
+        print("PASS - shared row and arm regressing after an interface splits (synthetic)")
+    else:
+        failed += 1
+        print(f"FAIL - shared row and arm regressing after an interface splits (synthetic)\n  got: {bad}")
+
+    base = parse_source(FOLD_BASE)
+    for label, arms, want in FOLD_CASES:
+        bad = detect_regressions(base, parse_source(fold_head(*arms)))
+        if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == want:
+            print(f"PASS - folded parent with {label} (synthetic)")
+        else:
+            failed += 1
+            print(f"FAIL - folded parent with {label} (synthetic)\n  got: {bad}")
+
+    for label, was, now, want in NESTED_CASES:
+        bad = detect_regressions(parse_source(interface(was)), parse_source(interface(now)))
+        if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == want:
+            print(f"PASS - {label} (synthetic)")
+        else:
+            failed += 1
+            print(f"FAIL - {label} (synthetic)\n  got: {bad}")
+
+    total = len(PARSE_CASES) + len(SPLIT_CASES) + len(FOLD_CASES) + len(NESTED_CASES) + 7
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")
         return 1

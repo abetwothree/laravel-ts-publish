@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Currency
  */
-export const Currency = defineEnum({
+export const Currency = /* @__PURE__ */ defineEnum({
     Usd: 'USD',
     Eur: 'EUR',
     Gbp: 'GBP',

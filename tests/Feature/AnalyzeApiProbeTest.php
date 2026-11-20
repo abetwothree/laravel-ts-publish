@@ -16,6 +16,7 @@ use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\DiscriminatedPayload;
 use Workbench\App\ValueObjects\EnumCasePayload;
 use Workbench\App\ValueObjects\EnumValuesPayload;
 use Workbench\App\ValueObjects\GuardedLinkPayload;
@@ -86,6 +87,8 @@ function analysisProbeCases(): array
         'RedundantArmsPayload' => [RedundantArmsPayload::class, 'toArray', null],
         // GH-166's own report: a branch rewrites an enum key with case values and empties a list property.
         'WidgetProps' => [WidgetProps::class, 'props', null],
+        // Keys that follow a sibling key's value: a boolean at the top level, an enum match nested (GH-157).
+        'DiscriminatedPayload' => [DiscriminatedPayload::class, 'toArray', null],
     ];
 }
 
@@ -220,6 +223,17 @@ it('returns properties and imports that agree with each other', function (string
         expect([...$bound, ...$globals])->toContain($token);
     }
 })->with(array_keys(analysisProbeCases()));
+
+// analyze()'s own keys stay flat, while a nested literal is one object per value its sibling key sends (GH-157).
+it('publishes a nested literal\'s keys that follow a sibling key as one object per value, and its own keys flat', function () {
+    $result = resolve(AstEngine::class)->analyze(DiscriminatedPayload::class, 'toArray', null, ANALYSIS_PROBE_PATH);
+
+    expect(array_column($result->properties, 'type', 'name'))->toBe([
+        'archived' => 'boolean',
+        'reason' => 'string | null',
+        'meta' => '{ status: 0; count: number; detail: string | null } | { status: 1; count: number; detail: number }',
+    ]);
+});
 
 // A case value an enum's alias beside it admits, and an empty list beside a list, go; each `*_kept` arm stays (GH-166).
 it('publishes no arm another arm of its union admits', function (string $name, array $expected) {

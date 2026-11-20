@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\FreightClass
  */
-export const FreightClass = defineEnum({
+export const FreightClass = /* @__PURE__ */ defineEnum({
     Standard: 'standard',
     Express: 'express',
     backed: true,

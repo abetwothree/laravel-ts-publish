@@ -260,6 +260,7 @@ Key capabilities include:
 
 - **Model-aware types**: properties are typed from the backing model's columns, casts, accessors, and relations.
 - **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties, usually with `| null` where Laravel can send `null`.
+- **Discriminated unions**: keys that follow another key's value narrow on it.
 - **Nested resources**: `::make()`, `::collection()`, `new`, and `toResource()` publish the imported resource type.
 - **Resource collections**: a collection publishes the body Laravel sends under the wrap key your app sets, over items or a length-aware, simple, or cursor paginator.
 - **JSON:API resources**: a `JsonApiResource` publishes the resource object it sends, with typed `attributes` and `relationships`.
@@ -280,13 +281,15 @@ Every routed controller action gets a helper that builds its URL, binds its para
 import { defineRoute, annotateRequestPayload } from '@tolki/ts';
 import type { UpdatePostRequest } from '../requests/update-post-request';
 
-export const update = annotateRequestPayload<UpdatePostRequest>()(defineRoute({
+export const update = /* @__PURE__ */ annotateRequestPayload<UpdatePostRequest>()(/* @__PURE__ */ defineRoute({
     name: 'posts.update',
     url: '/posts/{post}',
     methods: ['put'] as const,
     args: [{ name: 'post', required: true, _routeKey: 'id' }] as const,
 }));
 ```
+
+Each call is marked `/* @__PURE__ */`, so a controller or route your app never references drops out of the production bundle. See [Bundling and Tree-Shaking](https://tolki.abe.dev/tree-shaking.html).
 
 Your frontend calls the helper:
 

@@ -59,7 +59,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.UserSynced'
     | '.Workbench.Crm.Events.UserSynced';
 
-export const BroadcastEvents = Object.freeze({
+export const BroadcastEvents = /* @__PURE__ */ Object.freeze({
     ComputedNameEvent: '.Workbench.App.Events.ComputedNameEvent',
     DeclaredPropsEvent: '.Workbench.App.Events.DeclaredPropsEvent',
     DispatchRelayed: '.Workbench.App.Events.DispatchRelayed',

@@ -5,7 +5,7 @@ import { defineEnum } from '@tolki/ts';
  *
  * @see Workbench\App\Enums\Priority
  */
-export const Priority = defineEnum({
+export const Priority = /* @__PURE__ */ defineEnum({
     Low: 0,
     Medium: 1,
     High: 2,
