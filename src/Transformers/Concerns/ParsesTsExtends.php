@@ -95,15 +95,21 @@ trait ParsesTsExtends
     /**
      * Deduplicate the clauses and alias each name two import paths bring, leaving out each name a clause only builds on
      * that the file binds by other means: another import, or the package's own import of it. A name the clause lists,
-     * its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it.
+     * its `types` or a top-level arm, stays the clause's, aliased apart from another path's import of it, and a name
+     * the file declares is aliased apart from that declaration.
      *
      * @param  list<ClauseEntry>  $entries
      * @param  TypesImportMap  $imports  the file's other imports, path => names
      * @param  list<string>  $packageNames  the names the package's own imports bind in the file
+     * @param  list<string>  $declaredNames  the names the file declares
      * @return ClauseSets
      */
-    protected function settleClauses(array $entries, array $imports = [], array $packageNames = []): array
-    {
+    protected function settleClauses(
+        array $entries,
+        array $imports = [],
+        array $packageNames = [],
+        array $declaredNames = [],
+    ): array {
         $paths = [];
 
         foreach ($imports as $path => $names) {
@@ -123,7 +129,7 @@ trait ParsesTsExtends
             ))];
         }
 
-        return $this->deduplicateAndAliasClauses($unbound, array_keys($paths));
+        return $this->deduplicateAndAliasClauses($unbound, [...array_keys($paths), ...$declaredNames]);
     }
 
     /**
@@ -215,7 +221,8 @@ trait ParsesTsExtends
      * Deduplicate the clauses of both attributes and alias each name two import paths bring, across all of them.
      *
      * @param  list<ClauseEntry>  $rawEntries
-     * @param  list<string>  $taken  the names another import of the file binds, which a clause's import of them aliases
+     * @param  list<string>  $taken  the names another import of the file binds or the file declares, which a clause's
+     *                               import of them aliases
      * @return ClauseSets
      */
     private function deduplicateAndAliasClauses(array $rawEntries, array $taken = []): array
