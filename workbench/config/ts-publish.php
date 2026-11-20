@@ -259,7 +259,6 @@ return [
     |--------------------------------------------------------------------------
     |
     | Settings for API resource publishing.
-    |
     */
 
     'resources' => [
