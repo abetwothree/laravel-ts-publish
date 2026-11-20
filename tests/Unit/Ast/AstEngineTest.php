@@ -92,7 +92,8 @@ it('analyzes a resource through the public entry with model resolution', functio
     $analysis = resolve(AstEngine::class)->analyzeMethod(UserResource::class);
 
     expect(collect($analysis->properties)->firstWhere('name', 'id')['type'])->toBe('number')
-        ->and($analysis->enumResources)->toBe(['role' => Role::class])
+        ->and(collect($analysis->properties)->firstWhere('name', 'role')['type'])->toBe('AsEnum<typeof Role> | null')
+        ->and($analysis->wrapConstFqcns('role'))->toBe([Role::class])
         ->and($analysis->nestedResources)->toBe(['posts' => PostResource::class]);
 });
 

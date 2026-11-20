@@ -200,8 +200,10 @@ test('globals content does not contain AsEnum<typeof ...> (typeof namespace memb
     $writer = new GlobalsWriter(new Filesystem);
     $content = $writer->write($runner);
 
-    // AsEnum<typeof namespace.Member> is illegal in declare global {} — must be absent
-    expect($content)->not->toContain('AsEnum<typeof');
+    // AsEnum<typeof namespace.Member> is illegal in declare global {} — must be absent, and so its import, which an
+    // event's own file holds for its wraps.
+    expect($content)->not->toContain('AsEnum<typeof')
+        ->not->toContain("import type { AsEnum } from '@tolki/ts';");
 
     // Enum resource types should appear as qualified type aliases instead
     expect($content)->toContain('enums.StatusType');

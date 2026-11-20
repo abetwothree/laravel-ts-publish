@@ -682,7 +682,7 @@ test('a bare enum the @return fills beside two enum wraps keeps its type import'
     ],
     'a wrap beside the same enum bare' => [
         StatusWrapBesideBareRowsResource::class,
-        'AsEnum<typeof Status> | { s: StatusType }[]',
+        'AsEnum<typeof Status> | StatusType | { s: StatusType }[]',
         ['../../../../../../workbench/app/enums' => ['StatusType']],
         ['../../../../../../workbench/app/enums' => ['Status']],
     ],

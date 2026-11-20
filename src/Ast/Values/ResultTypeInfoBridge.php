@@ -57,14 +57,12 @@ final class ResultTypeInfoBridge
             $info['sendsEnumScalar'] = true;
         }
 
-        $wrapped = array_values(array_unique([
-            ...(isset($result['enumFqcn']) ? [$result['enumFqcn']] : []),
-            ...($result['multiEnumResourceFqcns'] ?? []),
-            ...($result['embeddedEnumResourceFqcns'] ?? []),
-        ]));
+        if (($result['wrappedEnumFqcns'] ?? []) !== []) {
+            $info['wrappedEnumFqcns'] = $result['wrappedEnumFqcns'];
+        }
 
-        if ($wrapped !== []) {
-            $info['wrappedEnumFqcns'] = $wrapped;
+        if (($result['embeddedEnumResourceFqcns'] ?? []) !== []) {
+            $info['wrapConstFqcns'] = $result['embeddedEnumResourceFqcns'];
         }
 
         // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result

@@ -24,9 +24,9 @@ export interface ResourceWrappedEnumResource
     status_when_make?: AsEnum<typeof Status>;
     status_when_arrow?: AsEnum<typeof Status>;
     visibility_when_full?: AsEnum<typeof Visibility> | null;
-    priority_when_not_null_make: AsEnum<typeof Priority> | PriorityType | null;
-    status_when_not_null_arrow: AsEnum<typeof Status> | StatusType;
-    visibility_when_not_null_full: AsEnum<typeof Visibility> | VisibilityType | null;
+    priority_when_not_null_make: PriorityType | AsEnum<typeof Priority> | null;
+    status_when_not_null_arrow: StatusType | AsEnum<typeof Status>;
+    visibility_when_not_null_full: VisibilityType | AsEnum<typeof Visibility> | null;
     status_ternary_null: AsEnum<typeof Status> | null;
     status_ternary_both: AsEnum<typeof Status>;
     status_or_visibility_ternary: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;

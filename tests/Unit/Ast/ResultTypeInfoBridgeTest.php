@@ -8,6 +8,7 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\User as CrmUser;
 
 it('lists each class once, and adds no token queue while every class has a name of its own', function () {
@@ -57,17 +58,18 @@ it('reads the first class from modelFqcn when the result carries it there, ahead
         ->and($info['classTokenFqcns'])->toBe([User::class, CrmUser::class]);
 });
 
-it('carries each enum the result wraps in an EnumResource, once', function () {
+// The set says what the value wraps; the queue says which const each `typeof` token names, as the alias pass reads it.
+it('carries each enum the result wraps in an EnumResource, once, and the const behind each token', function () {
     $info = (new ResultTypeInfoBridge)->toTypeInfo([
-        'type' => 'PriorityType | { s: AsEnum<typeof Status> } | AsEnum<typeof MediaType>',
+        'type' => 'PriorityType | { s: AsEnum<typeof Status> } | AsEnum<typeof MediaType> | AsEnum<typeof Status>',
         'optional' => false,
         'directEnumFqcn' => Priority::class,
-        'enumFqcn' => Priority::class,
-        'embeddedEnumResourceFqcns' => [Status::class],
-        'multiEnumResourceFqcns' => [MediaType::class, Priority::class],
+        'embeddedEnumResourceFqcns' => [Status::class, MediaType::class, CrmStatus::class],
+        'wrappedEnumFqcns' => [Status::class, MediaType::class, CrmStatus::class],
     ]);
 
-    expect($info['wrappedEnumFqcns'] ?? null)->toBe([Priority::class, MediaType::class, Status::class]);
+    expect($info['wrappedEnumFqcns'] ?? null)->toBe([Status::class, MediaType::class, CrmStatus::class])
+        ->and($info['wrapConstFqcns'] ?? null)->toBe([Status::class, MediaType::class, CrmStatus::class]);
 });
 
 it('carries no wrapped enum for a result that wraps none', function () {

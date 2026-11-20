@@ -6536,7 +6536,7 @@ declare global {
          */
         export interface RowsBesideWrapsResource {
             rows_then_two_wraps: { c: crm.enums.StatusType; s: app.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType;
-            rows_then_three_wraps: { c: app.enums.StatusType; s: crm.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType | app.enums.VisibilityType;
+            rows_then_three_wraps: { c: crm.enums.StatusType; s: app.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType | app.enums.VisibilityType;
             named_rows_then_two_wraps: { n: string }[] | app.enums.StatusType | app.enums.RoleType;
             null_then_two_wraps: app.enums.StatusType | app.enums.RoleType | null;
         }
@@ -6545,17 +6545,17 @@ declare global {
          * enum, so each keeps its own alias.
          */
         export interface SameNamedWrapsResource {
-            app_or_crm_wrap: app.enums.StatusType;
-            app_or_crm_wrap_when: app.enums.StatusType;
-            app_or_crm_wrap_under_key: { subject: app.enums.StatusType };
-            wrap_or_two_reads: app.enums.StatusType;
-            crm_spread_over_wrap: { c: app.enums.StatusType };
+            app_or_crm_wrap: app.enums.StatusType | crm.enums.StatusType;
+            app_or_crm_wrap_when: app.enums.StatusType | crm.enums.StatusType;
+            app_or_crm_wrap_under_key: { subject: app.enums.StatusType | crm.enums.StatusType };
+            wrap_or_two_reads: app.enums.StatusType | crm.enums.StatusType;
+            crm_spread_over_wrap: { c: app.enums.StatusType | crm.enums.StatusType };
             literals_nested_crm: { s: app.enums.StatusType; x: { c: crm.enums.StatusType } } | { s: crm.enums.StatusType; x: null };
         }
         /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
         export interface WalkedWrapResource {
             id: number;
-            state: app.enums.StatusType | null;
+            state: app.enums.StatusType | app.enums.VisibilityType | null;
         }
         /**
          * An enum wrap beside a bare read, a case, a `->value` or `->name` read, a literal or an object holding a read of the
@@ -6565,10 +6565,10 @@ declare global {
             wrap_or_helper_offset: app.enums.MediaTypeType;
             wrap_or_nested_value: app.enums.MediaTypeType | string;
             wrap_or_nested_nullable_value: app.enums.MediaTypeType | null;
-            match_wrap_read_literal: app.enums.StatusType;
-            match_wrap_value_name: app.enums.StatusType;
-            match_wrap_value_other: app.enums.StatusType;
-            nested_make_or_collection_or_read: app.enums.StatusType[] | app.enums.StatusType;
+            match_wrap_read_literal: app.enums.StatusType | string;
+            match_wrap_value_name: app.enums.StatusType | app.enums.StatusKind;
+            match_wrap_value_other: app.enums.StatusType | string;
+            nested_make_or_collection_or_read: app.enums.StatusType | app.enums.StatusType[];
             collection_or_plain_list: app.enums.StatusType[];
             wrap_or_other_enum_case: app.enums.RoleType | app.enums.StatusType;
             wrap_or_nested_nullable_case: app.enums.StatusType | null;

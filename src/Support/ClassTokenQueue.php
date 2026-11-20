@@ -82,10 +82,16 @@ final class ClassTokenQueue
      * @param  list<class-string>  $queue
      * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
      * @param  list<string>  $leave  names to leave as they came: a queue joined to this one gives them a class too
+     * @param  string  $anchor  the pattern each token follows, as TsTypeString::queuedTokenPattern() reads it
      * @return list<class-string>
      */
-    public static function perToken(array $queue, string $type, Closure $nameOf, array $leave = []): array
-    {
+    public static function perToken(
+        array $queue,
+        string $type,
+        Closure $nameOf,
+        array $leave = [],
+        string $anchor = '',
+    ): array {
         /** @var array<string, list<class-string>> $classesOf name => the classes queued for it, in order */
         $classesOf = [];
 
@@ -99,7 +105,7 @@ final class ClassTokenQueue
         foreach ($classesOf as $name => $classes) {
             if (count(array_unique($classes)) === 1 && ! in_array($name, $leave, true)) {
                 // At least one: this rule leaves an entry for a class the type does not spell as it came.
-                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name]), $type));
+                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name], $anchor), $type));
             }
         }
 

@@ -1,8 +1,8 @@
 import { type AsEnum } from '@tolki/ts';
 
-import { Status as WorkbenchStatus } from '../../../enums';
+import { Role, Status as WorkbenchStatus, Visibility } from '../../../enums';
 import type { StatusType as CrmStatusType } from '../../../../crm/enums';
-import type { RoleType, StatusType as WorkbenchStatusType, VisibilityType } from '../../../enums';
+import type { StatusType as WorkbenchStatusType } from '../../../enums';
 
 /**
  * Rows of the app and the CRM `Status`, or of names, in a ternary before two or three enum wraps, and a `null` first
@@ -12,8 +12,8 @@ import type { RoleType, StatusType as WorkbenchStatusType, VisibilityType } from
  */
 export interface RowsBesideWrapsResource
 {
-    rows_then_two_wraps: { c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType;
-    rows_then_three_wraps: { c: AsEnum<typeof WorkbenchStatus>; s: CrmStatusType }[] | AsEnum<typeof WorkbenchStatus> | RoleType | VisibilityType;
-    named_rows_then_two_wraps: { n: string }[] | WorkbenchStatusType | RoleType;
-    null_then_two_wraps: WorkbenchStatusType | RoleType | null;
+    rows_then_two_wraps: { c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>;
+    rows_then_three_wraps: { c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>;
+    named_rows_then_two_wraps: { n: string }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>;
+    null_then_two_wraps: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | null;
 }

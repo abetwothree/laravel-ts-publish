@@ -386,6 +386,7 @@ it('takes over every field of another analysis, both flags included', function (
         multiEnumResourceFqcns: ['a' => ['App\\E']],
         inlineEnumResourceFqcns: ['a' => ['App\\E']],
         enumResourceArmShapes: ['a' => ['wrapIsCollection' => true, 'directIsArray' => false]],
+        wrappedEnums: ['a' => ['App\\E']],
         casts: ['a' => ['type' => 'A', 'import' => null]],
         carried: ['models' => ['App\\M']],
         flatTypeAlias: 'A[]',
@@ -616,7 +617,7 @@ it("lists the names each class on a property's channels publishes under, and non
         directEnumFqcns: ['status' => 'Workbench\App\Enums\Status', 'tone' => 'Workbench\App\Enums\UiTone'],
         modelFqcns: ['user' => 'Workbench\App\Models\User'],
         inlineEnumFqcns: ['tones' => ['Workbench\App\Enums\UiTone']],
-        multiEnumResourceFqcns: ['wrapped' => ['Workbench\App\Enums\UiTone']],
+        wrappedEnums: ['wrapped' => ['Workbench\App\Enums\UiTone']],
     );
 
     expect($analysis->channelNames('status'))->toBe(['Status', 'StatusType', 'StatusKind'])
@@ -644,7 +645,7 @@ it('names the inline channel each class is queued on, and none for a class of no
     'a class that does not exist' => ['Workbench\App\Models\Missing', null],
 ]);
 
-it('lists a key\'s classes outside its inline queues, the enums it reads, and the enums it wraps at its top', function () {
+it('lists a key\'s classes outside its inline queues, the enums it reads, and the enums it wraps', function () {
     $analysis = new MethodAnalysis(
         enumResources: ['k' => 'Workbench\App\Enums\Status'],
         nestedResources: ['k' => 'Workbench\App\Http\Resources\PostResource'],
@@ -654,6 +655,7 @@ it('lists a key\'s classes outside its inline queues, the enums it reads, and th
         inlineModelFqcns: ['k' => ['Workbench\App\Models\Post']],
         multiEnumResourceFqcns: ['k' => ['Workbench\App\Enums\Priority']],
         inlineEnumResourceFqcns: ['k' => ['Workbench\App\Enums\UiTone']],
+        wrappedEnums: ['k' => ['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status', 'Workbench\App\Enums\UiTone']],
     );
 
     expect($analysis->singleChannelFqcns('k'))->toBe([
@@ -663,9 +665,10 @@ it('lists a key\'s classes outside its inline queues, the enums it reads, and th
         'Workbench\App\Models\User',
         'Workbench\App\Http\Resources\PostResource',
     ])->and($analysis->topWrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority'])
-        ->and($analysis->wrappedEnumFqcns('k'))->toBe([
+        ->and($analysis->wrapConstFqcns('k'))->toBe([
             'Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority', 'Workbench\App\Enums\UiTone',
         ])
+        ->and($analysis->wrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status'])
         ->and($analysis->readEnumFqcns('k'))->toBe(['Workbench\App\Enums\Role', 'Workbench\App\Enums\Season'])
         ->and($analysis->readEnumFqcns('none'))->toBe([])
         ->and($analysis->singleChannelFqcns('none'))->toBe([]);
@@ -740,7 +743,7 @@ it('moves every per-key map with its key, through every method that moves, slice
     // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
     $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
 
-    expect($maps)->toHaveCount(14);
+    expect($maps)->toHaveCount(15);
 
     foreach ($maps as $map) {
         expect($slice->{$map})->toBe(['k' => ['K']], $map)
@@ -801,7 +804,7 @@ it('leaves out each arm a sibling admits in a key no cast types, by the enums on
     ],
     'a case literal of an enum the key wraps in an EnumResource' => [
         "'image' | MediaTypeType | null",
-        ['directEnumFqcns' => ['k' => MediaType::class], 'enumResources' => ['k' => MediaType::class]],
+        ['directEnumFqcns' => ['k' => MediaType::class], 'wrappedEnums' => ['k' => [MediaType::class]]],
         "'image' | MediaTypeType | null",
     ],
     'a case literal beside an alias no enum on the key admits it under' => [
@@ -812,13 +815,13 @@ it('leaves out each arm a sibling admits in a key no cast types, by the enums on
     ],
     'a case literal in an inline object of an enum it also wraps' => [
         "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
-        ['inlineEnumFqcns' => ['k' => [MediaType::class, MediaType::class]], 'inlineEnumResourceFqcns' => ['k' => [MediaType::class]]],
+        ['inlineEnumFqcns' => ['k' => [MediaType::class, MediaType::class]], 'inlineEnumResourceFqcns' => ['k' => [MediaType::class]], 'wrappedEnums' => ['k' => [MediaType::class]]],
         "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
     ],
     'an empty list beside a list, with no channel' => ['never[] | PriorityType[]', [], 'PriorityType[]'],
     'a case literal of one of two same-named enums, the other wrapped' => [
         "{ a: StatusKind; b: 'Draft' | StatusKind }",
-        ['inlineEnumFqcns' => ['k' => [Status::class, CrmStatus::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]]],
+        ['inlineEnumFqcns' => ['k' => [Status::class, CrmStatus::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]], 'wrappedEnums' => ['k' => [CrmStatus::class]]],
         "{ a: StatusKind; b: 'Draft' | StatusKind }",
     ],
     'a case literal beside an alias a model on the key publishes under' => [
@@ -867,7 +870,7 @@ it('keeps one of two arms absorbing made alike, unless a name on the key spells 
     ],
     'an enum read and a same-named enum wrapped' => [
         '{ s: never[] | StatusType[] } | { s: StatusType[] }',
-        ['inlineEnumFqcns' => ['k' => [Status::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]]],
+        ['inlineEnumFqcns' => ['k' => [Status::class]], 'inlineEnumResourceFqcns' => ['k' => [CrmStatus::class]], 'wrappedEnums' => ['k' => [CrmStatus::class]]],
         '{ s: StatusType[] } | { s: StatusType[] }',
     ],
     'a model printing an enum\'s alias' => [

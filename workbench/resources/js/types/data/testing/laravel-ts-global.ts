@@ -6536,7 +6536,7 @@ declare global {
          */
         export interface RowsBesideWrapsResource {
             rows_then_two_wraps: { c: workbench.crm.enums.StatusType; s: workbench.app.enums.StatusType }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType;
-            rows_then_three_wraps: { c: workbench.app.enums.StatusType; s: workbench.crm.enums.StatusType }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType | workbench.app.enums.VisibilityType;
+            rows_then_three_wraps: { c: workbench.crm.enums.StatusType; s: workbench.app.enums.StatusType }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType | workbench.app.enums.VisibilityType;
             named_rows_then_two_wraps: { n: string }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType;
             null_then_two_wraps: workbench.app.enums.StatusType | workbench.app.enums.RoleType | null;
         }
@@ -6545,17 +6545,17 @@ declare global {
          * enum, so each keeps its own alias.
          */
         export interface SameNamedWrapsResource {
-            app_or_crm_wrap: workbench.app.enums.StatusType;
-            app_or_crm_wrap_when: workbench.app.enums.StatusType;
-            app_or_crm_wrap_under_key: { subject: workbench.app.enums.StatusType };
-            wrap_or_two_reads: workbench.app.enums.StatusType;
-            crm_spread_over_wrap: { c: workbench.app.enums.StatusType };
+            app_or_crm_wrap: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            app_or_crm_wrap_when: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            app_or_crm_wrap_under_key: { subject: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
+            wrap_or_two_reads: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            crm_spread_over_wrap: { c: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
             literals_nested_crm: { s: workbench.app.enums.StatusType; x: { c: workbench.crm.enums.StatusType } } | { s: workbench.crm.enums.StatusType; x: null };
         }
         /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
         export interface WalkedWrapResource {
             id: number;
-            state: workbench.app.enums.StatusType | null;
+            state: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
         }
         /**
          * An enum wrap beside a bare read, a case, a `->value` or `->name` read, a literal or an object holding a read of the
@@ -6565,10 +6565,10 @@ declare global {
             wrap_or_helper_offset: workbench.app.enums.MediaTypeType;
             wrap_or_nested_value: workbench.app.enums.MediaTypeType | string;
             wrap_or_nested_nullable_value: workbench.app.enums.MediaTypeType | null;
-            match_wrap_read_literal: workbench.app.enums.StatusType;
-            match_wrap_value_name: workbench.app.enums.StatusType;
-            match_wrap_value_other: workbench.app.enums.StatusType;
-            nested_make_or_collection_or_read: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
+            match_wrap_read_literal: workbench.app.enums.StatusType | string;
+            match_wrap_value_name: workbench.app.enums.StatusType | workbench.app.enums.StatusKind;
+            match_wrap_value_other: workbench.app.enums.StatusType | string;
+            nested_make_or_collection_or_read: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
             collection_or_plain_list: workbench.app.enums.StatusType[];
             wrap_or_other_enum_case: workbench.app.enums.RoleType | workbench.app.enums.StatusType;
             wrap_or_nested_nullable_case: workbench.app.enums.StatusType | null;

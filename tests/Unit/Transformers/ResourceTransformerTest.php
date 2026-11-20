@@ -1960,14 +1960,17 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
         ],
     ]);
 
-    test('the publisher queues the wraps first, as the analysis does', function () {
+    // A wrap's const rides its own queue, so the type queue holds the rows' enums alone.
+    test('the publisher queues the type classes as the analysis does, the wraps\' consts apart', function () {
         $transformer = new ResourceTransformer(WrapsBesideAliasedRowsResource::class);
         $analysis = new ResourceAstAnalyzer(new ReflectionClass(WrapsBesideAliasedRowsResource::class), $transformer->modelClass)->analyze();
 
         $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
 
-        expect($merged['subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('subject'))
-            ->and($merged['crm_subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('crm_subject'));
+        expect($merged['subject'])->toHaveCount(2)->toBe($analysis->channelFqcns('subject'))
+            ->and($merged['crm_subject'])->toHaveCount(2)->toBe($analysis->channelFqcns('crm_subject'))
+            ->and($analysis->wrapConstFqcns('subject'))->toBe([Status::class, Role::class])
+            ->and($analysis->wrapConstFqcns('crm_subject'))->toBe([CrmStatus::class, Role::class]);
     });
 
     test('two wraps with no @return spell each top arm by its own enum', function (bool $tolki, array $types, array $expected) {
@@ -2012,24 +2015,25 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
         ])->and($data->valueImports)->toBe([]);
     })->with(['tolki on' => [true], 'tolki off' => [false]]);
 
-    // The publisher spells two wraps `AsEnum` only where they lead a key's type; elsewhere each reads its bare type.
-    test('wraps the publisher cannot place print their own enums\' bare types, imported', function (string $resource, bool $tolki, string $key, string $type) {
+    // Each wrap spells its own `AsEnum`, wherever it sits; without the tolki package each reads its bare type.
+    test('two wraps beside rows each print their own enum, imported', function (string $resource, bool $tolki, string $key, string $type) {
         config()->set('ts-publish.enums.use_tolki_package', $tolki);
 
         $data = new ResourceTransformer($resource)->data();
+        $app = '../../../../../../workbench/app/enums';
 
         expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([$key => $type])
             ->and($data->typeImports)->toBe([
-                '../../../../../../workbench/app/enums' => ['RoleType', 'StatusType as WorkbenchStatusType'],
+                $app => $tolki ? ['StatusType as WorkbenchStatusType'] : ['RoleType', 'StatusType as WorkbenchStatusType'],
                 '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
             ])
-            ->and($data->valueImports)->toBe([]);
+            ->and($data->valueImports)->toBe($tolki ? [$app => ['Role', 'Status as WorkbenchStatus']] : []);
     })->with([
         'rows first, tolki on' => [
             RowsBeforeTwoWrapsResource::class,
             true,
             'subject',
-            '{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType',
+            '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
         ],
         'rows first, tolki off' => [
             RowsBeforeTwoWrapsResource::class,
@@ -2041,7 +2045,7 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
             TwoWrapsUnderObjectKeyResource::class,
             true,
             'row',
-            '{ first: CrmStatusType; subject: WorkbenchStatusType | RoleType | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
+            '{ first: CrmStatusType; subject: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
         ],
         'under an object key, tolki off' => [
             TwoWrapsUnderObjectKeyResource::class,
@@ -2697,15 +2701,13 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
 
     // whenNotNull($this->resource->priority, EnumResource::make($this->resource->priority)) — the value arm
     // (direct property access) and the default arm (EnumResource-wrapped) reach the same enum through two
-    // genuinely different runtime shapes: a raw backing value (PriorityType) vs. the AsEnum wrapper. Pinned
-    // at the transformer layer since ResourceAstAnalyzerTest only ever sees the analyzer's own alias-name
-    // string ('PriorityType | null'), never the AsEnum<...> expansion rewriteEnumResourceTypes() applies.
+    // genuinely different runtime shapes: a raw backing value (PriorityType) vs. the AsEnum wrapper, in arm order.
     test('whenNotNull() default-arm union keeps both the AsEnum wrapper and the plain alias, required', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
 
         expect($data->properties['priority_when_not_null_make']['type'])
-            ->toBe('AsEnum<typeof Priority> | PriorityType | null')
+            ->toBe('PriorityType | AsEnum<typeof Priority> | null')
             ->and($data->properties['priority_when_not_null_make']['optional'])->toBeFalse();
     });
 
@@ -3960,15 +3962,14 @@ describe('a union whose every arm is an enum resource', function () {
             ->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
     });
 
-    // Two enums that share a name still fold into one token, so each line below is missing its other enum. These pin
-    // the wrap, not the fold.
-    test('wraps the one token that two enums sharing a name fold into', function (string $key, string $type) {
+    // Two enums that share a name are two classes, so each wrap keeps its own member and const, in arm order (#76).
+    test('wraps each of two enums sharing a name as its own member', function (string $key, string $type) {
         config()->set('ts-publish.enums.use_tolki_package', true);
 
         expect((new ResourceTransformer(EnumResourceArmsWarehouseResource::class))->properties[$key]['type'])->toBe($type);
     })->with([
-        'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | null'],
-        'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | null'],
+        'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | null'],
+        'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus> | null'],
     ]);
 });
 
@@ -3989,6 +3990,18 @@ test('publishes each cast over an enum resource as written, importing only the e
     ])
         ->and($transformer->typeImports)->toBe([])
         ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']])
+        ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
+        ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
+});
+
+// Without the tolki package a wrap carries no const, so the enums the key wraps are what `declare global` folds the
+// cast's written wraps by: `typeof` a namespace member is illegal there.
+test('folds a cast\'s written wraps in the globals file by the enums the key wraps, with the tolki package off', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    $transformer = new ResourceTransformer(PostStateCastResource::class);
+
+    expect($transformer->properties['wrapped']['type'])->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null')
         ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
         ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
 });

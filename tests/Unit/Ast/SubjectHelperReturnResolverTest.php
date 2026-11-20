@@ -27,6 +27,7 @@ use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Enums\WeekDays;
+use Workbench\App\Http\Resources\EnumWraps\WrapHelpersResource;
 use Workbench\App\Http\Resources\PostStatusSourcesResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\Team;
@@ -195,9 +196,19 @@ it('reads a helper whose every return wraps an enum or is null', function (strin
         ->and($scope->visitedSpreadMethods)->toBe([])
         ->and($after)->toBe($before);
 })->with([
-    'a declared EnumResource' => ['statusResource', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a ternary with null' => ['visibilityResource', ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class]],
+    'a declared EnumResource' => ['statusResource', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a ternary with null' => ['visibilityResource', ['type' => 'AsEnum<typeof Visibility> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Visibility::class], 'wrappedEnumFqcns' => [Visibility::class]]],
 ]);
+
+// G7: the helper's ternary of two wraps keeps each wrap as its own member, read off the set of enums it wraps.
+it('reads a helper returning a ternary of two wraps as each wrap', function () {
+    expect(subjectHelperReturn('pick', WrapHelpersResource::class)[0])->toBe([
+        'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
+        'optional' => false,
+        'embeddedEnumResourceFqcns' => [Status::class, Visibility::class],
+        'wrappedEnumFqcns' => [Status::class, Visibility::class],
+    ]);
+});
 
 it('declines a helper with a return that wraps no enum', function (string $method) {
     [$result, , [$before, $after]] = subjectHelperReturn($method, engine: subjectHelperReturnThrowingEngine());
@@ -216,9 +227,9 @@ it('declines a helper with a return that wraps no enum', function (string $metho
 it('reads a helper on the subject\'s own model, and the collection it wraps', function (string $method, array $expected) {
     expect(subjectHelperReturn($method, SubjectHelperReturnProbeResource::class, Team::class)[0])->toBe($expected);
 })->with([
-    'a property of its own local, under the caller\'s relation' => ['localStatusResource', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a collection' => ['statusHistoryResource', ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class]],
-    'two enums, one per return' => ['statusOrWeekDaysResource', ['type' => 'StatusType | WeekDaysType[] | null', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, WeekDays::class]]],
+    'a property of its own local, under the caller\'s relation' => ['localStatusResource', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a collection' => ['statusHistoryResource', ['type' => 'AsEnum<typeof Status>[]', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'two enums, one per return' => ['statusOrWeekDaysResource', ['type' => 'AsEnum<typeof Status> | AsEnum<typeof WeekDays>[] | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class, WeekDays::class], 'wrappedEnumFqcns' => [Status::class, WeekDays::class]]],
 ]);
 
 // The helper's body is seeded as any method body is: its guards narrow, and a Request parameter binds as a request.
@@ -228,12 +239,12 @@ it('reads a helper\'s body with its guards, and with its request parameter outsi
     'an early-exit instanceof guard' => [
         'guardedStatusResource',
         SubjectHelperReturnProbeResource::class,
-        ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class],
+        ['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]],
     ],
     'a broadcast event\'s Request parameter' => [
         new MethodCall(new Variable('this'), 'roleOf', [new Arg(new FuncCall(new Name('request')))]),
         RequestRoleHelperEvent::class,
-        ['type' => 'RoleType | never[]', 'optional' => false, 'enumFqcn' => Role::class],
+        ['type' => 'AsEnum<typeof Role> | never[]', 'optional' => false, 'embeddedEnumResourceFqcns' => [Role::class], 'wrappedEnumFqcns' => [Role::class]],
     ],
 ]);
 
@@ -267,18 +278,18 @@ it('declines a helper whose every wrap the engine leaves untyped', function (str
 it('gives an untyped helper its null when its body can end without a value', function (string $method, array $expected) {
     expect(subjectHelperReturn($method, EnumResourceUntypedHelperResource::class)[0])->toBe($expected);
 })->with([
-    'running off its end' => ['pinnedStatus', ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a bare return' => ['pinnedStatusOrNothing', ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a trailing throw' => ['pinnedStatusOrFail', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a comment after the last return' => ['notedStatus', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a bare return in a nested closure' => ['statusBesideCallback', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'a declared return type' => ['declaredPinnedStatus', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'running off its end' => ['pinnedStatus', ['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a bare return' => ['pinnedStatusOrNothing', ['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a trailing throw' => ['pinnedStatusOrFail', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a comment after the last return' => ['notedStatus', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a bare return in a nested closure' => ['statusBesideCallback', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'a declared return type' => ['declaredPinnedStatus', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
 ]);
 
 // Only the last statement is read, not whether each branch returns, so the arm is a sound superset here.
 it('gives an untyped helper ending in an if/else that returns on both arms a null it never returns', function () {
     expect(subjectHelperReturn('statusOrDraft', EnumResourceUntypedHelperResource::class)[0])
-        ->toBe(['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class]);
+        ->toBe(['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]);
 });
 
 // The helper wraps `$this->visibility`, a read that keeps imports, so only the resolver's own check leaves it unknown.

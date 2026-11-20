@@ -105,118 +105,112 @@ describe('ValueResult::isPublishableReading()', function () {
     ]);
 });
 
-// A union is one of enum resources when its enum resources are as many as the types it counts: its arms' types, or its
-// members where the caller says so, as a conditional default does.
-describe('ValueResult::unionResults() over enum-resource branches', function () {
-    $nullableSecond = [
-        ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
-        ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class],
+/**
+ * An `EnumResource` wrap of an enum as its handler spells it with the tolki package on.
+ *
+ * @param  class-string  $enum
+ * @return array<string, mixed>
+ */
+function valueResultWrapOf(string $enum, string $type, string $suffix = ''): array
+{
+    return [
+        'type' => "AsEnum<typeof {$type}>{$suffix}",
+        'optional' => false,
+        'embeddedEnumResourceFqcns' => [$enum],
+        'wrappedEnumFqcns' => [$enum],
     ];
-    $sameNamedPair = [
-        ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => Status::class],
-        ['type' => 'StatusType | null', 'optional' => false, 'enumFqcn' => CrmStatus::class],
-    ];
+}
 
-    test('is a union of enum resources when it counts as many types as enum resources', function (array $branches, bool $countMembers, array $union) {
-        expect(ValueResult::unionResults($branches, $countMembers))->toBe($union);
+// Each arm publishes as it does alone, in arm order: two members are one only where their text and classes both match.
+describe('ValueResult::unionResults() over enum-resource wraps', function () {
+    test('keeps each wrap as its own member', function (array $branches, array $union) {
+        expect(ValueResult::unionResults($branches))->toEqual($union);
     })->with([
-        'two arms, one of them nullable, counted by arm' => [
-            $nullableSecond,
-            false,
+        'two enums' => [
+            [valueResultWrapOf(Status::class, 'Status'), valueResultWrapOf(Priority::class, 'Priority')],
             [
-                'type' => 'StatusType | VisibilityType | null',
+                'type' => 'AsEnum<typeof Status> | AsEnum<typeof Priority>',
                 'optional' => false,
-                'multiEnumResourceFqcns' => [Status::class, Visibility::class],
+                'embeddedEnumResourceFqcns' => [Status::class, Priority::class],
+                'wrappedEnumFqcns' => [Status::class, Priority::class],
             ],
         ],
-        'a same-named pair whose arms render alike, counted by member' => [
-            $sameNamedPair,
-            true,
-            ['type' => 'StatusType | null', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, CrmStatus::class]],
+        'the app\'s and the CRM\'s Status, printed alike' => [
+            [valueResultWrapOf(Status::class, 'Status'), valueResultWrapOf(CrmStatus::class, 'Status')],
+            [
+                'type' => 'AsEnum<typeof Status> | AsEnum<typeof Status>',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class, CrmStatus::class],
+                'wrappedEnumFqcns' => [Status::class, CrmStatus::class],
+            ],
+        ],
+        'one enum wrapped twice, one entry per token' => [
+            [valueResultWrapOf(Status::class, 'Status'), valueResultWrapOf(Status::class, 'Status')],
+            [
+                'type' => 'AsEnum<typeof Status>',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class],
+                'wrappedEnumFqcns' => [Status::class],
+            ],
+        ],
+        'a wrap, a bare read of its enum and a literal' => [
+            [
+                valueResultWrapOf(Status::class, 'Status'),
+                ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+                ['type' => "'none'", 'optional' => false],
+            ],
+            [
+                'type' => "AsEnum<typeof Status> | StatusType | 'none'",
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class],
+                'embeddedEnumResourceFqcns' => [Status::class],
+                'wrappedEnumFqcns' => [Status::class],
+            ],
+        ],
+        'a wrap and null' => [
+            [valueResultWrapOf(Status::class, 'Status'), ['type' => 'null', 'optional' => false]],
+            [
+                'type' => 'AsEnum<typeof Status> | null',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class],
+                'wrappedEnumFqcns' => [Status::class],
+            ],
+        ],
+        'rows, then two wraps' => [
+            [
+                ['type' => '{ n: string }[]', 'optional' => false],
+                valueResultWrapOf(Status::class, 'Status'),
+                valueResultWrapOf(Priority::class, 'Priority'),
+            ],
+            [
+                'type' => '{ n: string }[] | AsEnum<typeof Status> | AsEnum<typeof Priority>',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class, Priority::class],
+                'wrappedEnumFqcns' => [Status::class, Priority::class],
+            ],
+        ],
+        'a nullable wrap beside another, as a when() default leaves it' => [
+            [valueResultWrapOf(Status::class, 'Status'), [...valueResultWrapOf(Visibility::class, 'Visibility'), 'type' => 'AsEnum<typeof Visibility> | null']],
+            [
+                'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class, Visibility::class],
+                'wrappedEnumFqcns' => [Status::class, Visibility::class],
+            ],
         ],
     ]);
 
-    test('is not one when the count differs, or a branch is no enum resource', function (array $branches, bool $countMembers, array $union) {
-        expect(ValueResult::unionResults($branches, $countMembers))->toBe($union);
-    })->with([
-        'two arms, one of them nullable, counted by member' => [
-            $nullableSecond,
-            true,
-            [
-                'type' => 'StatusType | VisibilityType | null',
-                'optional' => false,
-                'embeddedEnumFqcns' => [Status::class, Visibility::class],
-            ],
-        ],
-        'a same-named pair whose arms render alike, counted by arm' => [
-            $sameNamedPair,
-            false,
-            ['type' => 'StatusType | null', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]],
-        ],
-        'two arms beside a branch typed null, counted by arm' => [
-            [
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
-                ['type' => 'VisibilityType', 'optional' => false, 'enumFqcn' => Visibility::class],
-                ['type' => 'null', 'optional' => false],
-            ],
-            false,
-            [
-                'type' => 'StatusType | VisibilityType | null',
-                'optional' => false,
-                'embeddedEnumFqcns' => [Status::class, Visibility::class],
-            ],
-        ],
-        'two arms beside a string' => [
-            [
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
-                ['type' => 'VisibilityType', 'optional' => false, 'enumFqcn' => Visibility::class],
-                ['type' => 'string', 'optional' => false],
-            ],
-            false,
-            [
-                'type' => 'StatusType | VisibilityType | string',
-                'optional' => false,
-                'embeddedEnumFqcns' => [Status::class, Visibility::class],
-            ],
-        ],
-        'an arm beside a direct read of another enum' => [
-            [
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
-                ['type' => 'VisibilityType', 'optional' => false, 'directEnumFqcn' => Visibility::class],
-            ],
-            false,
-            ['type' => 'StatusType | VisibilityType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, Visibility::class]],
-        ],
-    ]);
+    test('reads two same-named wraps apart from the reads beside them', function () {
+        $union = ValueResult::unionResults([
+            valueResultWrapOf(Status::class, 'Status'),
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
+            ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
+        ]);
 
-    // No rewrite can place an arm's own wraps inside a wider union, so they read bare and are queued like bare reads.
-    test('queues the enums an arm wraps on its own, in arm order', function (array $branches, array $union) {
-        expect(ValueResult::unionResults($branches))->toBe($union);
-    })->with([
-        'after an arm naming no enum' => [
-            [
-                ['type' => '{ c: unknown }[]', 'optional' => false],
-                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
-            ],
-            [
-                'type' => '{ c: unknown }[] | StatusType | VisibilityType',
-                'optional' => false,
-                'embeddedEnumFqcns' => [Status::class, Visibility::class],
-            ],
-        ],
-        'after an arm wrapping one enum' => [
-            [
-                ['type' => 'PriorityType', 'optional' => false, 'enumFqcn' => Priority::class],
-                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
-            ],
-            [
-                'type' => 'PriorityType | StatusType | VisibilityType',
-                'optional' => false,
-                'enumFqcn' => Priority::class,
-                'embeddedEnumFqcns' => [Status::class, Visibility::class],
-            ],
-        ],
-    ]);
+        expect($union['type'])->toBe('AsEnum<typeof Status> | StatusType | StatusType')
+            ->and($union['embeddedEnumFqcns'] ?? null)->toBe([Status::class, CrmStatus::class])
+            ->and($union['embeddedEnumResourceFqcns'] ?? null)->toBe([Status::class]);
+    });
 });
 
 // A Collection reaches JSON with its keys, so a union keeps them only when no arm is an array the filter re-indexes.

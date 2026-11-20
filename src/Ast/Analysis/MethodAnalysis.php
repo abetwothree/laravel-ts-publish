@@ -45,6 +45,7 @@ use LogicException;
  * @phpstan-type InlineModelFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type InlineResourceFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type MultiEnumFqcnsMap = array<array-key, list<class-string>>
+ * @phpstan-type WrappedEnumsMap = array<array-key, list<class-string>>
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
  * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
  * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
@@ -167,6 +168,8 @@ class MethodAnalysis
      * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
      *                                                          for a mixed EnumResource/direct-access ternary or match
+     * @param  WrappedEnumsMap  $wrappedEnums  property name => the enums its value wraps in an `EnumResource`, at any
+     *                                         depth; a set no token is read from
      * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
      *                          own import and its `optional` flag, if any; a publisher fits the key's import channels
      *                          to that text
@@ -188,6 +191,7 @@ class MethodAnalysis
         public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
         public array $enumResourceArmShapes = [],
+        public array $wrappedEnums = [],
         public array $casts = [],
         public array $carried = [],
         public ?string $flatTypeAlias = null,
@@ -299,7 +303,7 @@ class MethodAnalysis
 
         $this->dispatchFqcnResults(
             $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
-            $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes,
+            $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes, $this->wrappedEnums,
         );
 
         foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
@@ -415,6 +419,10 @@ class MethodAnalysis
                 ...($this->inlineEnumResourceFqcns[$propName] ?? []), ...$fqcns,
             ];
         }
+
+        foreach ($source->wrappedEnums as $propName => $fqcns) {
+            $this->wrappedEnums[$propName] = [...($this->wrappedEnums[$propName] ?? []), ...$fqcns];
+        }
     }
 
     /**
@@ -438,6 +446,7 @@ class MethodAnalysis
         $this->multiEnumResourceFqcns = $source->multiEnumResourceFqcns;
         $this->inlineEnumResourceFqcns = $source->inlineEnumResourceFqcns;
         $this->enumResourceArmShapes = $source->enumResourceArmShapes;
+        $this->wrappedEnums = $source->wrappedEnums;
         $this->casts = $source->casts;
         $this->carried = $source->carried;
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
@@ -479,6 +488,7 @@ class MethodAnalysis
             $this->inlineEnumResourceFqcns = self::withoutRepeat(
                 $this->inlineEnumResourceFqcns, $other->inlineEnumResourceFqcns, $name,
             );
+            $this->wrappedEnums = self::withoutRepeat($this->wrappedEnums, $other->wrappedEnums, $name);
         }
 
         foreach ($this->customImports as $path => $types) {
@@ -611,7 +621,7 @@ class MethodAnalysis
             || isset($this->inlineEnumFqcns[$name]) || isset($this->inlineModelFqcns[$name])
             || isset($this->inlineResourceFqcns[$name])
             || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
-            || isset($this->enumResourceArmShapes[$name]);
+            || isset($this->enumResourceArmShapes[$name]) || isset($this->wrappedEnums[$name]);
     }
 
     /**
@@ -711,11 +721,22 @@ class MethodAnalysis
     }
 
     /**
-     * The enums a property's value wraps in an `EnumResource`, whose consts an `AsEnum<typeof …>` spells.
+     * The enums a property's value wraps in an `EnumResource`, at any depth, once each: what a key wraps, never which
+     * const a token names.
      *
      * @return list<class-string>
      */
     public function wrappedEnumFqcns(string $name): array
+    {
+        return array_values(array_unique($this->wrappedEnums[$name] ?? []));
+    }
+
+    /**
+     * The enum behind each const an `AsEnum<typeof …>` of a property's type spells, one per token in print order.
+     *
+     * @return list<class-string>
+     */
+    public function wrapConstFqcns(string $name): array
     {
         return [...$this->topWrappedEnumFqcns($name), ...$this->inlineEnumResourceFqcns[$name] ?? []];
     }
@@ -741,7 +762,8 @@ class MethodAnalysis
             $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
             $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
             $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
-            $this->enumResourceArmShapes[$name], $this->casts[$name], $this->declaredTokenFqcns[$name],
+            $this->enumResourceArmShapes[$name], $this->wrappedEnums[$name], $this->casts[$name],
+            $this->declaredTokenFqcns[$name],
         );
     }
 
@@ -883,6 +905,7 @@ class MethodAnalysis
         $this->multiEnumResourceFqcns = TopLevelRenumbering::rekey($this->multiEnumResourceFqcns, $names);
         $this->inlineEnumResourceFqcns = TopLevelRenumbering::rekey($this->inlineEnumResourceFqcns, $names);
         $this->enumResourceArmShapes = TopLevelRenumbering::rekey($this->enumResourceArmShapes, $names);
+        $this->wrappedEnums = TopLevelRenumbering::rekey($this->wrappedEnums, $names);
         $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
@@ -909,6 +932,7 @@ class MethodAnalysis
         $slice->multiEnumResourceFqcns = array_intersect_key($this->multiEnumResourceFqcns, $key);
         $slice->inlineEnumResourceFqcns = array_intersect_key($this->inlineEnumResourceFqcns, $key);
         $slice->enumResourceArmShapes = array_intersect_key($this->enumResourceArmShapes, $key);
+        $slice->wrappedEnums = array_intersect_key($this->wrappedEnums, $key);
         $slice->casts = array_intersect_key($this->casts, $key);
         $slice->declaredTokenFqcns = array_intersect_key($this->declaredTokenFqcns, $key);
         $slice->heldObjectKeys = array_intersect_key($this->heldObjectKeys, $key);

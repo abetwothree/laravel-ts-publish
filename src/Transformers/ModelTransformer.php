@@ -763,7 +763,7 @@ class ModelTransformer extends CoreTransformer
     protected function registerWrappedEnums(string $name, array $info, string $type): array
     {
         $wrapped = $info['wrappedEnumFqcns'] ?? [];
-        $consts = EnumWrapImports::written($type, $wrapped);
+        $consts = EnumWrapImports::written($type, $info['wrapConstFqcns'] ?? []);
 
         if ($consts !== []) {
             $this->attributeConstFqcns[$name] = $consts;

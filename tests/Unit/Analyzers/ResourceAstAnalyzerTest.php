@@ -65,6 +65,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RepeatedArmWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ShortCircuitedCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextKeyResource;
@@ -175,6 +176,13 @@ use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
+use Workbench\App\Http\Resources\EnumWraps\DeclaredWrapRowsResource;
+use Workbench\App\Http\Resources\EnumWraps\NestedWrapsResource;
+use Workbench\App\Http\Resources\EnumWraps\RowsBesideWrapsResource;
+use Workbench\App\Http\Resources\EnumWraps\SameNamedWrapsResource;
+use Workbench\App\Http\Resources\EnumWraps\WalkedWrapResource;
+use Workbench\App\Http\Resources\EnumWraps\WrapBesideReadResource;
+use Workbench\App\Http\Resources\EnumWraps\WrapHelpersResource;
 use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\ExtendedAddressResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
@@ -326,13 +334,19 @@ describe('ResourceAstAnalyzer with PostResource', function () {
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
-        expect($analysis->enumResources)
-            ->toHaveKey('status')
-            ->toHaveKey('status_new')
-            ->toHaveKey('visibility')
-            ->toHaveKey('visibility_new')
-            ->toHaveKey('priority')
-            ->toHaveKey('priority_new');
+        $types = array_column($analysis->properties, 'type', 'name');
+
+        expect(array_intersect_key($types, array_flip(['status', 'status_new', 'visibility', 'visibility_new', 'priority', 'priority_new'])))
+            ->toBe([
+                'status' => 'AsEnum<typeof Status>',
+                'status_new' => 'AsEnum<typeof Status>',
+                'visibility' => 'AsEnum<typeof Visibility> | null',
+                'visibility_new' => 'AsEnum<typeof Visibility> | null',
+                'priority' => 'AsEnum<typeof Priority> | null',
+                'priority_new' => 'AsEnum<typeof Priority> | null',
+            ])
+            ->and($analysis->wrapConstFqcns('status'))->toBe([Status::class])
+            ->and($analysis->wrapConstFqcns('priority_new'))->toBe([Priority::class]);
     });
 
     test('hasMany relation with only() produces array type with [] suffix', function () {
@@ -848,32 +862,25 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
             ->and($this->props['member_roles']['optional'])->toBeFalse();
     });
 
-    // Must stay 'enumFqcn'-tagged (not demoted): the transformer's AsEnum rewrite needs that
-    // channel to render the wrapped-object array as AsEnum<typeof Role>[], not plain RoleType[].
     // The kept Collection serializes each wrap, so a null role sends the `[]` resolve() returns.
-    test('map() body that is entirely EnumResource::make() stays an array and is enumFqcn-tagged', function () {
-        expect($this->props['member_role_resources']['type'])->toBe('(RoleType | never[])[]')
+    test('map() body that is entirely EnumResource::make() stays an array of the wrap', function () {
+        expect($this->props['member_role_resources']['type'])->toBe('(AsEnum<typeof Role> | never[])[]')
             ->and($this->props['member_role_resources']['optional'])->toBeFalse()
-            ->and($this->analysis->enumResources)->toHaveKey('member_role_resources')
-            ->and($this->analysis->enumResources['member_role_resources'])->toBe(Role::class)
+            ->and($this->analysis->wrapConstFqcns('member_role_resources'))->toBe([Role::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('member_role_resources');
     });
 
-    // filter() clears sequential keys, so the map body ends up keyedObjectArm()-wrapped. That shape
-    // stays 'enumFqcn'-tagged (not demoted): the transformer's substitution-based rewrite reproduces
-    // it losslessly, AsEnum-wrapping both the array arm and the keyed Record arm.
-    test('filter() before an EnumResource::make() map body stays enumFqcn-tagged', function () {
+    // filter() clears sequential keys, so the map body ends up keyedObjectArm()-wrapped, the wrap in both arms.
+    test('filter() before an EnumResource::make() map body spells the wrap in both arms', function () {
         expect($this->props['member_role_resources_filtered']['type'])
-            ->toBe('(RoleType | never[])[] | Record<string, (RoleType | never[])>')
-            ->and($this->analysis->enumResources)->toHaveKey('member_role_resources_filtered')
-            ->and($this->analysis->enumResources['member_role_resources_filtered'])->toBe(Role::class)
+            ->toBe('(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>')
+            ->and($this->analysis->wrapConstFqcns('member_role_resources_filtered'))->toBe([Role::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('member_role_resources_filtered');
     });
 
-    // Same keyed-Record shape, nested inside an inline array this time: analyzeInlineArray()
-    // substitutes the bare RoleType token in place, so both union arms come out AsEnum-wrapped —
-    // matching member_role_resources_filtered above, whose PHP shape is identical.
-    test('an EnumResource-wrapped enum inside an inline array literal is substituted, not rebuilt', function () {
+    // Same keyed-Record shape, nested inside an inline array this time, matching member_role_resources_filtered above,
+    // whose PHP shape is identical.
+    test('an EnumResource-wrapped enum inside an inline array literal spells the wrap in both arms', function () {
         expect($this->props['wrapped_filtered']['type'])
             ->toBe('{ roles: (AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])> }');
     });
@@ -929,69 +936,57 @@ describe('ResourceAstAnalyzer with EnumCollectionResource (EnumResource::collect
         $this->props = collect($this->analysis->properties)->keyBy('name');
     });
 
-    test('accessor-backed list<Enum> stays enumFqcn-tagged and array-shaped', function () {
-        expect($this->props['status_history']['type'])->toBe('StatusType[]')
-            ->and($this->analysis->enumResources)->toHaveKey('status_history')
-            ->and($this->analysis->enumResources['status_history'])->toBe(Status::class)
+    test('accessor-backed list<Enum> spells a list of the wrap', function () {
+        expect($this->props['status_history']['type'])->toBe('AsEnum<typeof Status>[]')
+            ->and($this->analysis->wrapConstFqcns('status_history'))->toBe([Status::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('status_history');
     });
 
-    test('AsEnumCollection cast stays enumFqcn-tagged, array-shaped, and nullable', function () {
-        expect($this->props['week_days']['type'])->toBe('WeekDaysType[] | null')
-            ->and($this->analysis->enumResources)->toHaveKey('week_days')
-            ->and($this->analysis->enumResources['week_days'])->toBe(WeekDays::class);
+    test('AsEnumCollection cast spells a nullable list of the wrap', function () {
+        expect($this->props['week_days']['type'])->toBe('AsEnum<typeof WeekDays>[] | null')
+            ->and($this->analysis->wrapConstFqcns('week_days'))->toBe([WeekDays::class]);
     });
 
-    // analyzeInlineArray() computes its own AsEnum rewrite eagerly, so the [] survives here even
-    // though the top-level properties above stay as their bare, un-rewritten element-array type
-    // until ResourceTransformer::rewriteEnumResourceTypes() runs.
     test('EnumResource::collection() inside an inline array keeps its [] suffix', function () {
         expect($this->props['wrapped_week_days']['type'])
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
     // An EnumResource::make()/::collection() value is the one shape whenHas() declines to type from
-    // (isEnumResourceWrapCall()): the attribute goes on supplying type and array-ness, and this
-    // first-class-callable value promotes to the 'enumFqcn' (wrapped) channel.
-    test('first-class callable inside whenHas() promotes to the enumFqcn (wrapped) channel', function () {
-        expect($this->props['week_days_when_has']['type'])->toBe('WeekDaysType[] | null')
-            ->and($this->analysis->enumResources)->toHaveKey('week_days_when_has')
-            ->and($this->analysis->enumResources['week_days_when_has'])->toBe(WeekDays::class)
+    // (isEnumResourceWrapCall()): the attribute goes on supplying type and array-ness, spelled as the wrap.
+    test('first-class callable inside whenHas() spells the attribute as its wrap', function () {
+        expect($this->props['week_days_when_has']['type'])->toBe('AsEnum<typeof WeekDays>[] | null')
+            ->and($this->analysis->wrapConstFqcns('week_days_when_has'))->toBe([WeekDays::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('week_days_when_has');
     });
 
     // whenAppended() applies the identical check, for an ordinary (non-FCC) EnumResource::collection()
     // value — whenAppended() never forwards the attribute value to a Closure, so only this eagerly-
     // evaluated form is realistically reachable there.
-    test('EnumResource::collection() value inside whenAppended() promotes to the enumFqcn channel', function () {
-        expect($this->props['status_history_when_appended']['type'])->toBe('StatusType[]')
-            ->and($this->analysis->enumResources)->toHaveKey('status_history_when_appended')
-            ->and($this->analysis->enumResources['status_history_when_appended'])->toBe(Status::class)
+    test('EnumResource::collection() value inside whenAppended() spells the attribute as its wrap', function () {
+        expect($this->props['status_history_when_appended']['type'])->toBe('AsEnum<typeof Status>[]')
+            ->and($this->analysis->wrapConstFqcns('status_history_when_appended'))->toBe([Status::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('status_history_when_appended');
     });
 
-    // An explicit default arm unions in a 'string' type. The 'enumFqcn' channel stays live (not
-    // demoted): the transformer's substitution-based rewrite reproduces the full union losslessly.
-    test('whenHas() with an explicit default stays enumFqcn-tagged and keeps the full union', function () {
+    // An explicit default arm unions in a 'string' type beside the wrap.
+    test('whenHas() with an explicit default keeps the wrap and the full union', function () {
         expect($this->props['week_days_when_has_default']['type'])
-            ->toBe('WeekDaysType[] | string | null')
+            ->toBe('AsEnum<typeof WeekDays>[] | string | null')
             ->and($this->props['week_days_when_has_default']['optional'])->toBeFalse()
-            ->and($this->analysis->enumResources)->toHaveKey('week_days_when_has_default')
-            ->and($this->analysis->enumResources['week_days_when_has_default'])->toBe(WeekDays::class)
+            ->and($this->analysis->wrapConstFqcns('week_days_when_has_default'))->toBe([WeekDays::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('week_days_when_has_default');
     });
 
     // $variable->map() (not $this->relation->map()) with a body entirely EnumResource::make(...)
-    // must stay array-shaped and enumFqcn-tagged, the same contract as the relation-chain case.
-    test('local variable ->map() with an EnumResource::make() body stays array-shaped and enumFqcn-tagged', function () {
-        expect($this->props['members_via_var']['type'])->toBe('(RoleType | never[])[]')
-            ->and($this->analysis->enumResources)->toHaveKey('members_via_var')
-            ->and($this->analysis->enumResources['members_via_var'])->toBe(Role::class);
+    // stays an array of the wrap, the same contract as the relation-chain case.
+    test('local variable ->map() with an EnumResource::make() body stays an array of the wrap', function () {
+        expect($this->props['members_via_var']['type'])->toBe('(AsEnum<typeof Role> | never[])[]')
+            ->and($this->analysis->wrapConstFqcns('members_via_var'))->toBe([Role::class]);
     });
 
-    // A bare (unwrapped) enum read nested inside an inline array registers in inlineEnumFqcns,
-    // a channel distinct from enumResources/directEnumFqcns that ResourceTransformer reads
-    // separately (see propertyInlineEnumFqcns in rewriteEnumResourceTypes()'s import-GC).
+    // A bare (unwrapped) enum read nested inside an inline array registers in inlineEnumFqcns, apart from the
+    // directEnumFqcns entry of a key that reads it at the top.
     test('a bare enum read nested inside an inline array registers in inlineEnumFqcns', function () {
         expect($this->props['member_role_snapshot']['type'])->toBe('{ role: RoleType | null }[]')
             ->and($this->analysis->inlineEnumFqcns)->toHaveKey('member_role_snapshot')
@@ -1703,8 +1698,10 @@ describe('ResourceAstAnalyzer edge cases', function () {
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
-        expect($analysis->enumResources)->toHaveKey('status')
-            ->and($analysis->enumResources['status'])->toBe(Status::class);
+        expect(collect($analysis->properties)->firstWhere('name', 'status')['type'])->toBe('AsEnum<typeof Status>')
+            ->and($analysis->wrapConstFqcns('status'))->toBe([Status::class])
+            ->and(new ResourceTransformer(PostResource::class)->data()->valueImports)
+            ->toBe(['../../enums' => ['Priority', 'Status', 'Visibility']]);
     });
 
     test('resolves enum FQCN from new EnumResource for model property', function () {
@@ -1712,12 +1709,17 @@ describe('ResourceAstAnalyzer edge cases', function () {
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
-        expect($analysis->enumResources)->toHaveKey('status_new')
-            ->and($analysis->enumResources['status_new'])->toBe(Status::class)
-            ->and($analysis->enumResources)->toHaveKey('visibility_new')
-            ->and($analysis->enumResources['visibility_new'])->toBe(Visibility::class)
-            ->and($analysis->enumResources)->toHaveKey('priority_new')
-            ->and($analysis->enumResources['priority_new'])->toBe(Priority::class);
+        expect(array_intersect_key(
+            array_column($analysis->properties, 'type', 'name'),
+            array_flip(['status_new', 'visibility_new', 'priority_new']),
+        ))->toBe([
+            'status_new' => 'AsEnum<typeof Status>',
+            'visibility_new' => 'AsEnum<typeof Visibility> | null',
+            'priority_new' => 'AsEnum<typeof Priority> | null',
+        ])
+            ->and($analysis->wrapConstFqcns('status_new'))->toBe([Status::class])
+            ->and($analysis->wrapConstFqcns('visibility_new'))->toBe([Visibility::class])
+            ->and($analysis->wrapConstFqcns('priority_new'))->toBe([Priority::class]);
     });
 
     test('resolves direct enum property from whenHas', function () {
@@ -1865,7 +1867,9 @@ describe('ResourceAstAnalyzer with OrderDetailResource', function () {
     });
 
     test('resolves EnumResource::make inside mergeWhen', function () {
-        expect($this->analysis->enumResources)->toHaveKey('payment_status');
+        expect(collect($this->analysis->properties)->firstWhere('name', 'payment_status')['type'] ?? null)
+            ->toStartWith('AsEnum<typeof ')
+            ->and($this->analysis->wrapConstFqcns('payment_status'))->toHaveCount(1);
     });
 
     test('resolves direct enum property inside mergeWhen', function () {
@@ -2033,7 +2037,7 @@ describe('ResourceAstAnalyzer with non-existent model', function () {
             ->and($profile['optional'])->toBeTrue()
             ->and($phone['type'])->toBe('unknown')
             ->and($phone['optional'])->toBeTrue()
-            ->and($analysis->enumResources)->toBeEmpty()
+            ->and($analysis->wrappedEnums)->toBeEmpty()
             ->and($analysis->modelFqcns)->toBeEmpty();
     });
 });
@@ -2069,14 +2073,29 @@ describe('ResourceAstAnalyzer with parent::toArray spread', function () {
         $analyzer = new ResourceAstAnalyzer($reflection, Post::class);
         $analysis = $analyzer->analyze();
 
+        $data = new ResourceTransformer(ApiPostResource::class)->data();
+
         // The child overrides status/visibility/priority with plain props; the _new variants stay untouched.
-        expect($analysis->enumResources)
+        expect(array_intersect_key(
+            array_column($analysis->properties, 'type', 'name'),
+            array_flip(['status', 'visibility', 'priority', 'status_new', 'visibility_new', 'priority_new']),
+        ))->toBe([
+            'status' => 'StatusType',
+            'status_new' => 'AsEnum<typeof Status>',
+            'visibility' => 'VisibilityType | null',
+            'visibility_new' => 'AsEnum<typeof Visibility> | null',
+            'priority' => 'PriorityType | null',
+            'priority_new' => 'AsEnum<typeof Priority> | null',
+        ])
+            ->and($data->valueImports)->toBe(['../../enums' => ['Priority', 'Status', 'Visibility']])
+            ->and($data->typeImports['../../enums'] ?? [])->toBe(['PriorityType', 'StatusType', 'VisibilityType'])
+            ->and($analysis->wrappedEnums)
             ->not->toHaveKey('status')
             ->not->toHaveKey('visibility')
             ->not->toHaveKey('priority')
-            ->toHaveKey('status_new')
-            ->toHaveKey('visibility_new')
-            ->toHaveKey('priority_new');
+            ->and($analysis->wrapConstFqcns('status_new'))->toBe([Status::class])
+            ->and($analysis->wrapConstFqcns('visibility_new'))->toBe([Visibility::class])
+            ->and($analysis->wrapConstFqcns('priority_new'))->toBe([Priority::class]);
     });
 
     test('inherits customImports from parent trait TsCasts', function () {
@@ -3237,9 +3256,10 @@ describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + 
         $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
         $analysis = $analyzer->analyze();
 
-        expect($analysis->enumResources)
-            ->toHaveKey('status')
-            ->and($analysis->enumResources['status'])->toBe(ArticleStatus::class);
+        expect(collect($analysis->properties)->firstWhere('name', 'status')['type'])->toBe('AsEnum<typeof ArticleStatus>')
+            ->and($analysis->wrapConstFqcns('status'))->toBe([ArticleStatus::class])
+            ->and(new ResourceTransformer(ApiArticleResource::class)->data()->valueImports)
+            ->toBe(['../../enums' => ['ArticleStatus', 'ContentType']]);
     });
 
     test('resolves new EnumResource to ContentType enum', function () {
@@ -3247,9 +3267,8 @@ describe('ResourceAstAnalyzer with ApiArticleResource (abstract parent + only + 
         $analyzer = new ResourceAstAnalyzer($reflection, Article::class);
         $analysis = $analyzer->analyze();
 
-        expect($analysis->enumResources)
-            ->toHaveKey('content_type')
-            ->and($analysis->enumResources['content_type'])->toBe(ContentType::class);
+        expect(collect($analysis->properties)->firstWhere('name', 'content_type')['type'])->toBe('AsEnum<typeof ContentType>')
+            ->and($analysis->wrapConstFqcns('content_type'))->toBe([ContentType::class]);
     });
 
     test('resolves whenLoaded author as optional with User model', function () {
@@ -4538,59 +4557,54 @@ describe('ResourceAstAnalyzer ternary operator — enum branches', function () {
         $this->analysis = $this->analyzer->analyze();
     });
 
-    test('EnumResource::make vs null resolves to StatusType | null', function () {
+    test('EnumResource::make vs null resolves to its AsEnum type | null', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_null');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
-    test('EnumResource::make vs null stores enumFqcn for AsEnum rewrite', function () {
-        expect($this->analysis->enumResources)->toHaveKey('status_or_null');
+    test('EnumResource::make vs null queues the const its type spells', function () {
+        expect($this->analysis->wrapConstFqcns('status_or_null'))->toBe([Status::class]);
     });
 
-    test('EnumResource::make vs EnumResource::make (same) resolves to StatusType', function () {
+    test('EnumResource::make vs EnumResource::make (same) resolves to one AsEnum type', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_status');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeFalse();
     });
 
-    test('EnumResource::make vs EnumResource::make (same) stores enumFqcn for AsEnum rewrite', function () {
-        expect($this->analysis->enumResources)->toHaveKey('status_or_status');
+    test('EnumResource::make vs EnumResource::make (same) queues one const for its one token', function () {
+        expect($this->analysis->wrapConstFqcns('status_or_status'))->toBe([Status::class]);
     });
 
     test('EnumResource::make vs EnumResource::make (different) resolves to union', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_visibility');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toContain('StatusType')
-            ->and($prop['type'])->toContain('VisibilityType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
-    test('EnumResource::make vs EnumResource::make (different) stores multiEnumResourceFqcns for per-token AsEnum rewrite', function () {
-        expect($this->analysis->multiEnumResourceFqcns)->toHaveKey('status_or_visibility');
-
-        $fqcns = $this->analysis->multiEnumResourceFqcns['status_or_visibility'];
-        expect($fqcns)->toHaveCount(2)
-            ->and($fqcns[0])->toBe(Status::class)
-            ->and($fqcns[1])->toBe(Visibility::class);
+    test('EnumResource::make vs EnumResource::make (different) queues each const in token order', function () {
+        expect($this->analysis->wrapConstFqcns('status_or_visibility'))->toBe([Status::class, Visibility::class]);
     });
 
-    test('EnumResource::make vs $this->prop (same enum) resolves to StatusType', function () {
+    test('EnumResource::make vs $this->prop (same enum) resolves to the wrap beside the read', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_resource_or_type');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status> | StatusType')
             ->and($prop['optional'])->toBeFalse();
     });
 
-    test('EnumResource::make vs $this->prop (same enum) stores both enumFqcn and directEnumFqcn for mixed rewrite', function () {
-        expect($this->analysis->enumResources)->toHaveKey('status_resource_or_type')
-            ->and($this->analysis->directEnumFqcns)->toHaveKey('status_resource_or_type');
+    test('EnumResource::make vs $this->prop (same enum) queues the const and the read\'s type apart', function () {
+        expect($this->analysis->wrapConstFqcns('status_resource_or_type'))->toBe([Status::class])
+            ->and($this->analysis->readEnumFqcns('status_resource_or_type'))->toBe([Status::class])
+            ->and($this->analysis->wrappedEnumFqcns('status_resource_or_type'))->toBe([Status::class]);
     });
 });
 
@@ -4738,7 +4752,7 @@ describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 en
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_resource');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('OrderStatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof OrderStatus>')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -4756,7 +4770,7 @@ describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 en
         $prop = collect($this->analysis->properties)->firstWhere('name', 'currency_resource');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('CurrencyType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Currency>')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -4765,7 +4779,7 @@ describe('ResourceAstAnalyzer with ConditionalParamEnumResource — issue #38 en
         $prop = collect($this->analysis->properties)->firstWhere('name', 'user_role');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('RoleType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Role> | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -5157,7 +5171,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_make');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5165,7 +5179,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_new');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5173,7 +5187,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'visibility_make');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5181,7 +5195,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'priority_new');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('PriorityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Priority> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5191,7 +5205,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_when_make');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5199,7 +5213,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_when_arrow');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5207,7 +5221,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'visibility_when_full');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5219,7 +5233,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'priority_when_not_null_make');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('PriorityType | null')
+            ->and($prop['type'])->toBe('PriorityType | AsEnum<typeof Priority> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5227,7 +5241,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_when_not_null_arrow');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('StatusType | AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5235,7 +5249,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'visibility_when_not_null_full');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['type'])->toBe('VisibilityType | AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5245,7 +5259,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_ternary_null');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5253,7 +5267,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_ternary_both');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5261,7 +5275,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'status_or_visibility_ternary');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType | VisibilityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeFalse();
     });
 
@@ -5361,7 +5375,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'merged_status');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5369,7 +5383,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'merged_visibility');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5377,7 +5391,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'deferred_status');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status>')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5385,7 +5399,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'deferred_priority');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('PriorityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Priority> | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5395,7 +5409,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'category_status');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('StatusType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Status> | null')
             ->and($prop['optional'])->toBeTrue();
     });
 
@@ -5403,7 +5417,7 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
         $prop = collect($this->analysis->properties)->firstWhere('name', 'category_visibility');
 
         expect($prop)->not->toBeNull()
-            ->and($prop['type'])->toBe('VisibilityType | null')
+            ->and($prop['type'])->toBe('AsEnum<typeof Visibility> | null')
             ->and($prop['optional'])->toBeTrue();
     });
 });
@@ -6079,8 +6093,8 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         ->and($props['resource_marker']['type'])->toBe('string')
         // Unaffected: an enum case reached through EnumResource::make() — a separate,
         // pre-existing path (resolveEnumFromPropertyArg()) this feature does not touch.
-        ->and($props['status_marker']['type'])->toContain('Status')
-        ->and($analysis->enumResources)->toHaveKey('status_marker', Status::class);
+        ->and($props['status_marker']['type'])->toBe('AsEnum<typeof Status>')
+        ->and($analysis->wrapConstFqcns('status_marker'))->toBe([Status::class]);
 });
 
 describe('toResource() and toResourceCollection() after a `?->` that can end the chain', function () {
@@ -7400,13 +7414,13 @@ test('a union of two same-named enums keeps a member and a queue entry per enum,
     'two reads' => ['$this->id > 0 ? $this->status : $this->current_crm_status', 'StatusType | StatusType | null'],
 ]);
 
-// An enum resource's token holds no queue entry, so a union holding one keeps the merge by text it had (#76, #108):
-// nested_mixed's `o` keeps that merge's CRM alias. With no enum resource, the nested union reads its enums by class.
-test('a union holding an enum resource beside two same-named enums keeps the merge by text it had', function () {
+// A wrap's const rides its own queue, so a union holding one reads the enums beside it by class too (#76, #108): each
+// arm keeps its member, and nested_mixed's `o` names the app enum it reads, as nested_reads' does.
+test('a union holding an enum resource beside two same-named enums reads each by class', function () {
     expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(EnumWrapBesideSharedNameResource::class)->properties))
         ->toBe([
-            'mixed' => 'WorkbenchStatusType | null',
-            'nested_mixed' => '{ m: WorkbenchStatusType | null; n: CrmStatusType | null; o: CrmStatusType | null }',
+            'mixed' => 'AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType | null',
+            'nested_mixed' => '{ m: AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
             'nested_reads' => '{ m: WorkbenchStatusType | CrmStatusType | null; n: CrmStatusType | null; o: WorkbenchStatusType | null }',
         ]);
 });
@@ -7451,7 +7465,7 @@ test('a short ternary keeps both arms in a resource body Inertia reads', functio
     ), $keys);
     $empty = sentAsJson(new CheckedResourceElvisResource(null)->resolve(Request::create('/')));
 
-    expect($read(Reading::Inertia))->toBe(array_fill_keys(array_keys($keys), 'StatusType | null'))
+    expect($read(Reading::Inertia))->toBe(array_fill_keys(array_keys($keys), 'AsEnum<typeof Status> | null'))
         ->and($read(Reading::Inertia))->toBe($read(Reading::Encoded))
         ->and([$empty->tryFrom, $empty->helperTryFrom, $empty->helperInst, $empty->mwTryFrom])->toBe([null, null, null, null]);
 });
@@ -8153,3 +8167,91 @@ it('strips a key its @return leaves untyped before the frame joins its returns, 
     expect(array_column($analyzer->analyze()->properties, 'type', 'name'))->toBe(['k' => 'string | number[]', 'loose' => 'string'])
         ->and($analyzer->joined)->toBe([['k' => 'gaps', 'loose' => 'plain'], ['k' => 'plain', 'loose' => 'plain']]);
 })->group('gap-mode');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EnumResource wraps spelled where they are read (GH-160): each arm publishes as it does alone
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-160)', function () {
+    test('publishes each probe key as its arms publish alone, in arm order', function (string $resource, array $keys) {
+        expect(resourceProps($resource))->toMatchArray($keys);
+    })->with([
+        'two or three wraps under a key, in a list and nested' => [NestedWrapsResource::class, [
+            'under_key' => '{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> }',
+            'in_list' => '(AsEnum<typeof Status> | AsEnum<typeof Role>)[]',
+            'two_levels' => '{ outer: { inner: AsEnum<typeof Status> | AsEnum<typeof Role> } }',
+            'three_under_key' => '{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> | AsEnum<typeof Visibility> }',
+            'three_top' => 'AsEnum<typeof Role> | AsEnum<typeof Status> | AsEnum<typeof Visibility>',
+            'three_wraps_two_enums' => 'AsEnum<typeof Status> | AsEnum<typeof Priority> | null',
+            'when_two_wraps_one_nullable' => 'AsEnum<typeof Status> | AsEnum<typeof MediaType> | null',
+            'wrap_or_object_wrap' => 'AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> }',
+            'when_wrap_or_object_wrap' => 'AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> }',
+        ]],
+        'a wrap beside a read, a case, a literal or a list of its enum' => [WrapBesideReadResource::class, [
+            'wrap_or_nested_value' => 'AsEnum<typeof MediaType> | MediaTypeType | string',
+            'wrap_or_nested_nullable_value' => 'AsEnum<typeof MediaType> | MediaTypeType | null',
+            'match_wrap_read_literal' => 'AsEnum<typeof Status> | StatusType | string',
+            'match_wrap_value_name' => 'AsEnum<typeof Status> | StatusType | StatusKind',
+            'match_wrap_value_other' => 'AsEnum<typeof Status> | StatusType | string',
+            'nested_make_or_collection_or_read' => 'AsEnum<typeof Status> | AsEnum<typeof Status>[] | StatusType',
+            'collection_or_plain_list' => 'AsEnum<typeof Status>[] | StatusType[]',
+            'wrap_or_other_enum_case' => 'AsEnum<typeof Role> | StatusType',
+            'wrap_or_nested_nullable_case' => 'AsEnum<typeof Status> | StatusType | null',
+            'wrap_or_object_value' => 'AsEnum<typeof MediaType> | { v: MediaTypeType }',
+        ]],
+        'wraps of the app\'s and the CRM\'s Status' => [SameNamedWrapsResource::class, [
+            'app_or_crm_wrap' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
+            'app_or_crm_wrap_when' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
+            'app_or_crm_wrap_under_key' => '{ subject: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> }',
+            'wrap_or_two_reads' => 'AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType',
+            'crm_spread_over_wrap' => '{ c: AsEnum<typeof WorkbenchStatus> | CrmStatusType }',
+        ]],
+        'rows, or null, before wraps' => [RowsBesideWrapsResource::class, [
+            'rows_then_two_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
+            'rows_then_three_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>',
+            'named_rows_then_two_wraps' => '{ n: string }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
+            'null_then_two_wraps' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | null',
+        ]],
+        'a wrap, a bare read and rows the @return fills' => [DeclaredWrapRowsResource::class, [
+            'subject' => 'AsEnum<typeof Status> | StatusType | { s: StatusType }[]',
+        ]],
+        'a helper returning a ternary of two wraps' => [WrapHelpersResource::class, [
+            'picked' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
+            'status_wrap?' => 'AsEnum<typeof Status>',
+        ]],
+        'a walked wrap beside a read of another enum' => [WalkedWrapResource::class, [
+            'state' => 'AsEnum<typeof Status> | VisibilityType | null',
+        ]],
+    ]);
+
+    // Q8: the app enum's wrap in two arms is one object, its const read by class beside the CRM enum's.
+    test('keeps a literal repeating a wrap apart from one wrapping a same-named enum, each const imported once', function () {
+        $data = new ResourceTransformer(RepeatedArmWrapsResource::class)->data();
+
+        expect($data->properties['repeated']['type'])
+            ->toBe('{ e: AsEnum<typeof WorkbenchStatus>; x: number } | { e: AsEnum<typeof CrmStatus>; x: string }')
+            ->and($data->valueImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['Status as WorkbenchStatus'],
+                '../../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+            ])
+            ->and($data->typeImports)->toBe([]);
+    });
+
+    // R2: without the tolki package a wrap prints its enum's value type, read by class like any token of that type.
+    test('reads each wrap by class without the tolki package', function (string $resource, array $keys) {
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        expect(resourceProps($resource))->toMatchArray($keys);
+    })->with([
+        'rows before wraps' => [RowsBesideWrapsResource::class, [
+            'rows_then_two_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType',
+            'rows_then_three_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType | VisibilityType',
+        ]],
+        'wraps of the app\'s and the CRM\'s Status' => [SameNamedWrapsResource::class, [
+            'app_or_crm_wrap' => 'WorkbenchStatusType | CrmStatusType',
+            'app_or_crm_wrap_when' => 'WorkbenchStatusType | CrmStatusType',
+            'app_or_crm_wrap_under_key' => '{ subject: WorkbenchStatusType | CrmStatusType }',
+            'wrap_or_two_reads' => 'WorkbenchStatusType | CrmStatusType',
+        ]],
+    ]);
+});

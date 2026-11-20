@@ -116,7 +116,7 @@ final class FileImportNames
                     'text' => $piece['text'],
                     'typed' => true,
                     'classes' => $analysis->channelFqcns($source),
-                    'consts' => $analysis->wrappedEnumFqcns($source),
+                    'consts' => $analysis->wrapConstFqcns($source),
                     ...($declared === null ? [] : ['declared' => $declared]),
                 ];
             }

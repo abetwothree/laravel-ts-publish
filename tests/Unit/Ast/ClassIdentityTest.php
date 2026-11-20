@@ -119,23 +119,27 @@ describe('ClassIdentity::spellsTwoClassesAlike()', function () {
             [
                 ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
                 ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
-                ['type' => 'VisibilityType', 'optional' => false, 'enumFqcn' => Visibility::class],
+                ['type' => 'AsEnum<typeof Visibility>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Visibility::class]],
             ],
-            false,
+            true,
         ],
         'two same-named enums read directly, beside an arm that wraps two' => [
             [
                 ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
                 ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
-                ['type' => 'StatusType | VisibilityType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Visibility::class]],
+                [
+                    'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility>',
+                    'optional' => false,
+                    'embeddedEnumResourceFqcns' => [Status::class, Visibility::class],
+                ],
             ],
-            false,
+            true,
         ],
         'two same-named models, beside an arm that wraps an enum' => [
             [
                 ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class],
                 ['type' => 'User', 'optional' => false, 'modelFqcn' => CrmUser::class],
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class]],
             ],
             true,
         ],
@@ -146,12 +150,12 @@ describe('ClassIdentity::spellsTwoClassesAlike()', function () {
             ],
             false,
         ],
-        'two same-named consts, a kind no reading reads yet' => [
+        'two same-named consts' => [
             [
                 ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class]],
                 ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [CrmStatus::class]],
             ],
-            false,
+            true,
         ],
     ]);
 });
@@ -234,25 +238,47 @@ describe('ClassIdentity::membersByClass()', function () {
                 'embeddedEnumFqcns' => [Status::class, CrmStatus::class, Status::class],
             ],
         ],
-        // An enum resource's token holds no queue entry, since the AsEnum rewrite spells it (#76, #108).
-        'two enums read directly beside an enum resource arm stay merged by their text' => [
+        // A wrap's token is its const, read on its own queue, so the reads beside it are read by class (#76, #108).
+        'two enums read directly beside an enum resource arm are two members' => [
             [
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
+                ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]],
                 ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class],
                 ['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => CrmStatus::class],
             ],
-            false,
-            ['type' => 'StatusType | null', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]],
-            ['type' => 'StatusType | null', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]],
-        ],
-        'two enum resource arms that share a name stay merged by their text' => [
+            true,
             [
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class],
-                ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => CrmStatus::class],
+                'type' => 'AsEnum<typeof Status> | StatusType | null',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, CrmStatus::class],
+                'embeddedEnumResourceFqcns' => [Status::class],
+                'wrappedEnumFqcns' => [Status::class],
             ],
-            false,
-            ['type' => 'StatusType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]],
-            ['type' => 'StatusType', 'optional' => false, 'embeddedEnumFqcns' => [Status::class, CrmStatus::class]],
+            [
+                'type' => 'AsEnum<typeof Status> | StatusType | StatusType | null',
+                'optional' => false,
+                'embeddedEnumFqcns' => [Status::class, CrmStatus::class],
+                'embeddedEnumResourceFqcns' => [Status::class],
+                'wrappedEnumFqcns' => [Status::class],
+            ],
+        ],
+        'two enum resource arms that share a name are two members' => [
+            [
+                ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]],
+                ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [CrmStatus::class], 'wrappedEnumFqcns' => [CrmStatus::class]],
+            ],
+            true,
+            [
+                'type' => 'AsEnum<typeof Status>',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class, CrmStatus::class],
+                'wrappedEnumFqcns' => [Status::class, CrmStatus::class],
+            ],
+            [
+                'type' => 'AsEnum<typeof Status> | AsEnum<typeof Status>',
+                'optional' => false,
+                'embeddedEnumResourceFqcns' => [Status::class, CrmStatus::class],
+                'wrappedEnumFqcns' => [Status::class, CrmStatus::class],
+            ],
         ],
         'arms whose classes each have a name of their own are merged by their text, as before' => [
             [

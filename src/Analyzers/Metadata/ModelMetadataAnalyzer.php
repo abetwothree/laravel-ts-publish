@@ -143,7 +143,10 @@ class ModelMetadataAnalyzer
         $payload = array_flip($payloadKeys);
         $published = array_intersect_key($result->types, $payload);
 
-        foreach (array_keys($analysis->enumResources + $analysis->directEnumFqcns + $analysis->inlineEnumFqcns) as $name) {
+        $enumKeys = $analysis->enumResources + $analysis->directEnumFqcns + $analysis->inlineEnumFqcns
+            + $analysis->inlineEnumResourceFqcns + $analysis->wrappedEnums;
+
+        foreach (array_keys($enumKeys) as $name) {
             // DispatchesFqcnResults keys an embedded enum by its own FQCN, so key-equals-value marks a channel
             // with no property name to prune by; the still-spelled filter below owns those instead.
             if (isset($published[$name]) || ($analysis->directEnumFqcns[$name] ?? null) === $name) {
@@ -153,7 +156,7 @@ class ModelMetadataAnalyzer
             unset(
                 $analysis->enumResources[$name], $analysis->directEnumFqcns[$name],
                 $analysis->multiEnumResourceFqcns[$name], $analysis->inlineEnumFqcns[$name],
-                $analysis->inlineEnumResourceFqcns[$name],
+                $analysis->inlineEnumResourceFqcns[$name], $analysis->wrappedEnums[$name],
             );
         }
 

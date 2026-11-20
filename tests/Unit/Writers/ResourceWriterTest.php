@@ -144,28 +144,29 @@ test('imports AsEnum and each enum const for a resource whose only enum resource
     ]);
 });
 
-// Each union below holds a `null` beside its two enum resources, so it is not read as a union of enum resources, which
-// an inline member and a cast key would not honour. Each case reads the file's import lines and its one key.
-test('publishes a conditional over two enum resources and a null as the enums\' own types, imported', function (string $resource, string $key) {
+// Each union below holds a `null` beside its two enum resources, and each wrap still spells itself, at the top and in
+// an inline member. Each case reads the file's import lines and its one key.
+test('publishes a conditional over two enum resources and a null as each wrap, its const imported', function (string $resource, string $key) {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.enums.use_tolki_package', true);
 
     $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
 
     expect(array_values(preg_grep('/^(import |    state\??: )/', explode("\n", $content)) ?: []))->toBe([
-        "import type { StatusType, VisibilityType } from '../../../../../../workbench/app/enums';",
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status, Visibility } from '../../../../../../workbench/app/enums';",
         $key,
     ]);
 })->with([
-    'a `when()` and its default' => [EnumResourceArmsWhenResource::class, '    state: StatusType | VisibilityType | null;'],
-    'a closure' => [EnumResourceArmsClosureResource::class, '    state?: StatusType | VisibilityType | null;'],
+    'a `when()` and its default' => [EnumResourceArmsWhenResource::class, '    state: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;'],
+    'a closure' => [EnumResourceArmsClosureResource::class, '    state?: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;'],
     'a `when()` and its default, in an inline array' => [
         EnumResourceArmsInlineWhenResource::class,
-        '    state: { inner: StatusType | VisibilityType | null };',
+        '    state: { inner: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null };',
     ],
     'a closure, in an inline array' => [
         EnumResourceArmsInlineClosureResource::class,
-        '    state: { inner?: StatusType | VisibilityType | null };',
+        '    state: { inner?: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null };',
     ],
 ]);
 
@@ -426,9 +427,9 @@ test('keeps the type import a spelling or a bare read still needs', function (st
         [
             "import { type AsEnum } from '@tolki/ts';",
             "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
-            "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+            "import type { StatusType } from '../../../../../../workbench/app/enums';",
             '    k: string | null;',
-            '    a: WorkbenchStatusType | null;',
+            '    a: StatusType | null;',
             '    c: AsEnum<typeof CrmStatus> | null;',
         ],
     ],

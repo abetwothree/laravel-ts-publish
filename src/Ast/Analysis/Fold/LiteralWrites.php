@@ -364,7 +364,7 @@ final class LiteralWrites
         $values = array_map(self::mapValue(...), $maps);
         $value = array_any($values, static fn (array $value): bool => $value['type'] === 'unknown')
             ? ValueResult::unknown()
-            : ValueResult::unionResults($values, countMembers: true);
+            : ValueResult::unionResults($values);
         $type = 'Record<string, '.$value['type'].'>';
 
         // The joined map stands where the last map does, after another item, so every key must fit its value.

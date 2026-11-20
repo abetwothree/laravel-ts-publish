@@ -1,7 +1,6 @@
 import { type AsEnum } from '@tolki/ts';
 
-import { Status } from '../../../enums';
-import type { StatusType, VisibilityType } from '../../../enums';
+import { Status, Visibility } from '../../../enums';
 
 /**
  * Enum wraps a helper returns or is passed (GH-108): a ternary of two wraps, a wrap over `whenHas()`, and a seed the
@@ -11,7 +10,7 @@ import type { StatusType, VisibilityType } from '../../../enums';
  */
 export interface WrapHelpersResource
 {
-    picked: StatusType | VisibilityType | null;
+    picked: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;
     status_wrap?: AsEnum<typeof Status>;
     card: { stamped: boolean; [key: string]: unknown };
 }

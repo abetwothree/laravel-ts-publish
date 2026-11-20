@@ -89,8 +89,8 @@ final class SubjectHelperReturnResolver
             $this->seedBody($stmts, $scope);
         }, fn (): array => ValueResult::analyzeClosureUnion($returns, $engine, $scope));
 
-        // Without an enum channel no wrap was typed, and the `null` a dropped wrap leaves says nothing about it.
-        if (! isset($result['enumFqcn']) && ! isset($result['multiEnumResourceFqcns'])) {
+        // Without a wrapped enum no wrap was typed, and the `null` a dropped wrap leaves says nothing about it.
+        if (($result['wrappedEnumFqcns'] ?? []) === []) {
             return null;
         }
 

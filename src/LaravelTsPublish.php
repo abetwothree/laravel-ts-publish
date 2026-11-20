@@ -96,6 +96,7 @@ use UnitEnum;
  *    listKeys?: bool,
  *    sendsEnumScalar?: true,
  *    wrappedEnumFqcns?: list<class-string>,
+ *    wrapConstFqcns?: list<class-string>,
  *    typedByClass?: true,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
@@ -128,6 +129,7 @@ use UnitEnum;
  * `sendsEnumScalar` says the enum alias in `type` stands for a scalar the value sends, a `->value` or `->name` read or
  * a case literal the alias took in, so a model's Resource interface keeps the alias rather than `AsEnum<typeof X>`.
  * `wrappedEnumFqcns` lists each enum the value wraps in an `EnumResource`, whose alias takes in no case literal there.
+ * `wrapConstFqcns` is the enum behind each `typeof` const `type` spells, one per token in print order, for aliasing.
  *
  * `typedByClass` says `type` is what a class's `#[TsType]` or a custom cast declares the value writes, while PHP holds
  * the object or whatever the cast's get() returns, so no guard on the value can be decided by `type`.
@@ -1609,6 +1611,12 @@ class LaravelTsPublish
 
         if ($wrapped !== []) {
             $result['wrappedEnumFqcns'] = $wrapped;
+        }
+
+        $consts = array_merge(...array_map(fn (array $info): array => $info['wrapConstFqcns'] ?? [], $infos));
+
+        if ($consts !== []) {
+            $result['wrapConstFqcns'] = $consts;
         }
 
         return $result;

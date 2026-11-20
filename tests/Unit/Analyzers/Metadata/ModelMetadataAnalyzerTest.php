@@ -35,6 +35,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\RedundantArms
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\WrapOutsidePayloadMetadataProvider;
 use Workbench\App\Enums\Role;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -318,8 +319,20 @@ test('keeps a numeric provide() cast key on its own key', function () {
 test('publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
     $analysis = analyzeMetadataTypesFor(RedundantArmsMetadataProvider::class, ['status', 'tags', 'kept']);
 
-    expect($analysis->types)->toBe(['status' => 'StatusType', 'tags' => '(PriorityType | null)[]', 'kept' => 'StatusType | 0'])
-        ->and($analysis->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']]);
+    expect($analysis->types)->toBe(['status' => 'StatusType', 'tags' => '(PriorityType | null)[]', 'kept' => 'AsEnum<typeof Status> | 0'])
+        ->and($analysis->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType'], '@tolki/ts' => ['AsEnum']])
+        ->and($analysis->valueImports)->toBe(['./workbench/app/enums' => ['Status']]);
+});
+
+// A key the payload leaves out lends no class to a published token, a wrap's const included: the cast's `typeof Status`
+// finds no const behind it, as at the base, rather than the enum the left-out key wraps (GH-160).
+test('a companion reads no const of a wrap under a key its payload leaves out', function () {
+    $analysis = resolve(ModelMetadataAnalyzer::class)
+        ->analyze(WrapOutsidePayloadMetadataProvider::class, ['shown'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe(['shown' => '{ w: AsEnum<typeof Status> }'])
+        ->and($analysis->typeImports)->toBe(['@tolki/ts' => ['AsEnum']])
+        ->and($analysis->valueImports)->toBe([]);
 });
 
 // The engine spells a nested wrap `AsEnum<typeof Status>`, so the companion imports the const and `AsEnum` (GH-96).

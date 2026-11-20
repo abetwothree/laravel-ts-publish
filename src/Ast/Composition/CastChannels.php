@@ -157,12 +157,18 @@ final class CastChannels
             $models = $this->modelsOf($analysis, $name);
             $resources = $this->resourcesOf($analysis, $name);
             $wraps = $this->wrapsOf($analysis, $name);
+            $wrapped = $analysis->wrappedEnums[$name] ?? null;
 
             $cast = $analysis->casts[$name] ?? null;
             $analysis->forgetChannels($name);
 
             if ($cast !== null) {
                 $analysis->casts[$name] = $cast;
+            }
+
+            // The value still sends each wrap whatever the text spells, so the key wraps them still.
+            if ($wrapped !== null) {
+                $analysis->wrappedEnums[$name] = $wrapped;
             }
 
             $named = $declared === null ? null : $this->byKind(array_values(array_filter($declared)));
@@ -206,18 +212,21 @@ final class CastChannels
     }
 
     /**
-     * The enums whose type names a key's value carried, in the order its import channels queue them.
+     * The enums whose type names a key's value carried, in the order its import channels queue them, led by each enum
+     * it wraps that no type channel holds: a cast may spell a wrapped enum's value type for the object it sends.
      *
      * @return list<class-string>
      */
     private function enumsOf(MethodAnalysis $analysis, string $name): array
     {
-        return [
+        $typed = [
             ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
             ...(isset($analysis->directEnumFqcns[$name]) ? [$analysis->directEnumFqcns[$name]] : []),
             ...($analysis->multiEnumResourceFqcns[$name] ?? []),
             ...($analysis->inlineEnumFqcns[$name] ?? []),
         ];
+
+        return [...array_values(array_diff($analysis->wrappedEnumFqcns($name), $typed)), ...$typed];
     }
 
     /**
@@ -247,7 +256,8 @@ final class CastChannels
     }
 
     /**
-     * The enums a key's value wrapped in an `EnumResource`, whose const an `AsEnum<typeof …>` would spell.
+     * The enums a key's value wrapped in an `EnumResource`, whose const an `AsEnum<typeof …>` would spell: each its
+     * const queue holds, then each it wraps that no const spells, as a wrap printed without the tolki package is.
      *
      * @return list<class-string>
      */
@@ -257,6 +267,7 @@ final class CastChannels
             ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
             ...($analysis->multiEnumResourceFqcns[$name] ?? []),
             ...($analysis->inlineEnumResourceFqcns[$name] ?? []),
+            ...$analysis->wrappedEnumFqcns($name),
         ]));
     }
 

@@ -182,6 +182,7 @@ final class BranchJoin
         $target->multiEnumResourceFqcns = $channels->multiEnumResourceFqcns;
         $target->inlineEnumResourceFqcns = $channels->inlineEnumResourceFqcns;
         $target->enumResourceArmShapes = $channels->enumResourceArmShapes;
+        $target->wrappedEnums = $channels->wrappedEnums;
         $target->casts = self::castsEveryBranchAgrees($analyses, array_keys($propertyMap));
         $target->carried = $channels->carried;
         $target->flatTypeAlias = $flatTypeAlias;

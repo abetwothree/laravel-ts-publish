@@ -632,6 +632,26 @@ describe('CastChannels', function () {
             ->and($analysis->inlineEnumResourceFqcns)->toBe(['k' => [Status::class, Visibility::class]]);
     });
 
+    // G4, R9: a wrap rides its const queue, not a type queue, so the enums a key wraps are offered for its cast's text.
+    it('keeps an enum the key wraps as the class behind the value type its cast spells', function (string $cast, array $kept, array $carried) {
+        $analysis = new MethodAnalysis(
+            properties: [['name' => 'k', 'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null', 'optional' => false, 'description' => '']],
+            inlineEnumResourceFqcns: ['k' => [Status::class, Visibility::class]],
+            wrappedEnums: ['k' => [Status::class, Visibility::class]],
+        );
+
+        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => $cast, 'import' => null]]);
+
+        expect($analysis->inlineEnumFqcns['k'] ?? [])->toBe($kept)
+            ->and($analysis->carried['enums'] ?? [])->toBe($carried)
+            ->and($analysis->wrappedEnumFqcns('k'))->toBe([Status::class, Visibility::class])
+            ->and($analysis->wrapConstFqcns('k'))->toBe([Status::class, Visibility::class]);
+    })->with([
+        'one of the two names' => ['StatusType | null', [Status::class], [Visibility::class]],
+        'the other name' => ['VisibilityType | null', [Visibility::class], [Status::class]],
+        'both names' => ['StatusType | VisibilityType | null', [Status::class, Visibility::class], []],
+    ]);
+
     it('drops a class whose name the cast\'s import brings, unless another key reads it', function () {
         $analysis = new MethodAnalysis(
             properties: [

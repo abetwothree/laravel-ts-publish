@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
  * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
+ * @phpstan-import-type WrappedEnumsMap from MethodAnalysis
  *
  * @internal
  */
@@ -32,6 +33,7 @@ trait DispatchesFqcnResults
      * @param  ClassMapType  $modelFqcns
      * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
      * @param  EnumResourceArmShapeMap  $enumResourceArmShapes
+     * @param  WrappedEnumsMap  $wrappedEnums
      */
     protected function dispatchFqcnResults(
         string $keyName,
@@ -42,6 +44,7 @@ trait DispatchesFqcnResults
         array &$modelFqcns,
         array &$multiEnumResourceFqcns = [],
         array &$enumResourceArmShapes = [],
+        array &$wrappedEnums = [],
     ): void {
         if (isset($result['enumFqcn'])) {
             $enumResources[$keyName] = $result['enumFqcn'];
@@ -70,6 +73,10 @@ trait DispatchesFqcnResults
 
         if (isset($result['modelFqcn'])) {
             $modelFqcns[$keyName] = $result['modelFqcn'];
+        }
+
+        if (($result['wrappedEnumFqcns'] ?? []) !== []) {
+            $wrappedEnums[$keyName] = [...$wrappedEnums[$keyName] ?? [], ...$result['wrappedEnumFqcns']];
         }
 
         // Embedded FQCNs from inline relation filter types (e.g. $this->post->only([...])).

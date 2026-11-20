@@ -24,16 +24,6 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard\Publish
 function classQueueGuardPending(): array
 {
     return [
-        // A wrap prints its enum's value type until the late rewrite, so it folds or swaps with a class printed alike.
-        'Task 5' => [
-            [ArmKind::WrapAppStatus, ArmKind::WrapCrmStatus],
-            [ArmKind::WrapAppStatus, ArmKind::ReadAppStatus],
-            [ArmKind::WrapAppStatus, ArmKind::ReadCrmStatus],
-            [ArmKind::WrapAppStatus, ArmKind::Rows],
-            [ArmKind::WrapCrmStatus, ArmKind::ReadAppStatus],
-            [ArmKind::WrapCrmStatus, ArmKind::ReadCrmStatus],
-            [ArmKind::WrapCrmStatus, ArmKind::Rows],
-        ],
         // A model and a resource printed alike are never told apart by class, so they fold or their aliases swap.
         'Task 9' => [
             [ArmKind::AddressModel, ArmKind::AddressResource],
@@ -70,6 +60,24 @@ function classQueueGuardFamilies(?string $pending): array
 }
 
 /**
+ * Every family a task is still pending on, each a dataset row named for its kinds and its task.
+ *
+ * @return array<string, array{ArmKind, ArmKind}>
+ */
+function classQueueGuardPendingFamilies(): array
+{
+    $families = [];
+
+    foreach (array_keys(classQueueGuardPending()) as $task) {
+        foreach (classQueueGuardFamilies($task) as $name => $family) {
+            $families["{$name} ({$task})"] = $family;
+        }
+    }
+
+    return $families;
+}
+
+/**
  * An integer environment override, or $default where it is unset.
  */
 function classQueueGuardSetting(string $name, int $default): int
@@ -90,11 +98,21 @@ function classQueueGuardSetting(string $name, int $default): int
 }
 
 /**
- * Publish $case and compare each union member's classes, in order, with its arm's; the mismatch, or null.
+ * Publish $case and compare each union member's classes, in order, with its arm's; the mismatch, or null. A body the
+ * engine throws on, or publishes no key for, is a mismatch too, so its seed and shrink are reported.
  */
 function classQueueGuardMismatch(GuardCase $case, GuardClassFiles $files): ?string
 {
-    $result = resolve(AstEngine::class)->analyze($files->load($case), 'toArray', null, PublishedClasses::FROM);
+    try {
+        $result = resolve(AstEngine::class)->analyze($files->load($case), 'toArray', null, PublishedClasses::FROM);
+    } catch (Throwable $thrown) {
+        return implode("\n", ["  {$case->label()}", "  body:      'v' => {$case->value()}", '  threw:     '.$thrown::class.': '.$thrown->getMessage()]);
+    }
+
+    if (! isset($result->properties[0])) {
+        return implode("\n", ["  {$case->label()}", "  body:      'v' => {$case->value()}", '  published: no key']);
+    }
+
     $type = $result->properties[0]['type'];
     $read = PublishedClasses::of($result);
     $published = array_map($read->in(...), $case->shape->members($type));
@@ -154,11 +172,6 @@ $guard = function (ArmKind $first, ArmKind $second) {
     $checked = [];
 
     foreach (GuardCases::of($first, $second, $seed, $count) as $index => $case) {
-        // A family's bodies repeat once GUARD_CASES nears the count of its distinct bodies; each is read once.
-        if (isset($checked[$case->label()])) {
-            continue;
-        }
-
         $checked[$case->label()] = true;
         $mismatch = classQueueGuardMismatch($case, $this->guardFiles);
 
@@ -190,10 +203,14 @@ afterEach(function () {
 test('each token a union publishes names the class its arm holds', $guard)
     ->with(classQueueGuardFamilies(null));
 
-test('each token of a union holding a wrap names its arm\'s class', $guard)
-    ->with(classQueueGuardFamilies('Task 5'))
-    ->todo('Task 5');
-
 test('each token of a union of a model and a resource of one name names its arm\'s class', $guard)
     ->with(classQueueGuardFamilies('Task 9'))
     ->todo('Task 9');
+
+// A family a task fixed must leave the pending list, or its rows would stay todo while they pass.
+test('each family a task is still pending on fails one of its bodies', function (ArmKind $first, ArmKind $second) {
+    $cases = GuardCases::of($first, $second, classQueueGuardSetting('GUARD_SEED', 160), classQueueGuardSetting('GUARD_CASES', 120));
+
+    expect(array_any($cases, fn (GuardCase $case): bool => classQueueGuardMismatch($case, $this->guardFiles) !== null))
+        ->toBeTrue("No body of {$first->value} × {$second->value} fails: move it out of classQueueGuardPending().");
+})->with(classQueueGuardPendingFamilies());

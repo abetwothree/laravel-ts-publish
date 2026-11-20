@@ -1,7 +1,8 @@
-import type { StatusType, VisibilityType } from '../enums';
+import type { AsEnum } from '@tolki/ts';
+import { Status, Visibility } from '../enums';
 
 /** @see Workbench\App\Events\EnumWrapsBroadcast */
 export interface EnumWrapsBroadcast {
-    status: StatusType;
-    visibility: VisibilityType | never[];
+    status: AsEnum<typeof Status>;
+    visibility: AsEnum<typeof Visibility> | never[];
 }

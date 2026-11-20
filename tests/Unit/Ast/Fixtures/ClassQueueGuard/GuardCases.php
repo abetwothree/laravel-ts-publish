@@ -9,33 +9,48 @@ use Random\Randomizer;
 
 /**
  * The guard's seeded generator: the bodies of one family, each a shape over two to four arms of the family's two
- * kinds, both of them written at least once.
+ * kinds, both of them written at least once, drawn without replacement.
  */
 final class GuardCases
 {
     /**
-     * $count bodies of the family $first and $second, drawn from $seed and the family alone, so a family draws the same
-     * bodies whichever rows run beside it.
+     * $count of the family's bodies, $first and $second, shuffled by $seed and the family alone, so a family draws the
+     * same bodies whichever rows run beside it; every body once $count reaches how many the family has.
      *
      * @return list<GuardCase>
      */
     public static function of(ArmKind $first, ArmKind $second, int $seed, int $count): array
     {
         $family = hash('sha256', "{$seed}|{$first->value}|{$second->value}", true);
-        $random = new Randomizer(new Xoshiro256StarStar($family));
-        $shapes = BodyShape::cases();
-        $cases = [];
+        $bodies = [];
 
-        for ($drawn = 0; $drawn < $count; $drawn++) {
-            $arms = [$first, $second];
-
-            for ($extra = $random->getInt(0, 2); $extra > 0; $extra--) {
-                $arms[] = $random->getInt(0, 1) === 0 ? $first : $second;
+        foreach (BodyShape::cases() as $shape) {
+            foreach (self::armLists($first, $second) as $arms) {
+                $bodies[] = new GuardCase($shape, $arms);
             }
-
-            $cases[] = new GuardCase($shapes[$random->getInt(0, count($shapes) - 1)], $random->shuffleArray($arms));
         }
 
-        return $cases;
+        return array_slice(new Randomizer(new Xoshiro256StarStar($family))->shuffleArray($bodies), 0, $count);
+    }
+
+    /**
+     * Every written order of two to four arms of the two kinds that writes both.
+     *
+     * @return list<non-empty-list<ArmKind>>
+     */
+    private static function armLists(ArmKind $first, ArmKind $second): array
+    {
+        $lists = [];
+
+        for ($length = 2; $length <= 4; $length++) {
+            for ($bits = 1; $bits < (1 << $length) - 1; $bits++) {
+                $lists[] = array_map(
+                    static fn (int $at): ArmKind => (($bits >> $at) & 1) === 1 ? $second : $first,
+                    range(0, $length - 1),
+                );
+            }
+        }
+
+        return $lists;
     }
 }

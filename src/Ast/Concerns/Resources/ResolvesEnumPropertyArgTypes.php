@@ -7,8 +7,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -28,9 +30,9 @@ use ReflectionMethod;
  * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
  * fallback would drop its whole shape for the enum either names.
  *
- * A wrap sends the enum itself, so it takes the enum's own type name, which the `AsEnum` rewrite replaces, even where
- * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
- * channel, while a cast, an accessor or a declared type is read from its class.
+ * A wrap sends the enum itself, so it takes the enum's own type name, which spelledWrap() spells as the wrap, even
+ * where `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the
+ * enum channel, while a cast, an accessor or a declared type is read from its class.
  *
  * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()` and `soleSpelledWrite()`).
  *
@@ -130,11 +132,15 @@ trait ResolvesEnumPropertyArgTypes
         $result = $this->resolveEnumFromPropertyArg($payload, $scope)
             ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
 
-        if ($result === null || ! TsTypeString::hasNullArm($result['type']) || $engine->reading()->filterReaches($scope)) {
-            return $result;
+        if ($result === null) {
+            return null;
         }
 
-        return [...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]'];
+        if (! TsTypeString::hasNullArm($result['type']) || $engine->reading()->filterReaches($scope)) {
+            return $this->spelledWrap($result);
+        }
+
+        return $this->spelledWrap([...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]']);
     }
 
     /**
@@ -157,9 +163,44 @@ trait ResolvesEnumPropertyArgTypes
         $type = $enumResult['type'];
         $alreadyCollection = ValueResult::isListShaped($type);
 
-        return [
+        return $this->spelledWrap([
             ...$enumResult,
             'type' => $alreadyCollection ? $type : ValueResult::arrayWrapType($type),
+        ]);
+    }
+
+    /**
+     * A payload's enum as its wrap publishes it: `AsEnum<typeof C>` with the tolki package on, else its value type.
+     *
+     * Each token rides the queue its spelling is read by, and the enum `wrappedEnumFqcns`; no read's channel holds it,
+     * so no reader takes the wrap for a direct read of its enum.
+     *
+     * @param  ValueExpressionResult  $payload  a payload reader's result, the enum on `enumFqcn`
+     * @return ValueExpressionResult
+     */
+    protected function spelledWrap(array $payload): array
+    {
+        $enum = $payload['enumFqcn'] ?? null;
+        unset($payload['enumFqcn']);
+
+        if ($enum === null) {
+            return $payload; // @codeCoverageIgnore
+        }
+
+        $spelled = EnumWrapSpelling::enabled();
+        $kind = $spelled ? TokenKind::WrapConst : TokenKind::Enum;
+        $type = $spelled
+            ? TsTypeString::substituteEnumType($payload['type'], ValueResult::enumTypeName($enum), EnumWrapSpelling::ofEnum($enum))
+            : $payload['type'];
+        $pattern = TsTypeString::queuedTokenPattern([$kind->nameOf($enum)], $kind->anchor());
+        $tokens = (int) preg_match_all($pattern, $type);
+        $channel = $spelled ? 'embeddedEnumResourceFqcns' : 'embeddedEnumFqcns';
+
+        return [
+            ...$payload,
+            'type' => $type,
+            ...($tokens > 0 ? [$channel => array_fill(0, $tokens, $enum)] : []),
+            'wrappedEnumFqcns' => [$enum],
         ];
     }
 

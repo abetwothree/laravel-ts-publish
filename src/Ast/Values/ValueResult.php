@@ -354,7 +354,7 @@ final class ValueResult
         }
 
         return isset($result['mayHoldObject']) && $result['type'] !== 'unknown'
-            ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]], countMembers: true)
+            ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]])
             : $result;
     }
 
@@ -542,7 +542,6 @@ final class ValueResult
      *
      * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
-     * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. A
      * `never[]` beside a list or the empty tuple `[]` is no member of its own, as either admits it. Its held-object
@@ -551,15 +550,15 @@ final class ValueResult
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
-    public static function unionResults(array $results, bool $countMembers = false): array
+    public static function unionResults(array $results): array
     {
         // Text alone keeps two same-named classes apart only while no strip collapses one of them onto the other.
         if (array_any($results, static fn (array $inner): bool => VisibleGaps::stripped($inner['type'])[0] !== $inner['type'])
             && ClassIdentity::spellsTwoClassesAlike(array_values(array_filter($results, static fn (array $inner): bool => $inner['type'] !== 'unknown')))) {
-            return self::unionLiftingGaps($results, $countMembers);
+            return self::unionLiftingGaps($results);
         }
 
-        /** @var list<string> $types the types mergeUnion() counts: each arm's whole type, or each member of it */
+        /** @var list<string> $types each arm's type, which mergeUnion() splits into its members */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
         $branchResults = [];
@@ -569,7 +568,7 @@ final class ValueResult
                 continue;
             }
 
-            array_push($types, ...($countMembers ? TsTypeString::splitTopLevelUnion($inner['type']) : [$inner['type']]));
+            $types[] = $inner['type'];
             $branchResults[] = $inner;
         }
 
@@ -730,7 +729,7 @@ final class ValueResult
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
-    private static function unionLiftingGaps(array $results, bool $countMembers): array
+    private static function unionLiftingGaps(array $results): array
     {
         $gaps = [];
         $bare = [];
@@ -741,7 +740,7 @@ final class ValueResult
             $bare[] = [...$inner, 'type' => $type];
         }
 
-        $union = self::unionResults($bare, $countMembers);
+        $union = self::unionResults($bare);
 
         return [...$union, 'type' => VisibleGaps::restored($union['type'], $gaps)];
     }
@@ -832,9 +831,8 @@ final class ValueResult
     private static function carriesAnEnum(array $result): bool
     {
         return TokenKind::Enum->channelFqcns($result) !== []
-            || isset($result['enumFqcn'])
-            || isset($result['multiEnumResourceFqcns'])
-            || TokenKind::WrapConst->channelFqcns($result) !== [];
+            || TokenKind::WrapConst->channelFqcns($result) !== []
+            || ($result['wrappedEnumFqcns'] ?? []) !== [];
     }
 
     /**
@@ -847,21 +845,17 @@ final class ValueResult
      */
     private static function mergeUnion(array $types, array $branchResults): array
     {
-        /** @var list<class-string> $enumResourceFqcns FQCNs from EnumResource::make() / new EnumResource() branches */
-        $enumResourceFqcns = [];
         /** @var list<class-string> $enumDirectFqcns FQCNs from direct $this->prop enum-access branches */
         $enumDirectFqcns = [];
-        /** @var list<class-string> $enumTypeReadFqcns the direct branches that spell their enum's type name */
-        $enumTypeReadFqcns = [];
-        /** @var list<class-string> $enumOtherReadFqcns the direct branches that spell no `…Type` */
-        $enumOtherReadFqcns = [];
         // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
         // Never deduped either: aliasTypeofConst() walks it against each `typeof X` an arm's object spells, in order.
-        /** @var list<class-string> $embeddedEnumResourceFqcns the enums nested objects wrap in an enum resource */
+        /** @var list<class-string> $embeddedEnumResourceFqcns the enum behind each wrap's const token */
         $embeddedEnumResourceFqcns = [];
+        /** @var list<class-string> $wrappedEnumFqcns */
+        $wrappedEnumFqcns = [];
         // One queue entry per rendered token, built in branch order because aliasPropertyType() walks it
         // against the rendered type left to right. A whole-branch model is appended in loop position, and
         // deduped: analyzeClosureUnion() collapses branches rendering the same string, leaving no token.
@@ -877,25 +871,8 @@ final class ValueResult
         $carried = [];
 
         foreach ($branchResults as $inner) {
-            // EnumResource branches are tracked apart from direct-access ones, so the result can
-            // propagate the correct FQCN metadata.
-            if (isset($inner['enumFqcn'])) {
-                $enumResourceFqcns[] = $inner['enumFqcn'];
-            }
-
             if (isset($inner['directEnumFqcn'])) {
                 $enumDirectFqcns[] = $inner['directEnumFqcn'];
-
-                if (self::readsEnumType($inner)) {
-                    $enumTypeReadFqcns[] = $inner['directEnumFqcn'];
-                } else {
-                    $enumOtherReadFqcns[] = $inner['directEnumFqcn'];
-                }
-            }
-
-            // No rewrite can place an arm's own wraps inside this union, so their tokens read bare and need importing.
-            if (isset($inner['multiEnumResourceFqcns'])) {
-                array_push($embeddedEnumFqcns, ...$inner['multiEnumResourceFqcns']);
             }
 
             if (isset($inner['embeddedEnumFqcns'])) {
@@ -903,6 +880,7 @@ final class ValueResult
             }
 
             array_push($embeddedEnumResourceFqcns, ...$inner['embeddedEnumResourceFqcns'] ?? []);
+            array_push($wrappedEnumFqcns, ...$inner['wrappedEnumFqcns'] ?? []);
 
             if (isset($inner['modelFqcn']) && ! in_array($inner['modelFqcn'], $branchModelFqcns, true)) {
                 $branchModelFqcns[] = $inner['modelFqcn'];
@@ -932,50 +910,30 @@ final class ValueResult
 
         $result = ['type' => TsTypeString::hoistNull($types), 'optional' => false];
 
-        $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
         // Safe to dedupe: one class per name reads alike at every entry, and two under one name are read by class
         // unless an arm outruns its tokens, where the merge by text stands.
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
-        if ($enumResourceFqcns !== []) {
-            // An arm spelling no `…Type`, such as a `…Kind` or an override, reads no type the AsEnum rewrite
-            // replaces, so it rides the embedded queue.
-            $enumDirectFqcns = array_values(array_unique($enumTypeReadFqcns));
-            $embeddedEnumFqcns = [...$enumOtherReadFqcns, ...$embeddedEnumFqcns];
-            $allBranchFqcns = array_values(array_unique([...$enumResourceFqcns, ...$enumDirectFqcns]));
-
-            if ($enumDirectFqcns === [] && count($enumResourceFqcns) === 1) {
-                // Pure EnumResource, single FQCN.
-                $result['enumFqcn'] = $enumResourceFqcns[0];
-            } elseif ($enumDirectFqcns !== [] && count($allBranchFqcns) === 1) {
-                // Mixed: same FQCN via EnumResource and via direct access.
-                $result['enumFqcn'] = $allBranchFqcns[0];
-                $result['directEnumFqcn'] = $allBranchFqcns[0];
-            } elseif ($enumDirectFqcns === []
-                && count($enumResourceFqcns) > 1
-                && count($enumResourceFqcns) === count($types)
-            ) {
-                // All non-null branches are EnumResource with different FQCNs.
-                // Emit ordered list so the transformer can do per-token AsEnum rewrite.
-                $result['multiEnumResourceFqcns'] = $enumResourceFqcns;
-            } else {
-                // Multiple different FQCNs or complex mixed branches: fall back to embedded imports.
-                // Never deduped, same positional reasoning as $embeddedEnumFqcns's own @var above.
-                $embeddedEnumFqcns = [...$allBranchFqcns, ...$embeddedEnumFqcns];
-            }
-        } elseif ($enumDirectFqcns !== []) {
-            // Only direct-access enum branches: existing embedded behaviour. Never deduped,
-            // same positional reasoning as $embeddedEnumFqcns's own @var above.
-            $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
-        }
+        // Never deduped past the direct reads, same positional reasoning as $embeddedEnumFqcns's own @var above.
+        $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
+        // Two arms wrapping one enum print one token, so a const with one class behind it gets one entry per token.
         if ($embeddedEnumResourceFqcns !== []) {
-            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
+            $result['embeddedEnumResourceFqcns'] = ClassTokenQueue::perToken(
+                $embeddedEnumResourceFqcns,
+                $result['type'],
+                TokenKind::WrapConst->nameOf(...),
+                anchor: TokenKind::WrapConst->anchor(),
+            );
+        }
+
+        if ($wrappedEnumFqcns !== []) {
+            $result['wrappedEnumFqcns'] = array_values(array_unique($wrappedEnumFqcns));
         }
 
         if ($embeddedModelFqcns !== []) {

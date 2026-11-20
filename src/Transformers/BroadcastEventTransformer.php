@@ -444,7 +444,7 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected function registerWrittenConsts(int|string $name, string $type, MethodAnalysis $analysis): void
     {
-        $fqcns = EnumWrapImports::written($type, $analysis->wrappedEnumFqcns((string) $name));
+        $fqcns = EnumWrapImports::written($type, $analysis->wrapConstFqcns((string) $name));
 
         if ($fqcns === []) {
             return;

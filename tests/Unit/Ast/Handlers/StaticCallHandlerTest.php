@@ -57,10 +57,12 @@ use Workbench\App\Models\Warehouse;
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or
  * declined without recursing into a sub-expression.
  */
-function staticCallHandlerThrowingEngine(): ExpressionEngine
+function staticCallHandlerThrowingEngine(Reading $reading = Reading::Encoded): ExpressionEngine
 {
-    return new class implements ExpressionEngine
+    return new class($reading) implements ExpressionEngine
     {
+        public function __construct(private readonly Reading $reading) {}
+
         public function resolve(Expr $expr): array
         {
             throw new RuntimeException('resolve() must not be called in this case');
@@ -71,10 +73,10 @@ function staticCallHandlerThrowingEngine(): ExpressionEngine
             throw new RuntimeException('spreadAnalysis() must not be called in this case');
         }
 
-        /** Reads every value as `json_encode()` sends it. */
+        /** Reads every value as the test says, `json_encode()`'s by default. */
         public function reading(): Reading
         {
-            return Reading::Encoded;
+            return $this->reading;
         }
 
         public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
@@ -599,7 +601,7 @@ it('resolves PostResource::collection($this->posts) to the resource channel with
     ]);
 });
 
-it('resolves EnumResource::make($this->status) to the enum channel', function () {
+it('spells EnumResource::make($this->status) as its AsEnum type, its enum on the const queue and the wrapped set', function () {
     $expr = new StaticCall(new Name(EnumResource::class), 'make', [
         new Arg(new PropertyFetch(new Variable('this'), 'status')),
     ]);
@@ -608,11 +610,55 @@ it('resolves EnumResource::make($this->status) to the enum channel', function ()
     $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBe([
-        'type' => 'StatusType',
+        'type' => 'AsEnum<typeof Status>',
         'optional' => false,
-        'enumFqcn' => Status::class,
+        'embeddedEnumResourceFqcns' => [Status::class],
+        'wrappedEnumFqcns' => [Status::class],
     ]);
 });
+
+// Without the tolki package a wrap prints its enum's value type, read by the type queue, and is still no direct read.
+it('spells EnumResource::make($this->status) as its enum\'s value type with the tolki package off', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+    $expr = new StaticCall(new Name(EnumResource::class), 'make', [
+        new Arg(new PropertyFetch(new Variable('this'), 'status')),
+    ]);
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    expect((new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine()))->toBe([
+        'type' => 'StatusType',
+        'optional' => false,
+        'embeddedEnumFqcns' => [Status::class],
+        'wrappedEnumFqcns' => [Status::class],
+    ]);
+});
+
+it('spells EnumResource::collection() over an enum\'s cases as a list of its AsEnum type', function () {
+    $expr = new AstParser()->parseSource('<?php \\'.EnumResource::class.'::collection(\\'.Status::class.'::cases());')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr))->toBe([
+        'type' => 'AsEnum<typeof Status>[]',
+        'optional' => false,
+        'embeddedEnumResourceFqcns' => [Status::class],
+        'wrappedEnumFqcns' => [Status::class],
+    ]);
+});
+
+// A filter() sends a resource around null as null; a page runs none, so Laravel sends the `[]` resolve() returns.
+it('spells a wrap over a tryFrom() that may find no case with the null a resource sends, or a page\'s empty list', function (Reading $reading, string $type) {
+    $expr = new AstParser()->parseSource('<?php \\'.EnumResource::class.'::make(\\'.Status::class.'::tryFrom($value));')[0]->expr;
+    $scope = new AnalysisScope(new ReflectionClass(PostResource::class), Post::class);
+
+    expect((new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine($reading)))->toBe([
+        'type' => $type,
+        'optional' => false,
+        'embeddedEnumResourceFqcns' => [Status::class],
+        'wrappedEnumFqcns' => [Status::class],
+    ]);
+})->with([
+    'in a resource' => [Reading::Encoded, 'AsEnum<typeof Status> | null'],
+    'on a page' => [Reading::Inertia, 'AsEnum<typeof Status> | never[]'],
+]);
 
 // The body fallback reads each case as the literal json_encode() writes, which a pure enum's case has none of.
 it('types an enum\'s cases() as the list its cases encode as', function (string $php, bool $literals, array $expected) {
@@ -646,17 +692,17 @@ it('wraps the one enum a resolved payload holds', function (string $php, array $
 
     expect($result)->toBe($expected);
 })->with([
-    'make(), a local' => ['\\'.EnumResource::class.'::make($status)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'new, a nullable local' => ['new \\'.EnumResource::class.'($visibility)', ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class]],
-    'make(), a local holding a case' => ['\\'.EnumResource::class.'::make($draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'make(), a coalesce' => ['\\'.EnumResource::class.'::make($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
+    'make(), a local' => ['\\'.EnumResource::class.'::make($status)', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'new, a nullable local' => ['new \\'.EnumResource::class.'($visibility)', ['type' => 'AsEnum<typeof Visibility> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Visibility::class], 'wrappedEnumFqcns' => [Visibility::class]]],
+    'make(), a local holding a case' => ['\\'.EnumResource::class.'::make($draft)', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'make(), a coalesce' => ['\\'.EnumResource::class.'::make($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
     'make(), a local holding no enum' => ['\\'.EnumResource::class.'::make($rating)', ['type' => 'unknown', 'optional' => false]],
     'make(), a local bound to itself' => ['\\'.EnumResource::class.'::make($loop)', ['type' => 'unknown', 'optional' => false]],
-    'new, a coalesce' => ['new \\'.EnumResource::class.'($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class]],
-    'make(), a coalesce that can be null' => ['\\'.EnumResource::class.'::make($this->visibility ?? null)', ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class]],
+    'new, a coalesce' => ['new \\'.EnumResource::class.'($this->status ?? \\'.Status::class.'::Draft)', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'make(), a coalesce that can be null' => ['\\'.EnumResource::class.'::make($this->visibility ?? null)', ['type' => 'AsEnum<typeof Visibility> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Visibility::class], 'wrappedEnumFqcns' => [Visibility::class]]],
     'make(), an enum beside a string' => ['\\'.EnumResource::class.'::make($this->status ?? "draft")', ['type' => 'unknown', 'optional' => false]],
-    'make(), a whenHas() payload' => ['\\'.EnumResource::class.'::make($this->whenHas("status"))', ['type' => 'StatusType', 'optional' => true, 'enumFqcn' => Status::class]],
-    'new, a whenNotNull() payload' => ['new \\'.EnumResource::class.'($this->whenNotNull($this->visibility))', ['type' => 'VisibilityType', 'optional' => true, 'enumFqcn' => Visibility::class]],
+    'make(), a whenHas() payload' => ['\\'.EnumResource::class.'::make($this->whenHas("status"))', ['type' => 'AsEnum<typeof Status>', 'optional' => true, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    'new, a whenNotNull() payload' => ['new \\'.EnumResource::class.'($this->whenNotNull($this->visibility))', ['type' => 'AsEnum<typeof Visibility>', 'optional' => true, 'embeddedEnumResourceFqcns' => [Visibility::class], 'wrappedEnumFqcns' => [Visibility::class]]],
 ]);
 
 // The guard against a cyclic local holds while the local's value resolves, so it must not hide a parameter named like
@@ -677,7 +723,7 @@ it('follows a closure parameter while an outer local of its name resolves', func
         return $scope->resolvingBinding('status', $outer, fn (): array => $analyzer->resolve($expr)) ?? [];
     };
 
-    expect($readWhileResolving(true))->toBe(['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class])
+    expect($readWhileResolving(true))->toBe(['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]])
         ->and($readWhileResolving(false)['type'] ?? null)->toBe('unknown');
 });
 
@@ -685,7 +731,7 @@ it('follows a whenHas() parameter named like the local its value is assigned to'
     $properties = new ResourceAstAnalyzer(new ReflectionClass(EnumResourceShadowedParameterResource::class), Post::class)->analyze()->properties;
 
     expect(array_map(fn (array $property): array => [$property['name'], $property['type'], $property['optional']], $properties))
-        ->toBe([['status', 'StatusType', true]]);
+        ->toBe([['status', 'AsEnum<typeof Status>', true]]);
 });
 
 // A wrap needs each case as its enum, so every helper its payload reaches reads its cases so, however deep.
@@ -709,7 +755,7 @@ it('wraps a resolved payload only when it holds one enum and nothing else', func
 
     expect(new ResourceAstAnalyzer(new ReflectionClass($subject), $model)->resolve($expr))->toBe($expected);
 })->with([
-    'collection(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::collection(collect($this->status_history)->all())', ['type' => 'StatusType[]', 'optional' => false, 'enumFqcn' => Status::class]],
+    'collection(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::collection(collect($this->status_history)->all())', ['type' => 'AsEnum<typeof Status>[]', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
     'make(), a list' => [EnumCollectionResource::class, Team::class, '\\'.EnumResource::class.'::make(collect($this->status_history)->all())', ['type' => 'unknown', 'optional' => false]],
     'make(), two enums that share a name' => [WarehouseResource::class, Warehouse::class, '\\'.EnumResource::class.'::make($this->status ?? $this->current_crm_status)', ['type' => 'unknown', 'optional' => false]],
 ]);
@@ -1065,7 +1111,7 @@ it('resolves PostResource::collection(resource: $this->whenLoaded(…)) as optio
     ]);
 });
 
-it('resolves EnumResource::make(resource: $this->status) to the enum channel', function () {
+it('spells EnumResource::make(resource: $this->status) as its AsEnum type', function () {
     $expr = new StaticCall(new Name(EnumResource::class), 'make', [
         new Arg(new PropertyFetch(new Variable('this'), 'status'), name: new Identifier('resource')),
     ]);
@@ -1074,9 +1120,10 @@ it('resolves EnumResource::make(resource: $this->status) to the enum channel', f
     $result = (new StaticCallHandler)->resolve($expr, $scope, staticCallHandlerThrowingEngine());
 
     expect($result)->toBe([
-        'type' => 'StatusType',
+        'type' => 'AsEnum<typeof Status>',
         'optional' => false,
-        'enumFqcn' => Status::class,
+        'embeddedEnumResourceFqcns' => [Status::class],
+        'wrappedEnumFqcns' => [Status::class],
     ]);
 });
 

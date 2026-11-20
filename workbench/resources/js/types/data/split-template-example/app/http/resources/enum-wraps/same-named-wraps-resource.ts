@@ -1,5 +1,6 @@
 import { type AsEnum } from '@tolki/ts';
 
+import { Status as CrmStatus } from '../../../../crm/enums';
 import { Status as EnumsStatus } from '../../../enums';
 import type { StatusType as CrmStatusType } from '../../../../crm/enums';
 import type { StatusType as EnumsStatusType } from '../../../enums';
@@ -12,10 +13,10 @@ import type { StatusType as EnumsStatusType } from '../../../enums';
  */
 export interface SameNamedWrapsResource
 {
-    app_or_crm_wrap: EnumsStatusType;
-    app_or_crm_wrap_when: EnumsStatusType;
-    app_or_crm_wrap_under_key: { subject: EnumsStatusType };
-    wrap_or_two_reads: AsEnum<typeof EnumsStatus>;
-    crm_spread_over_wrap: { c: AsEnum<typeof EnumsStatus> };
+    app_or_crm_wrap: AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>;
+    app_or_crm_wrap_when: AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>;
+    app_or_crm_wrap_under_key: { subject: AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus> };
+    wrap_or_two_reads: AsEnum<typeof EnumsStatus> | EnumsStatusType | CrmStatusType;
+    crm_spread_over_wrap: { c: AsEnum<typeof EnumsStatus> | CrmStatusType };
     literals_nested_crm: { s: EnumsStatusType; x: { c: CrmStatusType } } | { s: CrmStatusType; x: null };
 }

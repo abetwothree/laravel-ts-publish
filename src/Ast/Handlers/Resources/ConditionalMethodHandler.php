@@ -248,7 +248,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
 
         unset($value['absentReadsNull']);
 
-        return $value['type'] === 'unknown' ? $value : ValueResult::unionResults([$value, $sent], countMembers: true);
+        return $value['type'] === 'unknown' ? $value : ValueResult::unionResults([$value, $sent]);
     }
 
     /**
@@ -602,7 +602,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
     /**
      * The attribute a whenHas()/whenAppended() call names, typed with every FQCN channel it carries.
      *
-     * An EnumResource::make()/::collection() value wraps one enum, so that read puts only the first on `enumFqcn`.
+     * An EnumResource::make()/::collection() value wraps one enum, so that read spells only the first as its wrap.
      *
      * @return ValueExpressionResult
      */
@@ -616,7 +616,10 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return ValueResult::withAttributeChannels($result, $info);
         }
 
-        return [...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]), 'enumFqcn' => $info['enumFqcn']];
+        return $this->spelledWrap([
+            ...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]),
+            'enumFqcn' => $info['enumFqcn'],
+        ]);
     }
 
     /**
@@ -867,9 +870,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return [...$value, 'optional' => $value['optional'] || $default['optional']];
         }
 
-        // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
-        // which an inline array's member and Inertia shared data do not honour.
-        return ValueResult::unionResults([$value, $default], countMembers: true);
+        return ValueResult::unionResults([$value, $default]);
     }
 
     /**

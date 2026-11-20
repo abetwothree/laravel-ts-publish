@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppAndCrmWrapsGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
@@ -801,8 +802,8 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself or the value' => ['status_case_or_value', 'StatusType', true],
         'a read of the value-or-case-value getter' => ['status_or_draft_read', 'StatusType', false],
         'a read of the value-or-case-value getter, or a case' => ['status_or_draft_or_published', 'StatusType', false],
-        'a wrap, the value or a case\'s value of one enum' => ['priority_wrap_value_or_low', 'PriorityType | never[] | 0', false],
-        'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'PriorityType | 0', false],
+        'a wrap, the value or a case\'s value of one enum' => ['priority_wrap_value_or_low', 'AsEnum<typeof Priority> | never[] | PriorityType | 0', false],
+        'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'AsEnum<typeof Priority> | PriorityType | 0', false],
     ]);
 
     test('a column\'s getter absorbs a case value into its enum\'s alias, with no AsEnum wrap', function (string $column, string $type) {
@@ -2328,9 +2329,9 @@ test('a getter reading getAttribute() of a literal key publishes the attribute i
     expect($data->mutators['shout']['type'] ?? null)->toBe('string');
 });
 
-// A shape holding a wrap spells its enum's const after `typeof`, and a wrap alone its enum's type, so the model imports
-// both, and `AsEnum`, though no column reads the enum (GH-96).
-test('a model imports AsEnum, the const and the enum type its accessors\' wraps spell', function (string $template) {
+// A wrap spells its enum's const after `typeof`, alone or in a shape, so the model imports the const and `AsEnum`,
+// though no column reads the enum (GH-96).
+test('a model imports AsEnum and the const its accessors\' wraps spell', function (string $template) {
     config()->set('ts-publish.output_to_files', false);
     config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
 
@@ -2339,11 +2340,22 @@ test('a model imports AsEnum, the const and the enum type its accessors\' wraps 
     expect(array_values(preg_grep('/^(import |    (shape|wrap): )/', explode("\n", $content)) ?: []))->toBe([
         "import { type AsEnum } from '@tolki/ts';",
         "import { Priority } from '../../../../../workbench/app/enums';",
-        "import type { PriorityType } from '../../../../../workbench/app/enums';",
         '    shape: { a: AsEnum<typeof Priority>; b: number };',
-        '    wrap: PriorityType;',
+        '    wrap: AsEnum<typeof Priority>;',
     ]);
 })->with(['model-full', 'model-split']);
+
+// P12: the alias pass reads one const per `typeof` token in print order, so a CRM wrap after two app ones names it.
+test('an accessor names each wrap\'s own const where the app\'s and the CRM\'s Status print alike, each imported once', function () {
+    $data = (new ModelTransformer(AppAndCrmWrapsGrade::class))->data();
+
+    expect($data->appends['statuses']['type'])
+        ->toBe('{ a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof WorkbenchStatus>; c: AsEnum<typeof CrmStatus> }')
+        ->and($data->valueImports)->toBe([
+            '../../../../../workbench/app/enums' => ['Status as WorkbenchStatus'],
+            '../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+        ]);
+});
 
 // The globals file has no `AsEnum` import, so an accessor's wrap folds to its enum's value type there (GH-96).
 test('the globals file folds an accessor\'s wrap to its enum\'s value type', function () {

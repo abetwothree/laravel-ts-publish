@@ -46,7 +46,7 @@ final class ClassIdentity
     public static function spellsTwoClassesAlike(array $results): bool
     {
         return array_any(
-            self::readKinds($results),
+            self::readKinds(),
             static fn (TokenKind $kind): bool => self::sharesAName(
                 array_merge(...array_map($kind->channelFqcns(...), $results)),
                 $kind->nameOf(...),
@@ -65,7 +65,7 @@ final class ClassIdentity
      */
     public static function membersByClass(array $union, array $arms): array
     {
-        $kinds = self::readKinds($arms);
+        $kinds = self::readKinds();
         /** @var array<string, string> $members identity => text */
         $members = [];
         $nullable = false;
@@ -112,9 +112,13 @@ final class ClassIdentity
 
         unset($union['embeddedModelFqcns'], $union['embeddedResourceFqcns']);
 
-        // An enum read by no member's token keeps the queue mergeUnion() built, as a union beside a wrap reads none.
+        // An enum or a const no member's token reads keeps the queue mergeUnion() built.
         if (($byKind[TokenKind::Enum->value] ?? []) !== []) {
             $union['embeddedEnumFqcns'] = $byKind[TokenKind::Enum->value];
+        }
+
+        if (($byKind[TokenKind::WrapConst->value] ?? []) !== []) {
+            $union['embeddedEnumResourceFqcns'] = $byKind[TokenKind::WrapConst->value];
         }
 
         $union['type'] = implode(' | ', [...array_values($members), ...($nullable ? ['null'] : [])]);
@@ -153,22 +157,13 @@ final class ClassIdentity
     }
 
     /**
-     * The kinds results are read by class over: a model's, a resource's, and an enum's unless an arm wraps one.
+     * The kinds results are read by class over: every kind, as each token of a wrap rides its own queue too.
      *
-     * A wrap's token holds no queue entry yet, since the AsEnum rewrite spells it by its own import channel, so no
-     * kind reads a const, and the enums of a union that wraps one cannot be read by class.
-     *
-     * @param  list<ValueExpressionResult>  $results
      * @return list<TokenKind>
      */
-    private static function readKinds(array $results): array
+    private static function readKinds(): array
     {
-        $wraps = array_any(
-            $results,
-            static fn (array $result): bool => isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']),
-        );
-
-        return $wraps ? [TokenKind::Model, TokenKind::Resource] : [TokenKind::Model, TokenKind::Resource, TokenKind::Enum];
+        return TokenKind::cases();
     }
 
     /**

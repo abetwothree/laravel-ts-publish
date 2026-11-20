@@ -70,8 +70,8 @@ final class InlineObjectResult
 
     /**
      * Whether a union of an object with others reads each enum token of it from its own place in the queue: no enum a
-     * member nests shares its name with another enum the object holds, as memberEnumFqcns() queues a nested enum
-     * again after the members, where such a union reads it as the next object's token.
+     * member nests shares its name with another enum the object holds, read or wrapped, as memberEnumFqcns() queues a
+     * nested enum again after the members, where such a union reads it as the next object's token.
      */
     public static function queuesEnumsApart(MethodAnalysis $object): bool
     {
@@ -81,8 +81,9 @@ final class InlineObjectResult
             ...array_merge(...array_values($object->inlineEnumFqcns)),
             ...array_merge(...array_values($object->multiEnumResourceFqcns)),
             ...array_merge(...array_values($object->inlineEnumResourceFqcns)),
+            ...array_merge(...array_values($object->wrappedEnums)),
         ];
-        $nested = array_diff_key($object->directEnumFqcns, array_flip(array_column($object->properties, 'name')));
+        $nested = array_diff(self::selfKeyedEnums($object), array_merge([], ...array_values($object->wrappedEnums)));
 
         return ! array_any($nested, static fn (string $enum): bool => array_any(
             $held,
@@ -117,6 +118,16 @@ final class InlineObjectResult
 
         // A reader that takes the keys back reads them from one object, as ValueResult::unsplit() hands it over.
         return [...$union, 'unsplit' => ['of' => $union['type'], 'print' => $this->oneObject($analysis, $spreadArms)]];
+    }
+
+    /**
+     * The enums an object keys by their own FQCN, which no member owns: those its members nest.
+     *
+     * @return array<array-key, class-string>
+     */
+    private static function selfKeyedEnums(MethodAnalysis $object): array
+    {
+        return array_diff_key($object->directEnumFqcns, array_flip(array_column($object->properties, 'name')));
     }
 
     /**
@@ -278,6 +289,18 @@ final class InlineObjectResult
             $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
         }
 
+        $wrapped = array_values(array_unique([
+            ...array_merge([], ...array_map(
+                static fn (array $arm): array => isset($arm['result']) ? $arm['result']['wrappedEnumFqcns'] ?? [] : [],
+                $spreadArms,
+            )),
+            ...array_merge([], ...array_values($analysis->wrappedEnums)),
+        ]));
+
+        if ($wrapped !== []) {
+            $result['wrappedEnumFqcns'] = $wrapped;
+        }
+
         if ($embeddedModelFqcns !== []) {
             $result['embeddedModelFqcns'] = $embeddedModelFqcns;
         }
@@ -362,7 +385,8 @@ final class InlineObjectResult
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
      * order. A member's `EnumResource` enums join its own for type imports: its one wrap with `$withWraps`, and its
-     * several wraps always, since nothing spells them `AsEnum`.
+     * several wraps always, since nothing spells them `AsEnum`. A wrap's enum rides its member's queue alone, as one
+     * printed without the tolki package is a token of that member.
      *
      * @return list<class-string>
      */
@@ -385,10 +409,10 @@ final class InlineObjectResult
             );
         }
 
-        $members = array_flip($memberNames);
+        $wrapped = array_merge([], ...array_values($analysis->wrappedEnums));
 
-        foreach ($analysis->directEnumFqcns as $key => $fqcn) {
-            if (! isset($members[$key])) {
+        foreach (self::selfKeyedEnums($analysis) as $fqcn) {
+            if (! in_array($fqcn, $wrapped, true)) {
                 $fqcns[] = $fqcn;
             }
         }

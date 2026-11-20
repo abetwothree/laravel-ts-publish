@@ -92,12 +92,12 @@
             "properties": [
                 {
                     "name": "status",
-                    "type": "StatusType",
+                    "type": "AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
                     "name": "visibility",
-                    "type": "VisibilityType | never[]",
+                    "type": "AsEnum<typeof Visibility> | never[]",
                     "optional": false
                 }
             ]
@@ -15056,7 +15056,7 @@
             "properties": [
                 {
                     "name": "subject",
-                    "type": "AsEnum<typeof Status> | { s: StatusType }[]",
+                    "type": "AsEnum<typeof Status> | StatusType | { s: StatusType }[]",
                     "optional": false
                 }
             ]
@@ -15066,32 +15066,32 @@
             "properties": [
                 {
                     "name": "under_key",
-                    "type": "{ subject: StatusType | RoleType }",
+                    "type": "{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> }",
                     "optional": false
                 },
                 {
                     "name": "in_list",
-                    "type": "(StatusType | RoleType)[]",
+                    "type": "(AsEnum<typeof Status> | AsEnum<typeof Role>)[]",
                     "optional": false
                 },
                 {
                     "name": "two_levels",
-                    "type": "{ outer: { inner: StatusType | RoleType } }",
+                    "type": "{ outer: { inner: AsEnum<typeof Status> | AsEnum<typeof Role> } }",
                     "optional": false
                 },
                 {
                     "name": "three_under_key",
-                    "type": "{ subject: AsEnum<typeof Status> | RoleType | VisibilityType }",
+                    "type": "{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> | AsEnum<typeof Visibility> }",
                     "optional": false
                 },
                 {
                     "name": "three_top",
-                    "type": "AsEnum<typeof Role> | StatusType | VisibilityType",
+                    "type": "AsEnum<typeof Role> | AsEnum<typeof Status> | AsEnum<typeof Visibility>",
                     "optional": false
                 },
                 {
                     "name": "three_wraps_two_enums",
-                    "type": "AsEnum<typeof Status> | PriorityType | null",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Priority> | null",
                     "optional": false
                 },
                 {
@@ -15106,7 +15106,7 @@
                 },
                 {
                     "name": "when_two_wraps_one_nullable",
-                    "type": "StatusType | MediaTypeType | null",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof MediaType> | null",
                     "optional": false
                 }
             ]
@@ -15116,22 +15116,22 @@
             "properties": [
                 {
                     "name": "rows_then_two_wraps",
-                    "type": "{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType",
+                    "type": "{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>",
                     "optional": false
                 },
                 {
                     "name": "rows_then_three_wraps",
-                    "type": "{ c: AsEnum<typeof WorkbenchStatus>; s: CrmStatusType }[] | AsEnum<typeof WorkbenchStatus> | RoleType | VisibilityType",
+                    "type": "{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>",
                     "optional": false
                 },
                 {
                     "name": "named_rows_then_two_wraps",
-                    "type": "{ n: string }[] | WorkbenchStatusType | RoleType",
+                    "type": "{ n: string }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>",
                     "optional": false
                 },
                 {
                     "name": "null_then_two_wraps",
-                    "type": "WorkbenchStatusType | RoleType | null",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | null",
                     "optional": false
                 }
             ]
@@ -15141,27 +15141,27 @@
             "properties": [
                 {
                     "name": "app_or_crm_wrap",
-                    "type": "WorkbenchStatusType",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>",
                     "optional": false
                 },
                 {
                     "name": "app_or_crm_wrap_when",
-                    "type": "WorkbenchStatusType",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>",
                     "optional": false
                 },
                 {
                     "name": "app_or_crm_wrap_under_key",
-                    "type": "{ subject: WorkbenchStatusType }",
+                    "type": "{ subject: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> }",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_two_reads",
-                    "type": "AsEnum<typeof WorkbenchStatus>",
+                    "type": "AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType",
                     "optional": false
                 },
                 {
                     "name": "crm_spread_over_wrap",
-                    "type": "{ c: AsEnum<typeof WorkbenchStatus> }",
+                    "type": "{ c: AsEnum<typeof WorkbenchStatus> | CrmStatusType }",
                     "optional": false
                 },
                 {
@@ -15181,7 +15181,7 @@
                 },
                 {
                     "name": "state",
-                    "type": "AsEnum<typeof Status> | StatusType | null",
+                    "type": "AsEnum<typeof Status> | VisibilityType | null",
                     "optional": false
                 }
             ]
@@ -15196,52 +15196,52 @@
                 },
                 {
                     "name": "wrap_or_nested_value",
-                    "type": "AsEnum<typeof MediaType> | string",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType | string",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_nested_nullable_value",
-                    "type": "AsEnum<typeof MediaType> | null",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType | null",
                     "optional": false
                 },
                 {
                     "name": "match_wrap_read_literal",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "AsEnum<typeof Status> | StatusType | string",
                     "optional": false
                 },
                 {
                     "name": "match_wrap_value_name",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "AsEnum<typeof Status> | StatusType | StatusKind",
                     "optional": false
                 },
                 {
                     "name": "match_wrap_value_other",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "AsEnum<typeof Status> | StatusType | string",
                     "optional": false
                 },
                 {
                     "name": "nested_make_or_collection_or_read",
-                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Status>[] | StatusType",
                     "optional": false
                 },
                 {
                     "name": "collection_or_plain_list",
-                    "type": "AsEnum<typeof Status>[]",
+                    "type": "AsEnum<typeof Status>[] | StatusType[]",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_other_enum_case",
-                    "type": "RoleType | StatusType",
+                    "type": "AsEnum<typeof Role> | StatusType",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_nested_nullable_case",
-                    "type": "AsEnum<typeof Status> | null",
+                    "type": "AsEnum<typeof Status> | StatusType | null",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_object_value",
-                    "type": "AsEnum<typeof MediaType> | { v: AsEnum<typeof MediaType> }",
+                    "type": "AsEnum<typeof MediaType> | { v: MediaTypeType }",
                     "optional": false
                 }
             ]
@@ -15251,7 +15251,7 @@
             "properties": [
                 {
                     "name": "picked",
-                    "type": "StatusType | VisibilityType | null",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
                     "optional": false
                 },
                 {
@@ -20625,17 +20625,17 @@
                 },
                 {
                     "name": "priority_when_not_null_make",
-                    "type": "AsEnum<typeof Priority> | PriorityType | null",
+                    "type": "PriorityType | AsEnum<typeof Priority> | null",
                     "optional": false
                 },
                 {
                     "name": "status_when_not_null_arrow",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "StatusType | AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
                     "name": "visibility_when_not_null_full",
-                    "type": "AsEnum<typeof Visibility> | VisibilityType | null",
+                    "type": "VisibilityType | AsEnum<typeof Visibility> | null",
                     "optional": false
                 },
                 {
@@ -22387,7 +22387,7 @@
                 },
                 {
                     "name": "status_type_or_resource",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "StatusType | AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
@@ -23850,7 +23850,7 @@
                 },
                 {
                     "name": "status",
-                    "type": "WorkbenchStatusType",
+                    "type": "StatusType",
                     "optional": false
                 },
                 {
