@@ -614,6 +614,8 @@ describe('referencedTypeNames', function () {
         'an index signature' => ['{ [key: string]: Foo }', ['Foo']],
         'methods' => ['{ load(id: Key): Result; save(): Out }', ['Key', 'Result', 'Out']],
         'a method on a line of its own' => ["{\n    a: Foo\n    load(): Bar\n}", ['Foo', 'Bar']],
+        'an optional method' => ['{ load?(id: Key): Meta }', ['Key', 'Meta']],
+        'an optional generic method' => ['{ load?<T>(value: T): Meta }', ['Meta']],
         'an accessor' => ['{ get size(): Count; set size(value: Count) }', ['Count']],
         'the open marker' => ['{ a: Foo; #$open: unknown }', ['Foo']],
     ]);
@@ -627,6 +629,8 @@ describe('referencedTypeNames', function () {
         'after a union' => ['T extends U ? Yes | Also : No', ['T', 'U', 'Yes', 'Also', 'No']],
         'after an operator' => ['T extends U ? keyof Yes : No', ['T', 'U', 'Yes', 'No']],
         'after an arrow' => ['T extends U ? () => Yes : No', ['T', 'U', 'Yes', 'No']],
+        'a function type in an object' => ['{ a: T extends U ? (x: Yes) => Yes : No }', ['T', 'U', 'Yes', 'No']],
+        'a generic function type in an object' => ['{ a: T extends U ? <V>(x: V) => Yes : No }', ['T', 'U', 'Yes', 'No']],
     ]);
 
     test('reads no name a binder, a predicate or a member access spells', function (string $type, array $names) {
@@ -725,6 +729,7 @@ describe('aliasReferences', function () {
         'a string literal' => ['Pick<Meta, "Meta">', 'Pick<AMeta, "Meta">'],
         'a member\'s key' => ['{ Meta: Meta; m?: Meta[] }', '{ Meta: AMeta; m?: AMeta[] }'],
         'a method\'s name' => ['{ Meta(x: Meta): void }', '{ Meta(x: AMeta): void }'],
+        'an optional method\'s name' => ['{ Meta?(x: Meta): void; Meta?<T>(): Meta }', '{ Meta?(x: AMeta): void; Meta?<T>(): AMeta }'],
         'a qualified name' => ['Geo.Meta | Meta.Sub', 'Geo.Meta | AMeta.Sub'],
         'a template literal' => ['`Meta-${Meta}`', '`Meta-${AMeta}`'],
         'a longer name' => ['MetaData | Meta', 'MetaData | AMeta'],

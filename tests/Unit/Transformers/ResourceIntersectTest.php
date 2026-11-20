@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedTwiceR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectLibGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectOptionalMethodResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTypeofValueGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectValueGlobalsResource;
@@ -351,6 +352,15 @@ it('imports no global type TypeScript declares that a clause spells', function (
     'the DOM\'s, in an object and a generic' => [IntersectDomGlobalsResource::class, [], '} & ({ n: Node; d: Document; q: Request; e: HTMLElement })'],
     'a DOM value\'s typeof, beside a DOM type' => [IntersectTypeofValueGlobalResource::class, [], '} & ({ ctor: typeof Image; el: HTMLElement })'],
 ]);
+
+// A name before `?(` or `?<T>(` in an object is an optional method's own, like one before `(`, never a type.
+it('imports no optional method\'s name a clause declares', function () {
+    $content = intersectedResourceFile(IntersectOptionalMethodResource::class);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import type { Meta } from '@/types/meta';",
+    ])->and($content)->toContain('} & ({ load?(): Meta; each?<T>(value: T): Meta });');
+});
 
 // DOM's `Image` is a value with no type, so `{ image: Image }` names the clause's own type and imports it.
 it('imports a name a clause spells as a type that the libs declare only as a value', function () {

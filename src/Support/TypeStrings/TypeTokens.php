@@ -132,7 +132,7 @@ final readonly class TypeTokens
     /**
      * The role of each name token of a type, by its index: a `type` it stands as, a `binder` a type parameter list,
      * `infer` or a mapped type declares, or `other`: a keyword, a member's, label's, parameter's or method's own name,
-     * a name after a `.` or a predicate's parameter.
+     * an optional method's included, a name after a `.` or a predicate's parameter.
      *
      * @param  list<TypeToken>  $tokens
      * @return array<int, TypeRole>
@@ -178,7 +178,9 @@ final readonly class TypeTokens
             // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
             // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
             $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
-            $method = ($after === '(' || ($after === '<' && isset($parameterLists[$index + 1])))
+            $signature = $after === '?' ? $index + 2 : $index + 1;
+            $opens = $tokens[$signature][0] ?? '';
+            $method = ($opens === '(' || ($opens === '<' && isset($parameterLists[$signature])))
                 && $enclosedBy === '{' && ! $leads && $before !== ':';
             $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
                 && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));
