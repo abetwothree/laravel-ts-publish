@@ -39,7 +39,8 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    public property unless the property is `final` or `readonly` or its class is `final`, and an object an interface
    types may run a hook on any property read through it. A property that is not public reads through `__get()`.
 2. **Guards.** [`ConditionTruth`] decides a guard with PHP's own operators on the value the read sends. A guard that
-   reads anything but that read and constants stays undecided.
+   reads anything but that read and constants stays undecided, and so does `isset()` or `empty()` of a property a step
+   reaches through magic methods other than JsonResource's and Eloquent's own, which may check apart from the read.
 3. **Arms.** A ternary with a middle operand, a `match`, and `$this->when()` or `unless()`, with or without a
    default, hand over arms. A selected arm whose body splits again is selected again, up to
    `VariantReader::LEVELS` deep, and a level that cannot decide keeps the arm above it. An arm that throws, a
@@ -100,8 +101,10 @@ since a union of them reads one object's queued enum for the next one's token.
 keys and its droppers. A dropper is a key whose guard the discriminant decides and whose arm throws for some value,
 whether or not it is a dependent, so it decides which values the group sends. Every item may change the read through a
 write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
-parameter binds there ([`ByReferenceArguments`]`::bind()`). [`CallArguments`] binds an unpacked array literal's items as
-PHP does, a string key by name and any other by position, and an item binds by reference only where it is written `&`.
+parameter binds there ([`ByReferenceArguments`]`::bind()`). A read rooted at a local also changes through `extract()`
+in any mode but `EXTR_SKIP`, and through a variable variable.
+[`CallArguments`] binds an unpacked array literal's items as PHP does, a string key by name and any other by position,
+and an item binds by reference only where it is written `&`.
 An unpack it cannot expand may bind any by-reference parameter left to it: one of a non-literal, of a literal with a
 computed key or a nested unpack, or of any literal after such an unpack, at a place no earlier argument fixes. A method
 of an object no scan names may take any argument by reference, but of an array literal only its `&` items, which reaches
