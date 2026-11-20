@@ -650,6 +650,7 @@ it('reads a write to a model attribute as a call where a set mutator runs', func
     'an Attribute with a getter only, cached' => ["\$this->resource->label = 'a'", false],
     'an Attribute whose getter a call builds' => ["\$this->resource->pin_title = 'a'", true],
     'an Attribute with a method called on it handed a call' => ["\$this->resource->pin_code = 'a'", true],
+    'an Attribute with a method called on it by a name a call computes' => ["\$this->resource->pin_mode = 'a'", true],
     'an Attribute whose getter is a first-class callable of a call\'s result' => ["\$this->resource->pin_tone = 'a'", true],
     'an Attribute whose getter is a static arrow function' => ["\$this->resource->pin_shade = 'a'", false],
     'an Attribute whose getter is a first-class callable of its own method' => ["\$this->resource->pin_hue = 'a'", false],

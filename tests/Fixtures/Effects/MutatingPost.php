@@ -141,6 +141,16 @@ class MutatingPost extends Post
     }
 
     /**
+     * Reads the pin's mode, cached through a method a helper that clears the pin names, which Eloquent's look-up runs.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinMode(): Attribute
+    {
+        return Attribute::get(fn (): string => 'mode')->{$this->clearAndName()}();
+    }
+
+    /**
      * Reads the pin's shade through a static arrow function, with no setter.
      *
      * @return Attribute<string, never>
@@ -193,6 +203,16 @@ class MutatingPost extends Post
         $this->attributes['is_pinned'] = false;
 
         return true;
+    }
+
+    /**
+     * Clears the pin, then names the method that caches an attribute.
+     */
+    private function clearAndName(): string
+    {
+        $this->attributes['is_pinned'] = false;
+
+        return 'shouldCache';
     }
 
     /**

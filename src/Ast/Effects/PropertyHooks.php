@@ -227,10 +227,8 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether running a method returning an `Attribute` may write the model or give it a setter: its body is not one
-     * `return` of Attribute::make(), get(), set() or `new Attribute` built with no setter or a `null` one, from
-     * arguments that run nothing, as written or with a method such as shouldCache() called on it bare; and so where its
-     * body cannot be read.
+     * Whether running a method returning an `Attribute` may write the model or give it a setter: a body that does more
+     * than return one value, or cannot be read, may; one that returns a value may as building it may (buildsSetter()).
      *
      * @param  ReflectionClass<Model>  $model
      */
@@ -244,13 +242,13 @@ final readonly class PropertyHooks
 
     /**
      * Whether building a returned value may run code or give it a setter: anything but one Attribute's builders make
-     * with no setter or a `null` one, from arguments that run nothing, and with no method called on it handed one; an
-     * unpack it cannot read may hold a setter.
+     * with no setter or a `null` one, from arguments that run nothing, with each method called on it named and handed
+     * nothing; an unpack it cannot read may hold a setter.
      */
     private static function buildsSetter(Expr $built): bool
     {
         while ($built instanceof MethodCall) {
-            if ($built->getRawArgs() !== []) {
+            if (! $built->name instanceof Identifier || $built->getRawArgs() !== []) {
                 return true;
             }
 
