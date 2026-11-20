@@ -175,7 +175,7 @@ final class ByReferenceArguments
     public function effect(CallLike $call, Expr $argument): ByReferenceEffect
     {
         $function = $call instanceof FuncCall && $call->name instanceof Name && ! $call->isFirstClassCallable()
-            ? $this->namedFunction($call->name)
+            ? NamedFunction::resolve($call->name)
             : null;
         $effects = $function !== null && $function->isInternal() ? self::EFFECTS[$function->getName()] ?? [] : [];
         $arguments = $function === null || $effects === [] ? null : CallArguments::for($call, $function);
@@ -206,7 +206,7 @@ final class ByReferenceArguments
         return match ($this->effect($call, $argument)) {
             ByReferenceEffect::KeepsAny, ByReferenceEffect::KeepsObject => true,
             ByReferenceEffect::Appends => $call instanceof FuncCall && $call->name instanceof Name
-                && in_array($this->namedFunction($call->name)?->getName(), self::ADDS_ONLY, true),
+                && in_array(NamedFunction::resolve($call->name)?->getName(), self::ADDS_ONLY, true),
             default => false,
         };
     }
@@ -218,7 +218,7 @@ final class ByReferenceArguments
     public function matchesType(CallLike $call): ?string
     {
         $function = $call instanceof FuncCall && $call->name instanceof Name && ! $call->isFirstClassCallable()
-            ? $this->namedFunction($call->name)?->getName()
+            ? NamedFunction::resolve($call->name)?->getName()
             : null;
 
         if ($function !== 'preg_match' && $function !== 'preg_match_all') {
@@ -279,7 +279,7 @@ final class ByReferenceArguments
     ): ?ReflectionFunctionAbstract {
         try {
             if ($call instanceof FuncCall && $call->name instanceof Name) {
-                return $this->namedFunction($call->name);
+                return NamedFunction::resolve($call->name);
             }
 
             if ($call instanceof New_ && $call->class instanceof Name) {
@@ -398,27 +398,6 @@ final class ByReferenceArguments
             $flags instanceof ConstFetch => self::PREG_FLAGS[$flags->name->toString()] ?? null,
             default => null,
         };
-    }
-
-    /**
-     * The function a name calls, tried in its namespace first, then globally, as PHP does.
-     */
-    private function namedFunction(Name $name): ?ReflectionFunction
-    {
-        $namespaced = $name->getAttribute('namespacedName');
-
-        foreach ([$namespaced instanceof Name ? $namespaced->toString() : null, $name->toString()] as $candidate) {
-            if ($candidate !== null && function_exists($candidate)) {
-                $function = new ReflectionFunction($candidate);
-
-                // Which parameters take a reference is the function's declaration, so a change to it must rebuild this.
-                DependencyRecorder::record((string) $function->getFileName());
-
-                return $function;
-            }
-        }
-
-        return null;
     }
 
     /**

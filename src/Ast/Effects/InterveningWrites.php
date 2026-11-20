@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\NamedFunction;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
@@ -246,14 +247,9 @@ final class InterveningWrites
      */
     private static function extractsOver(FuncCall $call): bool
     {
-        $namespaced = $call->name instanceof Name ? $call->name->getAttribute('namespacedName') : null;
-        $callee = match (true) {
-            ! $call->name instanceof Name || $call->isFirstClassCallable() => null,
-            $namespaced instanceof Name && function_exists($namespaced->toString()) => $namespaced->toString(),
-            default => $call->name->toString(),
-        };
-
-        if ($callee === null || strtolower($callee) !== 'extract') {
+        if (! $call->name instanceof Name || $call->isFirstClassCallable()
+            || NamedFunction::resolve($call->name)?->getName() !== 'extract'
+        ) {
             return false;
         }
 

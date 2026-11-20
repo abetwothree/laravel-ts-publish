@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures;
 
+use function AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs\neverReturningHelper;
+
 use LogicException;
 
 /**
@@ -205,6 +207,16 @@ final class LiteralNullReturns
         } catch (LogicException) {
             $value = null;
         }
+    }
+
+    /** Ends in a namespaced helper declaring `never`. */
+    public function endsInNeverHelper($value)
+    {
+        if (is_string($value)) {
+            return 'x';
+        }
+
+        neverReturningHelper();
     }
 
     /** Ends in abort(), which Laravel declares `@return never`. */
