@@ -32,7 +32,6 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
 use PhpParser\NodeFinder;
-use RuntimeException;
 use Workbench\App\Models\Post;
 
 // The gap gate (.github/scripts/gap-gate.sh) reads every key in the gap mode, which must change no published byte.
@@ -283,10 +282,13 @@ function publishPackageView(string $view, string $source): string
     $directory = sys_get_temp_dir().'/ts-publish-views-'.bin2hex(random_bytes(8));
     throw_unless(mkdir($directory), RuntimeException::class, "Cannot create {$directory}.");
 
-    if (! copy($source, $directory.'/'.$view.'.blade.php')) {
+    // The test app turns copy()'s warning into an ErrorException, so a false return is not the only failure.
+    try {
+        copy($source, $directory.'/'.$view.'.blade.php') || throw new RuntimeException('copy() returned false.');
+    } catch (Throwable $e) {
         File::deleteDirectory($directory);
 
-        throw new RuntimeException("Cannot copy {$source} into {$directory}.");
+        throw new RuntimeException("Cannot copy {$source} into {$directory}.", previous: $e);
     }
 
     View::prependNamespace('laravel-ts-publish', $directory);

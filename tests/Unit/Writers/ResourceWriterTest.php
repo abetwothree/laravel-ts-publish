@@ -50,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\Discriminated\IntersectedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
@@ -593,6 +594,17 @@ it('warns once of a published template that prints no variants, and still publis
     'variants' => [PinnedPostResource::class, "export interface PinnedPostResource\n{\n    id: number;\n}\n"],
     'an intersection' => [IntersectedPostResource::class, "export interface IntersectedPostResource\n{\n    id: number;\n"],
 ]);
+
+it('removes the view-copy helper\'s directory when the copy fails', function () {
+    try {
+        publishPackageView('resource', '/nonexistent/source.blade.php');
+    } catch (RuntimeException $e) {
+        $directory = Str::between($e->getMessage(), ' into ', '.');
+    }
+
+    expect($directory ?? null)->toStartWith(sys_get_temp_dir().'/ts-publish-views-')
+        ->and(file_exists($directory ?? ''))->toBeFalse();
+});
 
 it('does not warn of a published template that prints no variants for a resource with none', function () {
     $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');
