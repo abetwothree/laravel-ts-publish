@@ -143,6 +143,9 @@ it('decides isset() and empty() of a property only where checking it answers as 
         '$this->resource->is_pinned', 'isset($this->resource->is_pinned)', true, PostResource::class, Post::class, true,
     ],
     'a local' => ['$flag', 'empty($flag)', false, IssetDenyingResource::class, Post::class, true],
+    'the model, read past the resource\'s own __isset()' => [
+        '$this->resource->is_pinned', 'isset($this->resource->is_pinned)', true, IssetDenyingResource::class, Post::class, true,
+    ],
     'a property the resource declares, past its own __isset()' => [
         '$this->pinned', 'isset($this->pinned)', true, IssetDenyingResource::class, Post::class, true,
     ],

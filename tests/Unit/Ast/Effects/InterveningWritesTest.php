@@ -512,6 +512,10 @@ it('reads extract() and a variable variable as a write of any local', function (
     'a variable variable before a $this read' => ['$$n = false', '$this->is_pinned', false],
     'a quoted variable name' => ["\${'flag'} = false", '$flag', true],
     'another quoted variable name' => ["\${'other'} = false", '$flag', false],
+    'a reference to a variable variable' => ['$x = &$$n', '$flag', true],
+    'a reference to a variable variable\'s member' => ['$x = &$$n->is_pinned', '$post->is_pinned', true],
+    'a reference to another local' => ['$x = &$other', '$flag', false],
+    'a reference to a variable variable before a $this read' => ['$x = &$$n', '$this->is_pinned', false],
     'compact()' => ["compact('flag')", '$flag', false],
     'parse_str() into another local' => ['parse_str($s, $out)', '$flag', false],
 ]);

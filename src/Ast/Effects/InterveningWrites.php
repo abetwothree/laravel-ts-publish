@@ -504,12 +504,14 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a node spells a write that reaches the read, extract() and a variable variable writing any local.
+     * Whether a node spells a write that reaches the read, extract() and a variable variable writing any local, as
+     * does a reference bound to one, which a later write through it reaches.
      */
     private function writes(Node $node, bool $inBody): bool
     {
         return array_any(self::writtenPaths($node), fn (ReadPath $written): bool => $this->reaches($written, $inBody))
             || ($this->reachesAnyLocal($inBody) && (array_any(self::writeTargets($node), self::namesAnyLocal(...))
+                || ($node instanceof AssignRef && self::namesAnyLocal($node->expr))
                 || ($node instanceof FuncCall && self::extractsOver($node))));
     }
 

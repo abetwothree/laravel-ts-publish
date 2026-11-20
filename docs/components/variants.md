@@ -102,7 +102,7 @@ keys and its droppers. A dropper is a key whose guard the discriminant decides a
 whether or not it is a dependent, so it decides which values the group sends. Every item may change the read through a
 write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
 parameter binds there ([`ByReferenceArguments`]`::bind()`). A read rooted at a local also changes through `extract()`
-in any mode but `EXTR_SKIP`, and through a variable variable.
+in any mode but `EXTR_SKIP`, and through a variable variable, written or bound by reference.
 [`CallArguments`] binds an unpacked array literal's items as PHP does, a string key by name and any other by position,
 and an item binds by reference only where it is written `&`.
 An unpack it cannot expand may bind any by-reference parameter left to it: one of a non-literal, of a literal with a
