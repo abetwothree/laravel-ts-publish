@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
 
+use PhpParser\Node;
+use PhpParser\Node\PropertyHook;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\NodeFinder;
+use PropertyHookType;
 use ReflectionClass;
 use ReflectionMethod;
 
 /**
- * Finds a method's ClassMethod AST node, memoized, recording every parsed file as a cache dependency.
+ * Finds a method's ClassMethod AST node, or a property hook's node, memoized, recording every parsed file as a cache
+ * dependency.
  *
  * @internal
  */
@@ -17,6 +22,9 @@ class MethodLocator
 {
     /** @var array<string, MethodContext|null> */
     protected array $located = [];
+
+    /** @var array<string, PropertyHook|null> each hook located, by class, property and kind */
+    protected array $hooks = [];
 
     public function __construct(protected AstParser $parser) {}
 
@@ -91,6 +99,37 @@ class MethodLocator
 
             return $this->findIn($reflection, (string) $file, $method, caseSensitive: false);
         });
+    }
+
+    /**
+     * Locate the hook of a kind a property runs, where the class declares or inherits the property with one: the node
+     * in the hook's file whose last line reflection reports, since an attribute moves the parser's first line only.
+     */
+    public function locateHook(string $class, string $property, PropertyHookType $type): ?PropertyHook
+    {
+        $key = $class.'::$'.$property.'::'.$type->value;
+
+        if (array_key_exists($key, $this->hooks)) {
+            return $this->hooks[$key];
+        }
+
+        $reflection = class_exists($class) ? new ReflectionClass($class) : null;
+        $hook = $reflection?->hasProperty($property) ? $reflection->getProperty($property)->getHook($type) : null;
+        $file = $hook?->getFileName() ?? false;
+
+        if ($hook === null || $file === false) {
+            return $this->hooks[$key] = null;
+        }
+
+        $node = new NodeFinder()->findFirst(
+            $this->parser->parseFile($file),
+            static fn (Node $node): bool => $node instanceof PropertyHook
+                && $node->name->toLowerString() === $type->value
+                && $node->getAttribute('propertyName') === $property
+                && $node->getEndLine() === $hook->getEndLine(),
+        );
+
+        return $this->hooks[$key] = $node instanceof PropertyHook ? $node : null;
     }
 
     /**

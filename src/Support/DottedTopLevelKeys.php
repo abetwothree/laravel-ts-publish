@@ -14,10 +14,24 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
  *
  * Each key it writes prints from pieces, so a class token is read with the classes of the key whose type it prints.
  *
- * @phpstan-type SentEntry = array{type: string, optional: bool, closed?: bool}
+ * @phpstan-type SentEntry = array{type: string, optional: bool, closed?: bool, split?: bool}
  * @phpstan-type TypePiece = array{text: string, from: array-key|null}
- * @phpstan-type TopLevelEntry = array{type: string, optional: bool, closed?: bool, pieces?: list<TypePiece>}
- * @phpstan-type Base = array{pieces: list<TypePiece>, text: string, optional: bool, direct: bool, closed: bool}
+ * @phpstan-type TopLevelEntry = array{
+ *     type: string,
+ *     optional: bool,
+ *     closed?: bool,
+ *     split?: bool,
+ *     pieces?: list<TypePiece>,
+ * }
+ * @phpstan-type Base = array{
+ *     pieces: list<TypePiece>,
+ *     text: string,
+ *     optional: bool,
+ *     direct: bool,
+ *     closed: bool,
+ *     split: bool,
+ * }
+ * @phpstan-type JoinedMembers = list<array{string, string}>
  * @phpstan-type Node = array{parent: ?string, segment: string, leaf: array-key|null, base: Base|null, or: ?string}
  * @phpstan-type Printed = array{pieces: list<TypePiece>, optional: bool}
  *
@@ -46,7 +60,9 @@ final class DottedTopLevelKeys
      * Write each dotted key into its path as Inertia unpacks it.
      *
      * @param  array<array-key, SentEntry>  $props  each top-level key as Laravel sends it, `closed` where its value is
-     *                                              an object Inertia replaces rather than opens
+     *                                              an object Inertia replaces rather than opens, `split` where it is
+     *                                              a literal printed one object per variant, each an array the writes
+     *                                              enter
      * @return array<array-key, TopLevelEntry> a key the writes reach carries the pieces of its type, each naming the
      *                                         input key whose type it prints, or null for the text between them
      */
@@ -81,6 +97,51 @@ final class DottedTopLevelKeys
     private static function memberName(string $printed): string
     {
         return PrintedKey::decode($printed) ?? $printed;
+    }
+
+    /**
+     * Object literals that name one key set, as one parenthesized union beside their members joined key by key, each
+     * optional where an arm's is; null for any other arms, or fewer than two.
+     *
+     * @param  list<string>  $arms
+     * @return array{string, JoinedMembers}|null
+     */
+    private static function sameKeyedObjects(array $arms): ?array
+    {
+        $objects = [];
+
+        foreach ($arms as $arm) {
+            $members = TsTypeShape::members($arm);
+
+            if ($members === null || $members === []) {
+                return null;
+            }
+
+            $objects[] = array_column(array_map(
+                static fn (array $member): array => [self::memberName($member[0]), $member],
+                $members,
+            ), 1, 0);
+        }
+
+        $names = array_keys($objects[0] ?? []);
+        $alike = array_all($objects, static fn (array $object): bool => array_keys($object) === $names);
+
+        if (count($objects) < 2 || ! $alike) {
+            return null;
+        }
+
+        $joined = array_map(static function (int|string $name) use ($objects): array {
+            $members = array_column($objects, $name);
+            $optional = array_any($members, static fn (array $member): bool => str_ends_with($member[0], '?'));
+            $printed = $members[0][0];
+
+            return [
+                $optional && ! str_ends_with($printed, '?') ? $printed.'?' : $printed,
+                implode(' | ', array_unique(array_column($members, 1))),
+            ];
+        }, $names);
+
+        return ['('.implode(' | ', $arms).')', $joined];
     }
 
     /**
@@ -248,6 +309,7 @@ final class DottedTopLevelKeys
                     'optional' => $entry['optional'],
                     'direct' => true,
                     'closed' => $entry['closed'] ?? false,
+                    'split' => $entry['split'] ?? false,
                 ]];
             }
 
@@ -332,6 +394,10 @@ final class DottedTopLevelKeys
         $one = count($solid) === 1 ? $solid[0] : null;
         $object = $one === null ? null : TsTypeShape::members($one);
         $element = $one === null ? null : TsTypeShape::elementType($one);
+        // A literal printed one object per variant holds an array in each arm, which every write enters as one.
+        if ($one === null && $base['split']) {
+            [$one, $object] = self::sameKeyedObjects($solid) ?? [null, null];
+        }
         $written = $this->members($children);
         $absent = $written['optional'];
 
@@ -440,6 +506,7 @@ final class DottedTopLevelKeys
                 'optional' => $held[$segment]['optional'],
                 'direct' => false,
                 'closed' => false,
+                'split' => false,
             ];
 
             if ($this->nodes[$child]['leaf'] === null && $this->nodes[$child]['base'] === null) {
@@ -453,7 +520,7 @@ final class DottedTopLevelKeys
         $written = $this->wrapped($this->members($children, $members, $kept))['pieces'];
 
         $pieces = match (true) {
-            $entered === [] && $base['direct'] => [
+            $entered === [] && $base['direct'] && ! str_starts_with($arm, '(') => [
                 ['text' => rtrim(substr($arm, 0, -1), " \t\n;,"), 'from' => $from],
                 ...self::text('; '),
                 ...$this->members($children)['pieces'],

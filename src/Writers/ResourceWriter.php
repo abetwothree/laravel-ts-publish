@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Writers;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Transformers\CoreTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WarnsOfTemplatesWithoutVariants;
 use AbeTwoThree\LaravelTsPublish\Writers\Concerns\WritesGeneratedFiles;
 use Illuminate\Support\Facades\Config;
 use Override;
@@ -16,6 +17,7 @@ use Override;
  */
 class ResourceWriter extends CoreWriter
 {
+    use WarnsOfTemplatesWithoutVariants;
     use WritesGeneratedFiles;
 
     /**
@@ -35,7 +37,9 @@ class ResourceWriter extends CoreWriter
         $usesAsEnum = Config::boolean('ts-publish.enums.use_tolki_package') && TsTypeString::typeNameOccursIn(
             'AsEnum',
             ...array_column($data->properties, 'type'),
+            ...$data->variants,
             ...$data->tsExtends,
+            ...$data->intersections,
             ...array_filter([$data->typeAlias]),
         );
 
@@ -47,6 +51,10 @@ class ResourceWriter extends CoreWriter
                 'data' => $data,
             ]
         )->render();
+
+        if ($this->printsVariants($data)) {
+            $this->warnOfTemplateWithoutVariants($template);
+        }
 
         if (Config::boolean('ts-publish.output_to_files')) {
             $this->writeResourceFile($filename, $content, $transformer->namespacePath);

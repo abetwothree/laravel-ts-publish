@@ -1608,6 +1608,8 @@ describe('ResourceTransformer import collision deconfliction', function () {
     test('aliases colliding enum types and model types in modular mode', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
         config()->set('ts-publish.enums.use_tolki_package', false);
+        // Flat, `crm_status` spells the alias this pins; in `closed_at`'s arms it sends its case literals instead.
+        config()->set('ts-publish.resources.discriminated_unions', false);
 
         $data = (new ResourceTransformer(DealResource::class))->data();
 
@@ -1638,6 +1640,7 @@ describe('ResourceTransformer import collision deconfliction', function () {
     test('aliases enum type imports, value imports, and property types with tolki enabled', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
         config()->set('ts-publish.enums.use_tolki_package', true);
+        config()->set('ts-publish.resources.discriminated_unions', false);
 
         $data = (new ResourceTransformer(DealResource::class))->data();
 

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ProxyDeclaration;
@@ -31,7 +32,9 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\NullsafePropertyFetch;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
@@ -586,6 +589,43 @@ final class AnalysisScope
             'parent' => $declaring->getParentClass() ?: null,
             default => null,
         };
+    }
+
+    /**
+     * The class PHP looks up a method a call runs on `$this` on: memberClassOf()'s for `$this->`, the runtime class for
+     * `$this::`, relativeClassOf()'s for `self::`, `static::` and `parent::`, and the ancestor a name names unless it
+     * declares the method static; null for a call on no `$this`. A null method, one the source computes, may be any.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @param  ReflectionClass<object>  $runtime
+     * @return ReflectionClass<object>|null
+     */
+    public static function thisCallClassOf(
+        MethodCall|NullsafeMethodCall|StaticCall $call,
+        ?string $method,
+        ReflectionClass $declaring,
+        ReflectionClass $runtime,
+    ): ?ReflectionClass {
+        $receiver = $call instanceof StaticCall ? $call->class : $call->var;
+
+        if (! $receiver instanceof Name) {
+            return match (true) {
+                ! ReadPath::isThis($receiver) => null,
+                $call instanceof StaticCall || $method === null => $runtime,
+                default => self::memberClassOf($declaring, $runtime, $method, true),
+            };
+        }
+
+        if ($receiver->isSpecialClassName()) {
+            return self::relativeClassOf($receiver, $declaring, $runtime);
+        }
+
+        $name = $receiver->toString();
+        $static = $method !== null && method_exists($name, $method) && new ReflectionMethod($name, $method)->isStatic();
+
+        return class_exists($name) && is_a($runtime->getName(), $name, true) && ! $static
+            ? new ReflectionClass($name)
+            : null;
     }
 
     /**

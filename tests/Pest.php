@@ -5,18 +5,25 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaSharedDataAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\View;
 use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -24,6 +31,8 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\NodeFinder;
+use Workbench\App\Models\Post;
 
 // The gap gate (.github/scripts/gap-gate.sh) reads every key in the gap mode, which must change no published byte.
 uses(TestCase::class)
@@ -262,4 +271,67 @@ function gappedValue(string $php, string $resource, ?string $model = null): arra
     };
 
     return $analyzer->resolve(new AstParser()->parseSource('<?php '.$php.';')[0]->expr);
+}
+
+/**
+ * Publish a copy of a source file as one of the package's views, found ahead of the package's own as
+ * `vendor:publish` places it, and return the copy's resolved path. The caller deletes its directory.
+ */
+function publishPackageView(string $view, string $source): string
+{
+    $directory = sys_get_temp_dir().'/ts-publish-views-'.bin2hex(random_bytes(8));
+    throw_unless(mkdir($directory), RuntimeException::class, "Cannot create {$directory}.");
+
+    // The test app turns copy()'s warning into an ErrorException, so a false return is not the only failure.
+    try {
+        copy($source, $directory.'/'.$view.'.blade.php') || throw new RuntimeException('copy() returned false.');
+    } catch (Throwable $e) {
+        File::deleteDirectory($directory);
+
+        throw new RuntimeException("Cannot copy {$source} into {$directory}.", previous: $e);
+    }
+
+    View::prependNamespace('laravel-ts-publish', $directory);
+    View::getFinder()->flush();
+
+    // The view finder resolves symlinks, and macOS links /var to /private/var.
+    return (string) realpath($directory.'/'.$view.'.blade.php');
+}
+
+/**
+ * reach()'s answer for the window of a literal written in InterveningResource's namespace and in $subject's scope, its
+ * resource backed by $model: its first item sends $read, each later item holds one source of $items, and $guards picks
+ * the guards the last item's arms are selected by from its value.
+ *
+ * @param  list<string>  $items
+ * @param  class-string  $subject
+ * @param  class-string<Model>  $model
+ * @param  (Closure(Expr): list<Expr>)|null  $guards
+ */
+function windowReach(
+    array $items,
+    string $read = '$this->is_pinned',
+    string $subject = InterveningResource::class,
+    string $model = Post::class,
+    ?Closure $guards = null,
+): bool {
+    $values = implode(', ', array_map(
+        static fn (int $index, string $item): string => "'k{$index}' => {$item}",
+        array_keys([$read, ...$items]),
+        [$read, ...$items],
+    ));
+    $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources; '
+        .'use Closure; use Illuminate\Support\Facades\Gate; use Workbench\App\Http\Resources\UserResource; '
+        .'use Workbench\App\Enums\Status; use Workbench\App\Models\Post; use Workbench\App\Models\User; '
+        ."use Workbench\App\Support\PinWriter; return [{$values}];";
+    $array = new NodeFinder()->findFirstInstanceOf(new AstParser()->parseSource($source), Array_::class);
+    $sent = ReadPath::of(runtimeClassCall($read));
+    assert($array instanceof Array_ && $sent instanceof ReadPath);
+
+    return InterveningWrites::reach(
+        $array->items,
+        $sent,
+        new AnalysisScope(new ReflectionClass($subject), $model),
+        $guards === null ? [] : $guards($array->items[count($array->items) - 1]->value),
+    );
 }

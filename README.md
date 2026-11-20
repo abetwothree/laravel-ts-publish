@@ -260,6 +260,7 @@ Key capabilities include:
 
 - **Model-aware types**: properties are typed from the backing model's columns, casts, accessors, and relations.
 - **Conditional methods**: `when()`, `whenLoaded()`, `whenCounted()`, and the rest publish optional properties, usually with `| null` where Laravel can send `null`.
+- **Discriminated unions**: keys that follow another key's value narrow on it.
 - **Nested resources**: `::make()`, `::collection()`, `new`, and `toResource()` publish the imported resource type.
 - **Resource collections**: a collection publishes the body Laravel sends under the wrap key your app sets, over items or a length-aware, simple, or cursor paginator.
 - **JSON:API resources**: a `JsonApiResource` publishes the resource object it sends, with typed `attributes` and `relationships`.

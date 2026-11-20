@@ -548,7 +548,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         $stands = $this->readingStands($reading, $dropped);
         $drops = $stands && DroppedUnionArms::dropped() !== $dropped;
         $listed = $drops && VisibleGaps::aside($reading['type'])[0] === 'never[]';
-        $left = $drops && ! $listed ? $this->leftMembers($reading, $span['expr']) : [];
+        $left = $drops && ! $listed ? $this->leftMembers(ValueResult::unsplit($reading), $span['expr']) : [];
 
         if ($stands && ! $listed && $left === []) {
             return [null, null];
@@ -564,7 +564,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             return [[...$declared, 'optional' => $reading['optional'] ?? false], null];
         }
 
-        return $this->filledMembers($reading, $declared, $left) ?? [null, null];
+        return $this->filledMembers(ValueResult::unsplit($reading), $declared, $left) ?? [null, null];
     }
 
     /**

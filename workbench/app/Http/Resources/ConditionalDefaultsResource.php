@@ -36,7 +36,8 @@ class ConditionalDefaultsResource extends JsonResource
             // it is a real default — required, and unioned in — exactly like the positional form above.
             'not_null_named_default' => $this->whenNotNull($this->full_address, default: 0),
 
-            // A spread argument at the default position makes the count unknowable, so it bails out.
+            // func_num_args() counts each item a literal spread passes, so one at the default position is a real
+            // default: required, and unioned in, as the positional form is.
             'not_null_spread_default' => $this->whenNotNull($this->full_address, ...[0]),
 
             'when_no_default' => $this->when($this->id > 0, $this->full_address),

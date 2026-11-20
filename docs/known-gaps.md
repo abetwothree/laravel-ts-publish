@@ -92,6 +92,21 @@ the type. The package runs inside the booted app, where the live value is the on
 its default. A key set to `null`, such as an `env()` value unset on that machine, types as `null` whatever the default.
 A typed accessor such as `config()->string('key')` types from its declared return instead.
 
+### A conditional helper's default passed before more arguments can be sent unevaluated
+
+Past three arguments, Laravel 12.69+ and 13's `when()` and `whenAppended()` return their default as written, and
+`mergeWhen()` returns it unmerged. So `when($c, 1, fn () => 'x', ...$extra)` with a non-empty `$extra`, or a fourth
+argument, sends the closure as `{}`, and `mergeWhen($c, [...], ['k' => 1], 'extra')` sends the default under a key `0`,
+while the type publishes what the default gives, optional because Laravel 12.0 sends a `MissingValue` there
+([`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php)). Pass no argument past the
+default.
+
+An unpack that fills a helper's arguments is read as no argument, a shape the
+[plausible-input bar](../.claude/rules/plausible-inputs.md) leaves out. So `when($c, 1, ...$extra)` with
+`$extra = ['off']` publishes no arm for the `'off'` PHP sends, and `whenHas('name', ...$rest, default: 'x')` publishes
+the default's type where Laravel sends `null` or the unpacked value. On Laravel 12.0 to 12.68, a fourth argument after a
+nested default, as in `when($c, 1, $c ? 'on' : 'off', 'extra')`, publishes the key required where Laravel omits it.
+
 ### On Laravel 12, `#[Collects]` cannot be resolved, so use the `$collects` property
 
 On Laravel 12 the `#[Collects]` class does not exist, so a `ResourceCollection` that names its resource only that way
@@ -226,6 +241,59 @@ writes stay outside that reading:
 
 Write the key once, or type it with `#[TsCasts]`.
 
+### A discriminated union can pair a value with the wrong arm, past a write the package cannot see
+
+A group declines where code in its window may change the discriminant
+([Variants § What may change a discriminant](./components/variants.md#what-may-change-a-discriminant)). The package
+misses these writes, so a variant can pair a value with the arm PHP sends for another value:
+
+- a closure a property or an array element holds, such as `$this->when($c, $this->callback)`, or a closure in a local
+  handed to a callee other than a resource helper, such as `array_map($reset, $ids)`;
+- the model passed on through a local or a method's return value, such as `Pins::reset($post)` after
+  `$post = $this->resource`, or `Pins::reset($this->model())`;
+- an object built with the model and held in a property or a local, such as `$this->pins->clear()` after
+  `$this->pins = new Pins($resource)` in the constructor;
+- the discriminant bound by reference to a local, such as `$r = &$this->pinned; $r = false;`, in the window or in a
+  method it calls, or a local discriminant bound before the window, as `$x = &$$n;`, `extract($o, EXTR_REFS)` or
+  `$refs = [&$flag];` do, then written through that reference in the window;
+- an accessor, a `getXAttribute()` method or an `Attribute` getter, or a relation method, that writes the discriminant
+  when the window reads its attribute or relation, directly or through an Eloquent reader such as `getKey()`, which
+  runs it by a name it computes;
+- a model's own `__call()` that writes the discriminant, where an Eloquent reader calls a method the model lacks. On
+  Laravel 12 and 13 only `getModel()` is called that way, on the path that throws `InvalidCastException`;
+- a model method a resource helper calls on the model it holds, such as the `getAttributes()` that `whenHas()` reads,
+  or one Eloquent's `setAttribute()` calls on a write that reaches `__set()`, such as `hasSetMutator()`,
+  `setMutatedAttributeValue()`, `isDateAttribute()` or `hasCast()`, where the model overrides it with one that writes
+  the discriminant;
+- a `get` hook a resource adds to its own `$resource` that writes the discriminant, which runs on every read of the
+  model, a resource helper's included;
+- a model's own `__get()` that writes the discriminant, run by a read of a property that code outside the model's own
+  methods unsets, such as `unset($post->keyField)` in a resource or a controller, and the `__set()` and set mutator a
+  later write of such a property runs, unless the resource's own methods unset it;
+- a class cast's `set()` that writes the discriminant, or the resource's own `__set()` that does, run by a write
+  through a local or an untyped property that holds the resource, such as `$self->note = 'x'` after `$self = $this`,
+  or `$this->self->note = 'x'`;
+- on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
+  `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
+- contrived spellings, held to the [plausible-input bar](../.claude/rules/plausible-inputs.md): a namespace constant
+  redefining PHP's own, such as `const EXTR_SKIP = \EXTR_OVERWRITE;` before `extract($o, EXTR_SKIP)`; a reference
+  taken through a quoted variable variable, `$alias = &${'flag'}`, and written in the window; and a property hook that
+  unsets a property a later read reaches through the model's own `__get()`;
+- a gate or policy a `Gate` check runs, or a model's route key `route()` or `url()` reads, which the package trusts to
+  only read the model it is handed, as
+  [`instanceof` narrowing](#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways) does.
+
+Move that code above the first key that reads the discriminant, or below the last: the discriminant's own key and each
+key whose condition tests it. Where it cannot move, `#[TsResource(discriminated: false)]` keeps a resource's top level
+flat.
+
+The other way round, a group stays flat where its window calls an Eloquent reader, such as `getKey()` or
+`getRouteKey()`, on a model that overrides a method the reader runs, such as `getKeyName()`, `getRouteKeyName()`,
+`getCasts()`, `getConnectionName()` or `getTable()`, with a body that does more than return a literal, a constant, a
+property with no hook that the model's own code never unsets, or an array of those. That holds even for an override
+that only reads, and for one a package's trait adds, such as a translatable or multi-tenancy trait's. To keep the
+split, make the override return one of those, or move the reader's call above or below those keys, as above.
+
 ### A helper that returns an empty `[]` on one path publishes an object shape, though `[]` encodes as an array
 
 A method typed from its body, such as `if ($flag) { return []; } return ['a' => 1];`, publishes
@@ -293,6 +361,10 @@ Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel t
 - Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
 - A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
   publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
+- Ternary arms of nested literals that wrap two enums sharing a name, one of them in two arms, publish the first enum
+  in every arm and import the other unused: `$a ? ['e' => EnumResource::make($this->status), 'x' => 1] : ($b ?
+  ['e' => EnumResource::make($this->status), 'x' => 1] : ['e' => EnumResource::make(CrmStatus::Lead), 'x' => 'a'])`
+  publishes `{ e: AsEnum<typeof WorkbenchStatus>; x: number } | { e: AsEnum<typeof WorkbenchStatus>; x: string }`.
 
 No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
 that has an `import`.
@@ -499,6 +571,14 @@ A contributor whose `#[TsType]` spells the composed name, `{Basename}Type`, with
 itself (TS2310); with an import, the name is aliased instead. Two contributors importing one name from two modules
 make the module import it twice (TS2300). `ts:publish` warns of both. Give the override an import or another name.
 
+### A model, form request or broadcast event extending a type of its own name fails `tsc`
+
+`#[TsExtends('User', '@/contracts/user')]` on model `User`, or a `ts_extends` config entry naming the same, imports
+`User` beside the file's own `export interface User` and fails with TS2440. An API resource aliases such an import by
+its path and respells the clause, `#[TsIntersect]` included, but the other three publishers settle their clauses
+without the name they declare ([`ParsesTsExtends`](../src/Transformers/Concerns/ParsesTsExtends.php)). Give the
+imported type another name.
+
 ### A composed type fails `tsc` when a contributor is not an object type, or two contributors disagree on a member
 
 The package reads only an override's spelling, so it cannot tell what the type it names holds. An override naming an
@@ -599,7 +679,7 @@ Check which spelling you wrote before you assume a value is `unknown`:
   through, a write through a local or to one bound by reference (`$ref = &$this->post`, a by-reference destructuring,
   or any local once `extract()` or a variable variable runs), a write through another `$this` chain that sets a member
   the tested chain reads through, since two chains can hold one object, code no scan sees, and any call outside the
-  known-safe list [`ThisPathWrites`](../src/Ast/Analysis/ThisPathWrites.php) keeps, which leaves out a call naming the
+  known-safe list [`ThisPathWrites`](../src/Ast/Effects/ThisPathWrites.php) keeps, which leaves out a call naming the
   subject's own or an ancestor's class, as PHP runs one on `$this`. One such call, such as `$this->reload()`,
   `PostResource::make($this->resource)` or a call on a local, publishes every read of the chain unnarrowed. Trusted,
   though each may change the chain: a gate or policy callback a `Gate` or ability check runs, even one that writes the
@@ -868,6 +948,14 @@ provider's `boot()` for the console too.
 `JsonResource::$forceWrapping` (Laravel 12.45 and later) is not read. With it on, Laravel wraps a body that already
 holds its wrap key again, so a collection whose `toArray()` returns `['data' => …, 'count' => 1]` is sent as a page
 prop as `{"data":{"data":[…],"count":1}}`, while the package publishes the body. Type such a prop with `#[TsCasts]`.
+
+### A clause on a collection that publishes a flat alias is dropped, and its import stays
+
+A body-less resource collection whose live wrap key is `null` or empty publishes a flat alias, such as
+`export type PostCollection = PostResource[];`, which prints no clause. So a `#[TsExtends]`, `#[TsIntersect]` or
+`ts_extends.resources` type never reaches it. The clause still counts as spelling its names
+(`ResourceTransformer::clauses()`), so the file keeps their import, which `noUnusedLocals` reports as TS6196.
+Intersect the alias in your own code instead, as in `type Paged = PostCollection & Extra`.
 
 ### In a resource collection, `map()`, `pluck()` and `values()` on `$this->resource` publish `unknown`
 
@@ -1271,6 +1359,12 @@ named key.
 In an API resource that preserves keys, `[$this->when($c, 'x'), 'y']` publishes `string[]`, though a false `$c` sends
 `{"1":"y"}`. `collect([[$this->when($c, 'x')]])` publishes `string[][]` in any resource, though the filter never enters
 a `Collection`, so the missing value encodes as `{}`. Keep conditional values out of lists there.
+
+### A `when*()` key in a ternary of literals a `collect()` holds publishes optional, though Laravel sends `{}` for it
+
+`collect($c ? ['a' => $this->when($d, 1)] : ['b' => 2])` publishes `{ a?: number } | { b: number }`. The filter
+never enters a `Collection`, so a false `$d` leaves the `MissingValue` in place, which `json_encode()` writes as `{}`:
+Laravel sends `{"a":{}}`. Keep conditional values out of a literal you collect.
 
 ### An untyped property's default ignores writes the scan cannot see
 

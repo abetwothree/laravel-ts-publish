@@ -164,6 +164,14 @@ _Avoid_: lost arm, untyped branch
 A typed union arm that a sibling arm already admits, such as an empty list beside a list or an enum case's value beside the enum's alias, left out because it adds no value the property can send.
 _Avoid_: folded arm, subsumed arm
 
+**Discriminant**:
+A required key of one array whose value is one of a finite set, such as a boolean or an enum's cases, and decides what other keys of that array send. A key that follows it is a dependent.
+_Avoid_: discriminator, tag, flag key
+
+**Variant**:
+One object of a discriminated union: the discriminant's values for which every dependent sends the same type, beside the type each dependent sends for them. An API resource with variants publishes as a type alias, its shared keys intersected with the union of its variants.
+_Avoid_: case, branch, split
+
 **Visible gap**:
 A dropped arm, or the keys an object may hold that inference cannot name, kept in a key's type so the method's `@return` can type it where it stands. A gap the docblock leaves untyped is dropped before the type publishes.
 _Avoid_: mark, placeholder

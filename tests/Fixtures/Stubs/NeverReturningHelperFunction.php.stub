@@ -1,0 +1,16 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs;
+
+use LogicException;
+
+/**
+ * A namespaced helper whose return type says whether a call to it ends the method: `never` here, so editing it to
+ * return must rebuild every reading that took the call as an end.
+ */
+function neverReturningHelper(): never
+{
+    throw new LogicException('Failed.');
+}

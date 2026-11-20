@@ -14,7 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * A printed object type read back into its keys, each carrying the classes its own type spells: the reverse of
- * InlineObjectResult::of(), so a value already typed as an object can start an analysis that writes more keys.
+ * InlineObjectResult::of(), so a value already typed as an object can start an analysis that writes more keys. A
+ * literal printed one object per variant is read as its one object (ValueResult::unsplit()).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PresenceFacts from MethodAnalysis
@@ -41,6 +42,8 @@ final class ObjectMembers
      */
     public static function analysis(array $value): ?MethodAnalysis
     {
+        $value = ValueResult::unsplit($value);
+
         $members = self::members($value);
 
         if ($members === null) {
@@ -71,6 +74,8 @@ final class ObjectMembers
      */
     public static function members(array $value): ?array
     {
+        $value = ValueResult::unsplit($value);
+
         // A wrap spells `AsEnum<typeof X>`, a token no queue here reads, so its member could not keep its value import.
         if (isset($value['enumFqcn']) || isset($value['embeddedEnumResourceFqcns'])
             || isset($value['multiEnumResourceFqcns'])) {
@@ -123,6 +128,8 @@ final class ObjectMembers
      */
     public static function seed(array $value, bool $carriesImports): ?MethodAnalysis
     {
+        $value = ValueResult::unsplit($value);
+
         return self::keepsText($value, $carriesImports) ? self::analysis($value) : null;
     }
 
@@ -135,6 +142,8 @@ final class ObjectMembers
      */
     public static function seededMembers(array $value, bool $carriesImports): ?array
     {
+        $value = ValueResult::unsplit($value);
+
         return self::keepsText($value, $carriesImports) ? self::members($value) : null;
     }
 
@@ -147,6 +156,8 @@ final class ObjectMembers
      */
     public static function seededWrittenMembers(array $value, bool $carriesImports): ?array
     {
+        $value = ValueResult::unsplit($value);
+
         return self::keepsText($value, $carriesImports) ? self::writtenMembers($value) : null;
     }
 
@@ -173,6 +184,8 @@ final class ObjectMembers
      */
     public static function isOpen(array $value): bool
     {
+        $value = ValueResult::unsplit($value);
+
         if ($value['unnamedKeys'] ?? false) {
             return true;
         }
@@ -206,6 +219,8 @@ final class ObjectMembers
      */
     public static function writtenMembers(array $value): ?array
     {
+        $value = ValueResult::unsplit($value);
+
         $members = self::members($value);
 
         if ($members === null) {
@@ -245,7 +260,9 @@ final class ObjectMembers
     {
         $presence = $value['keyPresence'] ?? [];
 
-        foreach (TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm($value['type'])) as $object) {
+        $types = array_unique([$value['type'], ValueResult::unsplitType($value)]);
+
+        foreach (TsTypeString::splitTopLevelUnion(TsTypeString::withoutNullArm(implode(' | ', $types))) as $object) {
             foreach (TsTypeShape::members($object) ?? [] as [$key]) {
                 $name = PrintedKey::decode($key);
 

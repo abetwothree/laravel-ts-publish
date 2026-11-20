@@ -11,10 +11,6 @@ import type { UserResource } from '..';
  *
  * @see Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource
  */
-export interface PinnedWrapsResource
-{
-    is_pinned: boolean;
-    state: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Visibility> | null;
-    stage: WorkbenchStatusType | CrmStatusType;
-    author?: UserResource;
-}
+export type PinnedWrapsResource =
+    | { is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource }
+    | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never };

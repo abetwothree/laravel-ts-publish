@@ -6,9 +6,9 @@ import type { FeedPlacementResource, PinnedPlacementResource } from '.';
  *
  * @see Workbench\App\Http\Resources\Discriminated\PinnedPostResource
  */
-export interface PinnedPostResource
-{
+export type PinnedPostResource = {
     id: number;
-    is_pinned: boolean;
-    placement: PinnedPlacementResource | FeedPlacementResource;
-}
+} & (
+    | { is_pinned: true; placement: PinnedPlacementResource }
+    | { is_pinned: false; placement: FeedPlacementResource }
+);

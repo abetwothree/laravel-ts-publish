@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use Closure;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -21,10 +22,6 @@ use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Instanceof_;
 use PhpParser\Node\Expr\Isset_;
-use PhpParser\Node\Expr\NullsafePropertyFetch;
-use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 
 /**
@@ -139,11 +136,7 @@ trait ReadsNonNullGuards
      */
     protected function readRoot(Expr $expr): ?string
     {
-        if ($expr instanceof PropertyFetch || $expr instanceof NullsafePropertyFetch) {
-            return $expr->name instanceof Identifier ? $this->readRoot($expr->var) : null;
-        }
-
-        return $expr instanceof Variable && is_string($expr->name) ? $expr->name : null;
+        return ReadPath::of($expr)?->root;
     }
 
     /**

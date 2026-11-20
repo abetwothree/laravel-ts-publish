@@ -3902,7 +3902,7 @@ it('reads the model and a helper call as merge sides, and a side read as no arra
         'call_default' => 'string',
         'title' => '?string',
         'default_only' => '?number',
-        'spread_default' => '?string',
+        'spread_default' => 'string | number',
         'needs_arg_default' => '?string',
     ]);
 });
@@ -4940,7 +4940,7 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
             ->and($props['not_null_same_type_default']['optional'])->toBeFalse();
     });
 
-    // hasExplicitDefaultArg() contract — pinned per brief: position is the only signal, since Laravel
+    // explicitDefault() contract — pinned per brief: position is the only signal, since Laravel
     // distinguishes an omitted argument from an explicitly-passed `null` via func_num_args(), not `=== null`.
     it('treats an explicit null at the default position as a real default', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
@@ -4960,13 +4960,13 @@ describe('ResourceAstAnalyzer with ConditionalDefaultsResource — whenNotNull/w
             ->and($props['not_null_named_default']['optional'])->toBeFalse();
     });
 
-    // A spread argument at the default position makes the count unknowable, so it bails out.
-    it('bails out on a spread default argument, back to value-arm-only and optional', function () {
+    // func_num_args() counts each item a literal spread passes, so one at the default position is a real default.
+    it('reads a literal spread default argument by its items, required and unioned', function () {
         $analyzer = new ResourceAstAnalyzer(new ReflectionClass(ConditionalDefaultsResource::class), Address::class);
         $props = collect($analyzer->analyze()->properties)->keyBy('name');
 
-        expect($props['not_null_spread_default']['type'])->toBe('string')
-            ->and($props['not_null_spread_default']['optional'])->toBeTrue();
+        expect($props['not_null_spread_default']['type'])->toBe('string | number')
+            ->and($props['not_null_spread_default']['optional'])->toBeFalse();
     });
 });
 

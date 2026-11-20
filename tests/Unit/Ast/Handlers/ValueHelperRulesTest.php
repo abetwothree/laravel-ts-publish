@@ -24,6 +24,7 @@ it('types the value helpers as json_encode() writes what they return', function 
     'today()' => ['today()', 'string'],
     'str() with a string' => ['str("abc")', 'string'],
     'str() with null, still a Stringable' => ['str(null)', 'string'],
+    'str() of an unpacked literal, read by its items' => ['str(...[$this->title])', 'string'],
     'str() with no argument, an object with no public property' => ['str()', 'Record<string, never>'],
     'url() with a path' => ['url("/x")', 'string'],
     'url() with a column' => ['url($this->title)', 'string'],
@@ -86,7 +87,7 @@ it('leaves the value helpers it cannot type, and __(), to unknown', function (st
     'url() of an unknown path' => ['url(json_decode("{}"))'],
     '__() can return an array' => ['__("x")'],
     'collect() of a spread, whose arguments are unknown' => ['collect(...$this->tags)'],
-    'str() of a spread' => ['str(...[$this->title])'],
+    'str() of a spread' => ['str(...$this->tags)'],
 ]);
 
 it('types a when() default helper value, which the key used to drop', function () {

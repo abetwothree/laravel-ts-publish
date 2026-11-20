@@ -15,7 +15,10 @@ use Workbench\App\Models\Post;
  */
 class MergeUnreadableDefaultResource extends JsonResource
 {
-    /** Pairs each readable side with a `null`, a helper call, the model, a spread or a closure Laravel cannot call. */
+    /**
+     * Pairs each readable side with a `null`, a helper call, the model, a literal spread read by its items, or a closure
+     * Laravel cannot call.
+     */
     public function toArray(Request $request): array
     {
         return [

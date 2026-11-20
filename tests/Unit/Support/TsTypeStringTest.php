@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Support\CountingTsTypeString;
+use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
 
 beforeEach(function () {
     $this->service = new TsTypeString;
@@ -77,6 +79,181 @@ function undecodableTsTypeString(): TsTypeString
             return null;
         }
     };
+}
+
+/**
+ * Seeded type strings, each beside the names it references in a type position in order of first reference, and the
+ * forms it holds: keys, labels and parameters spelled like names, literal text that spells names, TypeScript's own
+ * generics, binders, type parameters, predicates, methods, qualified names, gaps and members on lines of their own,
+ * three deep.
+ *
+ * @return list<array{string, list<string>, list<string>}>
+ */
+function referencedTypeNameCases(int $seed, int $cases): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $pick = static fn (array $from): string => $from[$random->getInt(0, count($from) - 1)];
+    $names = ['User', 'Post', 'Café', 'Ωmega', '$Ref', '_Base', 'Atlas', 'Grid2'];
+    $keys = ['id', 'User', 'Post', 'Café', 'in', 'is', 'typeof', 'é', '$key'];
+    $plain = ['string', 'number', 'null', 'unknown', 'never', 'true', 'this', 'boolean', 'Date', 'Map'];
+    $literals = ["'User'", '"a | Post"', "'it\\'s Map'", '`Grid2`', '0', '-1.5', '1e3'];
+    $features = [];
+
+    // Each form returns its text, the names it references in order, and whether it stands alone beside an operator.
+    $type = function (int $depth) use (&$type, &$features, $random, $pick, $names, $keys, $plain, $literals): array {
+        $child = static function () use (&$type, $depth): array {
+            [$text, $read, $alone] = $type($depth - 1);
+
+            return [$alone ? $text : '('.$text.')', $read];
+        };
+
+        switch ($random->getInt(0, $depth === 0 ? 7 : 21)) {
+            case 0:
+                return [$name = $pick($names), [$name], true];
+            case 1:
+                return [$pick($plain), [], true];
+            case 2:
+                $features[] = 'literal';
+
+                return [$pick($literals), [], true];
+            case 3:
+                return ['typeof '.($name = $pick($names)), [$name], false];
+            case 4:
+                $features[] = 'qualified';
+
+                return [($name = $pick($names)).'.'.$pick($names), [$name], true];
+            case 5:
+                return ['`id-${'.($name = $pick($names)).'}`', [$name], true];
+            case 6:
+                $features[] = 'gap';
+
+                return ['$gap'.$random->getInt(1, 9), [], true];
+            case 7:
+                return ['keyof typeof '.($name = $pick($names)), [$name], false];
+            case 8:
+            case 9:
+                [$a, $first] = $child();
+                [$b, $second] = $child();
+
+                return [$a.$pick([' | ', '|', ' & ']).$b, [...$first, ...$second], false];
+            case 10:
+                [$a, $read] = $child();
+
+                return [$a.$pick(['[]', ' []', '[][]']), $read, true];
+            case 11:
+                $features[] = 'lib';
+                [$a, $first] = $type($depth - 1);
+                [$b, $second] = $type($depth - 1);
+
+                return [$pick(['Pick', 'Record', 'Partial', 'Array', 'Map', 'Promise', 'Omit']).'<'.$a.', '.$b.'>', [...$first, ...$second], true];
+            case 12:
+                [$a, $read] = $type($depth - 1);
+
+                return [($head = $pick(['Paginated', 'Envelope'])).'<'.$a.'>', [$head, ...$read], true];
+            case 13:
+            case 20:
+            case 21:
+                $members = [];
+                $read = [];
+                $newline = $random->getInt(0, 2) === 0;
+
+                for ($member = $random->getInt(1, 3); $member > 0; $member--) {
+                    [$value, $valueReads] = $type($depth - 1);
+
+                    switch ($random->getInt(0, 3)) {
+                        case 0:
+                            $key = $pick($keys);
+                            $members[] = $key.$pick(['', '?']).': '.$value;
+
+                            if (in_array($key, $names, true)) {
+                                $features[] = 'key spelled like a name';
+                            }
+
+                            break;
+                        case 1:
+                            $members[] = $pick(["'k-1'", '"Post"']).': '.$value;
+                            break;
+                        case 2:
+                            $members[] = $pick(['', 'readonly ']).'[key: string]: '.$value;
+                            break;
+                        default:
+                            // A method named `is` on a line of its own reads like a predicate's parameter before it.
+                            $features[] = 'method';
+                            [$parameter, $parameterReads] = $type($depth - 1);
+                            $members[] = $pick(['load', 'User', 'é', 'in']).'(value: '.$parameter.'): '.$value;
+                            array_push($read, ...$parameterReads);
+                    }
+
+                    array_push($read, ...$valueReads);
+                }
+
+                if ($newline) {
+                    $features[] = 'members on lines of their own';
+                }
+
+                $body = $newline
+                    ? "{\n    ".implode("\n    ", $members)."\n}"
+                    : '{ '.implode($pick(['; ', ', ']), $members).' }';
+
+                return [$body, $read, true];
+            case 14:
+                $label = $pick($keys);
+                [$a, $first] = $type($depth - 1);
+                [$b, $second] = $child();
+
+                return ['['.$label.': '.$a.', ...rest: '.$b.'[]]', [...$first, ...$second], true];
+            case 15:
+                [$a, $first] = $type($depth - 1);
+                [$b, $second] = $type($depth - 1);
+                [$c, $third] = $child();
+
+                if ($random->getInt(0, 2) === 0) {
+                    $features[] = 'type parameter';
+                    [$bound, $bounds] = $child();
+
+                    return ['<P extends '.$bound.'>('.$pick($keys).': P, '.$pick($keys).'?: '.$a.') => '.$c, [...$bounds, ...$first, ...$third], false];
+                }
+
+                return ['('.$pick($keys).': '.$a.', '.$pick($keys).'?: '.$b.') => '.$c, [...$first, ...$second, ...$third], false];
+            case 16:
+                [$a, $first] = $child();
+                [$b, $second] = $child();
+                [$c, $third] = $child();
+                [$d, $fourth] = $child();
+
+                return [$a.' extends '.$b.' ? '.$c.' : '.$d, [...$first, ...$second, ...$third, ...$fourth], false];
+            case 17:
+                $features[] = 'binder';
+                [$a, $first] = $child();
+                [$d, $fourth] = $child();
+                $binder = $pick(['U', 'V']);
+
+                return [$a.' extends Envelope<infer '.$binder.'> ? '.$binder.'[] : '.$d, [...$first, 'Envelope', ...$fourth], false];
+            case 18:
+                $features[] = 'binder';
+                [$a, $read] = $type($depth - 1);
+                $value = $random->getInt(0, 1) === 0 ? $type($depth - 1) : ['Paginated<K>', ['Paginated']];
+
+                return ['{ '.$pick(['', 'readonly ', '-readonly ']).'[K in '.$a.']'.$pick([': ', '?: ', '-?: ']).$value[0].' }', [...$read, ...$value[1]], true];
+            default:
+                $features[] = 'predicate';
+                $parameter = $pick(['value', 'User', 'é']);
+                [$a, $first] = $type($depth - 1);
+                [$b, $second] = $child();
+
+                return ['('.$parameter.': '.$a.') => '.$pick(['', 'asserts ']).$parameter.' is '.$b, [...$first, ...$second], false];
+        }
+    };
+
+    $generated = [];
+
+    for ($case = 0; $case < $cases; $case++) {
+        $features = [];
+        [$text, $read] = $type(3);
+        $generated[] = [$text, array_values(array_unique($read)), array_values(array_unique($features))];
+    }
+
+    return $generated;
 }
 
 describe('aliasPropertyType', function () {
@@ -386,6 +563,15 @@ describe('extractImportableTypes', function () {
         'a qualified name' => ['Geo.Point', []],
     ]);
 
+    // Casts and clauses off a resource read only top-level arms; a resource's clauses read referencedTypeNames().
+    test('extractImportableTypes reads no name a generic, a record or an object only builds on', function (string $type, array $names) {
+        expect($this->service->extractImportableTypes($type))->toBe($names);
+    })->with([
+        'a generic with a union inside' => ['Pick<Base, "a" | "b">', []],
+        'a record' => ['Record<string, Foo>', []],
+        'an object beside a name' => ['{ a: Foo; b: Bar[] } | Baz', ['Baz']],
+    ]);
+
     test('extractImportableTypes returns empty for all primitives', function () {
         expect($this->service->extractImportableTypes('string | number | boolean | null'))
             ->toBeEmpty();
@@ -394,6 +580,170 @@ describe('extractImportableTypes', function () {
     test('extractImportableTypes never reads a gap arm as a name', function () {
         expect($this->service->extractImportableTypes('string | $gap1'))->toBe([])
             ->and($this->service->extractImportableTypes('User | $gap1 | null'))->toBe(['User']);
+    });
+});
+
+describe('referencedTypeNames', function () {
+    // #104: a clause with an import and no `types` imports each name it spells, in a generic, a record or an object.
+    test('reads every name a clause spells', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'a generic with a union inside' => ['Pick<Base, "a" | "b">', ['Base']],
+        'a record' => ['Record<string, Foo>', ['Foo']],
+        'an object beside a name' => ['{ a: Foo; b: Bar[] } | Baz', ['Foo', 'Bar', 'Baz']],
+        'a typeof operand' => ['typeof Status', ['Status']],
+        'a name' => ['HasTimestamps', ['HasTimestamps']],
+        'primitives' => ['string | null', []],
+        'a quoted key' => ["{ 'k-1': Foo }", ['Foo']],
+    ]);
+
+    test('reads no gap arm as a name', function () {
+        expect($this->service->referencedTypeNames('string | $gap1'))->toBe([])
+            ->and($this->service->referencedTypeNames('User | $gap1 | null'))->toBe(['User']);
+    });
+
+    test('reads no name a member, label or parameter binds, and every name a type follows it with', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'members' => ['{ id: Foo; owner?: Bar; readonly tag: Baz }', ['Foo', 'Bar', 'Baz']],
+        'a member spelled like the name of a type' => ['{ Foo: Bar }', ['Bar']],
+        'members on lines of their own' => ["{\n    a: Foo\n    b: Bar\n}", ['Foo', 'Bar']],
+        'a member after a string on its own line' => ["{\n    a: 'Foo'\n    b: Bar\n}", ['Bar']],
+        'tuple labels' => ['[first: Foo, rest?: Bar, ...more: Baz[]]', ['Foo', 'Bar', 'Baz']],
+        'parameters' => ['(item: Foo, ...rest: Bar[]) => Baz', ['Foo', 'Bar', 'Baz']],
+        'an index signature' => ['{ [key: string]: Foo }', ['Foo']],
+        'methods' => ['{ load(id: Key): Result; save(): Out }', ['Key', 'Result', 'Out']],
+        'a method on a line of its own' => ["{\n    a: Foo\n    load(): Bar\n}", ['Foo', 'Bar']],
+        'an optional method' => ['{ load?(id: Key): Meta }', ['Key', 'Meta']],
+        'an optional generic method' => ['{ load?<T>(value: T): Meta }', ['Meta']],
+        'an accessor' => ['{ get size(): Count; set size(value: Count) }', ['Count']],
+        'the open marker' => ['{ a: Foo; #$open: unknown }', ['Foo']],
+    ]);
+
+    // A conditional's true branch ends at a `:` too, so a name right after a type operator is a type, never a key.
+    test('reads the last name of a conditional\'s true branch, though a `:` follows it', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'at the top' => ['T extends U ? Yes : No', ['T', 'U', 'Yes', 'No']],
+        'in an object' => ['{ a: T extends U ? Yes : No }', ['T', 'U', 'Yes', 'No']],
+        'after a union' => ['T extends U ? Yes | Also : No', ['T', 'U', 'Yes', 'Also', 'No']],
+        'after an operator' => ['T extends U ? keyof Yes : No', ['T', 'U', 'Yes', 'No']],
+        'after an arrow' => ['T extends U ? () => Yes : No', ['T', 'U', 'Yes', 'No']],
+        'a function type in an object' => ['{ a: T extends U ? (x: Yes) => Yes : No }', ['T', 'U', 'Yes', 'No']],
+        'a generic function type in an object' => ['{ a: T extends U ? <V>(x: V) => Yes : No }', ['T', 'U', 'Yes', 'No']],
+    ]);
+
+    test('reads no name a binder, a predicate or a member access spells', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'an infer binder' => ['Foo extends Array<infer Item> ? Item : never', ['Foo']],
+        'a type parameter' => ['<T>(value: T) => T[]', []],
+        'a constrained type parameter and a default' => ['<T extends Base, U = Fallback>(value: T) => U', ['Base', 'Fallback']],
+        'a generic method\'s type parameter' => ['{ each<Item>(value: Item): Out }', ['Out']],
+        'a generic call signature\'s type parameter' => ['{ <Row>(value: Row): Row[] }', []],
+        'a mapped binder' => ['{ readonly [K in keyof Foo]-?: Bar<K> }', ['Foo', 'Bar']],
+        'a predicate' => ['(value: unknown) => value is Foo', ['Foo']],
+        'an assertion' => ['(value: unknown) => asserts value is Foo', ['Foo']],
+        'a method\'s predicate' => ['{ check(value: unknown): value is Foo }', ['Foo']],
+        'a member access' => ['Geo.Point | typeof Status.Active', ['Geo', 'Status']],
+        'an import type' => ["import('./models').User", []],
+    ]);
+
+    test('reads no literal text, primitive, keyword or gap, and the names a template literal holds', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'strings' => ["'User' | \"Post\" | 'it\\'s Grid' | Tag", ['Tag']],
+        'a template literal' => ['`user-${Kind}-${string}`', ['Kind']],
+        'a template literal\'s index signature' => ['{ [key: `${string}_tag`]: Foo }', ['Foo']],
+        'numbers' => ['1 | -2.5 | 1e3 | 0x1F | 10n | 1_000', []],
+        'keywords' => ['keyof typeof Status | unique symbol | this | true | false', ['Status']],
+        'gaps' => ['Foo | $gap1 | $gap12[]', ['Foo']],
+        'an escaped name' => ['Foo | B\u{61}r', ['Foo', 'Bar']],
+        'names TypeScript reads past ASCII' => ['Café | { a: Ωmega[] }', ['Café', 'Ωmega']],
+        'a spread' => ['[...Foo[], Bar]', ['Foo', 'Bar']],
+    ]);
+
+    test('never reads a global type TypeScript or the DOM declares, generic or not', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'a generic\'s head' => ['Partial<Record<Key, Array<Foo>>> | Omit<Bar, "id">', ['Key', 'Foo', 'Bar']],
+        'the app\'s own generic' => ['Paginated<User>', ['Paginated', 'User']],
+        'a generic\'s name bare' => ['Map<string, Foo> | Map | Set[]', ['Foo']],
+        'a global inside a generic' => ['Record<string, Date>', []],
+        'a global beside a name' => ['{ meta: Meta; at: Date }', ['Meta']],
+        'globals that are no generic' => ['RegExp | Error | { f: File; b: Blob; u: URL; d: FormData }', []],
+        'the DOM\'s globals' => ['Partial<Response> | Pick<Event, "type"> | { n: Node; d: Document; q: Request; e: HTMLElement }', []],
+        'the DOM\'s globals inside a generic' => ['Partial<Record<string, Element | Headers | AbortSignal | KeyboardEvent>>', []],
+        'a global value' => ['ReturnType<typeof fetch> | { m: Meta }', ['Meta']],
+        'a global value the DOM declares with no type' => ['{ ctor: typeof Image; at: typeof NaN }', []],
+        'a global namespace, as a qualifier' => ['Intl.DateTimeFormat | WebAssembly.Module', []],
+        'a global namespace\'s typeof, and globalThis\'s' => ['typeof Intl | typeof Temporal.Now | typeof globalThis', []],
+        'globalThis as a qualifier' => ['{ created: globalThis.Date; meta: Meta }', ['Meta']],
+    ]);
+
+    // DOM's `Image`, `Audio` and `Option` are values with no type, so a type position spelling one reads the clause's.
+    test('reads a global the libs declare only as a value, where a type stands', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'members' => ['{ image: Image; audio: Audio; option: Option }', ['Image', 'Audio', 'Option']],
+        'a generic\'s argument' => ['Partial<Proxy> | Array<Image>', ['Proxy', 'Image']],
+        'beside its typeof' => ['{ img: Image; ctor: typeof Image }', ['Image']],
+        // A namespace is no type, so standing alone it names the clause's own.
+        'a namespace standing alone' => ['{ t: Temporal; i: Intl[] }', ['Temporal', 'Intl']],
+    ]);
+
+    test('reads each name once, in the order a type first spells it', function () {
+        expect($this->service->referencedTypeNames('Foo | { a: Bar; b: Foo } | Bar[] | Baz'))->toBe(['Foo', 'Bar', 'Baz']);
+    });
+
+    test('reads a name past ASCII on a PCRE2 without ID_Continue', function () {
+        expect(olderPcreTsTypeString()->referencedTypeNames('Café | { a: Ωmega }'))->toBe(['Café', 'Ωmega']);
+    });
+
+    test('reads every name a seeded type references, and only names typeNameOccursIn() finds', function () {
+        $seen = [];
+
+        foreach (referencedTypeNameCases(157, 400) as $case => [$type, $names, $features]) {
+            $read = $this->service->referencedTypeNames($type);
+
+            expect($read)->toBe($names, "case {$case}: {$type}");
+
+            foreach ($read as $name) {
+                expect($this->service->typeNameOccursIn($name, $type))->toBeTrue("case {$case}: {$name} in {$type}");
+            }
+
+            foreach ($features as $feature) {
+                $seen[$feature] = ($seen[$feature] ?? 0) + 1;
+            }
+        }
+
+        ksort($seen);
+
+        expect(array_keys($seen))->toBe([
+            'binder', 'gap', 'key spelled like a name', 'lib', 'literal', 'members on lines of their own', 'method',
+            'predicate', 'qualified', 'type parameter',
+        ])->and(min($seen))->toBeGreaterThanOrEqual(20);
+    });
+});
+
+describe('aliasReferences', function () {
+    test('respells a name only where it stands as a type', function (string $type, string $aliased) {
+        expect($this->service->aliasReferences($type, ['Meta' => 'AMeta']))->toBe($aliased);
+    })->with([
+        'a string literal' => ['Pick<Meta, "Meta">', 'Pick<AMeta, "Meta">'],
+        'a member\'s key' => ['{ Meta: Meta; m?: Meta[] }', '{ Meta: AMeta; m?: AMeta[] }'],
+        'a method\'s name' => ['{ Meta(x: Meta): void }', '{ Meta(x: AMeta): void }'],
+        'an optional method\'s name' => ['{ Meta?(x: Meta): void; Meta?<T>(): Meta }', '{ Meta?(x: AMeta): void; Meta?<T>(): AMeta }'],
+        'a qualified name' => ['Geo.Meta | Meta.Sub', 'Geo.Meta | AMeta.Sub'],
+        'a template literal' => ['`Meta-${Meta}`', '`Meta-${AMeta}`'],
+        'a longer name' => ['MetaData | Meta', 'MetaData | AMeta'],
+        'a type parameter, renamed with its uses' => ['<Meta>(x: Meta) => Meta', '<AMeta>(x: AMeta) => AMeta'],
+        'a type parameter shadowing a use' => ['{ f: <Meta>(x: Meta) => Meta; g: Meta }', '{ f: <AMeta>(x: AMeta) => AMeta; g: AMeta }'],
+        'an escaped name' => ['M\\u0065ta | Meta', 'AMeta | AMeta'],
+    ]);
+
+    test('leaves a type with no alias to make as written', function () {
+        expect($this->service->aliasReferences('Pick<Meta, "a">', []))->toBe('Pick<Meta, "a">');
     });
 });
 

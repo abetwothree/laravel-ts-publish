@@ -64,6 +64,10 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
     'a new key' => [['a.b' => 'number'], ['a' => '{ b: number }']],
     'a new key every write may leave out' => [['a.b' => 'number?', 'a.c' => 'string?'], ['a' => '{ b?: number; c?: string }?']],
     'into an object' => [['a' => '{ id: number }', 'a.b' => 'string'], ['a' => '{ id: number; b: string }']],
+    'into a union of objects, any of which may be an object Inertia replaces' => [
+        ['a' => '{ k: true; v: string } | { k: false; v: null }', 'a.b' => 'number'],
+        ['a' => '(({ k: true; v: string } | { k: false; v: null }) & { b: number }) | { b: number }'],
+    ],
     'into a later object' => [['a.b' => 'string', 'a' => '{ id: number }'], ['a' => '{ id: number; b: string }']],
     'into an object the write may leave alone' => [
         ['a' => '{ id: number }', 'a.b' => 'string?'],
@@ -153,6 +157,34 @@ it('writes each dotted key into its path as Arr::set() does', function (array $p
     'an unknown signature' => [
         ['[key: string]' => 'unknown', 'a.b' => 'number'],
         ['[key: string]' => 'unknown', 'a' => '{ b: number }'],
+    ],
+]);
+
+// A literal printed one object per variant is an array in every arm, so Arr::set() writes into each as into one.
+it('writes a dotted key into a union whose every arm is an array as into one object', function (string $union, string $key, string $nested) {
+    $print = DottedTopLevelKeys::nest(['a' => [...topLevelEntry($union), 'split' => true], $key => topLevelEntry('number')]);
+
+    expect($print['a']['type'] ?? null)->toBe($nested);
+})->with([
+    'beside its keys' => [
+        '{ k: true; v: string } | { k: false; v: null }',
+        'a.b',
+        '({ k: true; v: string } | { k: false; v: null }) & { b: number }',
+    ],
+    'over a key every arm holds' => [
+        '{ k: true; v: string } | { k: false; v: null }',
+        'a.v',
+        "Omit<({ k: true; v: string } | { k: false; v: null }), 'v'> & { v: number }",
+    ],
+    'that may be null' => [
+        '{ k: true; v: string } | { k: false; v: null } | null',
+        'a.b',
+        '({ k: true; v: string } | { k: false; v: null }) & { b: number } | { b: number }',
+    ],
+    'naming two key sets' => [
+        '{ k: number } | { j: string }',
+        'a.b',
+        '(({ k: number } | { j: string }) & { b: number }) | { b: number }',
     ],
 ]);
 

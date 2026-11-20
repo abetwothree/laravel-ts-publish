@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
@@ -67,6 +68,7 @@ use LogicException;
  *     bodyType?: string,
  *     fillType?: string,
  *     keepsKeys?: bool,
+ *     splitOf?: string,
  *     absent?: true,
  *     removed?: true,
  * }
@@ -132,6 +134,12 @@ class MethodAnalysis
      * @var array<array-key, true>
      */
     public array $closedToDottedKeys = [];
+
+    /**
+     * The groups of keys that follow a sibling key's value, as the literal's fold read them (VariantReader). A merge
+     * or a join of two analyses drops them; a join of one keeps them, and each group says whether its rows still hold.
+     */
+    public ?LiteralVariants $variants = null;
 
     /**
      * The spreads a nested literal's print intersects with its keys, in item order, as its fold left them. They print
@@ -232,6 +240,16 @@ class MethodAnalysis
     }
 
     /**
+     * Whether a row still prints its literal one object per variant: its type is still the union it was split as.
+     *
+     * @param  AnalyzedProperty  $property
+     */
+    public static function isSplit(array $property): bool
+    {
+        return ($property['splitOf'] ?? null) === $property['type'];
+    }
+
+    /**
      * Record one resolved value as a property and route every FQCN channel it carries.
      *
      * The one place a value becomes a property: a channel added here reaches every collector,
@@ -262,6 +280,7 @@ class MethodAnalysis
             'optional' => $optional || $result['optional'],
             'description' => $description,
             ...(($result['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ...(ValueResult::isSplit($result) ? ['splitOf' => $result['type']] : []),
             ...self::presenceFacts(
                 $optional || ($result['optional'] && $absent),
                 $result['optional'] && (! $absent || ($result['removed'] ?? false)),
@@ -340,7 +359,7 @@ class MethodAnalysis
      * The class maps, `casts`, `declaredTokenFqcns` and `closedToDottedKeys` replace-merge, the source winning, a key
      * it sets with none losing its own; the inline maps append undeduped, as read by position.
      *
-     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR.
+     * `carried` unions; `readsCompletely` ANDs, the `holds…Keys` flags OR; `variants` goes, as no fold read the whole.
      */
     public function merge(self $source): void
     {
@@ -349,6 +368,7 @@ class MethodAnalysis
         }
 
         $this->properties = [...$this->properties, ...$source->properties];
+        $this->variants = null;
         $this->readsCompletely = $this->readsCompletely && $source->readsCompletely;
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
         $this->holdsUnnamedKeys = $this->holdsUnnamedKeys || $source->holdsUnnamedKeys;
@@ -429,6 +449,7 @@ class MethodAnalysis
         $this->closedToDottedKeys = $source->closedToDottedKeys;
         $this->flatTypeAlias = $source->flatTypeAlias;
         $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
+        $this->variants = $source->variants;
     }
 
     /**
@@ -607,7 +628,7 @@ class MethodAnalysis
     public function channelNames(string $name): array
     {
         $held = array_filter(
-            $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            $this->readEnumFqcns($name),
             static fn (string $enum): bool => LaravelTsPublish::retypedEnumType($enum) === null,
         );
         $names = array_column($this->classSpellings($name), 1);
@@ -681,6 +702,16 @@ class MethodAnalysis
     public function allWrappedEnumFqcns(): array
     {
         return $this->fqcnsOnChannels([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+    }
+
+    /**
+     * The enums a property's value reads directly, whose aliases its type may spell.
+     *
+     * @return list<class-string>
+     */
+    public function readEnumFqcns(string $name): array
+    {
+        return $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns);
     }
 
     /**
@@ -798,23 +829,36 @@ class MethodAnalysis
     }
 
     /**
-     * Drop each named key another analysis already holds, with its import channels and cast; signature entries stay.
+     * Drop each named key another analysis already holds; signature entries stay.
      *
      * PHP's `+` and Laravel's mergeData() keep a key already set, while a signature entry is one more runtime key.
      */
     public function dropKeysHeldBy(self $held): void
     {
-        $names = array_flip(array_column($held->properties, 'name'));
+        $this->dropKeys(array_column($held->properties, 'name'));
+    }
+
+    /**
+     * Drop each named key's rows with every map renameKeys() rekeys under its name; signature entries stay.
+     *
+     * @param  list<string>  $names
+     */
+    public function dropKeys(array $names): void
+    {
+        $names = array_flip($names);
         $kept = [];
 
         foreach ($this->properties as $property) {
-            if (isset($names[$property['name']]) && ! JsEmitter::isIndexSignatureKey($property['name'])) {
-                $this->forgetChannels($property['name']);
+            $name = $property['name'];
+
+            if (! isset($names[$name]) || JsEmitter::isIndexSignatureKey($name)) {
+                $kept[] = $property;
 
                 continue;
             }
 
-            $kept[] = $property;
+            $this->forgetChannels($name);
+            unset($this->heldObjectKeys[$name], $this->closedToDottedKeys[$name]);
         }
 
         $this->properties = $kept;
@@ -1053,7 +1097,7 @@ class MethodAnalysis
         $classes = $this->classSpellings($name);
 
         return EnumValueTypes::absorbRules(
-            read: $this->channelClasses($name, $this->directEnumFqcns, $this->inlineEnumFqcns),
+            read: $this->readEnumFqcns($name),
             wrapped: $this->wrappedEnumFqcns($name),
             takenNames: array_column($classes, 1),
             classes: $classes,

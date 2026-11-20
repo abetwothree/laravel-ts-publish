@@ -27,6 +27,8 @@ use JsonSerializable;
  *     modelClass: class-string|null,
  *     tsExtends: list<string>,
  *     typeAlias: string|null,
+ *     variants: list<string>,
+ *     intersections: list<string>,
  * }
  *
  * @implements Arrayable<string, string|PropertiesList|TypesImportMap|ValuesImportMap|list<string>|null>
@@ -39,6 +41,8 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
      * @param  ValuesImportMap  $valueImports
      * @param  class-string|null  $modelClass
      * @param  list<string>  $tsExtends
+     * @param  list<string>  $variants  each group's union of one object per value of the key the group follows
+     * @param  list<string>  $intersections  the types the resource's type is intersected with, after its variants
      */
     public function __construct(
         public string $resourceName,
@@ -52,6 +56,8 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
         public ?string $modelClass = null,
         public array $tsExtends = [],
         public ?string $typeAlias = null,
+        public array $variants = [],
+        public array $intersections = [],
     ) {}
 
     /** @return ResourceData */
@@ -69,6 +75,8 @@ final readonly class TsResourceDto implements Arrayable, Datable, Jsonable, Json
             'modelClass' => $this->modelClass,
             'tsExtends' => $this->tsExtends,
             'typeAlias' => $this->typeAlias,
+            'variants' => $this->variants,
+            'intersections' => $this->intersections,
         ];
     }
 

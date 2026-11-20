@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\ResolvesCallbackValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -25,7 +26,6 @@ use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Param;
 use ReflectionMethod;
@@ -176,7 +176,7 @@ final class ConditionableCallHandler implements ExpressionHandler
      */
     private function passedObject(Expr $object, array $receiver, ExpressionEngine $engine): array
     {
-        $value = $this->isThis($object) ? $this->ownJson($receiver['type']->classes) ?? ValueResult::unknown() : $engine->resolve($object);
+        $value = ReadPath::isThis($object) ? $this->ownJson($receiver['type']->classes) ?? ValueResult::unknown() : $engine->resolve($object);
 
         return [
             'value' => [...$value, 'type' => TsTypeString::withoutNullArm($value['type'])],
@@ -192,7 +192,7 @@ final class ConditionableCallHandler implements ExpressionHandler
      */
     private function receiver(MethodCall|NullsafeMethodCall $call, string $method, AnalysisScope $scope): ?array
     {
-        if ($call->var instanceof Variable && $call->var->name === 'this') {
+        if (ReadPath::isThis($call->var)) {
             return $this->runsConditionable($scope->thisMemberClass($method, true)->getName(), $method)
                 ? ['type' => ReceiverType::of($scope->runtime->class->getName())->asRuntimeInstance(), 'shortCircuits' => false]
                 : null;
@@ -237,14 +237,6 @@ final class ConditionableCallHandler implements ExpressionHandler
         return array_any($callables, static fn (Expr $callable): bool => ! ($callable instanceof ArrowFunction || $callable instanceof ClosureExpr)
             || count($callable->params) > $position
             || array_any($callable->params, static fn (Param $param): bool => $param->variadic));
-    }
-
-    /**
-     * Whether the expression is `$this`.
-     */
-    private function isThis(Expr $expr): bool
-    {
-        return $expr instanceof Variable && $expr->name === 'this';
     }
 
     /**

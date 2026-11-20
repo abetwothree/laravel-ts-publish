@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
@@ -394,6 +396,7 @@ it('takes over every field of another analysis, both flags included', function (
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
     $source->closedToDottedKeys = ['a' => true];
+    $source->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
     $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
 
     $target->replaceWith($source);
@@ -636,7 +639,7 @@ it('names the inline channel each class is queued on, and none for a class of no
     'any other class' => ['Carbon\Carbon', null],
 ]);
 
-it('lists a key\'s classes outside its inline queues, and the enums it wraps at its top', function () {
+it('lists a key\'s classes outside its inline queues, the enums it reads, and the enums it wraps at its top', function () {
     $analysis = new MethodAnalysis(
         enumResources: ['k' => 'Workbench\App\Enums\Status'],
         nestedResources: ['k' => 'Workbench\App\Http\Resources\PostResource'],
@@ -658,6 +661,8 @@ it('lists a key\'s classes outside its inline queues, and the enums it wraps at 
         ->and($analysis->wrappedEnumFqcns('k'))->toBe([
             'Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority', 'Workbench\App\Enums\UiTone',
         ])
+        ->and($analysis->readEnumFqcns('k'))->toBe(['Workbench\App\Enums\Role', 'Workbench\App\Enums\Season'])
+        ->and($analysis->readEnumFqcns('none'))->toBe([])
         ->and($analysis->singleChannelFqcns('none'))->toBe([]);
 });
 
@@ -692,7 +697,7 @@ it('reads each key once, as its last write where its first stood, and every entr
 });
 
 // A per-key map one of these methods forgets would keep a moved key's classes, cast or readings under the old name.
-it('moves every per-key map with its key, through every method that moves, slices or forgets keys', function () {
+it('moves every per-key map with its key, through every method that moves, slices, forgets or drops keys', function () {
     $wide = ['properties', 'customImports', 'carried'];
     $maps = array_values(array_filter(
         array_map(
@@ -725,6 +730,8 @@ it('moves every per-key map with its key, through every method that moves, slice
     $replaced->replaceWith($filled());
     $forgotten = $filled();
     $forgotten->forgetChannels('k');
+    $dropped = $filled();
+    $dropped->dropKeys(['k']);
     // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
     $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
 
@@ -736,8 +743,11 @@ it('moves every per-key map with its key, through every method that moves, slice
             ->and($appended->{$map})->toBe(['k' => ['K']], $map)
             ->and($merged->{$map})->toBe($map === 'heldObjectKeys' ? [] : ['k' => ['K']], $map)
             ->and($replaced->{$map})->toBe(['k' => ['K'], 'other' => ['O']], $map)
-            ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map);
+            ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map)
+            ->and($dropped->{$map})->toBe(['other' => ['O']], $map);
     }
+
+    expect(array_column($dropped->properties, 'name'))->toBe(['other']);
 });
 
 it('slices one row of a named key, its last, and every row of a signature', function () {
@@ -942,4 +952,29 @@ it('leaves out each arm a sibling admits in a key\'s body type and fill too', fu
         'bodyType' => 'MediaTypeType | undefined',
         'fillType' => 'string[]',
     ]);
+});
+
+it('drops a literal\'s groups once another analysis merges in', function () {
+    $merged = new MethodAnalysis(properties: [['name' => 'a', 'type' => 'string', 'optional' => false, 'description' => '']]);
+    $merged->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
+    $merged->merge(new MethodAnalysis(properties: [['name' => 'b', 'type' => 'string', 'optional' => false, 'description' => '']]));
+
+    expect($merged->variants)->toBeNull();
+});
+
+// Inertia's dotted keys write into each arm of a literal printed one object per variant, every one an array.
+it('marks a row whose value is a literal printed one object per variant with that union, and reads it split while it is', function () {
+    $union = '{ k: true; v: string } | { k: false; v: null }';
+    $split = ['type' => $union, 'optional' => false, 'unsplit' => ['of' => $union, 'print' => [
+        'type' => '{ k: boolean; v: string | null }', 'optional' => false,
+    ]]];
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('split', $split);
+    $analysis->addProperty('rewritten', [...$split, 'type' => $union.' | null']);
+
+    expect($analysis->properties[0]['splitOf'] ?? null)->toBe($union)
+        ->and($analysis->properties[1])->not->toHaveKey('splitOf')
+        ->and(MethodAnalysis::isSplit($analysis->properties[0]))->toBeTrue()
+        ->and(MethodAnalysis::isSplit($analysis->properties[1]))->toBeFalse()
+        ->and(MethodAnalysis::isSplit([...$analysis->properties[0], 'type' => $union.' | null']))->toBeFalse();
 });

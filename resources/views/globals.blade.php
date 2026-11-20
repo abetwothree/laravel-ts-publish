@@ -1,5 +1,6 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
 @use('AbeTwoThree\LaravelTsPublish\Facades\TsTypeString')
+@use('AbeTwoThree\LaravelTsPublish\Support\ResourceDeclaration')
 /* eslint-disable */
 // biome-ignore lint: disable
 // oxlint-disable
@@ -116,14 +117,37 @@ $references = $transformer->globalTypeReferenceMap();
 @if($transformer->typeAlias !== null)
         export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $references) !!};
 @else
+@php
+$qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
+$declaration = ResourceDeclaration::of($transformer->tsExtends, $transformer->properties, $transformer->variants, $transformer->intersections);
+@endphp
+@if($declaration->armsAlone)
+        export type {{ $transformer->resourceName }} =
+@foreach (TsTypeString::splitTopLevelUnion($transformer->variants[0]) as $arm)
+            | {!! $qualified($arm) !!}{!! $loop->last ? ';' : '' !!}
+@endforeach
+@else
+@if($declaration->interface)
         export interface {{ $transformer->resourceName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
+@else
+        export type {{ $transformer->resourceName }} = {!! $declaration->open !!}
+@endif
 @foreach ($transformer->properties as $name => $property)
 @if($property['description'])
 {!! JsEmitter::formatJsDoc($property['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($property['type'], $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{!! $property['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '' !!}: {!! $qualified($property['type']) !!};
 @endforeach
-        }
+@if($declaration->close !== null)
+        {!! $declaration->close !!}
+@endif
+@foreach ($transformer->variants as $variant)
+@foreach (TsTypeString::splitTopLevelUnion($variant) as $arm)
+            | {!! $qualified($arm) !!}
+@endforeach
+        {!! $declaration->closeArms($loop->last) !!}
+@endforeach
+@endif
 @endif
 @endforeach
     }

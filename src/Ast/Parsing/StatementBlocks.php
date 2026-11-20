@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
 
 use PhpParser\Node;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Block;
 use PhpParser\Node\Stmt\Case_;
@@ -14,13 +15,16 @@ use PhpParser\Node\Stmt\ElseIf_;
 use PhpParser\Node\Stmt\For_;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\If_;
+use PhpParser\Node\Stmt\Nop;
+use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\Switch_;
 use PhpParser\Node\Stmt\TryCatch;
 use PhpParser\Node\Stmt\While_;
 
 /**
  * Where a body's statements sit: the blocks each statement holds, and whether one node lies within another. The
- * seeding pass, the guard pass, the write scan and the fill scan all place nodes this way.
+ * seeding pass, the guard pass, the write scan and the fill scan all place nodes this way, and the trust checks read
+ * a body that is one `return` by the value it returns.
  *
  * @internal
  */
@@ -58,5 +62,18 @@ final class StatementBlocks
     public static function encloses(Node $outer, Node $inner): bool
     {
         return $outer->getStartFilePos() <= $inner->getStartFilePos() && $inner->getEndFilePos() <= $outer->getEndFilePos();
+    }
+
+    /**
+     * The value a body returns where its only statement is a `return` of one; null for any other body.
+     *
+     * @param  array<Stmt>  $stmts
+     */
+    public static function soleReturn(array $stmts): ?Expr
+    {
+        // A comment no statement follows parses as a statement of its own.
+        $statements = array_values(array_filter($stmts, static fn (Stmt $stmt): bool => ! $stmt instanceof Nop));
+
+        return count($statements) === 1 && $statements[0] instanceof Return_ ? $statements[0]->expr : null;
     }
 }

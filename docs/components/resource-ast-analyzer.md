@@ -481,8 +481,10 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 
 - **No explicit default, optional key**: without a `default` argument the value can be a `MissingValue`, which Laravel
   removes, so the key publishes optional.
-- **An explicit default makes the key required**: `hasExplicitDefaultArg()` counts arguments the way
-  `func_num_args()` does, so a `null` written at the default position counts, and a spread counts as no default.
+- **An explicit default makes the key required**: `explicitDefault()` reads the `default` the call binds, by position
+  or by name, so a `null` written there counts. PHP allows no positional argument after a spread, so a bound default
+  is the one Laravel gets, but past three arguments Laravel 12.0's `when()`, `whenAppended()`, `transform()` and
+  `mergeWhen()` send a `MissingValue` for it, so with a spread or a fourth argument their key stays optional.
   `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
   its import channels. Joining the type strings by hand would emit a token with no import.
   The key stays optional when the value or the default can itself be a `MissingValue`, as in
@@ -734,6 +736,10 @@ next one win there; the fold test replays what the real `resolve()` sent for 738
 key. In the [gap mode](#the-gap-mode), a key the join types without a later source's untyped value keeps a gap for it
 (`fold-join`), and a union of objects written in place gives a key one of its objects leaves untyped a gap
 (`union-spread-key`, `InlineArrayHandler`), so the `@return` types what those writes may send.
+
+Once `applyTo()` has written the fold, `VariantReader::read()` reads the same `LiteralWrites` for the keys that follow
+a sibling key's value, and sets `$analysis->variants`. It reads every literal, top level and nested, and leaves the
+rows `applyTo()` wrote as they are ([Variants](variants.md)).
 
 ## Resource classes a value names
 
@@ -1212,6 +1218,7 @@ These pages own the rules this page links to:
 - [Model attribute resolver](model-attribute-resolver.md), [accessor body analyzer](accessor-body-analyzer.md),
   [import name registry](import-name-registry.md) and [support helpers](support-helpers.md).
 - [`#[TsCasts]` overrides](ts-casts.md): cast precedence, the final-text rule and the imports a cast keeps.
+- [Variants](variants.md): the keys of a literal that follow a sibling key's value, and a resource's top-level arms.
 - [Type-inference gates](../testing/type-inference-gates.md): the CI checks for a type regressing to `unknown` and for
   a token emitted without its import.
 

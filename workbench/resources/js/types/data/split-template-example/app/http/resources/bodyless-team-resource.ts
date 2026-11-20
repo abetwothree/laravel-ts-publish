@@ -6,15 +6,15 @@ import type { TeamMemberResource, UserResource } from '.';
  *
  * @see Workbench\App\Http\Resources\BodylessTeamResource
  */
-export interface BodylessTeamResource
-{
+export type BodylessTeamResource = {
     id: number;
     name: string;
     slug: string;
-    description?: string | null;
-    is_active: boolean;
     owner?: UserResource;
     members?: TeamMemberResource[];
     members_count?: number;
     settings?: Record<string, unknown> | null;
-}
+} & (
+    | { description: string | null; is_active: true }
+    | { description?: never; is_active: false }
+);

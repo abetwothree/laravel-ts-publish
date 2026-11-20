@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsCastClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsCastWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsClosureResource;
@@ -38,11 +39,21 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastW
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsArrayResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsAsEnumFromPathBesideTypeofCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectAsEnumBesideTypeofCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectAsEnumFromPathBesideTypeofCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostExtendsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPriorityResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
+use Workbench\App\Http\Resources\Discriminated\IntersectedPostResource;
+use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
+use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\NestedSignatureResource;
 use Workbench\App\Http\Resources\OptionalSignatureCastResource;
 use Workbench\App\Http\Resources\PostResource;
@@ -314,6 +325,39 @@ test('imports the enums a cast writes as wraps, and only those', function (strin
     ],
 ]);
 
+// An intersection is part of the type the file declares, so an `AsEnum` it alone spells is imported as a key's is.
+test('imports AsEnum for an intersection that alone spells it, beside a cast that imports the enum\'s const', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(IntersectAsEnumBesideTypeofCastResource::class));
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status } from '../../../../../../workbench/app/enums';",
+    ])->and($content)->toContain('} & ({ hint?: AsEnum<typeof Status> });');
+});
+
+// The template imports `AsEnum` from the package once the file imports an enum's const, so a clause spelling it binds
+// that import: importing it from the clause's own path too would declare it twice (TS2300).
+test('binds the AsEnum a clause with an import path spells to the package\'s import', function (string $resource, string $declaration) {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.enums.use_tolki_package', true);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status } from '../../../../../../workbench/app/enums';",
+    ])->and($content)->toContain($declaration);
+})->with([
+    'an extends clause' => [
+        ExtendsAsEnumFromPathBesideTypeofCastResource::class,
+        'export interface ExtendsAsEnumFromPathBesideTypeofCastResource extends Partial<Record<"hint", AsEnum<typeof Status>>>',
+    ],
+    'an intersection' => [IntersectAsEnumFromPathBesideTypeofCastResource::class, '} & ({ hint?: AsEnum<typeof Status> });'],
+]);
+
 // A cast that holds the enum's type name publishes as written and imports that type, and a key beside a cast key
 // keeps its wrap.
 test('publishes a cast holding the enum\'s type as written, and wraps a key beside one', function (string $resource, array $lines) {
@@ -449,3 +493,148 @@ it('keeps a resource template published before this release compiling', function
         ->and($content)->toContain('    [key: `${string}_note`]: number | undefined;')
         ->and($content)->not->toContain(']?:');
 });
+
+it('publishes a resource with arms as a type of its shared keys and one arm per value', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedPostResource::class));
+
+    expect($content)->toBe(<<<'TS'
+        import type { FeedPlacementResource, PinnedPlacementResource } from '.';
+
+        /**
+         * GH-157's own report: one key's resource follows a boolean the resource also sends, so `is_pinned` should narrow
+         * `placement`.
+         *
+         * @see Workbench\App\Http\Resources\Discriminated\PinnedPostResource
+         */
+        export type PinnedPostResource = {
+            id: number;
+        } & (
+            | { is_pinned: true; placement: PinnedPlacementResource }
+            | { is_pinned: false; placement: FeedPlacementResource }
+        );
+
+        TS);
+});
+
+it('publishes a resource with arms and no shared key as its arms alone', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedWrapsResource::class));
+
+    expect($content)->toEndWith(<<<'TS'
+        export type PinnedWrapsResource =
+            | { is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource }
+            | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never };
+
+        TS)
+        ->toStartWith("import { type AsEnum } from '@tolki/ts';");
+});
+
+it('publishes a resource with arms beside an extends clause as an intersection that leads with it', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedPostExtendsResource::class));
+
+    expect($content)
+        ->toContain("import type { HasTimestamps } from '@/types/common';")
+        ->toContain("export type PinnedPostExtendsResource = HasTimestamps & {\n    id: number;\n} & (\n");
+});
+
+it('publishes each group of arms in its own parentheses, after an extends clause and with no shared key', function (string $resource, string $declaration) {
+    config()->set('ts-publish.output_to_files', false);
+
+    expect(new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource)))->toEndWith($declaration);
+})->with([
+    'two groups' => [PinnedPriorityResource::class, <<<'TS'
+        export type PinnedPriorityResource = (
+            | { is_pinned: true; placement: PinnedPlacementResource }
+            | { is_pinned: false; placement: FeedPlacementResource }
+        ) & (
+            | { priority: 0 | 1 | 2 | null; escalated_at?: never }
+            | { priority: 3; escalated_at: string | null }
+        );
+
+        TS],
+    'an extends clause' => [PinnedWrapsExtendsResource::class, <<<'TS'
+        export type PinnedWrapsExtendsResource = HasTimestamps & (
+            | { is_pinned: true; state: AsEnum<typeof WorkbenchStatus>; stage: WorkbenchStatusType; author: UserResource }
+            | { is_pinned: false; state: AsEnum<typeof Visibility> | null; stage: CrmStatusType; author?: never }
+        );
+
+        TS],
+]);
+
+// Laravel finds a published copy before the package's own, so a copy made before variants silently drops their keys.
+it('warns once of a published template that prints no variants, and still publishes through it', function (string $resource, string $declaration) {
+    $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');
+    config()->set('ts-publish.output_to_files', false);
+
+    $warningsOf = fn (): array => array_values(array_filter(
+        AnalysisWarnings::all(),
+        fn (array $warning): bool => $warning['subject'] === $published,
+    ));
+
+    try {
+        $writer = new ResourceWriter(new Filesystem);
+        $content = $writer->write(new ResourceTransformer($resource));
+        $warnings = $warningsOf();
+        expect($warnings)->toHaveCount(1);
+
+        $writer->write(new ResourceTransformer(PinnedPriorityResource::class));
+        expect($warningsOf())->toHaveCount(1);
+    } finally {
+        File::deleteDirectory(dirname($published));
+    }
+
+    expect($warnings[0]['message'])->toContain('variants')->toContain('--tag=laravel-ts-publish-views')
+        ->and($content)->toContain($declaration);
+})->with([
+    'variants' => [PinnedPostResource::class, "export interface PinnedPostResource\n{\n    id: number;\n}\n"],
+    'an intersection' => [IntersectedPostResource::class, "export interface IntersectedPostResource\n{\n    id: number;\n"],
+]);
+
+it('removes the view-copy helper\'s directory when the copy fails', function () {
+    try {
+        publishPackageView('resource', '/nonexistent/source.blade.php');
+    } catch (RuntimeException $e) {
+        $directory = Str::between($e->getMessage(), ' into ', '.');
+    }
+
+    expect($directory ?? null)->toStartWith(sys_get_temp_dir().'/ts-publish-views-')
+        ->and(file_exists($directory ?? ''))->toBeFalse();
+});
+
+it('does not warn of a published template that prints no variants for a resource with none', function () {
+    $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PostResource::class));
+    } finally {
+        File::deleteDirectory(dirname($published));
+    }
+
+    expect(array_column(AnalysisWarnings::all(), 'subject'))->not->toContain($published);
+});
+
+it('does not warn of the package\'s own resource template, or of a published copy that prints variants', function (bool $publish) {
+    $published = $publish ? publishPackageView('resource', __DIR__.'/../../../resources/views/resource.blade.php') : null;
+    config()->set('ts-publish.output_to_files', false);
+
+    try {
+        $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer(PinnedPostResource::class));
+    } finally {
+        if ($published !== null) {
+            File::deleteDirectory(dirname($published));
+        }
+    }
+
+    expect(array_filter(array_column(AnalysisWarnings::all(), 'subject'), fn (string $subject): bool => str_ends_with($subject, '.blade.php')))
+        ->toBe([])
+        ->and($content)->toContain('export type PinnedPostResource = {');
+})->with([
+    'the package\'s own' => false,
+    'a published copy' => true,
+]);

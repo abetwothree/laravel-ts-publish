@@ -25,6 +25,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ResolveSp
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SerializingAttributesApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\SummarizedPostApiResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\ToAttributesBesideToArrayResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WireEditorApiResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonApi\WirePriorityApiResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -47,6 +49,7 @@ use Workbench\App\Http\Resources\JsonApi\PostResource;
 use Workbench\App\Http\Resources\JsonApi\ToArrayPostResource;
 use Workbench\App\Http\Resources\JsonApi\ToAttributesOnlyPlainResource;
 use Workbench\App\Http\Resources\JsonApi\VariableAttributesPostResource;
+use Workbench\App\Http\Resources\JsonApi\WireAttachmentPostResource;
 use Workbench\App\Models\Kpi;
 use Workbench\App\Models\Marketing\Report\Report as MarketingReport;
 use Workbench\App\Models\Post;
@@ -163,6 +166,31 @@ test('a model #[TsCasts] key lays over the attributes member', function () {
         ],
     ]);
 });
+
+// GH-157: the attributes' objects are replayed from the fold, which no cast laid after it reaches, so a cast that keeps
+// a member's text would lose its import and class there.
+test('a class cast on an attribute publishes the attributes flat, with the cast\'s import', function (string $class, string $attributes, array $imports) {
+    $data = new ResourceTransformer($class)->data();
+
+    expect($data->properties['attributes']['type'] ?? null)->toBe($attributes)
+        ->and($data->typeImports)->toMatchArray($imports);
+})->with([
+    'on the discriminant' => [
+        WirePriorityApiResource::class,
+        '{ priority: PriorityType | null; escalated_title: string | null }',
+        ['@js/types/wire' => ['PriorityType']],
+    ],
+    'on a key the discriminant picks' => [
+        WireAttachmentPostResource::class,
+        '{ priority: PriorityType | null; attachment: AttachmentResource | null }',
+        ['@js/types/wire' => ['AttachmentResource']],
+    ],
+    'on a key no discriminant picks' => [
+        WireEditorApiResource::class,
+        '{ editor: UserResource; status: StatusType; published_title: string | null }',
+        ['@js/types/wire' => ['UserResource']],
+    ],
+]);
 
 test('the $jsonApiLinks and $jsonApiMeta defaults publish', function () {
     expect(publishedResourceKeyTypes(DefaultLinksPostResource::class, Post::class))

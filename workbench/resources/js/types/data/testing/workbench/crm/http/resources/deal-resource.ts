@@ -5,7 +5,6 @@ import { Status as CrmStatus } from '../../enums';
 import type { StatusType as WorkbenchStatusType } from '../../../app/enums';
 import type { UserResource as WorkbenchUserResource } from '../../../app/http/resources';
 import type { User as WorkbenchUser } from '../../../app/models';
-import type { StatusType as CrmStatusType } from '../../enums';
 import type { User as CrmUser } from '../../models';
 import type { UserResource as CrmUserResource } from '.';
 
@@ -18,19 +17,19 @@ import type { UserResource as CrmUserResource } from '.';
  *
  * @see Workbench\Crm\Http\Resources\DealResource
  */
-export interface DealResource
-{
+export type DealResource = {
     id: number;
     title: string;
     value: string;
     status: WorkbenchStatusType;
     status_enum: AsEnum<typeof WorkbenchStatus>;
-    crm_status: CrmStatusType;
     crm_enum: AsEnum<typeof CrmStatus>;
     status_pair: { app: AsEnum<typeof WorkbenchStatus>; crm: AsEnum<typeof CrmStatus> };
     customer?: CrmUser;
     admin?: WorkbenchUser;
     customer_resource?: CrmUserResource;
     admin_resource?: WorkbenchUserResource;
-    closed_at?: string | null;
-}
+} & (
+    | { crm_status: 'lead' | 'prospect' | 'active'; closed_at?: never }
+    | { crm_status: 'churned'; closed_at: string | null }
+);
