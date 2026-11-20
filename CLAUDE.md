@@ -212,6 +212,10 @@ Work you decide _not_ to do belongs in a written record, not in a commit message
 [docs/known-gaps.md](./docs/known-gaps.md) before starting anything in `src/Ast/` — several entries exist
 specifically to stop the next person "fixing" something that is deliberate.
 
+Whether a missed input is a bug to fix or a gap to record follows the plausible-input bar in
+[.claude/rules/plausible-inputs.md](./.claude/rules/plausible-inputs.md). Read it before you fix or decline a
+reviewer's claim about `src/`.
+
 That file is deliberately narrow: it holds only what changes the package's output for a user, or what makes
 a passing gate narrower than it looks. Its own header states the test. Everything else you defer — internal
 refactor debt, test-suite quality notes, release chores — belongs in the follow-ups ledger of the plan that

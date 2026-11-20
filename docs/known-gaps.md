@@ -101,6 +101,12 @@ while the type publishes what the default gives, optional because Laravel 12.0 s
 ([`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php)). Pass no argument past the
 default.
 
+An unpack that fills a helper's arguments is read as no argument, a shape the
+[plausible-input bar](../.claude/rules/plausible-inputs.md) leaves out. So `when($c, 1, ...$extra)` with
+`$extra = ['off']` publishes no arm for the `'off'` PHP sends, and `whenHas('name', ...$rest, default: 'x')` publishes
+the default's type where Laravel sends `null` or the unpacked value. On Laravel 12.0 to 12.68, a fourth argument after a
+nested default, as in `when($c, 1, $c ? 'on' : 'off', 'extra')`, publishes the key required where Laravel omits it.
+
 ### On Laravel 12, `#[Collects]` cannot be resolved, so use the `$collects` property
 
 On Laravel 12 the `#[Collects]` class does not exist, so a `ResourceCollection` that names its resource only that way
@@ -269,6 +275,10 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
   or `$this->self->note = 'x'`;
 - on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
   `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
+- contrived spellings, held to the [plausible-input bar](../.claude/rules/plausible-inputs.md): a namespace constant
+  redefining PHP's own, such as `const EXTR_SKIP = \EXTR_OVERWRITE;` before `extract($o, EXTR_SKIP)`; a reference
+  taken through a quoted variable variable, `$alias = &${'flag'}`, and written in the window; and a property hook that
+  unsets a property a later read reaches through the model's own `__get()`;
 - a gate or policy a `Gate` check runs, or a model's route key `route()` or `url()` reads, which the package trusts to
   only read the model it is handed, as
   [`instanceof` narrowing](#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways) does.
