@@ -187,8 +187,8 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
         $sent = $default === null ? null : $this->resolveConditionalDefault($default, 0, null, $scope, $engine);
         $throws = $default !== null && $sent === null;
 
-        // Past three arguments, which an unpack may pass, Laravel 12.0's when() sends a MissingValue for the default.
-        if ($default === null || ($method === 'when' && $args->hasUnpack())) {
+        // Past three arguments, Laravel 12.0's when() sends a MissingValue for the default.
+        if ($default === null || ($method === 'when' && $args->mayPassPast('default'))) {
             $sent = $sent === null ? $this->missingValueSent($engine) : $this->leftOut($sent, $engine);
             $throws = false;
         }
@@ -200,7 +200,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
 
     /**
      * Fold an explicit default into the value arm: it makes the key required, unless either arm can itself be a
-     * MissingValue, or an unpack may pass past the three arguments an $exactCount helper sends its default at. It is
+     * MissingValue, or the call may pass past the three arguments an $exactCount helper sends its default at. It is
      * invoked with $defaultArgCount arguments, 0 for value($default) and 1 for transform()'s $default($value), whose
      * one argument is $passedToDefault.
      *
@@ -224,7 +224,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             ? $value
             : $this->foldedDefault($value, $defaultExpr, $defaultArgCount, $passedToDefault, $scope, $engine);
 
-        $leftOut = $defaultExpr === null || ($exactCount && $args->hasUnpack());
+        $leftOut = $defaultExpr === null || ($exactCount && $args->mayPassPast('default'));
 
         return $leftOut ? $this->leftOut($folded, $engine) : $folded;
     }

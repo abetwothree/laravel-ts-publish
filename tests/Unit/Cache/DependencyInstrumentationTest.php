@@ -38,7 +38,7 @@ it('records accessor-returned models inlined via only()/except() as dependencies
         ->and($paths)->toContain((new ReflectionClass(User::class))->getFileName());
 });
 
-// Whether the call may write the discriminant it passes is the helper's signature, so editing it must rebuild the resource.
+// Whether the call may write the discriminant it passes is the helper's signature, so editing it rebuilds the resource.
 it('records the file of a helper function a resource passes a local to', function () {
     require_once dirname(__DIR__, 2).'/Fixtures/Stubs/ByReferenceHelperFunction.php.stub';
     DependencyRecorder::start();

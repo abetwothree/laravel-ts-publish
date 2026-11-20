@@ -676,11 +676,11 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $complete = $complete && $defaultComplete;
 
             // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves. Past
-            // three arguments, which an unpack may pass, Laravel 12.0's mergeWhen() sends a MissingValue for it.
+            // three arguments, Laravel 12.0's mergeWhen() sends a MissingValue for the default.
             $branches = [
                 ...($branches === [] ? [new ResourceAnalysis] : $branches),
                 ...($defaultBranches === [] ? [new ResourceAnalysis] : $defaultBranches),
-                ...($isMergeWhen && $defaultBranches !== [] && $args->hasUnpack() ? [new ResourceAnalysis] : []),
+                ...($isMergeWhen && $defaultBranches !== [] && $args->mayPassPast('default') ? [new ResourceAnalysis] : []),
             ];
         }
 

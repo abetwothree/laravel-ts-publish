@@ -92,12 +92,14 @@ the type. The package runs inside the booted app, where the live value is the on
 its default. A key set to `null`, such as an `env()` value unset on that machine, types as `null` whatever the default.
 A typed accessor such as `config()->string('key')` types from its declared return instead.
 
-### A conditional helper's default passed before a non-empty unpack can be sent unevaluated
+### A conditional helper's default passed before more arguments can be sent unevaluated
 
-Past three arguments, Laravel 13's `when()` and `whenAppended()` return their default as written, and `mergeWhen()`
-returns it unmerged. So `when($c, 1, fn () => 'x', ...$extra)` with a non-empty `$extra` sends the closure as `{}`, and
-`mergeWhen($c, [...], ['k' => 1], ...$extra)` sends the default under a key `0`, while the type publishes what the
-default gives, optional because Laravel 12.0 sends a `MissingValue` there. Pass no argument past the default.
+Past three arguments, Laravel 12.69+ and 13's `when()` and `whenAppended()` return their default as written, and
+`mergeWhen()` returns it unmerged. So `when($c, 1, fn () => 'x', ...$extra)` with a non-empty `$extra`, or a fourth
+argument, sends the closure as `{}`, and `mergeWhen($c, [...], ['k' => 1], 'extra')` sends the default under a key `0`,
+while the type publishes what the default gives, optional because Laravel 12.0 sends a `MissingValue` there
+([`ConditionalMethodHandler`](../src/Ast/Handlers/Resources/ConditionalMethodHandler.php)). Pass no argument past the
+default.
 
 ### On Laravel 12, `#[Collects]` cannot be resolved, so use the `$collects` property
 

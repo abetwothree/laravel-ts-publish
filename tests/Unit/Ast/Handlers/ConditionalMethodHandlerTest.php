@@ -586,20 +586,27 @@ it('does not report a skipped value when a spread precedes a named default', fun
 });
 
 // PHP allows no positional argument after an unpack, so a default written before one is the default Laravel gets. Only
-// when(), whenAppended() and transform() test for exactly three arguments, so only there may more leave the key out.
+// when(), whenAppended(), transform() and mergeWhen() test for exactly three arguments, so only there may more leave
+// the key out, whether an unpack or a fourth argument passes them.
 describe('an explicit default before an unpack', function () {
     test('types each helper\'s default, optional only where more arguments may leave the key out', function () {
         $props = collect(new ResourceAstAnalyzer(new ReflectionClass(UnpackedDefaultResource::class), Post::class)
             ->analyze()->properties)->keyBy('name');
 
         expect($props->map(fn (array $p): array => [$p['type'], $p['optional']])->only([
-            'when_unpack', 'when_ctl', 'when_no_default_unpack', 'unless_unpack', 'loaded_unpack', 'has_unpack',
-            'not_null_unpack', 'null_unpack', 'counted_unpack', 'appended_unpack', 'appended_ctl', 'transform_unpack',
-            'transform_ctl',
+            'when_unpack', 'when_ctl', 'when_no_default_unpack', 'when_literal_unpack', 'when_fourth',
+            'when_empty_unpack', 'unless_unpack', 'unless_fourth', 'unless_literal_unpack', 'loaded_unpack', 'has_unpack',
+            'not_null_unpack', 'null_unpack', 'counted_unpack', 'appended_unpack', 'appended_ctl', 'appended_fourth',
+            'transform_unpack', 'transform_ctl', 'transform_fourth',
         ])->all())->toBe([
             'when_unpack' => ['number | string', true],
             'when_ctl' => ['number | string', false],
             'when_no_default_unpack' => ['number', true],
+            'when_literal_unpack' => ['number | string', true],
+            'when_fourth' => ['number | string', true],
+            'when_empty_unpack' => ['number | string', false],
+            'unless_fourth' => ['number | string', false],
+            'unless_literal_unpack' => ['number | string', false],
             'unless_unpack' => ['number | string', false],
             'loaded_unpack' => ['number | string', false],
             'has_unpack' => ['number | string', false],
@@ -608,8 +615,10 @@ describe('an explicit default before an unpack', function () {
             'counted_unpack' => ['number | string', false],
             'appended_unpack' => ['number | string', true],
             'appended_ctl' => ['number | string', false],
+            'appended_fourth' => ['number | string', true],
             'transform_unpack' => ['number | string', true],
             'transform_ctl' => ['number | string', false],
+            'transform_fourth' => ['number | string', true],
         ]);
     });
 
@@ -621,9 +630,15 @@ describe('an explicit default before an unpack', function () {
         expect($content)
             ->toContain('split_when_unpack: { flag: true; v: number } | { flag: false; v?: string };')
             ->toContain('split_when_ctl: { flag: true; v: number } | { flag: false; v: string };')
+            ->toContain('split_when_fourth: { flag: true; v: number } | { flag: false; v?: string };')
+            ->toContain('split_when_literal_unpack: { flag: true; v: number } | { flag: false; v?: string };')
+            ->toContain('split_unless_fourth: { flag: true; v: string } | { flag: false; v: number };')
             ->toContain('split_unless_unpack: { flag: true; v: string } | { flag: false; v: number };')
             ->toContain('merged_unpack: { flag: boolean; m?: number | string };')
+            ->toContain('merged_fourth: { flag: boolean; m?: number | string };')
+            ->toContain('merged_literal_unpack: { flag: boolean; m?: number | string };')
             ->toContain('merged_ctl: { flag: boolean; m: number | string };')
+            ->toContain('merged_unless_fourth: { flag: boolean; m: number | string };')
             ->toContain('merged_unless_unpack: { flag: boolean; m: number | string };');
     });
 });
