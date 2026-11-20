@@ -99,8 +99,9 @@ The helpers and the test that pins them live in these files:
   spells, a quoted string, a JSON number, `true` or `false`, or null for any other arm. Static and `@internal`.
 - [`Support\TypeStrings\TsLibGlobals`](../../src/Support/TypeStrings/TsLibGlobals.php): every global name declared
   by the TypeScript lib files that the repo's tsconfigs load, which a type spells with no import: `TYPES`;
-  `NAMESPACES` (`Temporal`), which only a qualifier or a `typeof` operand reads; and `VALUES`, the names only a value
-  declares (the DOM's `Image`) and `globalThis`, which only a `typeof` operand reads. Generated:
+  `NAMESPACES` (`Temporal`, and `globalThis`, which no lib file declares), which only a qualifier or a `typeof`
+  operand reads; and `VALUES`, the names only a value declares (the DOM's `Image`), which only a `typeof` operand
+  reads. Generated:
   after a TypeScript bump, run `php .github/scripts/generate-ts-lib-globals.php`. `TsLibGlobalsTest` compares the
   committed list with the script's output wherever TypeScript is installed, the CI gates job included, so it fails
   until then.

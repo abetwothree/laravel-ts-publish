@@ -29,14 +29,14 @@ it('holds the global types of TypeScript and the DOM, and no name only a module 
         ->not->toHaveKey('IteratorObjectConstructor');
 });
 
-it('holds apart each global the libs declare only as a value, and globalThis, which no lib declares', function () {
+it('holds apart each global the libs declare only as a value', function () {
     expect(TsLibGlobals::VALUES)
-        ->toHaveKeys(['fetch', 'Image', 'Audio', 'Option', 'Proxy', 'NaN', 'Infinity', 'globalThis'])
-        ->not->toHaveKeys(['Date', 'HTMLElement', 'Intl', 'Meta'])
+        ->toHaveKeys(['fetch', 'Image', 'Audio', 'Option', 'Proxy', 'NaN', 'Infinity'])
+        ->not->toHaveKeys(['Date', 'HTMLElement', 'Intl', 'Meta', 'globalThis'])
         ->and(array_intersect_key(TsLibGlobals::VALUES, TsLibGlobals::TYPES))->toBe([]);
 });
 
-it('holds apart each namespace no type of the libs shares a name with', function () {
-    expect(array_keys(TsLibGlobals::NAMESPACES))->toBe(['CSS', 'Intl', 'Reflect', 'Temporal', 'WebAssembly'])
+it('holds apart each namespace no type of the libs shares a name with, and globalThis, which no lib declares', function () {
+    expect(array_keys(TsLibGlobals::NAMESPACES))->toBe(['CSS', 'Intl', 'Reflect', 'Temporal', 'WebAssembly', 'globalThis'])
         ->and(array_intersect_key(TsLibGlobals::NAMESPACES, TsLibGlobals::TYPES + TsLibGlobals::VALUES))->toBe([]);
 });

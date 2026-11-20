@@ -635,6 +635,7 @@ final class TsLibGlobals
     /** @var array<string, bool> name => true: each namespace no type shares a name with */
     public const array NAMESPACES = [
         'CSS' => true, 'Intl' => true, 'Reflect' => true, 'Temporal' => true, 'WebAssembly' => true,
+        'globalThis' => true,
     ];
 
     /** @var array<string, bool> name => true: each name only a `var`, `let`, `const` or `function` declares */
@@ -648,11 +649,11 @@ final class TsLibGlobals
         'decodeURI' => true, 'decodeURIComponent' => true, 'devicePixelRatio' => true, 'dispatchEvent' => true,
         'document' => true, 'encodeURI' => true, 'encodeURIComponent' => true, 'escape' => true, 'eval' => true,
         'event' => true, 'external' => true, 'fetch' => true, 'focus' => true, 'frameElement' => true, 'frames' => true,
-        'getComputedStyle' => true, 'getSelection' => true, 'globalThis' => true, 'history' => true,
-        'importScripts' => true, 'indexedDB' => true, 'innerHeight' => true, 'innerWidth' => true, 'isFinite' => true,
-        'isNaN' => true, 'isSecureContext' => true, 'length' => true, 'localStorage' => true, 'location' => true,
-        'locationbar' => true, 'matchMedia' => true, 'menubar' => true, 'moveBy' => true, 'moveTo' => true,
-        'name' => true, 'navigation' => true, 'navigator' => true, 'onabort' => true, 'onafterprint' => true,
+        'getComputedStyle' => true, 'getSelection' => true, 'history' => true, 'importScripts' => true,
+        'indexedDB' => true, 'innerHeight' => true, 'innerWidth' => true, 'isFinite' => true, 'isNaN' => true,
+        'isSecureContext' => true, 'length' => true, 'localStorage' => true, 'location' => true, 'locationbar' => true,
+        'matchMedia' => true, 'menubar' => true, 'moveBy' => true, 'moveTo' => true, 'name' => true,
+        'navigation' => true, 'navigator' => true, 'onabort' => true, 'onafterprint' => true,
         'onanimationcancel' => true, 'onanimationend' => true, 'onanimationiteration' => true,
         'onanimationstart' => true, 'onauxclick' => true, 'onbeforeinput' => true, 'onbeforematch' => true,
         'onbeforeprint' => true, 'onbeforetoggle' => true, 'onbeforeunload' => true, 'onblur' => true,

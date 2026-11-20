@@ -678,6 +678,7 @@ describe('referencedTypeNames', function () {
         'a global value the DOM declares with no type' => ['{ ctor: typeof Image; at: typeof NaN }', []],
         'a global namespace, as a qualifier' => ['Intl.DateTimeFormat | WebAssembly.Module', []],
         'a global namespace\'s typeof, and globalThis\'s' => ['typeof Intl | typeof Temporal.Now | typeof globalThis', []],
+        'globalThis as a qualifier' => ['{ created: globalThis.Date; meta: Meta }', ['Meta']],
     ]);
 
     // DOM's `Image`, `Audio` and `Option` are values with no type, so a type position spelling one reads the clause's.

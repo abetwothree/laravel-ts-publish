@@ -21,8 +21,8 @@ if ($libDirectory === null) {
 }
 
 $roots = tsconfigRootLibs($root);
-// TypeScript declares globalThis itself, in no lib file.
-$keywords = ['globalThis' => ['var' => true]];
+// TypeScript declares globalThis itself, in no lib file, as a namespace of every global.
+$keywords = ['globalThis' => ['namespace' => true]];
 
 foreach (referencedLibs($libDirectory, $roots) as $file) {
     foreach (globalDeclarations((string) file_get_contents($file)) as [$keyword, $name]) {
