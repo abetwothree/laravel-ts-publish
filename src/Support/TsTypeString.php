@@ -35,6 +35,12 @@ class TsTypeString
     /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
     public const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
+    /** The anchor queuedTokenPattern() reads a const's token with: the name a `typeof` reads. */
+    public const string TYPEOF_ANCHOR = 'typeof\s+\K';
+
+    /** The anchor queuedTokenPattern() reads a name with wherever it stands, the name a `typeof` reads too. */
+    public const string ANY_ANCHOR = '(?:'.self::TYPEOF_ANCHOR.')?';
+
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
@@ -50,6 +56,9 @@ class TsTypeString
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
     protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
+
+    /** A `typeof` and the const it reads, which a type token's pattern matches only to skip past it. */
+    protected const string SKIPPED_TYPEOF_OPERAND = 'typeof\s+[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*(*SKIP)(*FAIL)|';
 
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
@@ -221,12 +230,13 @@ class TsTypeString
      */
     public function aliasTypeofConst(string $type, array $itemFqcns, array $constNames, array $aliases): string
     {
-        return $this->aliasInQueueOrder($type, $itemFqcns, $constNames, $aliases, 'typeof\s+\K');
+        return $this->aliasInQueueOrder($type, $itemFqcns, $constNames, $aliases, self::TYPEOF_ANCHOR);
     }
 
     /**
      * The pattern that reads a name as a whole token of a type string: not inside a longer name, not after a dot.
-     * $anchor is a pattern each token must follow; a `\K` in it keeps the anchor out of the match.
+     * $anchor is a pattern each token must follow; a `\K` in it keeps the anchor out of the match. With none, a name
+     * a `typeof` reads is a const's and never a type token.
      *
      * Longer names come first: the lookahead stops at ASCII, so a name that a longer one continues with a non-ASCII
      * letter is read whole only that way.
@@ -237,8 +247,9 @@ class TsTypeString
     {
         usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
         $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
+        $lead = $anchor === '' ? self::SKIPPED_TYPEOF_OPERAND : $anchor;
 
-        return '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+        return '/(?<![A-Za-z0-9_$.])(?:'.$lead.'(?:'.implode('|', $names).'))(?![A-Za-z0-9_$])/';
     }
 
     /**

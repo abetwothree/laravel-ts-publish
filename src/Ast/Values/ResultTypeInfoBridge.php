@@ -45,9 +45,9 @@ final class ResultTypeInfoBridge
         $info['type'] = $result['type'];
         unset($info['classTokenFqcns']);
 
-        // The merged info lists each class once. Where two models share a name, `ValueResult::modelQueueByToken()`
+        // The merged info lists each class once. Where two models share a name, `ClassIdentity::modelQueueByToken()`
         // hands on the engine's own queue unless it outruns the type's tokens, as a merge by text can.
-        $models = ValueResult::modelQueueByToken($result);
+        $models = ClassIdentity::modelQueueByToken($result);
 
         if ($models !== null) {
             $info['classTokenFqcns'] = $models;

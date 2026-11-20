@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 
 /**
  * Reads a declaration's `tokenFqcns`: one slot per token of the names of the classes its slots hold, in print order,
@@ -63,7 +64,12 @@ final class TokenSlots
      */
     public static function queueRead(array $queue, string $text, array $names): array
     {
-        $spellings = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...))->spellings($text);
+        $spellings = new ClassTokenQueue(
+            $queue,
+            self::typeName(...),
+            ValueResult::enumSiblingNames(...),
+            TsTypeStringService::ANY_ANCHOR,
+        )->spellings($text);
         $slots = [];
 
         foreach ($names === [] ? [] : self::tokens('classes', $names, $text) as [$token]) {
@@ -425,13 +431,17 @@ final class TokenSlots
     }
 
     /**
-     * The pattern a channel's tokens are read with: a const only after `typeof`.
+     * The pattern a channel's tokens are read with: a const only after `typeof`, a class anywhere, since a `typeof`'s
+     * name spelled like one of its classes takes an unread slot.
      *
      * @param  'classes'|'consts'  $channel
      * @param  non-empty-list<string>  $names
      */
     private static function patternOf(string $channel, array $names): string
     {
-        return TsTypeString::queuedTokenPattern($names, $channel === 'classes' ? '' : 'typeof\s+\K');
+        return TsTypeString::queuedTokenPattern(
+            $names,
+            $channel === 'classes' ? TsTypeStringService::ANY_ANCHOR : TsTypeStringService::TYPEOF_ANCHOR,
+        );
     }
 }

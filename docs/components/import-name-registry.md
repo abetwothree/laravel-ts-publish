@@ -120,7 +120,10 @@ gate](../testing/type-inference-gates.md) depends on it, because a bare `User` i
 `User as ModelsUser` and `User as CrmUser` is a `TS2304`.
 
 The trailing `(?![A-Za-z0-9_$])` lookahead, not the longest-first order of the alternation, is what stops `User` from
-matching the start of `UserProfile`.
+matching the start of `UserProfile`. A name right after `typeof` is a const's: with no anchor, `queuedTokenPattern()`
+skips it, so neither `aliasPropertyType()` nor a type's `ClassTokenQueue` reads it, and only
+`TsTypeString::TYPEOF_ANCHOR` does. `TokenSlots` reads class tokens under `ANY_ANCHOR`, where that name takes an unread
+slot.
 
 ## Consumers
 

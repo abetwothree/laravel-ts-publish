@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Chart as ChartEnum;
 use Workbench\App\Enums\MediaType;
@@ -636,7 +637,11 @@ it('names the inline channel each class is queued on, and none for a class of no
     'a model' => ['Workbench\App\Models\User', 'models'],
     'an API resource' => ['Workbench\App\Http\Resources\PostResource', 'resources'],
     'a resource collection' => ['Workbench\App\Http\Resources\SupplierCollection', 'resources'],
+    'a model whose basename another model shares' => ['Workbench\Crm\Models\User', 'models'],
+    'the enum resource' => [EnumResource::class, 'resources'],
+    'a resource #[TsResource(name:)] renames' => ['Workbench\App\Http\Resources\AddressResource', 'resources'],
     'any other class' => ['Carbon\Carbon', null],
+    'a class that does not exist' => ['Workbench\App\Models\Missing', null],
 ]);
 
 it('lists a key\'s classes outside its inline queues, the enums it reads, and the enums it wraps at its top', function () {

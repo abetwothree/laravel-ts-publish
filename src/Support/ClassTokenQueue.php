@@ -39,8 +39,9 @@ final class ClassTokenQueue
      * @param  list<class-string>  $fqcns  one per token, in the order the arm's type spells them
      * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
      * @param  (Closure(class-string): list<string>)|null  $alsoSpelledAs  the class's sibling names
+     * @param  string  $anchor  the pattern each token follows, as TsTypeString::queuedTokenPattern() reads it
      */
-    public function __construct(array $fqcns, Closure $nameOf, ?Closure $alsoSpelledAs = null)
+    public function __construct(array $fqcns, Closure $nameOf, ?Closure $alsoSpelledAs = null, string $anchor = '')
     {
         foreach ($fqcns as $fqcn) {
             $name = $nameOf($fqcn);
@@ -53,7 +54,7 @@ final class ClassTokenQueue
         }
 
         if ($this->queueOf !== []) {
-            $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queueOf));
+            $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queueOf), $anchor);
         }
     }
 

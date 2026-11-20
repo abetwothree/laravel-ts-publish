@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -208,12 +209,7 @@ class MethodAnalysis
      */
     public static function channelKind(string $fqcn): ?string
     {
-        return match (true) {
-            enum_exists($fqcn) => 'enums',
-            is_a($fqcn, Model::class, true) => 'models',
-            is_a($fqcn, JsonResource::class, true) => 'resources',
-            default => null,
-        };
+        return TokenKind::ofClass($fqcn)?->value;
     }
 
     /**

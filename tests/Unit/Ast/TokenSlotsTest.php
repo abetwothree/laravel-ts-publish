@@ -8,6 +8,7 @@ use Random\Randomizer;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Grade;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
@@ -38,6 +39,17 @@ test('queueRead() gives each token the next class the queue spells it with, the 
     expect(TokenSlots::queueRead([User::class, CrmUser::class], 'User | Post | User | User', ['User', 'Post']))
         ->toBe([User::class, null, CrmUser::class, CrmUser::class])
         ->and(TokenSlots::queueRead([User::class], 'User', []))->toBe([]);
+});
+
+test('gives the name a `typeof` reads an unread slot, and queueRead() a class for it, where a class is spelled alike', function () {
+    $type = 'AsEnum<typeof Grade> | Grade';
+    $tokens = TokenSlots::declaredTokens($type, [Grade::class, Grade::class]);
+
+    expect(array_map(fn (array $token): array => [$token['offset'], $token['slot'], $token['read']], $tokens))->toBe([
+        [14, Grade::class, false],
+        [23, Grade::class, true],
+    ])
+        ->and(TokenSlots::queueRead([Grade::class], $type, ['Grade']))->toBe([Grade::class, Grade::class]);
 });
 
 test('ownSlots() keeps the slot of each token of a name its slots hold a class of', function () {

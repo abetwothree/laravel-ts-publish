@@ -1078,11 +1078,13 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
-`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`: one name
-spells two models, two resources or two enums read directly. `withMembersByClass()` reads it by class through
+[`ClassIdentity::spellsTwoClassesAlike()`](../../src/Ast/Values/ClassIdentity.php) decides when `unionResults()` hands
+a union to `ClassIdentity::membersByClass()`: one name spells two models, two resources or two enums read directly.
+Both read each [`TokenKind`](../../src/Ast/Values/TokenKind.php) through its own
 [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
 [Import name registry](import-name-registry.md#rewriting-aliased-type-references). A union holding an `EnumResource`
-arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel.
+arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel, and no
+reading reads the wrap const kind yet.
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
 `unionResults()`. `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and
 default alike; a literal's fold keeps two same-named models or resources apart (`joinInto()`'s `keepsClassesApart`).

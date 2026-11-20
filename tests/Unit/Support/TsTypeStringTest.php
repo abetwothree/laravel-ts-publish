@@ -404,6 +404,15 @@ describe('aliasPropertyType', function () {
         expect($this->service->aliasPropertyType('User | Post', ['App\\Models\\Team'], $nameMap, []))
             ->toBe('User | Post');
     });
+
+    test('leaves the name a `typeof` reads, which is a const\'s, and aliases the type token spelled like it', function () {
+        expect($this->service->aliasPropertyType(
+            'AsEnum<typeof Grade> | Grade',
+            ['Workbench\\App\\Models\\Grade'],
+            ['Workbench\\App\\Models\\Grade' => 'Grade'],
+            ['Workbench\\App\\Models\\Grade' => 'WorkbenchGrade'],
+        ))->toBe('AsEnum<typeof Grade> | WorkbenchGrade');
+    });
 });
 
 describe('aliasTypeofConst', function () {
@@ -422,7 +431,7 @@ describe('aliasTypeofConst', function () {
         ))->toBe('AsEnum<typeof CrmClearanceType>[] | AsEnum<typeof   CrmClearanceType>');
     });
 
-    // aliasPropertyType() would alias both tokens here, which writes one enum's const alias into another enum's type.
+    // The bare token is another enum's type, which only aliasPropertyType() respells.
     test('leaves a bare token spelled like the const, which is another enum\'s type', function () use ($constNames) {
         $aliases = ['Crm\\Enums\\ClearanceType' => 'CrmClearanceType'];
 
@@ -498,6 +507,36 @@ describe('queuedTokenPattern', function () {
         );
 
         expect($matches[0])->toBe(['Status', 'Role']);
+    });
+
+    test('with no anchor, reads no name a `typeof` reads, however much space follows it', function () {
+        preg_match_all($this->service->queuedTokenPattern(['Grade']), 'AsEnum<typeof Grade> | Grade', $matches, PREG_OFFSET_CAPTURE);
+        preg_match_all($this->service->queuedTokenPattern(['Grade']), "typeof\n  Grade | Grade[] | typeofGrade", $spaced);
+
+        expect($matches[0])->toBe([['Grade', 23]])
+            ->and($spaced[0])->toBe(['Grade']);
+    });
+
+    test('reads a name wherever it stands, after a `typeof` too, under the anchor that admits both', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['Grade'], TsTypeString::ANY_ANCHOR),
+            'AsEnum<typeof Grade> | Grade | xGrade',
+            $matches,
+            PREG_OFFSET_CAPTURE,
+        );
+
+        expect($matches[0])->toBe([['Grade', 14], ['Grade', 23]]);
+    });
+
+    test('names the anchor a const token follows', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['Grade'], TsTypeString::TYPEOF_ANCHOR),
+            'AsEnum<typeof Grade> | Grade',
+            $matches,
+            PREG_OFFSET_CAPTURE,
+        );
+
+        expect($matches[0])->toBe([['Grade', 14]]);
     });
 });
 

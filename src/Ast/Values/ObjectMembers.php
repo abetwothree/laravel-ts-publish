@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
@@ -89,7 +90,12 @@ final class ObjectMembers
             return null;
         }
 
-        [$models, $resources, $enums] = ValueResult::tokenQueues($value);
+        $queues = ClassIdentity::queues($value);
+        [
+            TokenKind::Model->value => $models,
+            TokenKind::Resource->value => $resources,
+            TokenKind::Enum->value => $enums,
+        ] = $queues;
         $members = [];
 
         foreach ($printed as [$key, $type]) {
@@ -113,7 +119,7 @@ final class ObjectMembers
             ]];
         }
 
-        if ($models->outrunsItsTokens() || $resources->outrunsItsTokens() || $enums->outrunsItsTokens()) {
+        if (array_any($queues, static fn (ClassTokenQueue $queue): bool => $queue->outrunsItsTokens())) {
             return null;
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\UserResource;
 use Workbench\App\Models\Post;
@@ -133,6 +134,16 @@ it('outruns its tokens only where a name they read is queued for two classes, an
     'a name that lines up, then one that outruns its tokens' => [[Post::class, User::class, CrmUser::class], 'Post | User[]', true],
     'a name that outruns its tokens, then one that lines up' => [[User::class, CrmUser::class, Post::class], 'User[] | Post', true],
 ]);
+
+it('reads the name after `typeof` only under that anchor, and every other name only without one', function () {
+    $consts = new ClassTokenQueue([Status::class], class_basename(...), null, 'typeof\\s+\\K');
+    $types = new ClassTokenQueue([Status::class], class_basename(...));
+
+    expect($consts->take('AsEnum<typeof Status>'))->toBe([Status::class])
+        ->and($consts->take('StatusType | Status'))->toBe([])
+        ->and($types->take('AsEnum<typeof Status>'))->toBe([])
+        ->and($types->take('StatusType | Status'))->toBe([Status::class]);
+});
 
 it('outruns its tokens just as well when the resource naming closure names its classes', function () {
     $queue = new ClassTokenQueue(
