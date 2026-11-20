@@ -6581,7 +6581,7 @@ declare global {
         export interface WrapHelpersResource {
             picked: app.enums.StatusType | app.enums.VisibilityType | null;
             status_wrap?: app.enums.StatusType;
-            card: { stamped: boolean; [key: string]: unknown };
+            card: { status: app.enums.StatusType; stamped: boolean };
         }
     }
     export namespace app.http.resources.jsonApi {

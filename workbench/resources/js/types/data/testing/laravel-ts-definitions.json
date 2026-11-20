@@ -15261,7 +15261,7 @@
                 },
                 {
                     "name": "card",
-                    "type": "{ stamped: boolean; [key: string]: unknown }",
+                    "type": "{ status: AsEnum<typeof Status>; stamped: boolean }",
                     "optional": false
                 }
             ]

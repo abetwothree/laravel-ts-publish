@@ -12,5 +12,5 @@ export interface WrapHelpersResource
 {
     picked: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;
     status_wrap?: AsEnum<typeof Status>;
-    card: { stamped: boolean; [key: string]: unknown };
+    card: { status: AsEnum<typeof Status>; stamped: boolean };
 }

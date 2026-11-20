@@ -30,6 +30,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  *      directEnumFqcn?: class-string,
  *      embeddedEnumFqcns?: list<class-string>,
  * }
+ * @phpstan-type WrapChannels = array{embeddedEnumResourceFqcns?: list<class-string>, wrappedEnumFqcns?: list<class-string>}
  *
  * @internal
  */
@@ -77,9 +78,8 @@ final class ObjectMembers
     {
         $value = ValueResult::unsplit($value);
 
-        // A wrap spells `AsEnum<typeof X>`, a token no queue here reads, so its member could not keep its value import.
-        if (isset($value['enumFqcn']) || isset($value['embeddedEnumResourceFqcns'])
-            || isset($value['multiEnumResourceFqcns'])) {
+        // A wrap on the enum's or the per-arm channel names no token, so its member could not keep its value import.
+        if (isset($value['enumFqcn']) || isset($value['multiEnumResourceFqcns'])) {
             return null;
         }
 
@@ -95,6 +95,7 @@ final class ObjectMembers
             TokenKind::Model->value => $models,
             TokenKind::Resource->value => $resources,
             TokenKind::Enum->value => $enums,
+            TokenKind::WrapConst->value => $consts,
         ] = $queues;
         $members = [];
 
@@ -114,6 +115,7 @@ final class ObjectMembers
                 ...self::memberChannel($models->take($type), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
                 ...self::memberChannel($resources->take($type), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
                 ...self::memberChannel($enums->take($type), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
+                ...self::wrapChannels($consts->take($type), $value['wrappedEnumFqcns'] ?? []),
                 // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
                 ...(($value['keepsKeys'] ?? false) && $holdsObject ? ['keepsKeys' => true] : []),
             ]];
@@ -297,6 +299,24 @@ final class ObjectMembers
             count($fqcns) === 1 && ! $holdsObject => [$single => $fqcns[0]],
             default => [$embedded => $fqcns],
         };
+    }
+
+    /**
+     * The channels a member's wraps ride: the enum behind each const its type spells, one per token, and among them the
+     * enums the value wraps, once each.
+     *
+     * @param  list<class-string>  $consts
+     * @param  list<class-string>  $wrapped
+     * @return WrapChannels
+     */
+    private static function wrapChannels(array $consts, array $wrapped): array
+    {
+        $own = array_values(array_intersect(array_unique($consts), $wrapped));
+
+        return [
+            ...($consts === [] ? [] : ['embeddedEnumResourceFqcns' => $consts]),
+            ...($own === [] ? [] : ['wrappedEnumFqcns' => $own]),
+        ];
     }
 
     /**
