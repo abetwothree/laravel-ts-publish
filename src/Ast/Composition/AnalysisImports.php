@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -142,16 +143,18 @@ final class AnalysisImports
     }
 
     /**
-     * Enum FQCNs reachable only through an inline object type, which need the const name but no type import.
+     * Enum FQCNs reachable only through an inline object type that writes their const, which need the const name but
+     * no type import.
      *
      * @return list<class-string>
      */
     private function constOnlyEnumFqcns(MethodAnalysis $analysis): array
     {
+        $types = array_column($analysis->properties, 'type', 'name');
         $fqcns = [];
 
-        foreach ($analysis->inlineEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
+        foreach ($analysis->inlineEnumResourceFqcns as $name => $branchFqcns) {
+            $fqcns = [...$fqcns, ...EnumWrapImports::written($types[$name] ?? '', $branchFqcns)];
         }
 
         return array_values(array_unique($fqcns));

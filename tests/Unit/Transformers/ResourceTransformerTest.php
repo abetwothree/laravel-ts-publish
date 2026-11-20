@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
@@ -53,6 +54,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersection
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastSingleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesOneOfTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapTrioResource;
@@ -78,6 +81,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsExtendsR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsMixinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCastWrapBesideCrmWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemBuildingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingPostCollection;
@@ -5179,4 +5183,40 @@ it('publishes the empty tuple a `list{}` method sends alone beside the empty lis
         'default' => '[]',
         'ternary' => '[]',
     ]);
+});
+
+// A file imports, as values, only the consts its types spell after `typeof` (GH-76).
+describe('the enum consts a resource imports', function () {
+    test('a resource whose #[TsCasts] displaces its only wrap imports no const', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(EnumResourceCastSingleResource::class);
+
+        expect($transformer->properties['k']['type'])->toBe('string | null')
+            ->and($transformer->valueImports)->toBe([]);
+    });
+
+    // The cast's one `typeof Status` names the first of the key's two wraps of same-named enums; the other's const
+    // would be imported for nothing (TS6133).
+    test('a cast that writes one of two same-named wraps imports that one\'s const alone', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(EnumResourceCastWritesOneOfTwoWrapsResource::class);
+
+        expect($transformer->properties['k']['type'])->toBe('{ a: AsEnum<typeof WorkbenchStatus> }')
+            ->and($transformer->valueImports)->toBe(['../../../../../../workbench/app/enums' => ['Status as WorkbenchStatus']]);
+    });
+
+    // A member's helper cast drops the wrap of the app `Status` from the text, so only the CRM `Status` is left to name.
+    test('a wrap a member\'s cast displaced reaches no outer const', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(InlineCastWrapBesideCrmWrapResource::class);
+        $analyzed = resolve(AstEngine::class)->analyze(InlineCastWrapBesideCrmWrapResource::class, 'toArray', Warehouse::class);
+
+        expect($transformer->properties['k']['type'])->toBe('{ a: { w: string }; b: AsEnum<typeof Status> | null }')
+            ->and($transformer->valueImports)->toBe(['../../../../../../workbench/crm/enums' => ['Status']])
+            ->and($analyzed->properties[0]['type'])->toBe('{ a: { w: string }; b: AsEnum<typeof Status> | null }')
+            ->and($analyzed->valueImports)->toBe(['./workbench/crm/enums' => ['Status']]);
+    });
 });

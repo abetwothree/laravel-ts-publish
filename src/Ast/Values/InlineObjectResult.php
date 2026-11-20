@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -269,6 +270,9 @@ final class InlineObjectResult
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
+
+        // A member's own cast may have displaced a wrap, whose const the outer queue must not name.
+        $embeddedEnumResourceFqcns = EnumWrapImports::written($result['type'], $embeddedEnumResourceFqcns);
 
         if ($embeddedEnumResourceFqcns !== []) {
             $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;

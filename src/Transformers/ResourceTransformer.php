@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
@@ -828,28 +829,16 @@ class ResourceTransformer extends CoreTransformer
 
     /**
      * Keeps a key's inline wraps whose const its type writes after `typeof`, by the const's own name or by the alias
-     * this file gives it. It runs after resolveImportConflicts(), which decides the aliases.
+     * this file gives it, one per token. It runs after resolveImportConflicts(), which decides the aliases.
      *
      * @return $this
      */
     protected function keepWrittenInlineWraps(): self
     {
         foreach ($this->propertyInlineEnumResourceFqcns as $property => $fqcns) {
-            $type = $this->properties[$property]['type'] ?? '';
-            $writesConst = fn (string $fqcn): bool => preg_match(
-                TsTypeString::queuedTokenPattern(
-                    array_values(array_unique([
-                        $this->enumConstMap[$fqcn],
-                        $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn],
-                    ])),
-                    'typeof\s+\K',
-                ),
-                $type,
-            ) === 1;
-
             // A wrap the type writes itself needs its imports and no rewrite, which an inline wrap gets. The list is a
             // queue for aliasTypeofConst(), one entry per occurrence, so it is never deduped.
-            $wraps = array_values(array_filter($fqcns, $writesConst));
+            $wraps = EnumWrapImports::written($this->properties[$property]['type'] ?? '', $fqcns, $this->constImportAliases);
 
             if ($wraps === []) {
                 unset($this->propertyInlineEnumResourceFqcns[$property]);
@@ -1068,7 +1057,7 @@ class ResourceTransformer extends CoreTransformer
         ];
 
         if ($hasEnums) {
-            $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns());
+            $valueImports = $this->collectModularValueImports($this->enumPropertyFqcns(), $types);
         }
 
         $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);

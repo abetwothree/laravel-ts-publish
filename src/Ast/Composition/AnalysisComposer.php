@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -337,9 +338,10 @@ final class AnalysisComposer
                 continue;
             }
 
+            $type = $this->properties[$propName]['type'];
             $this->properties[$propName]['type'] = TsTypeString::aliasTypeofConst(
-                $this->properties[$propName]['type'],
-                $fqcns,
+                $type,
+                EnumWrapImports::written($type, $fqcns, $this->constImportAliases),
                 $this->enumConstMap,
                 $this->constImportAliases,
             );
