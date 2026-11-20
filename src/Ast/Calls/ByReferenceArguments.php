@@ -409,7 +409,12 @@ final class ByReferenceArguments
 
         foreach ([$namespaced instanceof Name ? $namespaced->toString() : null, $name->toString()] as $candidate) {
             if ($candidate !== null && function_exists($candidate)) {
-                return new ReflectionFunction($candidate);
+                $function = new ReflectionFunction($candidate);
+
+                // Which parameters take a reference is the function's declaration, so a change to it must rebuild this.
+                DependencyRecorder::record((string) $function->getFileName());
+
+                return $function;
             }
         }
 

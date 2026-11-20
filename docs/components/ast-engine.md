@@ -772,7 +772,7 @@ member that does not exist yet still records its class. The readers are `Receive
 `ReceiverMemberReader::classes()`, `LaravelTsPublish::toTsType()` and its three member readers,
 `StringSerialization::jsonStringType()`,
 `ModelAttributeResolver`'s contexts and caster reads, `ModelAttributeResolver::subclassKeyTsType()`, which records every
-published model, `ByReferenceArguments` for the class whose method it reads by-reference parameters from, and
+published model, `ByReferenceArguments` for the class or user function file it reads by-reference parameters from, and
 `MacroCallResolver::reflect()`, which records the file that declares a closure or function macro. A cache in front of
 such a read records before its lookup, or replays what it recorded, as `resolveAttributeClass()` and
 `TypeAliases::find()`, which reads each class an alias import names, do. Recording never

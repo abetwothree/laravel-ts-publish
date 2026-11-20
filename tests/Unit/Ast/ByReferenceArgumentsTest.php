@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ByReferenceSelfChild;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\NodeFinder;
 use PhpParser\PrettyPrinter\Standard;
 use Random\Engine\Xoshiro256StarStar;
@@ -597,6 +598,45 @@ it('reports what a built-in leaves in a key of a variable it takes by reference'
     $call = new AstParser()->parseSource('<?php sort($x["k"]["j"]);')[0]->expr;
 
     expect(resolve(ByReferenceArguments::class)->effect($call, $call->getArgs()[0]->value))->toBe(ByReferenceEffect::KeepsList);
+});
+
+it('records the file of a user function, whose declaration says which parameters take a reference', function (string $statement, string $function) {
+    require_once dirname(__DIR__, 2).'/Fixtures/Stubs/ByReferenceHelperFunction.php.stub';
+    $stmt = new AstParser()->parseSource('<?php '.$statement)[0];
+    $call = ($stmt instanceof Namespace_ ? $stmt->stmts[0] : $stmt)->expr;
+    DependencyRecorder::start();
+
+    try {
+        resolve(ByReferenceArguments::class)->of($call, $call->getArgs(), null, null);
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toBe([(string) new ReflectionFunction($function)->getFileName()]);
+})->with([
+    'a global function' => ['byReferenceCollectAll($a);', 'byReferenceCollectAll'],
+    'a namespaced function, by its full name' => [
+        '\\AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper($a);',
+        'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper',
+    ],
+    'a namespaced function, unqualified in its namespace' => [
+        'namespace AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs; byReferenceHelper($a);',
+        'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper',
+    ],
+]);
+
+it('records no file for a built-in function', function () {
+    DependencyRecorder::start();
+
+    try {
+        byReferenceArgumentsOf('preg_match("/x/", $s, $m);');
+        $paths = DependencyRecorder::paths();
+    } finally {
+        DependencyRecorder::stop();
+    }
+
+    expect($paths)->toBe([]);
 });
 
 it('records the class whose declaration says which parameters take a reference', function (string $statement, string $class) {

@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Stubs;
+
+/**
+ * A namespaced helper whose signature says whether a call may write the variable it passes: by value here, so editing
+ * it to take a reference must rebuild every resource that calls it.
+ */
+function byReferenceHelper(mixed $value): int
+{
+    return is_bool($value) ? 1 : 0;
+}

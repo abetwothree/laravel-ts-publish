@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ByReferenceHelperResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Models\Comment;
@@ -35,4 +36,19 @@ it('records accessor-returned models inlined via only()/except() as dependencies
 
     expect($fqcns)->not->toBeEmpty()
         ->and($paths)->toContain((new ReflectionClass(User::class))->getFileName());
+});
+
+// Whether the call may write the discriminant it passes is the helper's signature, so editing it must rebuild the resource.
+it('records the file of a helper function a resource passes a local to', function () {
+    require_once dirname(__DIR__, 2).'/Fixtures/Stubs/ByReferenceHelperFunction.php.stub';
+    DependencyRecorder::start();
+
+    new ResourceTransformer(ByReferenceHelperResource::class);
+
+    $paths = DependencyRecorder::paths();
+    DependencyRecorder::stop();
+
+    expect($paths)->toContain(
+        (string) new ReflectionFunction('AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\byReferenceHelper')->getFileName(),
+    );
 });
