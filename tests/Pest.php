@@ -15,7 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -318,7 +318,7 @@ function windowReach(
         array_keys([$read, ...$items]),
         [$read, ...$items],
     ));
-    $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects; '
+    $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources; '
         .'use Closure; use Illuminate\Support\Facades\Gate; use Workbench\App\Http\Resources\UserResource; '
         .'use Workbench\App\Enums\Status; use Workbench\App\Models\Post; use Workbench\App\Models\User; '
         ."use Workbench\App\Support\PinWriter; return [{$values}];";

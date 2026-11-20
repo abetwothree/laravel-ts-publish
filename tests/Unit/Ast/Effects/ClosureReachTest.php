@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
 
 /**
  * The value table: each kind of value a resource helper may call (`when(true, …)`), a callee handed it may call

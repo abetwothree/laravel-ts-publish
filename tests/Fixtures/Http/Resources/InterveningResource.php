@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FlagContract;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
 use Closure;
 use Illuminate\Http\Request;
 use Workbench\App\Models\Post;
