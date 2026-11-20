@@ -517,17 +517,6 @@ describe('queuedTokenPattern', function () {
             ->and($spaced[0])->toBe(['Grade']);
     });
 
-    test('reads a name wherever it stands, after a `typeof` too, under the anchor that admits both', function () {
-        preg_match_all(
-            $this->service->queuedTokenPattern(['Grade'], TsTypeString::ANY_ANCHOR),
-            'AsEnum<typeof Grade> | Grade | xGrade',
-            $matches,
-            PREG_OFFSET_CAPTURE,
-        );
-
-        expect($matches[0])->toBe([['Grade', 14], ['Grade', 23]]);
-    });
-
     test('names the anchor a const token follows', function () {
         preg_match_all(
             $this->service->queuedTokenPattern(['Grade'], TsTypeString::TYPEOF_ANCHOR),

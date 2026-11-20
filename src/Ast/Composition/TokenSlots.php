@@ -25,13 +25,10 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
  */
 final class TokenSlots
 {
-    /** The name a `typeof` reads, which is a const's and never a class channel's type. */
-    private const string AFTER_TYPEOF = '/(?<![A-Za-z0-9_$.])typeof\s+\K[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/';
-
     /**
      * Each token in a type of a declaration's own names, the names of the classes its slots hold, and of `$names`, in
-     * print order. An own name's token takes the next slot, an unread one's in a literal or after `typeof` too, and
-     * any other token takes none: the one reading of `tokenFqcns` every builder and reader of it shares.
+     * print order. An own name's token takes the next slot, an unread one's in a literal too, and any other token takes
+     * none: the one reading of `tokenFqcns` every builder and reader of it shares. A name a `typeof` reads is no token.
      *
      * @param  Slots  $slots
      * @param  list<string>  $names
@@ -64,12 +61,7 @@ final class TokenSlots
      */
     public static function queueRead(array $queue, string $text, array $names): array
     {
-        $spellings = new ClassTokenQueue(
-            $queue,
-            self::typeName(...),
-            ValueResult::enumSiblingNames(...),
-            TsTypeStringService::ANY_ANCHOR,
-        )->spellings($text);
+        $spellings = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...))->spellings($text);
         $slots = [];
 
         foreach ($names === [] ? [] : self::tokens('classes', $names, $text) as [$token]) {
@@ -244,12 +236,6 @@ final class TokenSlots
         }
 
         $unread = TsTypeString::literalSpans($text);
-
-        if ($channel === 'classes' && preg_match_all(self::AFTER_TYPEOF, $text, $consts, PREG_OFFSET_CAPTURE) > 0) {
-            foreach ($consts[0] as [$const, $at]) {
-                $unread[] = [$at, $at + strlen($const)];
-            }
-        }
 
         return array_map(static fn (array $match): array => [
             $match[0],
@@ -431,17 +417,15 @@ final class TokenSlots
     }
 
     /**
-     * The pattern a channel's tokens are read with: a const only after `typeof`, a class anywhere, since a `typeof`'s
-     * name spelled like one of its classes takes an unread slot.
+     * The pattern a channel's tokens are read with: a const only after `typeof`, a class never there.
      *
      * @param  'classes'|'consts'  $channel
      * @param  non-empty-list<string>  $names
      */
     private static function patternOf(string $channel, array $names): string
     {
-        return TsTypeString::queuedTokenPattern(
-            $names,
-            $channel === 'classes' ? TsTypeStringService::ANY_ANCHOR : TsTypeStringService::TYPEOF_ANCHOR,
-        );
+        $anchor = $channel === 'classes' ? '' : TsTypeStringService::TYPEOF_ANCHOR;
+
+        return TsTypeString::queuedTokenPattern($names, $anchor);
     }
 }

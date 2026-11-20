@@ -342,7 +342,7 @@ is a Support helper, since both call the engine, which `SupportBoundaryTest` for
 | Space | The list | One entry per |
 | --- | --- | --- |
 | A | `TypeScriptTypeInfo['classTokenFqcns']` | class token, by the `classes` labels; one holding a null is in space B |
-| B | `TokenSlots`' `Slots`: `ShapeTypeInfo['tokenFqcns']`, `CastInForce['tokenFqcns']`, `$declaredTokenFqcns` | token of a declaration's own names, a literal's and one after `typeof` too; null for an override's |
+| B | `TokenSlots`' `Slots`: `ShapeTypeInfo['tokenFqcns']`, `CastInForce['tokenFqcns']`, `$declaredTokenFqcns` | token of a declaration's own names, a literal's too, never the name after `typeof`; null for an override's |
 | C | `FileImportNames`' `TokenQueue` | token a channel reads |
 | D | `MethodAnalysis::channelFqcns($name)` | class on a key's channels, by kind, not per token |
 

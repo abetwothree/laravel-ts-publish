@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish as LaravelTsPublishFacade;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 use Workbench\App\Enums\Priority;
@@ -41,15 +43,21 @@ test('queueRead() gives each token the next class the queue spells it with, the 
         ->and(TokenSlots::queueRead([User::class], 'User', []))->toBe([]);
 });
 
-test('gives the name a `typeof` reads an unread slot, and queueRead() a class for it, where a class is spelled alike', function () {
+test('reads back the class a docblock shape writes behind a token spelled like the name a `typeof` reads', function () {
     $type = 'AsEnum<typeof Grade> | Grade';
-    $tokens = TokenSlots::declaredTokens($type, [Grade::class, Grade::class]);
+    $shape = new ReflectionMethod(LaravelTsPublish::class, 'docblockTypeInfo')->invoke(resolve(LaravelTsPublish::class), [
+        ...LaravelTsPublishFacade::emptyTypeScriptInfo(),
+        'type' => $type,
+        'classes' => ['Grade'],
+        'classFqcns' => [Grade::class],
+    ]);
+    $tokens = TokenSlots::declaredTokens($type, $shape['tokenFqcns']);
 
-    expect(array_map(fn (array $token): array => [$token['offset'], $token['slot'], $token['read']], $tokens))->toBe([
-        [14, Grade::class, false],
-        [23, Grade::class, true],
-    ])
-        ->and(TokenSlots::queueRead([Grade::class], $type, ['Grade']))->toBe([Grade::class, Grade::class]);
+    expect($shape['tokenFqcns'])->toBe([Grade::class])
+        ->and(array_map(fn (array $token): array => [$token['offset'], $token['slot'], $token['read']], $tokens))
+        ->toBe([[23, Grade::class, true]])
+        ->and(TokenSlots::typeLeftToImports($type, $shape['tokenFqcns']))->toBe('AsEnum<typeof Grade> |  ')
+        ->and(TokenSlots::queueRead([Grade::class], $type, ['Grade']))->toBe([Grade::class]);
 });
 
 test('ownSlots() keeps the slot of each token of a name its slots hold a class of', function () {

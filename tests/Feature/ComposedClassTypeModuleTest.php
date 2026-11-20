@@ -158,6 +158,17 @@ it('aliases an extended name equal to the composed name', function () {
         TS);
 });
 
+it('renames the name a `typeof` reads too where it aliases an imported name equal to the composed name', function () {
+    $transformer = new ClassTypeTransformer(ClashChart::class);
+
+    new ReflectionMethod($transformer, 'resolveContributors')->invoke($transformer, [
+        ['type' => 'typeof ChartType', 'import' => '@js/types/ui', 'declaredBy' => ClashChart::class],
+    ]);
+
+    expect($transformer->extends)->toBe(['typeof ChartTypeBase'])
+        ->and($transformer->typeImports)->toBe(['@js/types/ui' => ['ChartType as ChartTypeBase']]);
+});
+
 it('writes an interface\'s module as it would a class\'s', function () {
     expect(LaravelTsPublish::toTsType(Greets::class))
         ->toMatchArray(['type' => 'GreetsType', 'customImports' => [ComposedClassTypes::marker(Greets::class) => ['GreetsType']]])

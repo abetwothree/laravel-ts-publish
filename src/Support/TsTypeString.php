@@ -38,9 +38,6 @@ class TsTypeString
     /** The anchor queuedTokenPattern() reads a const's token with: the name a `typeof` reads. */
     public const string TYPEOF_ANCHOR = 'typeof\s+\K';
 
-    /** The anchor queuedTokenPattern() reads a name with wherever it stands, the name a `typeof` reads too. */
-    public const string ANY_ANCHOR = '(?:'.self::TYPEOF_ANCHOR.')?';
-
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.

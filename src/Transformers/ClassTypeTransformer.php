@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTypeOverride;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -28,6 +29,9 @@ use Override;
 class ClassTypeTransformer extends CoreTransformer
 {
     use SnapshotsTransformerState;
+
+    /** An import's alias renames its name wherever it stands: as a type, and as the value a `typeof` reads. */
+    private const string ALIASED_NAME_ANCHOR = '(?:'.TsTypeStringService::TYPEOF_ANCHOR.')?';
 
     public protected(set) string $typeName;
 
@@ -112,7 +116,8 @@ class ClassTypeTransformer extends CoreTransformer
             foreach (ClassTypeOverride::importsOf($contributor) as $path => $names) {
                 foreach ($names as $name) {
                     if ($name === $this->typeName) {
-                        $type = (string) preg_replace(TsTypeString::queuedTokenPattern([$name]), $alias, $type);
+                        $pattern = TsTypeString::queuedTokenPattern([$name], self::ALIASED_NAME_ANCHOR);
+                        $type = (string) preg_replace($pattern, $alias, $type);
                         $name = "{$name} as {$alias}";
                     }
 

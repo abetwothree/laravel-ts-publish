@@ -121,9 +121,9 @@ gate](../testing/type-inference-gates.md) depends on it, because a bare `User` i
 
 The trailing `(?![A-Za-z0-9_$])` lookahead, not the longest-first order of the alternation, is what stops `User` from
 matching the start of `UserProfile`. A name right after `typeof` is a const's: with no anchor, `queuedTokenPattern()`
-skips it, so neither `aliasPropertyType()` nor a type's `ClassTokenQueue` reads it, and only
-`TsTypeString::TYPEOF_ANCHOR` does. `TokenSlots` reads class tokens under `ANY_ANCHOR`, where that name takes an unread
-slot.
+skips it, so no `aliasPropertyType()`, type `ClassTokenQueue` or `TokenSlots` class token reads it, and only
+`TsTypeString::TYPEOF_ANCHOR` does. A composed module's shadowing import is the one rename that reaches it too, since an
+import alias renames a value and a type alike.
 
 ## Consumers
 
