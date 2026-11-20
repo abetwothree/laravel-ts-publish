@@ -6,15 +6,21 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningSubject;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookChild;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookGrandchild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsetKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicSetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinForgettingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHookChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SelfHookGrandchild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeSettingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SettingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MagicSetFlags;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -58,6 +64,12 @@ function interveningCalls(): array
             '$this->pinned',
         ],
         'a by-reference argument to a $this:: static method' => ['$this::clearAfter(0, $this->pinned)', true, '$this->pinned'],
+        'a reference an array literal holds, handed by value' => ['self::clearHeld([&$this->pinned])', true, '$this->pinned'],
+        'a reference an unpacked literal\'s array holds, handed by value' => [
+            'self::clearHeld(...[[&$this->pinned]])',
+            true,
+            '$this->pinned',
+        ],
         'a local handed to a method of an object no scan names' => ['$writer->clear($flag)', true, '$flag'],
         'another local handed to a method of an object no scan names' => ['$writer->clear($other)', false, '$flag'],
         'a local unpacked from a literal into a method of an object no scan names' => ['$writer->clear(...[$flag])', false, '$flag'],
@@ -163,6 +175,10 @@ function interveningCalls(): array
             'array_map($this->keyedWriterPair(), [1])',
             true,
         ],
+        'a writer named by a pair a spread literal holds, which a helper returns' => [
+            'array_map($this->spreadWriterPair(), [1])',
+            true,
+        ],
         'a closure returning the model, handed to array_map()' => [
             'array_map(function () { return $this->resource; }, [1])',
             true,
@@ -255,6 +271,12 @@ function interveningCalls(): array
             false,
             '$this->pinned',
         ],
+        'a copy an array literal holds, handed by value' => ['self::clearHeld([$this->pinned])', false, '$this->pinned'],
+        'a copy an unpacked literal\'s array holds, handed by value' => [
+            'self::clearHeld(...[[$this->pinned]])',
+            false,
+            '$this->pinned',
+        ],
         'helpers that call each other and read' => ['$this->ping(3)', false],
         'a chain three helpers deep that reads' => ['$this->depthTwo()', false],
         'a reader\'s callable when() calls' => ['$this->when(true, $this->reader(...))', false],
@@ -293,6 +315,10 @@ function interveningCalls(): array
         'a reader named by \'self::\'' => ["array_map('self::reader', ['a'])", false],
         'a reader named by [$this, …]' => ["array_map([\$this, 'reader'], ['a'])", false],
         'a reader named by a pair keyed out of order' => ["array_map([1 => 'reader', 0 => \$this], ['a'])", false],
+        'a reader named by a pair a spread literal holds, which a helper returns' => [
+            "array_map(\$this->spreadReaderPair(), ['a'])",
+            false,
+        ],
         'a closure whose nested closure returns $this, which nothing calls' => [
             'array_map(function () { $f = function () { return $this; }; return 1; }, [1])',
             false,
@@ -373,6 +399,11 @@ it('reads a model reader as Eloquent\'s only where the model runs Eloquent\'s ow
     'Eloquent\'s getKey(), in a pair' => ["array_map([\$this->resource, 'getKey'], [1])", Post::class, false],
     'Eloquent\'s getKey(), past a getKeyName() that clears the pin' => ['$this->getKey()', KeyNameWritingPost::class, true],
     'Eloquent\'s getKey(), past a getKeyName() returning a literal' => ['$this->getKey()', CustomKeyPost::class, false],
+    'Eloquent\'s getKey(), past a getKeyName() returning a property the model unsets' => [
+        '$this->getKey()',
+        UnsetKeyPost::class,
+        true,
+    ],
 ]);
 
 it('reads a framework helper as the class runs it, past a helper it overrides', function (
@@ -459,6 +490,37 @@ it('reads a discriminant held by a local, which only the window can write', func
     'a write through the local' => ['$post->is_pinned = false', true],
 ]);
 
+// extract() and a variable variable may rebind any local by a name the source does not spell, but never `$this`.
+it('reads extract() and a variable variable as a write of any local', function (string $call, string $read, bool $mayWrite) {
+    expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
+})->with([
+    'extract() with a leading backslash' => ['\\extract($o)', '$flag', true],
+    'extract() through the namespace fallback' => ['extract($o)', '$flag', true],
+    'extract() of a literal' => ["extract(['flag' => false])", '$flag', true],
+    'extract() with a prefix mode' => ["extract(\$o, EXTR_PREFIX_ALL, 'p')", '$flag', true],
+    'extract() with flags it cannot read' => ['extract($o, $mode)', '$flag', true],
+    'extract() with flags named first' => ['extract(flags: EXTR_OVERWRITE, array: $o)', '$flag', true],
+    'extract() with EXTR_SKIP' => ['extract($o, EXTR_SKIP)', '$flag', false],
+    'extract() with EXTR_SKIP named, fully qualified' => ['extract(flags: \\EXTR_SKIP, array: $o)', '$flag', false],
+    'extract() before a property of a local' => ['extract($o)', '$post->is_pinned', true],
+    'extract() before a $this read' => ['extract($o)', '$this->is_pinned', false],
+    'a function named extract in another namespace' => ['Helpers\\extract($o)', '$flag', false],
+    'a variable variable' => ['$$n = false', '$flag', true],
+    'a braced variable variable' => ['${$n} = false', '$flag', true],
+    'a variable variable in a destructuring' => ['[$$n] = [false]', '$flag', true],
+    'a member of a variable variable' => ['$$n->is_pinned = false', '$post->is_pinned', true],
+    'a variable variable bound by reference' => ['$this->clearFlag($$n)', '$flag', true],
+    'a variable variable before a $this read' => ['$$n = false', '$this->is_pinned', false],
+    'a quoted variable name' => ["\${'flag'} = false", '$flag', true],
+    'another quoted variable name' => ["\${'other'} = false", '$flag', false],
+    'a reference to a variable variable' => ['$x = &$$n', '$flag', true],
+    'a reference to a variable variable\'s member' => ['$x = &$$n->is_pinned', '$post->is_pinned', true],
+    'a reference to another local' => ['$x = &$other', '$flag', false],
+    'a reference to a variable variable before a $this read' => ['$x = &$$n', '$this->is_pinned', false],
+    'compact()' => ["compact('flag')", '$flag', false],
+    'parse_str() into another local' => ['parse_str($s, $out)', '$flag', false],
+]);
+
 it('reads a get hook\'s self:: as the class that declares the hook', function (string $subject, bool $mayWrite) {
     expect(windowReach(['$this->tick', '$this->is_pinned ? 1 : null'], subject: $subject))->toBe($mayWrite);
 })->with([
@@ -478,6 +540,10 @@ it('reads the last item for its writes and the arguments it binds by reference, 
     'a by-reference argument in its arm' => ['$this->pinned ? $this->clearFlag($this->pinned) : null', true],
     'the read handed to a method of an object no scan names, in its arm' => ['$this->pinned ? $service->reset($this->pinned) : null', true],
     'the read handed to a method $this lacks, which takes it by value' => ['$this->pinned ? $this->missing($this->pinned) : null', false],
+    'a reference an array literal holds, handed to a method $this lacks' => [
+        '$this->pinned ? $this->missing([&$this->pinned]) : null',
+        true,
+    ],
     'another read handed to a method of an object no scan names' => ['$this->pinned ? $service->reset($this->title) : null', false],
 ]);
 
@@ -616,11 +682,74 @@ it('reads a write to a model attribute as a call where a set mutator runs', func
     'an Attribute with a setter' => ["\$this->resource->pin_note = 'a'", true],
     'an Attribute a builder the source names no setter in returns' => ["\$this->resource->badge = 'a'", true],
     'a mutator, through ??=' => ["\$this->resource->pin_note ??= 'a'", true],
+    'an Attribute with a getter only, built past a write' => ["\$this->resource->pin_label = 'a'", true],
     'an Attribute with a getter only, cached' => ["\$this->resource->label = 'a'", false],
+    'an Attribute whose getter a call builds' => ["\$this->resource->pin_title = 'a'", true],
+    'an Attribute with a method called on it handed a call' => ["\$this->resource->pin_code = 'a'", true],
+    'an Attribute with a method called on it by a name a call computes' => ["\$this->resource->pin_mode = 'a'", true],
+    'an Attribute subclass\'s builder, which runs the getter' => ["\$this->resource->pin_eager = 'a'", true],
+    'an Attribute subclass built with new, which runs the getter' => ["\$this->resource->pin_built = 'a'", true],
+    'an Attribute whose getter is a first-class callable of a call\'s result' => ["\$this->resource->pin_tone = 'a'", true],
+    'an Attribute whose getter is a static arrow function' => ["\$this->resource->pin_shade = 'a'", false],
+    'an Attribute whose getter is a first-class callable of its own method' => ["\$this->resource->pin_hue = 'a'", false],
     'an Attribute whose setter is null' => ["\$this->resource->summary = 'a'", false],
     'an Attribute whose getter is a closure with its own return' => ["\$this->resource->caption = 'a'", false],
     'an attribute with no mutator' => ["\$this->resource->title = 'a'", false],
     'a write the resource keeps, which runs no mutator' => ['$this->pin_reset = true', false],
+    'a protected property with a setXAttribute() mutator' => ["\$this->resource->pin_guard = 'a'", true],
+    'a protected property with an Attribute setter' => ["\$this->resource->pin_lock = 'a'", true],
+    'a private property with a mutator' => ["\$this->resource->pin_secret = 'a'", true],
+    'a protected(set) property, which a write from anywhere else throws on' => ["\$this->resource->pin_slot = 'a'", true],
+    'a private(set) property, which a write from anywhere else throws on' => ["\$this->resource->pin_seal = 'a'", true],
+    'a public property the model unsets, with a mutator' => ["\$this->resource->pin_memo = 'a'", true],
+    'Model\'s own protected property, with a mutator' => ["\$this->resource->visible = 'a'", true],
+    'a public property with a mutator, which the write sets in place' => ["\$this->resource->pin_open = 'a'", false],
+]);
+
+// PHP hands a write it cannot make in place to the object's `__set()`, which runs no mutator unless it is Eloquent's.
+it('reads a write PHP hands to an object\'s own __set() as a call', function (
+    string $write,
+    string $subject,
+    string $model,
+    bool $mayWrite,
+) {
+    expect(windowReach([$write, '$this->is_pinned ? 1 : null'], subject: $subject, model: $model))->toBe($mayWrite);
+})->with([
+    'a model\'s own __set(), for a property it hides' => [
+        "\$this->resource->hidden_note = 'a'", InterveningResource::class, SettingPost::class, true,
+    ],
+    'a model\'s own __set(), for an attribute it declares no property for' => [
+        "\$this->resource->other = 'a'", InterveningResource::class, SettingPost::class, true,
+    ],
+    'a model\'s own __set(), past a public property the write sets in place' => [
+        "\$this->resource->open_note = 'a'", InterveningResource::class, SettingPost::class, false,
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for a property it hides' => [
+        "\$this->resource->hidden_note = 'a'", InterveningResource::class, AttributeSettingPost::class, true,
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for an attribute it declares no property for' => [
+        "\$this->resource->other = 'a'", InterveningResource::class, AttributeSettingPost::class, true,
+    ],
+    'a model\'s own setAttribute(), past a public property the write sets in place' => [
+        "\$this->resource->open_note = 'a'", InterveningResource::class, AttributeSettingPost::class, false,
+    ],
+    'a held object\'s __set(), for a property it hides' => [
+        "\$this->resource->title = 'a'", InterveningResource::class, MagicSetFlags::class, true,
+    ],
+    'a held object\'s __set(), for a property it lacks' => [
+        "\$this->resource->other = 'a'", InterveningResource::class, MagicSetFlags::class, true,
+    ],
+    'a held object\'s __set(), past a public property the write sets in place' => [
+        "\$this->resource->label = 'a'", InterveningResource::class, MagicSetFlags::class, false,
+    ],
+    'the resource\'s own __set()' => ["\$this->summary = 'a'", MagicSetResource::class, Post::class, true],
+    'a resource with no __set(), which keeps the write' => ["\$this->summary = 'a'", InterveningResource::class, Post::class, false],
+    'a public property the resource unsets, with a mutator' => [
+        "\$this->resource->pin_open = 'a'", PinForgettingResource::class, MutatingPost::class, true,
+    ],
+    'Eloquent\'s own __set(), for an attribute with no mutator' => [
+        "\$this->resource->title = 'a'", PinForgettingResource::class, MutatingPost::class, false,
+    ],
 ]);
 
 it('reads a set mutator in the last item\'s arm as a call that runs after its guard', function () {

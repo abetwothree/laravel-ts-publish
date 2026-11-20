@@ -7,12 +7,18 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InheritedHookedProperties;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookChild;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookParent;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\ReferenceGetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PropertyKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicSetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinForgettingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PrivateHookChild;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PrivateHookParent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReferenceGetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeSettingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SettingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MagicSetFlags;
 use Workbench\App\Models\Post;
 
 /**
@@ -152,8 +158,89 @@ it('lists the set mutator a write of a model attribute runs, whose body runs on 
     'an Attribute with a setter unpacked by name' => ['$this->resource->pin_mark', [[null, 'pin_mark']]],
     'an Attribute built from an array a helper returns' => ['$this->resource->pin_tag', [[null, 'pin_tag']]],
     'an Attribute with a getter only' => ['$this->resource->label', []],
+    'an Attribute with a getter only, built past a write' => ['$this->resource->pin_label', [[null, 'pin_label']]],
+    'an Attribute whose getter a call builds' => ['$this->resource->pin_title', [[null, 'pin_title']]],
+    'an Attribute with a method called on it by a name a call computes' => ['$this->resource->pin_mode', [[null, 'pin_mode']]],
+    'an Attribute subclass\'s builder, which runs the getter' => ['$this->resource->pin_eager', [[null, 'pin_eager']]],
+    'an Attribute whose getter is a static arrow function' => ['$this->resource->pin_shade', []],
     'an attribute with no mutator' => ['$this->resource->title', []],
     'an attribute written on the resource, which keeps it' => ['$this->pin_note', []],
+    'a protected property' => ['$this->resource->pin_guard', [[null, 'pin_guard']]],
+    'a protected property with an Attribute setter' => ['$this->resource->pin_lock', [[null, 'pin_lock']]],
+    'a private property' => ['$this->resource->pin_secret', [[null, 'pin_secret']]],
+    'a protected(set) property, which a write from anywhere else throws on' => ['$this->resource->pin_slot', [[null, 'pin_slot']]],
+    'a private(set) property, which a write from anywhere else throws on' => ['$this->resource->pin_seal', [[null, 'pin_seal']]],
+    'a public property the model unsets' => ['$this->resource->pin_memo', [[null, 'pin_memo']]],
+    'Model\'s own protected property' => ['$this->resource->visible', [[null, 'visible']]],
+    'a public property, which the write sets in place' => ['$this->resource->pin_open', []],
+]);
+
+// A write PHP cannot make in place runs the object's `__set()`: Eloquent's runs a set mutator, any other may write.
+it('lists the __set() a write runs where it cannot set the property in place', function (
+    string $path,
+    array $held,
+    string $runtime,
+    array $runs,
+) {
+    expect(hooksRun($path, true, $held, $runtime))->toBe($runs);
+})->with([
+    'a model\'s own __set(), for a property it hides' => [
+        '$this->resource->hidden_note', [SettingPost::class], InterveningResource::class, [[null, 'hidden_note']],
+    ],
+    'a model\'s own __set(), for an attribute it declares no property for' => [
+        '$this->resource->other', [SettingPost::class], InterveningResource::class, [[null, 'other']],
+    ],
+    'a model\'s own __set(), past a public property' => [
+        '$this->resource->open_note', [SettingPost::class], InterveningResource::class, [],
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for a property it hides' => [
+        '$this->resource->hidden_note', [AttributeSettingPost::class], InterveningResource::class, [[null, 'hidden_note']],
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for an attribute it declares no property for' => [
+        '$this->resource->other', [AttributeSettingPost::class], InterveningResource::class, [[null, 'other']],
+    ],
+    'a model\'s own setAttribute(), past a public property' => [
+        '$this->resource->open_note', [AttributeSettingPost::class], InterveningResource::class, [],
+    ],
+    'a held object\'s __set(), for a property it hides' => [
+        '$this->resource->title', [MagicSetFlags::class], InterveningResource::class, [[null, 'title']],
+    ],
+    'a held object\'s __set(), for a property it lacks' => [
+        '$this->resource->other', [MagicSetFlags::class], InterveningResource::class, [[null, 'other']],
+    ],
+    'a held object\'s __set(), past a public property' => [
+        '$this->resource->label', [MagicSetFlags::class], InterveningResource::class, [],
+    ],
+    'the resource\'s own __set()' => ['$this->summary', [Post::class], MagicSetResource::class, [[null, 'summary']]],
+    'a public property the resource unsets, with a mutator' => [
+        '$this->resource->pin_open', [MutatingPost::class], PinForgettingResource::class, [[null, 'pin_open']],
+    ],
+    'Eloquent\'s own __set(), for a protected property with no mutator' => [
+        '$this->resource->keyField', [PropertyKeyPost::class], InterveningResource::class, [],
+    ],
+    'Eloquent\'s own __set(), for an attribute with no mutator' => [
+        '$this->resource->title', [Post::class], InterveningResource::class, [],
+    ],
+]);
+
+// PHP runs `__set()` only for a property the writing scope cannot set in place, or one the model's own code unsets.
+it('sets a property in place from a scope that may write it', function (string $path, array $runs) {
+    $model = new ReflectionClass(MutatingPost::class);
+    $written = ReadPath::of(runtimeClassCall($path));
+    assert($written instanceof ReadPath);
+
+    expect(array_map(
+        static fn (array $run): array => [$run[0]?->getName(), $run[1]],
+        new PropertyHooks($model, false, [])->setHooks($written, $model),
+    ))->toBe($runs);
+})->with([
+    'a protected property' => ['$this->pin_guard', []],
+    'a private property' => ['$this->pin_secret', []],
+    'a protected(set) property' => ['$this->pin_slot', []],
+    'a private(set) property' => ['$this->pin_seal', []],
+    'Model\'s own protected property' => ['$this->visible', []],
+    'a public property the model unsets' => ['$this->pin_memo', [[null, 'pin_memo']]],
+    'an attribute the model declares no property for' => ['$this->pin_reset', [[null, 'pin_reset']]],
 ]);
 
 it('reads a private hooked property a parent declares only in the parent\'s body', function (string $declaring, array $runs) {

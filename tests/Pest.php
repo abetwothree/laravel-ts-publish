@@ -15,13 +15,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
 use Inertia\Response as InertiaResponse;
 use PhpParser\Node\Expr;
@@ -278,9 +279,18 @@ function gappedValue(string $php, string $resource, ?string $model = null): arra
  */
 function publishPackageView(string $view, string $source): string
 {
-    $directory = sys_get_temp_dir().'/ts-publish-views-'.uniqid();
-    mkdir($directory);
-    copy($source, $directory.'/'.$view.'.blade.php');
+    $directory = sys_get_temp_dir().'/ts-publish-views-'.bin2hex(random_bytes(8));
+    throw_unless(mkdir($directory), RuntimeException::class, "Cannot create {$directory}.");
+
+    // The test app turns copy()'s warning into an ErrorException, so a false return is not the only failure.
+    try {
+        copy($source, $directory.'/'.$view.'.blade.php') || throw new RuntimeException('copy() returned false.');
+    } catch (Throwable $e) {
+        File::deleteDirectory($directory);
+
+        throw new RuntimeException("Cannot copy {$source} into {$directory}.", previous: $e);
+    }
+
     View::prependNamespace('laravel-ts-publish', $directory);
     View::getFinder()->flush();
 
@@ -310,7 +320,7 @@ function windowReach(
         array_keys([$read, ...$items]),
         [$read, ...$items],
     ));
-    $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects; '
+    $source = '<?php namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources; '
         .'use Closure; use Illuminate\Support\Facades\Gate; use Workbench\App\Http\Resources\UserResource; '
         .'use Workbench\App\Enums\Status; use Workbench\App\Models\Post; use Workbench\App\Models\User; '
         ."use Workbench\App\Support\PinWriter; return [{$values}];";

@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsDomGlobalR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsIntersectTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsLibGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsNestedArmBesideCastNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsPackageNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsTwoPathsBuiltOnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExtendsTypesBesideCastNameResource;
@@ -37,7 +38,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectedTwiceR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectLibGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectOptionalMethodResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectOwnNameInObjectResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectOwnNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTwoPathsBuiltOnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTypeofValueGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectValueGlobalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PickBaseExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostIntersectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsIntersectResource;
@@ -347,7 +353,47 @@ it('imports no global type TypeScript declares that a clause spells', function (
     ], '} & ({ at: Meta | Date | null });'],
     'the DOM\'s, inside generics' => [ExtendsDomGlobalResource::class, [], 'extends Partial<Response>, Pick<Event, "type">'],
     'the DOM\'s, in an object and a generic' => [IntersectDomGlobalsResource::class, [], '} & ({ n: Node; d: Document; q: Request; e: HTMLElement })'],
+    'a DOM value\'s typeof, beside a DOM type' => [IntersectTypeofValueGlobalResource::class, [], '} & ({ ctor: typeof Image; el: HTMLElement })'],
 ]);
+
+// The file declares the resource's own name, so a clause importing that name aliases it, as another import's would be.
+it('aliases a name a clause imports that the resource declares', function (string $resource, array $imports, string $declaration) {
+    $content = intersectedResourceFile($resource);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe($imports)
+        ->and($content)->toContain($declaration);
+})->with([
+    'an intersection that is the name' => [IntersectOwnNameResource::class, [
+        "import type { IntersectOwnNameResource as OwnIntersectOwnNameResource } from '@/contracts/own';",
+    ], '} & (OwnIntersectOwnNameResource);'],
+    'an intersection that builds on the name' => [IntersectOwnNameInObjectResource::class, [
+        "import type { IntersectOwnNameInObjectResource as OwnIntersectOwnNameInObjectResource } from '@/contracts/own';",
+    ], '} & ({ contract: OwnIntersectOwnNameInObjectResource });'],
+    'an extends clause that is the name' => [ExtendsOwnNameResource::class, [
+        "import type { ExtendsOwnNameResource as OwnExtendsOwnNameResource } from '@/contracts/own';",
+    ], 'export interface ExtendsOwnNameResource extends OwnExtendsOwnNameResource'],
+    'a name the file does not declare, which stays as written' => [IntersectLibGlobalResource::class, [
+        "import type { Meta } from '@/types/meta';",
+    ], '} & ({ meta: Meta; at: Date });'],
+]);
+
+// A name before `?(` or `?<T>(` in an object is an optional method's own, like one before `(`, never a type.
+it('imports no optional method\'s name a clause declares', function () {
+    $content = intersectedResourceFile(IntersectOptionalMethodResource::class);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import type { Meta } from '@/types/meta';",
+    ])->and($content)->toContain('} & ({ load?(): Meta; each?<T>(value: T): Meta });');
+});
+
+// DOM's `Image` is a value with no type, so `{ image: Image }` names the clause's own type and imports it.
+it('imports a name a clause spells as a type that the libs declare only as a value', function () {
+    $content = intersectedResourceFile(IntersectValueGlobalsResource::class);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import type { Audio, Image, Option } from '@/types/media';",
+    ])->and($content)->toContain('} & ({ image: Image; audio: Audio; option: Option });');
+});
 
 // Two enums the file reads print one type name, both aliased, so the name binds neither and the clause imports it.
 it('imports a name a clause builds on that two enums the file reads both print', function (string $resource, string $declaration) {

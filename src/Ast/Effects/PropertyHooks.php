@@ -6,16 +6,23 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkFamily;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\UnsetProperties;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -77,6 +84,33 @@ final readonly class PropertyHooks
     }
 
     /**
+     * Whether code in a scope reaches a property an object of the class declares in place, past the magic methods: an
+     * instance property the scope may read, or set where it writes, which no method of the class unsets; code outside
+     * the class may unset it too, which a caller weighs.
+     *
+     * @param  ReflectionClass<covariant object>  $class
+     * @param  ReflectionClass<covariant object>  $scope  the class `self` names where the property is used
+     */
+    public static function inPlace(ReflectionClass $class, string $property, ReflectionClass $scope, bool $writes): bool
+    {
+        if (! $class->hasProperty($property)) {
+            return false;
+        }
+
+        $declared = $class->getProperty($property);
+        $owner = $declared->getDeclaringClass();
+        $same = $scope->getName() === $owner->getName();
+        $reachable = match (true) {
+            $declared->isPrivate() || ($writes && $declared->isPrivateSet()) => $same,
+            $declared->isProtected() || ($writes && $declared->isProtectedSet()) => $same || $scope->isSubclassOf($owner)
+                || $owner->isSubclassOf($scope),
+            default => true,
+        };
+
+        return $reachable && ! $declared->isStatic() && ! UnsetProperties::unsets($class, $property);
+    }
+
+    /**
      * What the hooks read here hang on besides the path, for a memo key.
      */
     public function key(): string
@@ -126,8 +160,9 @@ final readonly class PropertyHooks
     }
 
     /**
-     * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the set mutator a model
-     * runs for an attribute its `__set()` sets, which runs with the model as `$this`.
+     * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the `__set()` a write it
+     * cannot make in place runs, as one the runtime class's own code unsets: Eloquent's only where it runs a set
+     * mutator, or looks one up through, any other always, each listed with no class, as code the scan does not read.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is written
      * @return list<HookRun>
@@ -145,8 +180,10 @@ final readonly class PropertyHooks
 
             if (self::runsSetHook($class, $property)) {
                 $runs[] = [$onThis ? $class : null, $property];
-            } elseif ($class->isSubclassOf(Model::class) && ! $class->hasProperty($property)
-                && self::runsSetMutator($class, $property)
+            } elseif ($class->hasMethod('__set')
+                && (! self::inPlace($class, $property, $declaring, true)
+                    || UnsetProperties::unsets($this->runtime, $property))
+                && self::magicSetMayRun($class, $property)
             ) {
                 $runs[] = [null, $property];
             }
@@ -202,8 +239,36 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether a model sets an attribute through a mutator, as Eloquent's setAttribute() looks one up: a
-     * `setXAttribute()` method, or a method named for it returning an `Attribute` whose setter the source may hold.
+     * Each step of a `$this` path in order, as its property, the classes it reads that on and whether that is `$this`;
+     * no class past a step whose class the engine cannot name, and no step for any other root.
+     *
+     * @param  ReflectionClass<object>  $declaring
+     * @param  bool  $reads  whether the last step is read, as a first step `$this` lacks is through the resource's
+     *                       `__get()`, which no `__set()` matches for a write
+     * @return list<PathStep>
+     */
+    public function steps(ReadPath $path, ReflectionClass $declaring, bool $reads): array
+    {
+        return $this->walk($path, $declaring, $reads)[0];
+    }
+
+    /**
+     * Whether the `__set()` a class runs for a write of a property runs the app's code: Eloquent's own, past the
+     * `setAttribute()` it calls, through a set mutator, any other always.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private static function magicSetMayRun(ReflectionClass $class, string $property): bool
+    {
+        return ! ($class->isSubclassOf(Model::class)
+            && $class->getMethod('__set')->getDeclaringClass()->getName() === Model::class
+            && FrameworkFamily::Eloquent->declares($class->getMethod('setAttribute')))
+            || self::runsSetMutator($class, $property);
+    }
+
+    /**
+     * Whether a write of an attribute runs the model's code, as Eloquent's setAttribute() looks for a mutator: a
+     * `setXAttribute()` method, or the method named for it returning an `Attribute`, which it runs to read the setter.
      *
      * @param  ReflectionClass<Model>  $model
      */
@@ -218,41 +283,44 @@ final readonly class PropertyHooks
         $type = $model->hasMethod($method) ? $model->getMethod($method)->getReturnType() : null;
 
         return $type instanceof ReflectionNamedType && $type->getName() === Attribute::class
-            && self::returnsSetter($model, $method);
+            && self::attributeMayWrite($model, $method);
     }
 
     /**
-     * Whether a method returning an `Attribute` may give it a setter: some value it returns is not Attribute::make(),
-     * get(), set() or `new Attribute`, left as written or with a method such as shouldCache() called on it, built with
-     * no setter or a `null` one; and so where its body cannot be read.
+     * Whether running a method returning an `Attribute` may write the model or give it a setter: a body that does more
+     * than return one value, or cannot be read, may; one that returns a value may as building it may (buildsSetter()).
      *
      * @param  ReflectionClass<Model>  $model
      */
-    private static function returnsSetter(ReflectionClass $model, string $method): bool
+    private static function attributeMayWrite(ReflectionClass $model, string $method): bool
     {
         $body = resolve(MethodLocator::class)->locate($model->getName(), $method)?->method->stmts;
+        $returned = $body === null ? null : StatementBlocks::soleReturn($body);
 
-        return $body === null || array_any(ClosureReach::returnedValues($body), self::buildsSetter(...));
+        return $returned === null || self::buildsSetter($returned);
     }
 
     /**
-     * Whether a returned value may be an `Attribute` with a setter: anything but one Attribute's builders make with
-     * no setter or a `null` one; an unpack it cannot read may hold a setter.
+     * Whether building a returned value may run code or give it a setter: anything but one the builders of Eloquent's
+     * own Attribute make with no setter or a `null` one, from arguments that run nothing, with each method called on it
+     * named and handed nothing; an unpack it cannot read may hold a setter.
      */
     private static function buildsSetter(Expr $built): bool
     {
         while ($built instanceof MethodCall) {
+            if (! $built->name instanceof Identifier || $built->getRawArgs() !== []) {
+                return true;
+            }
+
             $built = $built->var;
         }
 
         if ($built instanceof StaticCall && $built->class instanceof Name && $built->name instanceof Identifier
-            && is_a($built->class->toString(), Attribute::class, true)
+            && self::namesAttribute($built->class)
             && in_array($built->name->toLowerString(), ['make', 'get', 'set'], true)
         ) {
             $arguments = CallArguments::for($built, new ReflectionMethod(Attribute::class, $built->name->toString()));
-        } elseif ($built instanceof New_ && $built->class instanceof Name
-            && is_a($built->class->toString(), Attribute::class, true)
-        ) {
+        } elseif ($built instanceof New_ && $built->class instanceof Name && self::namesAttribute($built->class)) {
             $arguments = CallArguments::for($built, new ReflectionMethod(Attribute::class, '__construct'));
         } else {
             return true;
@@ -261,7 +329,36 @@ final readonly class PropertyHooks
         $setter = $arguments->named('set')?->value;
 
         return $arguments->hasUnpack()
-            || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'));
+            || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'))
+            || ! array_all($arguments->bound(), static fn (Arg $argument): bool => self::runsNothing($argument->value));
+    }
+
+    /**
+     * Whether a name is Eloquent's own `Attribute`, whose builders only store what they are handed; a subclass may
+     * override one, or the constructor they all run, to call it.
+     */
+    private static function namesAttribute(Name $class): bool
+    {
+        return strcasecmp(ltrim($class->toString(), '\\'), Attribute::class) === 0;
+    }
+
+    /**
+     * Whether passing a value runs no code: a closure or an arrow function written there, a constant, or a first-class
+     * callable of a function, of a method of `$this` or of a named class, whose receiver PHP reads with no code run.
+     */
+    private static function runsNothing(Expr $value): bool
+    {
+        if (ClosureReach::isClosure($value) || $value instanceof ConstFetch) {
+            return true;
+        }
+
+        return $value instanceof CallLike && $value->isFirstClassCallable() && match (true) {
+            $value instanceof FuncCall => $value->name instanceof Name,
+            $value instanceof MethodCall, $value instanceof NullsafeMethodCall => ReadPath::isThis($value->var)
+                && $value->name instanceof Identifier,
+            $value instanceof StaticCall => $value->class instanceof Name && $value->name instanceof Identifier,
+            default => false,
+        };
     }
 
     /**
@@ -305,20 +402,6 @@ final readonly class PropertyHooks
         }
 
         return $held;
-    }
-
-    /**
-     * Each step of a `$this` path in order, as its property, the classes it reads that on and whether that is `$this`;
-     * no class past a step whose class the engine cannot name, and no step for any other root.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @param  bool  $reads  whether the last step is read, as a first step `$this` lacks is through the resource's
-     *                       `__get()`, which no `__set()` matches for a write
-     * @return list<PathStep>
-     */
-    private function steps(ReadPath $path, ReflectionClass $declaring, bool $reads): array
-    {
-        return $this->walk($path, $declaring, $reads)[0];
     }
 
     /**

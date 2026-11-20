@@ -5,6 +5,8 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\LiteralGetter;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookingLiteralGetters;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\LiteralGetters;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsettingLiteralGetters;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsettingLiteralGettersChild;
 
 it('tells a method that only returns a literal, a constant or a property', function (string $method, bool $literal) {
     $runtime = new ReflectionClass(LiteralGetters::class);
@@ -49,4 +51,7 @@ it('reads a property on the class the method runs on, but a private one its own 
     'a property only a subclass declares, run on it' => ['belowProperty', HookingLiteralGetters::class, true],
     'a property only a subclass declares, run on the class' => ['belowProperty', LiteralGetters::class, false],
     'a property a subclass keeps private, read through __get()' => ['undeclared', HookingLiteralGetters::class, false],
+    'a property a subclass unsets, read through __get()' => ['property', UnsettingLiteralGetters::class, false],
+    'a property a parent\'s hidden constructor unsets' => ['property', UnsettingLiteralGettersChild::class, false],
+    'a property beside one a subclass unsets' => ['ownProperty', UnsettingLiteralGetters::class, true],
 ]);

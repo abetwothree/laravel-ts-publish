@@ -56,9 +56,11 @@ properties, including one inside `declare global`.
 An inline `{ … }` object also gives each member a key beside the parent's: `prop.member` for one object, and
 `prop[i].member` for each arm of a union of objects. Member keys stop an already-`unknown` sibling from masking a
 member's regression, and the parent key catches a whole object that collapses to `unknown`. `detect_regressions()`
-skips the parent when all its head members existed at the base, so a regression reports once. A member new at the
-head has no base key, so an object that gains an `unknown` member fails on its parent. Treat that as a real question,
-not noise. A `Pick<Model, K>` value has no `{` to split and stays one key, and the model's own file checks its members.
+skips the parent when all its head members existed at the base, so a regression reports once, unless the parent holds
+an `unknown` no member key holds: an arm such as `unknown[]` or `Record<string, unknown>`, or an index signature. A
+member new at the head has no base key, so an object that gains an `unknown` member fails on its parent. Treat that as
+a real question, not noise. A `Pick<Model, K>` value has no `{` to split and stays one key, and the model's own file
+checks its members.
 
 A resource split into arms, `export type X = { … } & ( | { … } | { … } );` or bare `| { … }` arms after
 `export type X =`, keys its shared rows under `X` as an interface does. A key several arms send is keyed once, its

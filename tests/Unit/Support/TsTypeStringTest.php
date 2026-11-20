@@ -614,6 +614,8 @@ describe('referencedTypeNames', function () {
         'an index signature' => ['{ [key: string]: Foo }', ['Foo']],
         'methods' => ['{ load(id: Key): Result; save(): Out }', ['Key', 'Result', 'Out']],
         'a method on a line of its own' => ["{\n    a: Foo\n    load(): Bar\n}", ['Foo', 'Bar']],
+        'an optional method' => ['{ load?(id: Key): Meta }', ['Key', 'Meta']],
+        'an optional generic method' => ['{ load?<T>(value: T): Meta }', ['Meta']],
         'an accessor' => ['{ get size(): Count; set size(value: Count) }', ['Count']],
         'the open marker' => ['{ a: Foo; #$open: unknown }', ['Foo']],
     ]);
@@ -627,6 +629,8 @@ describe('referencedTypeNames', function () {
         'after a union' => ['T extends U ? Yes | Also : No', ['T', 'U', 'Yes', 'Also', 'No']],
         'after an operator' => ['T extends U ? keyof Yes : No', ['T', 'U', 'Yes', 'No']],
         'after an arrow' => ['T extends U ? () => Yes : No', ['T', 'U', 'Yes', 'No']],
+        'a function type in an object' => ['{ a: T extends U ? (x: Yes) => Yes : No }', ['T', 'U', 'Yes', 'No']],
+        'a generic function type in an object' => ['{ a: T extends U ? <V>(x: V) => Yes : No }', ['T', 'U', 'Yes', 'No']],
     ]);
 
     test('reads no name a binder, a predicate or a member access spells', function (string $type, array $names) {
@@ -671,6 +675,20 @@ describe('referencedTypeNames', function () {
         'the DOM\'s globals' => ['Partial<Response> | Pick<Event, "type"> | { n: Node; d: Document; q: Request; e: HTMLElement }', []],
         'the DOM\'s globals inside a generic' => ['Partial<Record<string, Element | Headers | AbortSignal | KeyboardEvent>>', []],
         'a global value' => ['ReturnType<typeof fetch> | { m: Meta }', ['Meta']],
+        'a global value the DOM declares with no type' => ['{ ctor: typeof Image; at: typeof NaN }', []],
+        'a global namespace, as a qualifier' => ['Intl.DateTimeFormat | WebAssembly.Module', []],
+        'a global namespace\'s typeof, and globalThis\'s' => ['typeof Intl | typeof Temporal.Now | typeof globalThis', []],
+    ]);
+
+    // DOM's `Image`, `Audio` and `Option` are values with no type, so a type position spelling one reads the clause's.
+    test('reads a global the libs declare only as a value, where a type stands', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'members' => ['{ image: Image; audio: Audio; option: Option }', ['Image', 'Audio', 'Option']],
+        'a generic\'s argument' => ['Partial<Proxy> | Array<Image>', ['Proxy', 'Image']],
+        'beside its typeof' => ['{ img: Image; ctor: typeof Image }', ['Image']],
+        // A namespace is no type, so standing alone it names the clause's own.
+        'a namespace standing alone' => ['{ t: Temporal; i: Intl[] }', ['Temporal', 'Intl']],
     ]);
 
     test('reads each name once, in the order a type first spells it', function () {
@@ -714,6 +732,7 @@ describe('aliasReferences', function () {
         'a string literal' => ['Pick<Meta, "Meta">', 'Pick<AMeta, "Meta">'],
         'a member\'s key' => ['{ Meta: Meta; m?: Meta[] }', '{ Meta: AMeta; m?: AMeta[] }'],
         'a method\'s name' => ['{ Meta(x: Meta): void }', '{ Meta(x: AMeta): void }'],
+        'an optional method\'s name' => ['{ Meta?(x: Meta): void; Meta?<T>(): Meta }', '{ Meta?(x: AMeta): void; Meta?<T>(): AMeta }'],
         'a qualified name' => ['Geo.Meta | Meta.Sub', 'Geo.Meta | AMeta.Sub'],
         'a template literal' => ['`Meta-${Meta}`', '`Meta-${AMeta}`'],
         'a longer name' => ['MetaData | Meta', 'MetaData | AMeta'],

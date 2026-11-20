@@ -39,7 +39,8 @@ nested, after `LiteralWrites::applyTo()` wrote the fold. The reader applies thes
    public property unless the property is `final` or `readonly` or its class is `final`, and an object an interface
    types may run a hook on any property read through it. A property that is not public reads through `__get()`.
 2. **Guards.** [`ConditionTruth`] decides a guard with PHP's own operators on the value the read sends. A guard that
-   reads anything but that read and constants stays undecided.
+   reads anything but that read and constants stays undecided, and so does `isset()` or `empty()` of a property a step
+   reaches through magic methods other than JsonResource's and Eloquent's own, which may check apart from the read.
 3. **Arms.** A ternary with a middle operand, a `match`, and `$this->when()` or `unless()`, with or without a
    default, hand over arms. A selected arm whose body splits again is selected again, up to
    `VariantReader::LEVELS` deep, and a level that cannot decide keeps the arm above it. An arm that throws, a
@@ -100,12 +101,16 @@ since a union of them reads one object's queued enum for the next one's token.
 keys and its droppers. A dropper is a key whose guard the discriminant decides and whose arm throws for some value,
 whether or not it is a dependent, so it decides which values the group sends. Every item may change the read through a
 write to it or to a path it is a member of, whatever operator spells each step, or through an argument a by-reference
-parameter binds there ([`ByReferenceArguments`]`::bind()`). [`CallArguments`] binds an unpacked array literal's items as
-PHP does, a string key by name and any other by position, and an item binds by reference only where it is written `&`.
+parameter binds there ([`ByReferenceArguments`]`::bind()`). A read rooted at a local also changes through `extract()`
+in any mode but `EXTR_SKIP`, and through a variable variable, written or bound by reference.
+[`CallArguments`] binds an unpacked array literal's items as PHP does, a string key by name and any other by position,
+and an item binds by reference only where it is written `&`.
 An unpack it cannot expand may bind any by-reference parameter left to it: one of a non-literal, of a literal with a
 computed key or a nested unpack, or of any literal after such an unpack, at a place no earlier argument fixes. A method
 of an object no scan names may take any argument by reference, but of an array literal only its `&` items, which reaches
-a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). On an API resource,
+a read of a bare local or of a property its class declares (`PropertyHooks::bindsInPlace()`). Any callee may write
+through an array literal's `&` items, at any depth, whatever parameter takes it, since PHP copies an array with its
+references (`ByReferenceArguments::heldReferences()`). On an API resource,
 `$this->resource->x` and `$this->x` are one path. Every item but the last may also change it through code it runs. In
 the last item, only the code PHP may run before one of its guards reads the discriminant counts. The reader hands over
 the guards it selected that item's arms by. Code written before such a read runs first, unless it sits in a ternary's
@@ -124,11 +129,15 @@ it, so in the last item the call counts, not where the body is written. Code may
   `self::` names the class that declares the hook, which may be a parent of the class that redeclares the property.
 - A callable a call may run is judged by its kind and its use ([`ClosureReach`], [`ValueUse`]): a resource helper
   runs only a `Closure`, and any other callee runs any callable. [`CallableTargets`] names the method a callable runs,
-  reading a callable array by its keys 0 and 1, as PHP does ([`CallablePair`]). An array that a computed key or an
-  unpacked item leaves open may write only through an item that can receive the call: `$this`, a class keyword, the
-  class's or an ancestor's name, or an object holding the read. A closure hands a callee what it returns or yields,
-  not what a closure nested in it returns or yields.
-- A property hook or a model's set mutator may write ([`PropertyHooks`]).
+  reading a callable array by its keys 0 and 1, as PHP does, a spread literal's items in its place ([`CallablePair`]).
+  An array that a computed key or an unpack of anything else leaves open may write only through an item that can
+  receive the call: `$this`, a class keyword, the class's or an ancestor's name, or an object holding the read. A
+  closure hands a callee what it returns or yields, not what a closure nested in it returns or yields.
+- A property hook may write ([`PropertyHooks`]), and so may the `__set()` a write PHP cannot make in place runs: any
+  but Eloquent's always, as Eloquent's does past an app's `setAttribute()`, and Eloquent's otherwise through a set
+  mutator or the method returning an `Attribute` it runs on a write to look for a setter, unless its body is one
+  `return` of Eloquent's own `Attribute`, not a subclass's, built with none, where no argument and no name of a method
+  called on it runs code.
 - `eval`, `include` and a call by a name the source does not spell may write.
 
 A call on the read itself, or on an object that does not hold it, counts only through what it is handed.
@@ -139,14 +148,15 @@ A call on the read itself, or on an object that does not hold it, counts only th
 since PHP runs a method the app overrides in place of the framework's, as `unless()` runs a resource's own `when()`. It
 walks the method's body for each call through `$this->`, `$this?->`, `$this::`, `static::`, `self::` or `parent::`,
 looked up where PHP looks it up: `self::` and a private method on the declaring class, `parent::` on its parent, and any
-other on the runtime class. A `$this` property no declaration reaches runs the runtime class's `__get()`, or
+other on the runtime class. A `$this` property no declaration reaches, or one a method of the runtime class or an app
+ancestor unsets, a computed name counting as any ([`UnsetProperties`]), runs the runtime class's `__get()`, or
 `__isset()`, `__set()` or `__unset()` where the body uses it in place. A body the walk cannot read ends the trust, a
 method its [`FrameworkFamily`] declares is walked in turn, and the family decides the rest:
 
 | Family | Declared by | A call by a computed name, or to a method the class lacks | A method of the app the walk reaches |
 | --- | --- | --- | --- |
 | `ResourceHelpers` | `RESOURCE_DECLARERS` | Ends the trust | Ends it where the judge says it may write: `InterveningWrites` passes the scan's [`BodyReads`], and `ThisPathWrites` none, so any such method ends it |
-| `Eloquent` | `ELOQUENT_NAMESPACE` | Trusted, as it runs an accessor, a relation or the model's `__call()` ([known gap][gap-wrong-arm]) | Ends the trust unless [`LiteralGetter`] finds one `return` of a scalar, a constant, a property the class of `$this` declares with no hook, or an array of those, as a `getKeyName()` returning `'uuid'` |
+| `Eloquent` | `ELOQUENT_NAMESPACE` | Trusted, as it runs an accessor, a relation or the model's `__call()` ([known gap][gap-wrong-arm]) | Ends the trust unless [`LiteralGetter`] finds one `return` of a scalar, a constant, a property the class of `$this` declares with no hook and no method of the app unsets, or an array of those, as a `getKeyName()` returning `'uuid'` |
 
 [`AnalysisMemo`] remembers the methods a walk reaches once a publish run, by family, runtime class and method, and the
 answer too where no judge is passed in.
@@ -207,6 +217,7 @@ control that must stay flat. The regression and redundant-arm gates read a split
 [`ReadPath`]: ../../src/Ast/Parsing/ReadPath.php
 [`ResourceDeclaration`]: ../../src/Support/ResourceDeclaration.php
 [`SplitsOnCondition`]: ../../src/Ast/Contracts/SplitsOnCondition.php
+[`UnsetProperties`]: ../../src/Ast/Effects/Trust/UnsetProperties.php
 [`ValueUse`]: ../../src/Ast/Effects/ValueUse.php
 [`Variant`]: ../../src/Ast/Variants/Variant.php
 [`VariantGroup`]: ../../src/Ast/Variants/VariantGroup.php

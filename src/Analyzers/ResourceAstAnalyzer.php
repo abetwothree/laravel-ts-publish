@@ -675,10 +675,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
                 : $this->resolveMergedBranches(CallableForms::heldCallable($default, $this->scope));
             $complete = $complete && $defaultComplete;
 
-            // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves.
+            // A side read as no array stands as an empty branch, like the MissingValue an omitted default leaves. Past
+            // three arguments, Laravel 12.0's mergeWhen() sends a MissingValue for the default.
             $branches = [
                 ...($branches === [] ? [new ResourceAnalysis] : $branches),
                 ...($defaultBranches === [] ? [new ResourceAnalysis] : $defaultBranches),
+                ...($isMergeWhen && $defaultBranches !== [] && $args->mayPassPast('default') ? [new ResourceAnalysis] : []),
             ];
         }
 

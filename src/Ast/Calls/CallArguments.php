@@ -210,6 +210,17 @@ final class CallArguments
     }
 
     /**
+     * Whether func_num_args() may count an argument past a parameter's position: one bound there, or an unpack it could
+     * not expand.
+     */
+    public function mayPassPast(string $name): bool
+    {
+        $position = $this->positionOf($name);
+
+        return $this->hasUnpack() || ($position !== null && $this->passedCount > $position + 1);
+    }
+
+    /**
      * The unpacks it could not expand, each as written: one of no array literal, or of a literal with a computed key,
      * an unpacked item, or a place no earlier argument fixes.
      *

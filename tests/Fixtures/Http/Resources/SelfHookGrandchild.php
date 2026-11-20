@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 /**
  * A grandchild redeclaring the `tick` get hook, whose `self::clearTick()` runs the reading clearTick() it inherits

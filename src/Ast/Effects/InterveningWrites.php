@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Calls\NamedFunction;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
@@ -22,6 +23,7 @@ use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\AssignRef;
 use PhpParser\Node\Expr\BinaryOp\Pipe;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\Eval_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Include_;
@@ -42,6 +44,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\Foreach_;
@@ -49,6 +52,7 @@ use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeFinder;
 use PropertyHookType;
 use ReflectionClass;
+use ReflectionFunction;
 use WeakMap;
 
 /**
@@ -161,15 +165,24 @@ final class InterveningWrites
      */
     private static function writtenPaths(Node $node): array
     {
-        $targets = match (true) {
+        return array_merge(...array_map(self::targetPaths(...), self::writeTargets($node)));
+    }
+
+    /**
+     * The targets a node writes: an assignment's or an increment's, each `unset()` operand and each variable `foreach`
+     * assigns.
+     *
+     * @return list<Expr>
+     */
+    private static function writeTargets(Node $node): array
+    {
+        return match (true) {
             $node instanceof Assign, $node instanceof AssignOp, $node instanceof AssignRef, $node instanceof PreInc,
             $node instanceof PreDec, $node instanceof PostInc, $node instanceof PostDec => [$node->var],
             $node instanceof Foreach_ => array_values(array_filter([$node->keyVar, $node->valueVar])),
-            $node instanceof Unset_ => $node->vars,
+            $node instanceof Unset_ => array_values($node->vars),
             default => [],
         };
-
-        return array_merge(...array_map(self::targetPaths(...), $targets));
     }
 
     /**
@@ -186,15 +199,65 @@ final class InterveningWrites
             ));
         }
 
-        $path = ReadPath::of($target);
+        $path = self::pathOf($target);
 
         while ($path === null && ($target instanceof ArrayDimFetch || $target instanceof PropertyFetch
             || $target instanceof NullsafePropertyFetch)) {
             $target = $target->var;
-            $path = ReadPath::of($target);
+            $path = self::pathOf($target);
         }
 
         return $path === null ? [] : [$path];
+    }
+
+    /**
+     * The path a write target names, `${'name'}` read as `$name`.
+     */
+    private static function pathOf(Expr $target): ?ReadPath
+    {
+        return ReadPath::of($target instanceof Variable && $target->name instanceof String_
+            ? new Variable($target->name->value)
+            : $target);
+    }
+
+    /**
+     * Whether a write target, or one a destructuring holds, starts at a variable whose name the source computes, which
+     * may be any local.
+     */
+    private static function namesAnyLocal(Expr $target): bool
+    {
+        if ($target instanceof List_ || $target instanceof Array_) {
+            return array_any(
+                $target->items,
+                static fn (?ArrayItem $item): bool => $item !== null && self::namesAnyLocal($item->value),
+            );
+        }
+
+        while ($target instanceof ArrayDimFetch || $target instanceof PropertyFetch
+            || $target instanceof NullsafePropertyFetch) {
+            $target = $target->var;
+        }
+
+        return $target instanceof Variable && $target->name instanceof Expr && ! $target->name instanceof String_;
+    }
+
+    /**
+     * Whether a call runs PHP's extract() in a mode that may overwrite a local: any but `EXTR_SKIP`, since a prefix
+     * mode overwrites a local its prefix names.
+     */
+    private static function extractsOver(FuncCall $call): bool
+    {
+        if (! $call->name instanceof Name || $call->isFirstClassCallable()
+            || NamedFunction::resolve($call->name)?->getName() !== 'extract'
+        ) {
+            return false;
+        }
+
+        $arguments = CallArguments::for($call, new ReflectionFunction('extract'));
+        $flags = $arguments->named('flags')?->value;
+
+        return $arguments->hasUnpack()
+            || ! ($flags instanceof ConstFetch && $flags->name->toString() === 'EXTR_SKIP');
     }
 
     /**
@@ -205,15 +268,7 @@ final class InterveningWrites
      */
     private static function referencedValues(Expr $value): array
     {
-        if (! $value instanceof Array_) {
-            return [$value];
-        }
-
-        return array_merge(...array_map(static fn (ArrayItem $item): array => match (true) {
-            $item->byRef => [$item->value],
-            $item->value instanceof Array_ => self::referencedValues($item->value),
-            default => [],
-        }, $value->items));
+        return $value instanceof Array_ ? ByReferenceArguments::arrayReferences($value) : [$value];
     }
 
     /**
@@ -445,38 +500,44 @@ final class InterveningWrites
     }
 
     /**
-     * Whether a node spells a write that reaches the read.
+     * Whether a node spells a write that reaches the read, extract() and a variable variable writing any local, as
+     * does a reference bound to one, which a later write through it reaches.
      */
     private function writes(Node $node, bool $inBody): bool
     {
-        return array_any(self::writtenPaths($node), fn (ReadPath $written): bool => $this->reaches($written, $inBody));
+        return array_any(self::writtenPaths($node), fn (ReadPath $written): bool => $this->reaches($written, $inBody))
+            || ($this->reachesAnyLocal($inBody) && (array_any(self::writeTargets($node), self::namesAnyLocal(...))
+                || ($node instanceof AssignRef && self::namesAnyLocal($node->expr))
+                || ($node instanceof FuncCall && self::extractsOver($node))));
     }
 
     /**
      * Whether a call binds the read, or a path it is a member of, to a by-reference parameter of the callee it names,
-     * or of a method of an object no scan names, which may take any argument by reference.
+     * or of a method of an object no scan names, which may take any argument by reference, or hands any callee it in
+     * a reference an array literal holds.
      *
      * @param  ReflectionClass<object>  $declaring
      */
     private function bindsByReference(CallLike $call, ReflectionClass $declaring, bool $inBody): bool
     {
         $binding = $this->binding($call, $declaring);
+        $args = $call->isFirstClassCallable() ? [] : $call->getArgs();
         $unnamed = $binding === null && $this->bindsInPlace
             && ($call instanceof MethodCall || $call instanceof NullsafeMethodCall)
             && ! ReadPath::isThis($call->var);
-        $byReference = $unnamed
-            ? array_merge(...array_map(
-                static fn (Arg $arg): array => self::referencedValues($arg->value),
-                $call->getArgs(),
-            ))
-            : $binding['byReference'] ?? [];
+        $byReference = [
+            ...($unnamed
+                ? array_merge(...array_map(static fn (Arg $arg): array => self::referencedValues($arg->value), $args))
+                : $binding['byReference'] ?? []),
+            ...ByReferenceArguments::heldReferences($args),
+        ];
 
         return array_any(
             $byReference,
             fn (Expr $bound): bool => array_any(
                 self::targetPaths($bound),
                 fn (ReadPath $path): bool => $this->reaches($path, $inBody),
-            ),
+            ) || ($this->reachesAnyLocal($inBody) && self::namesAnyLocal($bound)),
         );
     }
 
@@ -798,6 +859,15 @@ final class InterveningWrites
     private function inScope(ReadPath $path, bool $inBody): bool
     {
         return ! $inBody || $path->root === 'this';
+    }
+
+    /**
+     * Whether a write of a local the source does not name may reach the read: one in the window, of a read rooted at a
+     * local, since PHP never rebinds `$this`.
+     */
+    private function reachesAnyLocal(bool $inBody): bool
+    {
+        return ! $inBody && $this->readSteps[0] !== 'this';
     }
 
     /**

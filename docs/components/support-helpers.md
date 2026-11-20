@@ -98,9 +98,12 @@ The helpers and the test that pins them live in these files:
 - [`Support\TypeStrings\LiteralArm`](../../src/Support/TypeStrings/LiteralArm.php): the scalar a literal union arm
   spells, a quoted string, a JSON number, `true` or `false`, or null for any other arm. Static and `@internal`.
 - [`Support\TypeStrings\TsLibGlobals`](../../src/Support/TypeStrings/TsLibGlobals.php): every global name declared
-  by the TypeScript lib files that the repo's tsconfigs load, which a type spells with no import. Generated: after a
-  TypeScript bump, run `php .github/scripts/generate-ts-lib-globals.php`. `TsLibGlobalsTest` compares the committed
-  list with the script's output wherever TypeScript is installed, the CI gates job included, so it fails until then.
+  by the TypeScript lib files that the repo's tsconfigs load, which a type spells with no import: `TYPES`;
+  `NAMESPACES` (`Temporal`), which only a qualifier or a `typeof` operand reads; and `VALUES`, the names only a value
+  declares (the DOM's `Image`) and `globalThis`, which only a `typeof` operand reads. Generated:
+  after a TypeScript bump, run `php .github/scripts/generate-ts-lib-globals.php`. `TsLibGlobalsTest` compares the
+  committed list with the script's output wherever TypeScript is installed, the CI gates job included, so it fails
+  until then.
 - [`Support\VariantRows`](../../src/Support/VariantRows.php): the reserved row an API resource's top level holds a
   group of keys in, one arm per value of the key the others follow, and the split of a resource's rows into shared
   keys and variants. Static and `@internal`; [Variants](variants.md) covers the groups.
@@ -141,7 +144,7 @@ Ask what the helper's input domain is, not what calls it:
 | Which scalar does this literal union arm spell? | `LiteralArm::value()` |
 | Which names must a file bind for this type to compile? | `TsTypeString::referencedTypeNames()` |
 | How do I respell a name only where it stands as a type? | `TsTypeString::aliasReferences()` |
-| Does a type spell this name with no import, as a TypeScript or DOM global? | `TsLibGlobals::NAMES` |
+| Does a type spell this name with no import, as a TypeScript or DOM global? | `TsLibGlobals` |
 | Which of a resource's rows are its variants, and what is a variant row called? | `VariantRows` |
 | How does a resource's declaration open and close around its rows and groups of arms? | `ResourceDeclaration` |
 | Which separator do this object literal's members print with? | `TsTypeShape::memberSeparator()` |
@@ -236,11 +239,12 @@ Two readers stay literal-blind: `typeNameOccursIn()`, as its [known gap][literal
 
 `referencedTypeNames()`, which `TypeTokens` answers, reads every name a type references at any depth, through
 generics and objects, and leaves out a member's own name, literal text, a primitive, a type parameter the type declares
-and a `TsLibGlobals` name. Only an API resource's clauses read it, `#[TsExtends]`, `#[TsIntersect]` and
-`ts_extends.resources`, through `ResourceTransformer::clauseTypeNames()`. Every cast and every other publisher's clause
-keeps `extractImportableTypes()`'s top-level arms, as [`#[TsCasts]` overrides § Imports](ts-casts.md#imports) says.
-`aliasReferences()` respells a name only where it stands as a type or a binder declares it, so a binder and its uses
-rename together, and an alias of `Meta` leaves the literal in `Pick<Meta, "Meta">` and the key in `{ Meta: Meta }`.
+and a `TsLibGlobals` type, namespace before a `.`, or value after `typeof`. Only an API resource's clauses read it,
+`#[TsExtends]`, `#[TsIntersect]` and `ts_extends.resources`, through `ResourceTransformer::clauseTypeNames()`. Every
+cast and every other publisher's clause keeps `extractImportableTypes()`'s top-level arms, as
+[`#[TsCasts]` overrides § Imports](ts-casts.md#imports) says. `aliasReferences()` respells a name only where it stands
+as a type or a binder declares it, so a binder and its uses rename together, and an alias of `Meta` leaves the literal
+in `Pick<Meta, "Meta">` and the key in `{ Meta: Meta }`.
 
 `hoistNull()`, `orUndefined()`, `TsTypeString::withNullArm()` and `orNull()`, `listType()`, `mergeTypeScriptInfos()`,
 `TokenSlots::uniqueArms()` and `BranchJoin`'s slotted union pass each arm through `unionArm()` once two or more join.

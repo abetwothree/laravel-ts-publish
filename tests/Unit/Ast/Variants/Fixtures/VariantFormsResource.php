@@ -32,6 +32,8 @@ final class VariantFormsResource extends JsonResource
 {
     public ?PinSettings $settings = null;
 
+    public bool $plainPin = true;
+
     public ?HookedProperties $hooked = null;
 
     public ?FlagContract $contract = null;
@@ -529,7 +531,7 @@ final class VariantFormsResource extends JsonResource
      */
     public function mutateBetweenKept(): array
     {
-        return ['pinned' => $this->is_pinned, 'x' => $this->is_pinned = ! $this->is_pinned, 'v' => $this->is_pinned ? $this->title : null];
+        return ['pinned' => $this->plainPin, 'x' => $this->plainPin = ! $this->plainPin, 'v' => $this->plainPin ? $this->title : null];
     }
 
     /**
@@ -985,7 +987,7 @@ final class VariantFormsResource extends JsonResource
      */
     public function mutateBefore(): array
     {
-        return ['x' => $this->is_pinned = ! $this->is_pinned, 'pinned' => $this->is_pinned, 'v' => $this->is_pinned ? $this->title : null];
+        return ['x' => $this->plainPin = ! $this->plainPin, 'pinned' => $this->plainPin, 'v' => $this->plainPin ? $this->title : null];
     }
 
     /**
@@ -996,10 +998,10 @@ final class VariantFormsResource extends JsonResource
     public function ownedAfterDecline(): array
     {
         return [
-            'a' => $this->is_pinned,
-            'x' => $this->is_pinned = ! $this->is_pinned,
-            'b' => $this->is_pinned,
-            'v' => $this->is_pinned ? $this->title : null,
+            'a' => $this->plainPin,
+            'x' => $this->plainPin = ! $this->plainPin,
+            'b' => $this->plainPin,
+            'v' => $this->plainPin ? $this->title : null,
         ];
     }
 

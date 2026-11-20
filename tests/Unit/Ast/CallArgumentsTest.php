@@ -368,6 +368,17 @@ it('reads an empty unpacked literal as passing nothing', function () {
         ->and($args->passedCount())->toBe(0);
 });
 
+it('tells whether a call may pass an argument past a parameter, as func_num_args() would count it', function (string $statement, bool $past) {
+    expect(parsedCallArguments($statement, ['condition', 'value', 'default'])->mayPassPast('default'))->toBe($past);
+})->with([
+    'the parameter last' => ['f($c, $v, $d);', false],
+    'an empty unpacked literal after it' => ['f($c, $v, $d, ...[]);', false],
+    'a fourth argument' => ['f($c, $v, $d, $x);', true],
+    'an unpacked literal past it' => ['f($c, $v, $d, ...[$x]);', true],
+    'an unpack it cannot expand' => ['f($c, $v, $d, ...$xs);', true],
+    'the parameter left out' => ['f($c, $v);', false],
+]);
+
 it('lists the positional arguments from a position on', function () {
     $args = parsedCallArguments('f($a, $b, ...[$c, $d], e: $e);', ['a', 'b']);
 

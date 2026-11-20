@@ -6,8 +6,12 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\PropertyHooks;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\UnsetProperties;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\BooleanAnd;
@@ -24,6 +28,7 @@ use PhpParser\Node\Expr\Empty_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Isset_;
 use PhpParser\Node\Name;
+use ReflectionClass;
 use ReflectionFunction;
 use UnitEnum;
 
@@ -38,6 +43,12 @@ final readonly class ConditionTruth
 {
     /** The functions a guard may call, whose answer depends on their arguments alone. */
     private const array FUNCTIONS = ['is_null', 'in_array'];
+
+    /** The magic methods each framework class answers a read and an existence check of a member through alike. */
+    private const array FRAMEWORK_MAGIC = [
+        JsonResource::class => ['__get', '__isset'],
+        Model::class => ['__get', '__isset', 'offsetExists'],
+    ];
 
     /**
      * Decide guards for one value of one read.
@@ -72,6 +83,20 @@ final readonly class ConditionTruth
     }
 
     /**
+     * Whether a class answers a member it holds through the framework class's own magic methods, none of them its own.
+     *
+     * @param  ReflectionClass<object>  $class
+     * @param  key-of<self::FRAMEWORK_MAGIC>  $framework
+     */
+    private static function answersByFramework(ReflectionClass $class, string $framework): bool
+    {
+        return $class->isSubclassOf($framework) && array_all(
+            self::FRAMEWORK_MAGIC[$framework],
+            static fn (string $magic): bool => $class->getMethod($magic)->getDeclaringClass()->getName() === $framework,
+        );
+    }
+
+    /**
      * Whether PHP's `==` holds between two values.
      */
     private static function looselyEqual(mixed $left, mixed $right): bool
@@ -96,11 +121,59 @@ final readonly class ConditionTruth
             $expr instanceof NotIdentical => $this->evaluate($expr->left) !== $this->evaluate($expr->right),
             $expr instanceof Equal => self::looselyEqual($this->evaluate($expr->left), $this->evaluate($expr->right)),
             $expr instanceof NotEqual => ! self::looselyEqual($this->evaluate($expr->left), $this->evaluate($expr->right)),
-            $expr instanceof Isset_ => array_all($expr->vars, fn (Expr $var): bool => $this->evaluate($var) !== null),
-            $expr instanceof Empty_ => ! $this->evaluate($expr->expr),
+            $expr instanceof Isset_ => array_all($expr->vars, fn (Expr $var): bool => $this->checked($var) !== null),
+            $expr instanceof Empty_ => ! $this->checked($expr->expr),
             $expr instanceof FuncCall => $this->call($expr),
             default => $this->operand($expr),
         };
+    }
+
+    /**
+     * What an operand of isset() or empty() holds, where checking it answers as reading it does.
+     *
+     * @throws ConstExprEvaluationException for a read whose check a magic method may answer apart from its value
+     */
+    private function checked(Expr $expr): mixed
+    {
+        if (ReadPath::of($expr) !== null && ! $this->checksAsRead()) {
+            throw new ConstExprEvaluationException('A magic method may check the read apart from its value');
+        }
+
+        return $this->evaluate($expr);
+    }
+
+    /**
+     * Whether isset() of the read is `!== null` of its value: a local's is, and a path's where each step reaches a
+     * property in place or through the framework's own magic only: JsonResource's, which checks the member on the
+     * model it holds, and Eloquent's, which tests what `__get()` returns.
+     */
+    private function checksAsRead(): bool
+    {
+        if ($this->read->segments === []) {
+            return true;
+        }
+
+        $declaring = $this->scope->declaringClass;
+        $runtime = $this->scope->runtime->class;
+        $steps = PropertyHooks::of($this->scope)->steps($this->read, $declaring, true);
+
+        return $steps !== [] && array_all($steps, function (array $step, int $index) use ($declaring, $runtime): bool {
+            [$property, $classes, $onThis] = $step;
+            $forwarded = $index === 0 && ! $onThis;
+            // JsonResource's own `__isset()` and `__get()` reach the model's member from JsonResource's scope.
+            $scope = $forwarded ? new ReflectionClass(JsonResource::class) : $declaring;
+            // A property the runtime class's own code unsets is reached through the magic, as setHooks() reads it.
+            $unset = UnsetProperties::unsets($runtime, $property);
+
+            return $classes !== []
+                && (! $forwarded || self::answersByFramework($runtime, JsonResource::class))
+                && array_all($classes, static fn (ReflectionClass $class): bool => (! $unset && PropertyHooks::inPlace(
+                    $class,
+                    $property,
+                    $scope,
+                    false,
+                )) || self::answersByFramework($class, Model::class));
+        });
     }
 
     /**

@@ -50,6 +50,7 @@ use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 use Workbench\App\Http\Resources\Discriminated\IntersectedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
@@ -570,23 +571,40 @@ it('warns once of a published template that prints no variants, and still publis
     $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');
     config()->set('ts-publish.output_to_files', false);
 
+    $warningsOf = fn (): array => array_values(array_filter(
+        AnalysisWarnings::all(),
+        fn (array $warning): bool => $warning['subject'] === $published,
+    ));
+
     try {
         $writer = new ResourceWriter(new Filesystem);
         $content = $writer->write(new ResourceTransformer($resource));
+        $warnings = $warningsOf();
+        expect($warnings)->toHaveCount(1);
+
         $writer->write(new ResourceTransformer(PinnedPriorityResource::class));
+        expect($warningsOf())->toHaveCount(1);
     } finally {
         File::deleteDirectory(dirname($published));
     }
 
-    $warnings = array_values(array_filter(AnalysisWarnings::all(), fn (array $warning): bool => $warning['subject'] === $published));
-
-    expect($warnings)->toHaveCount(1)
-        ->and($warnings[0]['message'])->toContain('variants')->toContain('--tag=laravel-ts-publish-views')
+    expect($warnings[0]['message'])->toContain('variants')->toContain('--tag=laravel-ts-publish-views')
         ->and($content)->toContain($declaration);
 })->with([
     'variants' => [PinnedPostResource::class, "export interface PinnedPostResource\n{\n    id: number;\n}\n"],
     'an intersection' => [IntersectedPostResource::class, "export interface IntersectedPostResource\n{\n    id: number;\n"],
 ]);
+
+it('removes the view-copy helper\'s directory when the copy fails', function () {
+    try {
+        publishPackageView('resource', '/nonexistent/source.blade.php');
+    } catch (RuntimeException $e) {
+        $directory = Str::between($e->getMessage(), ' into ', '.');
+    }
+
+    expect($directory ?? null)->toStartWith(sys_get_temp_dir().'/ts-publish-views-')
+        ->and(file_exists($directory ?? ''))->toBeFalse();
+});
 
 it('does not warn of a published template that prints no variants for a resource with none', function () {
     $published = publishPackageView('resource', __DIR__.'/../../views/resource-published-before-variants.blade.php');

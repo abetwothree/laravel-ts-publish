@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
 /**
  * A child redeclaring the parent's hooked property with a set hook only, and a clearTick() that reads.

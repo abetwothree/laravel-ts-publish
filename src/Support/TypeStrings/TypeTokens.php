@@ -45,7 +45,8 @@ final readonly class TypeTokens
      *
      * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
      * arm, a name after a `.`, a binder `infer`, a mapped type or a type parameter list declares, a predicate's
-     * parameter, or a global of the TypeScript libs (TsLibGlobals). The operand of `typeof` is one.
+     * parameter, or a TypeScript lib global (TsLibGlobals): a type, a namespace before a `.`, or after `typeof` any of
+     * them, a value included. The operand of `typeof` is one.
      *
      * @return list<string>
      */
@@ -58,9 +59,16 @@ final readonly class TypeTokens
         foreach ($this->roles($tokens) as $index => $role) {
             $token = $tokens[$index][0];
 
+            // A global value, such as the DOM's `Image`, or a namespace, such as `Temporal`, is no type, so a type
+            // position names the file's: a namespace is the lib's only before a `.`, and either only after `typeof`.
+            $namespace = isset(TsLibGlobals::NAMESPACES[$token]);
+            $global = isset(TsLibGlobals::TYPES[$token])
+                || ($namespace && ($tokens[$index + 1][0] ?? '') === '.')
+                || (($tokens[$index - 1][0] ?? '') === 'typeof' && ($namespace || isset(TsLibGlobals::VALUES[$token])));
+
             if ($role === 'binder') {
                 $binders[] = $token;
-            } elseif ($role === 'type' && ! isset(TsLibGlobals::NAMES[$token]) && ! VisibleGaps::isGap($token)) {
+            } elseif ($role === 'type' && ! $global && ! VisibleGaps::isGap($token)) {
                 $names[] = $token;
             }
         }
@@ -127,7 +135,7 @@ final readonly class TypeTokens
     /**
      * The role of each name token of a type, by its index: a `type` it stands as, a `binder` a type parameter list,
      * `infer` or a mapped type declares, or `other`: a keyword, a member's, label's, parameter's or method's own name,
-     * a name after a `.` or a predicate's parameter.
+     * an optional method's included, a name after a `.` or a predicate's parameter.
      *
      * @param  list<TypeToken>  $tokens
      * @return array<int, TypeRole>
@@ -173,7 +181,9 @@ final readonly class TypeTokens
             // A name before its `:` is a member's, label's or parameter's own unless a type starts right before it: a
             // conditional's true branch ends at a `:` too. A name after a `:` starts a value type, never a method.
             $binds = ($after === ':' || ($after === '?' && $afterNext === ':')) && ! $leads;
-            $method = ($after === '(' || ($after === '<' && isset($parameterLists[$index + 1])))
+            $signature = $after === '?' ? $index + 2 : $index + 1;
+            $opens = $tokens[$signature][0] ?? '';
+            $method = ($opens === '(' || ($opens === '<' && isset($parameterLists[$signature])))
                 && $enclosedBy === '{' && ! $leads && $before !== ':';
             $predicate = $before === 'asserts' || ($after === 'is' && ! in_array($afterNext, [':', '?'], true)
                 && ($before === '=>' || ($before === ':' && ($tokens[$index - 2][0] ?? '') === ')')));

@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
+namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FinalFlags;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\FlagContract;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedProperties;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\OpenFlags;
 use Closure;
 use Illuminate\Http\Request;
 use Workbench\App\Models\Post;
@@ -115,6 +119,18 @@ class InterveningResource extends InterveningBase
         $flag = false;
 
         return $unused === 0;
+    }
+
+    /**
+     * Clears the first flag of the array it takes by value, which reaches a flag the array holds by reference.
+     *
+     * @param  array<int, bool>  $flags
+     */
+    private static function clearHeld(array $flags): bool
+    {
+        $flags[0] = false;
+
+        return true;
     }
 
     /**
@@ -289,6 +305,26 @@ class InterveningResource extends InterveningBase
     private function keyedWriterPair(): array
     {
         return [1 => 'writer', 0 => $this];
+    }
+
+    /**
+     * Names the writer as a pair a spread literal holds, which PHP spreads in place.
+     *
+     * @return array<int, mixed>
+     */
+    private function spreadWriterPair(): array
+    {
+        return [...[$this, 'writer']];
+    }
+
+    /**
+     * Names the reader as a pair a spread literal holds, which PHP spreads in place.
+     *
+     * @return array<int, mixed>
+     */
+    private function spreadReaderPair(): array
+    {
+        return [...[$this, 'reader']];
     }
 
     /**

@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
+use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -17,9 +18,6 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Scalar\InterpolatedString;
-use PhpParser\Node\Stmt;
-use PhpParser\Node\Stmt\Nop;
-use PhpParser\Node\Stmt\Return_;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -41,10 +39,9 @@ final class LiteralGetter
     {
         $declaring = $method->getDeclaringClass();
         $body = resolve(MethodLocator::class)->locate($declaring->getName(), $method->getName())?->method->stmts ?? [];
-        $statements = array_values(array_filter($body, static fn (Stmt $statement): bool => ! $statement instanceof Nop));
+        $returned = StatementBlocks::soleReturn($body);
 
-        return count($statements) === 1 && $statements[0] instanceof Return_ && $statements[0]->expr !== null
-            && self::isLiteral($statements[0]->expr, $declaring, $runtime);
+        return $returned !== null && self::isLiteral($returned, $declaring, $runtime);
     }
 
     /**
@@ -71,7 +68,8 @@ final class LiteralGetter
 
     /**
      * Whether `$this->{name}`, read in the declaring class's body, reads a property rather than running `__get()` or a
-     * get hook: the declaring class's own private one, else one of the runtime class's that the body may reach.
+     * get hook: the declaring class's own private one, else one of the runtime class's that the body may reach, where
+     * no code of the app's unsets it.
      *
      * @param  ReflectionClass<object>  $declaring
      * @param  ReflectionClass<object>  $runtime
@@ -82,6 +80,7 @@ final class LiteralGetter
         $property = $class->hasProperty($name) ? $class->getProperty($name) : null;
 
         return $property !== null && ! $property->isStatic() && ! $property->hasHooks()
-            && (! $property->isPrivate() || $property->getDeclaringClass()->getName() === $declaring->getName());
+            && (! $property->isPrivate() || $property->getDeclaringClass()->getName() === $declaring->getName())
+            && ! UnsetProperties::unsets($runtime, $name);
     }
 }

@@ -144,6 +144,19 @@ it('records the class whose method it reads for a literal null, on a warm read t
     expect($paths)->toContain((string) new ReflectionClass(LiteralNullReturns::class)->getFileName());
 });
 
+// Whether a helper never returns is its declaration, so editing it must rebuild what read the call as an end.
+it('reads an end past a namespaced helper declaring never, and records the helper\'s file', function () {
+    require_once dirname(__DIR__, 2).'/Fixtures/Stubs/NeverReturningHelperFunction.php.stub';
+    DependencyRecorder::start();
+    $literal = resolve(ReturnLiteralReader::class)->returnsNull(LiteralNullReturns::class, 'endsInNeverHelper');
+    $paths = DependencyRecorder::paths();
+    DependencyRecorder::stop();
+
+    expect($literal)->toBeFalse()->and($paths)->toContain(
+        (string) new ReflectionFunction('AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\Stubs\\neverReturningHelper')->getFileName(),
+    );
+});
+
 // self:: and a private method run the class whose body is read; static:: runs the class the method is read on.
 it('reads a stop a child redeclares as never by the class the call resolves to', function (string $method, bool $literal) {
     $run = fn (): mixed => (new StoppingChild)->{$method}(1);

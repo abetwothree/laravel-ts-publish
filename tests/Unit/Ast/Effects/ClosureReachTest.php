@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
 
 /**
  * The value table: each kind of value a resource helper may call (`when(true, …)`), a callee handed it may call
@@ -49,6 +49,8 @@ function closureReachRows(): array
         'row 3, handed: a word beside an unpacked local' => ["implode(',', [...\$parts, 'x'])", false],
         'row 3, handed: two unpacked locals' => ['collect([...$a, ...$b])', false],
         'row 3, handed: an unpacked constant beside a word' => ["in_array(\$x, [...self::LABELS, 'y'], true)", false],
+        'row 3, handed: words a spread literal holds' => ["implode(',', [...['a', 'b'], 'c'])", false],
+        'row 3, handed: [$this, writer] a spread literal holds' => ["array_map([...[\$this, 'writer']], [1])", true],
         'row 3, handed: [\'static\', writer]' => ["array_map(['static', 'writer'], [1])", true],
         'row 3, handed: [Ancestor::class, writer]' => ["array_map([InterveningBase::class, 'baseWriter'], [1])", true],
         'row 3, handed: [self::class, a static method]' => ["array_map([self::class, 'shout'], ['a'])", false],
