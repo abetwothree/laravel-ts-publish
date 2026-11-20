@@ -207,6 +207,19 @@ test('globals content does not contain AsEnum<typeof ...> (typeof namespace memb
     expect($content)->toContain('enums.StatusType');
 });
 
+// The globals file spells a wrap by its enum's value type, so a wrap list beside a list of that type is one arm (K2).
+test('globals content prints one arm where a folded wrap list meets a list of its enum\'s type', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    expect((new GlobalsWriter(new Filesystem))->write($runner))
+        ->toContain('wrapped_history_or_array: workbench.app.enums.StatusType[];')
+        ->toContain('audit: { status: workbench.app.enums.StatusType[] };');
+});
+
 test('globals content does not contain AsEnum<typeof ...> with namespace_strip_prefix', function () {
     config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);

@@ -1717,10 +1717,11 @@ class LaravelTsPublish
      * {@see TsTypeString::rewriteAsEnumToType()}
      *
      * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
+     * @param  array<string, string>  $references  name the file spells => 'namespace.TypeName' it names
      */
-    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap): string
+    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap, array $references = []): string
     {
-        return TsTypeString::rewriteAsEnumToType($typeStr, $constToTypeMap);
+        return TsTypeString::rewriteAsEnumToType($typeStr, $constToTypeMap, $references);
     }
 
     /**

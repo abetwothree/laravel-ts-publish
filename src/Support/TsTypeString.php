@@ -7,9 +7,11 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\AsEnumSpelling;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeTokens;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use Illuminate\Support\Str;
 
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
@@ -473,35 +475,48 @@ class TsTypeString
     }
 
     /**
-     * Replace `AsEnum<typeof ConstAlias>` patterns with the pre-computed type alias.
+     * Replace each `AsEnum<typeof ConstAlias>` with its enum's qualified value type, then collapse the arms of each
+     * union, at every depth, that name one class once the fold is done.
      *
-     * In the globals file there is no `AsEnum` import, so `AsEnum<typeof X>` and `XType` collapse to
-     * the same qualified name — the pair must be folded first to avoid emitting a literal duplicate.
+     * The globals file has no `AsEnum` import, so a wrap and a read of its enum print alike there. A bare name reads as
+     * the class `$references` gives it, else, when the type folded a wrap whose value type has that name, as that enum.
+     * Whole arms are compared, so `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` stay apart.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
+     * @param  array<string, string>  $references  name the file spells => 'namespace.TypeName' it names
      */
-    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap): string
+    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap, array $references = []): string
     {
+        $folded = $typeStr;
+        /** @var array<string, string|null> $foldedTo the value type's bare name => its qualified name, null for two */
+        $foldedTo = [];
+
         foreach ($constToTypeMap as $constAlias => $qualifiedTypeName) {
-            $lastDot = strrpos($qualifiedTypeName, '.');
-            $bareTypeName = $lastDot === false ? $qualifiedTypeName : substr($qualifiedTypeName, $lastDot + 1);
-            $wrap = AsEnumSpelling::pattern($constAlias);
+            $next = preg_replace('/'.AsEnumSpelling::pattern($constAlias).'/', $qualifiedTypeName, $folded) ?? $folded;
 
-            // A trailing `[` means the bare arm is array-shaped and the AsEnum arm is not (or vice
-            // versa) — a genuinely different pair, not the redundant same-shaped one this folds.
-            $pairPattern = '/'.$wrap.'\s*\|\s*'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$\[])/';
-            $typeStr = preg_replace($pairPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
+            if ($next === $folded) {
+                continue;
+            }
 
-            // Same pair reversed: the bare alias would be re-qualified afterwards, recreating the duplicate.
-            // Only ResourceTransformer::rewriteEnumResourceTypes() emits this pair shape, always forward-ordered.
-            $reversedPattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'\s*\|\s*'.$wrap.'/';
-            $typeStr = preg_replace($reversedPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
-
-            $typeStr = preg_replace('/'.$wrap.'/', $qualifiedTypeName, $typeStr) ?? $typeStr;
+            $folded = $next;
+            $bareTypeName = Str::afterLast($qualifiedTypeName, '.');
+            $foldedTo[$bareTypeName] = ($foldedTo[$bareTypeName] ?? $qualifiedTypeName) === $qualifiedTypeName
+                ? $qualifiedTypeName
+                : null;
         }
 
-        return $typeStr;
+        if ($foldedTo === []) {
+            return $typeStr;
+        }
+
+        $targets = array_flip(array_filter($foldedTo));
+        $readAs = [
+            ...array_filter($references, static fn (string $qualified): bool => isset($targets[$qualified])),
+            ...array_filter(array_diff_key($foldedTo, $references)),
+        ];
+
+        return TypeRewriter::rewrite($folded, union: fn (array $arms): array => $this->withoutRepeatedArms($arms, $readAs));
     }
 
     /**
@@ -766,6 +781,39 @@ class TsTypeString
         }
 
         return $type;
+    }
+
+    /**
+     * A union's arms with each arm that names the same classes as an earlier one left out, read with each name in
+     * `$readAs` as the class it maps to. A collapsed pair keeps the earlier arm's place and the fold's spelling.
+     *
+     * @param  list<string>  $arms
+     * @param  array<string, string>  $readAs  name => 'namespace.TypeName'
+     * @return list<string>
+     */
+    private function withoutRepeatedArms(array $arms, array $readAs): array
+    {
+        $pattern = $readAs === [] ? null : $this->queuedTokenPattern(array_keys($readAs));
+        $kept = [];
+        /** @var array<string, int> $at each kept arm's reading => its place */
+        $at = [];
+
+        foreach ($arms as $arm) {
+            $read = $pattern === null ? $arm : (preg_replace_callback(
+                $pattern,
+                static fn (array $match): string => $readAs[$match[0]],
+                $arm,
+            ) ?? $arm);
+
+            if (! isset($at[$read])) {
+                $at[$read] = count($kept);
+                $kept[] = $arm;
+            } elseif ($arm === $read) {
+                $kept[$at[$read]] = $arm;
+            }
+        }
+
+        return array_values($kept);
     }
 
     /**

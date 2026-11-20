@@ -1108,6 +1108,31 @@ describe('rewriteAsEnumToType', function () {
 
         expect($result)->toBe('enums.StatusType | StatusType[]');
     });
+
+    // After the fold, two arms that name one class print one arm; a wrap list and a bare list are one such pair (K2).
+    test('collapses the identical arms the fold leaves, at every depth', function (string $type, string $folded) {
+        expect($this->service->rewriteAsEnumToType($type, ['Status' => 'app.enums.StatusType']))->toBe($folded);
+    })->with([
+        'a list of wraps beside a list of the value type' => ['AsEnum<typeof Status>[] | StatusType[]', 'app.enums.StatusType[]'],
+        'the pair reversed' => ['StatusType[] | AsEnum<typeof Status>[]', 'app.enums.StatusType[]'],
+        'a member union' => ['{ s: AsEnum<typeof Status> | StatusType }', '{ s: app.enums.StatusType }'],
+        'a member union of lists' => ['{ s: AsEnum<typeof Status>[] | StatusType[] }', '{ s: app.enums.StatusType[] }'],
+        'arms apart' => ['AsEnum<typeof Status> | RoleType | StatusType', 'app.enums.StatusType | RoleType'],
+        'two wraps' => ['AsEnum<typeof Status> | AsEnum<typeof Status>[] | AsEnum<typeof Status>', 'app.enums.StatusType | app.enums.StatusType[]'],
+        'a list of wraps beside the value type' => ['AsEnum<typeof Status>[] | StatusType', 'app.enums.StatusType[] | StatusType'],
+    ]);
+
+    // The file's own names say which class a bare token is: an alias of the folded enum's type is that enum, and a
+    // same-named type of another enum stays beside the fold.
+    test('reads a bare name through the file\'s names before it collapses an arm', function (string $type, string $folded) {
+        $references = ['WorkbenchStatusType' => 'app.enums.StatusType', 'StatusType' => 'crm.enums.StatusType'];
+
+        expect($this->service->rewriteAsEnumToType($type, ['WorkbenchStatus' => 'app.enums.StatusType'], $references))
+            ->toBe($folded);
+    })->with([
+        'an alias of the folded enum\'s type' => ['AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType', 'app.enums.StatusType'],
+        'another enum\'s type of the same name' => ['AsEnum<typeof WorkbenchStatus> | StatusType', 'app.enums.StatusType | StatusType'],
+    ]);
 });
 
 describe('splitTopLevelUnion', function () {

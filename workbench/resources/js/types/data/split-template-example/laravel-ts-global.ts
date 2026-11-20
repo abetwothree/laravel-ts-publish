@@ -3701,7 +3701,7 @@ declare global {
             wrapped_status_fallback: { status: app.enums.StatusType[] | app.enums.StatusType };
             latest_status_or_history: app.enums.StatusType | app.enums.StatusType[];
             wrapped_history_or_scalar: app.enums.StatusType[] | app.enums.StatusType;
-            wrapped_history_or_array: app.enums.StatusType[] | app.enums.StatusType[];
+            wrapped_history_or_array: app.enums.StatusType[];
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
@@ -5831,7 +5831,7 @@ declare global {
          */
         export interface TeamStatusAuditResource {
             id: number;
-            audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };
+            audit: { status: app.enums.StatusType[] };
         }
         /**
          * A local assigned from an `instanceof` ternary whose proven arm reads a relation only the subclass declares keeps the

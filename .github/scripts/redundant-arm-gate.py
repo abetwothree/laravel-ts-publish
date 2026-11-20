@@ -66,15 +66,9 @@ CAMEL = re.compile(r"-(\w)")
 # develop's probe commit for #166: its goldens hold the redundant arms the fix removes.
 PROBE_REV = "ec7876ad239217e05a0b1ebbb177cf5c78c62894"
 
-GLOBAL_109 = "#109: laravel-ts-global.ts spells an enum resource by its value type"
-
 # (path suffix, scope, key, kind) findings the package publishes on purpose, each with its reason. A scope may leave out
 # its outer namespaces, such as testing's `workbench.`, and an entry excuses only its own kind.
-BASELINE = {
-    ("laravel-ts-global.ts", "app.http.resources.EnumCollectionResource", "wrapped_history_or_array", "duplicate"):
-        GLOBAL_109,
-    ("laravel-ts-global.ts", "app.http.resources.TeamStatusAuditResource", "audit.status", "duplicate"): GLOBAL_109,
-}
+BASELINE: dict[tuple[str, str, str, str], str] = {}
 
 KINDS = {
     "never": "never[] beside a list arm",
@@ -566,8 +560,15 @@ SPLIT_CASES = [
      []),
 ]
 
-# (label, scope, property line in laravel-ts-global.ts, expected findings, how many of them fail the gate); a scope
-# without a namespace sits in app.http.resources.
+# A globals-file baseline, so the parsetest still checks how an entry matches a file, scope, key and kind.
+GLOBAL_BASELINE = {
+    ("laravel-ts-global.ts", "app.http.resources.EnumCollectionResource", "wrapped_history_or_array", "duplicate"):
+        "a globals-file entry for the parsetest",
+    ("laravel-ts-global.ts", "app.http.resources.TeamStatusAuditResource", "audit.status", "duplicate"):
+        "a globals-file entry for the parsetest",
+}
+# (label, scope, property line in laravel-ts-global.ts, expected findings, how many of them fail under GLOBAL_BASELINE);
+# a scope without a namespace sits in app.http.resources.
 GLOBAL_CASES = [
     ("literal beside a qualified alias", "ProbeResource", "a: 'image' | app.enums.MediaTypeType;",
      [("a", "literal", "'image'")], 1),
@@ -575,10 +576,10 @@ GLOBAL_CASES = [
      [("a", "literal", "'video'")], 1),
     ("control: qualified literal the alias does not list", "ProbeResource", "a: 'Image' | app.enums.MediaTypeType;",
      [], 0),
-    ("baselined duplicate (#109)", "EnumCollectionResource",
+    ("baselined duplicate", "EnumCollectionResource",
      "wrapped_history_or_array: app.enums.StatusType[] | app.enums.StatusType[];",
      [("wrapped_history_or_array", "duplicate", "app.enums.StatusType[]")], 0),
-    ("baselined member duplicate (#109)", "TeamStatusAuditResource",
+    ("baselined member duplicate", "TeamStatusAuditResource",
      "audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };",
      [("audit.status", "duplicate", "app.enums.StatusType[]")], 0),
     ("duplicate the baseline does not list", "EnumCollectionResource",
@@ -663,10 +664,10 @@ def run_parsetest() -> int:
         )
 
     for label, scope, line, want, fails in GLOBAL_CASES:
-        check(label, GLOBALS, global_body(scope, line), want, fails)
+        check(label, GLOBALS, global_body(scope, line), want, fails, GLOBAL_BASELINE)
 
     for label, scope, line, want, fails in ELSEWHERE_CASES:
-        check(label, ELSEWHERE, global_body(scope, line), want, fails)
+        check(label, ELSEWHERE, global_body(scope, line), want, fails, GLOBAL_BASELINE)
 
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")
