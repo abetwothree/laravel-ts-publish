@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -147,6 +148,9 @@ trait ResolvesEnumPropertyArgTypes
      * The list an `EnumResource::collection()` payload publishes: the one enum it holds, wrapped in a list unless the
      * payload already is one; null when no single enum resolves.
      *
+     * The collection resolves each element itself, which no filter() reaches, so a null element is the `[]` resolve()
+     * returns for it.
+     *
      * @return ValueExpressionResult|null
      */
     protected function enumCollectionValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
@@ -165,7 +169,7 @@ trait ResolvesEnumPropertyArgTypes
 
         return $this->spelledWrap([
             ...$enumResult,
-            'type' => $alreadyCollection ? $type : ValueResult::arrayWrapType($type),
+            'type' => $alreadyCollection ? self::nullElementsResolved($type) : ValueResult::arrayWrapType($type),
         ]);
     }
 
@@ -243,14 +247,19 @@ trait ResolvesEnumPropertyArgTypes
         $retyped = LaravelTsPublish::retypedEnumType($enum);
         $enumType = $retyped ?? ValueResult::enumTypeName($enum);
         $held = TsTypeString::withoutNullArm($resolved['type']);
+        // A map over a nullable attribute holds the enum or null in each element.
+        $element = $allowsList ? TsTypeShape::elementType($held) : null;
 
-        if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
+        if ($held !== $enumType && ! in_array($element, [$enumType, TsTypeString::withNullArm($enumType)], true)) {
             return null;
         }
 
-        $type = $retyped === null
-            ? $resolved['type']
-            : ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]');
+        $name = ValueResult::enumTypeName($enum);
+        $type = match (true) {
+            $retyped === null => $resolved['type'],
+            $held === $enumType => $name,
+            default => ValueResult::arrayWrapType(TsTypeString::withNullArmOf((string) $element, $name)),
+        };
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
@@ -297,6 +306,22 @@ trait ResolvesEnumPropertyArgTypes
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
             ...(($tsInfo['typedByClass'] ?? false) ? ['typedByClass' => true] : []),
         ];
+    }
+
+    /**
+     * A list of an enum with a null its element may hold spelled as the `[]` the element's own resolve() returns.
+     */
+    private static function nullElementsResolved(string $list): string
+    {
+        $element = TsTypeShape::elementType(TsTypeString::withoutNullArm($list));
+
+        if ($element === null || ! TsTypeString::hasNullArm($element)) {
+            return $list;
+        }
+
+        $resolved = ValueResult::arrayWrapType(TsTypeString::withoutNullArm($element).' | never[]');
+
+        return TsTypeString::withNullArmOf($list, $resolved);
     }
 
     /**

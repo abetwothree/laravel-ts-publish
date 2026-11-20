@@ -34,6 +34,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use Workbench\App\Enums\Grade;
+use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Controllers\InertiaSingleResourceController;
@@ -43,6 +44,7 @@ use Workbench\App\Http\Resources\EventLogResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Http\Resources\ReceiverMethodResource;
+use Workbench\App\Http\Resources\TeamResource;
 use Workbench\App\Http\Resources\WarehouseResource;
 use Workbench\App\Models\Activity;
 use Workbench\App\Models\Address;
@@ -659,6 +661,31 @@ it('spells a wrap over a tryFrom() that may find no case with the null a resourc
     'in a resource' => [Reading::Encoded, 'AsEnum<typeof Status> | null'],
     'on a page' => [Reading::Inertia, 'AsEnum<typeof Status> | never[]'],
 ]);
+
+// E4: the collection resolves each element itself, so a null element sends the `[]` resolve() returns, as PHP sends
+// `[[], {…}]` in a resource and on a page alike: no filter() reaches it. A page sends the collection's response.
+it('spells EnumResource::collection() over a map of a nullable enum as a list of its wrap or what a null sends', function (Reading $reading, array $sent) {
+    $expr = new AstParser()->parseSource('<?php \\'.EnumResource::class.'::collection($this->members->map(fn ($u) => $u->role));')[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(TeamResource::class), Team::class, reading: $reading)->resolve($expr))->toBe([
+        'type' => $sent[0],
+        'optional' => false,
+        'embeddedEnumResourceFqcns' => [Role::class],
+        'wrappedEnumFqcns' => [Role::class],
+        ...array_slice($sent, 1),
+    ]);
+})->with([
+    'in a resource' => [Reading::Encoded, ['(AsEnum<typeof Role> | never[])[]']],
+    'on a page' => [Reading::Inertia, [
+        '{ data: (AsEnum<typeof Role> | never[])[] }',
+        'closedToDottedKeys' => '{ data: (AsEnum<typeof Role> | never[])[] }',
+    ]],
+]);
+
+it('sends a null element of an EnumResource collection as an empty list', function () {
+    expect(json_encode(EnumResource::collection(collect([null, Role::Admin]))->resolve(request())))
+        ->toBe('[[],{"name":"Admin","value":"Admin","backed":false}]');
+});
 
 // The body fallback reads each case as the literal json_encode() writes, which a pure enum's case has none of.
 it('types an enum\'s cases() as the list its cases encode as', function (string $php, bool $literals, array $expected) {
