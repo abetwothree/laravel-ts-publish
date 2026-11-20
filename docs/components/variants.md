@@ -143,10 +143,10 @@ A call on the read itself, or on an object that does not hold it, counts only th
 since PHP runs a method the app overrides in place of the framework's, as `unless()` runs a resource's own `when()`. It
 walks the method's body for each call through `$this->`, `$this?->`, `$this::`, `static::`, `self::` or `parent::`,
 looked up where PHP looks it up: `self::` and a private method on the declaring class, `parent::` on its parent, and any
-other on the runtime class. A `$this` property no declaration reaches, or one the app's own code unsets
-([`UnsetProperties`]), runs the runtime class's `__get()`, or `__isset()`, `__set()` or `__unset()` where the body uses
-it in place. A body the walk cannot read ends the trust, a method its [`FrameworkFamily`] declares is walked in turn,
-and the family decides the rest:
+other on the runtime class. A `$this` property no declaration reaches, or one a method of the runtime class or an app
+ancestor unsets, a computed name counting as any ([`UnsetProperties`]), runs the runtime class's `__get()`, or
+`__isset()`, `__set()` or `__unset()` where the body uses it in place. A body the walk cannot read ends the trust, a
+method its [`FrameworkFamily`] declares is walked in turn, and the family decides the rest:
 
 | Family | Declared by | A call by a computed name, or to a method the class lacks | A method of the app the walk reaches |
 | --- | --- | --- | --- |

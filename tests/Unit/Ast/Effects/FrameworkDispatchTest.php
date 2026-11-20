@@ -6,10 +6,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkDispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkFamily;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AttributeWritingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\ComputedUnsetKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyNameWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\KeyWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PropertyKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\QuotedUnsetKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\StrictAttributesPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsetKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsetPrimaryKeyPost;
@@ -39,6 +41,16 @@ it('trusts an Eloquent reader only where each model method it dispatches to only
     'getKey(), past a getKeyName() returning a property' => [PropertyKeyPost::class, 'getKey', true],
     'getKey(), past a getKeyName() returning a property the model unsets' => [UnsetKeyPost::class, 'getKey', false],
     'getKey(), whose getKeyName() reads a property the model unsets' => [UnsetPrimaryKeyPost::class, 'getKey', false],
+    'getKey(), past a getKeyName() returning a property the model unsets by a quoted name' => [
+        QuotedUnsetKeyPost::class,
+        'getKey',
+        false,
+    ],
+    'getKey(), past a getKeyName() returning a property the model unsets by a computed name' => [
+        ComputedUnsetKeyPost::class,
+        'getKey',
+        false,
+    ],
     'getKey(), past a parent\'s getKeyName() returning a property the model hooks' => [
         HookedKeyPost::class,
         'getKey',
