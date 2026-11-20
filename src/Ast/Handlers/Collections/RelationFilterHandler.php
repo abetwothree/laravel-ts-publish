@@ -15,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Database\Eloquent\Casts\AsCollection;
@@ -37,7 +36,6 @@ use ReflectionMethod;
  * later handler answers; docs/components/resource-ast-analyzer.md § Attribute filters has each arm's rules.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
- * @phpstan-import-type TypesImportMap from Datable
  *
  * @internal
  */
@@ -201,7 +199,8 @@ final class RelationFilterHandler implements ExpressionHandler
      * Analyze a filter on an accessor typed as a union of models, one arm per model, declining when an arm is untyped.
      *
      * An arm whose model overrides the filter with a return reflection types publishes that return. The attribute
-     * arms become one `Record<string, unknown>` for a runtime key list.
+     * arms become one `Record<string, unknown>` for a runtime key list. The arms join as a union's do, each as it
+     * publishes alone.
      *
      * @param  list<class-string<Model>>  $modelFqcns
      * @return ValueExpressionResult|null
@@ -255,54 +254,14 @@ final class RelationFilterHandler implements ExpressionHandler
             return $this->attributeRecordResult($nullable);
         }
 
-        return $arms === [] ? null : $this->unionArms($arms, $nullable);
-    }
-
-    /**
-     * Join the arms into one union with every arm's import channels, hoisting a `null` any arm or `?->` adds.
-     *
-     * @param  non-empty-list<array{attributes: bool, result: ValueExpressionResult}>  $arms
-     * @return ValueExpressionResult
-     */
-    private function unionArms(array $arms, bool $nullable): array
-    {
-        /** @var list<string> $inlineTypes */
-        $inlineTypes = [];
-        /** @var list<class-string> $embeddedEnumFqcns */
-        $embeddedEnumFqcns = [];
-        /** @var list<class-string> $embeddedModelFqcns */
-        $embeddedModelFqcns = [];
-        /** @var TypesImportMap $embeddedCustomImports */
-        $embeddedCustomImports = [];
-
-        foreach ($arms as ['result' => $arm]) {
-            $nullable = $nullable || TsTypeString::hasNullArm($arm['type']);
-            $type = TsTypeString::withoutNullArm($arm['type']);
-
-            // A record carries no import channel, so a repeat of one adds nothing.
-            if ($type === 'Record<string, unknown>' && in_array($type, $inlineTypes, true)) {
-                continue;
-            }
-
-            $inlineTypes[] = $type;
-            array_push($embeddedEnumFqcns, ...(isset($arm['directEnumFqcn']) ? [$arm['directEnumFqcn']] : []), ...($arm['embeddedEnumFqcns'] ?? []));
-            array_push($embeddedModelFqcns, ...(isset($arm['modelFqcn']) ? [$arm['modelFqcn']] : []), ...($arm['embeddedModelFqcns'] ?? []));
-
-            foreach ($arm['customImports'] ?? [] as $path => $names) {
-                $embeddedCustomImports[$path] = [...($embeddedCustomImports[$path] ?? []), ...$names];
-            }
+        if ($arms === []) {
+            return null;
         }
 
-        return [
-            ...ValueResult::unknown(),
-            // Neither channel is deduped: aliasPropertyType() walks each list positionally
-            // against left-to-right occurrences of each basename in the type, so a real
-            // repeat — across arms or within one arm's own picked columns — must survive.
-            'type' => implode(' | ', $inlineTypes).($nullable ? ' | null' : ''),
-            'embeddedEnumFqcns' => $embeddedEnumFqcns,
-            'embeddedModelFqcns' => $embeddedModelFqcns,
-            'customImports' => $embeddedCustomImports,
-        ];
+        return ValueResult::unionResults([
+            ...array_column($arms, 'result'),
+            ...($nullable ? [['type' => 'null', 'optional' => false]] : []),
+        ]);
     }
 
     /**

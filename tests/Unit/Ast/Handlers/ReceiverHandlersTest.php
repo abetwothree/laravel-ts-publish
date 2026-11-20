@@ -575,7 +575,7 @@ describe('ReceiverMethodCallHandler', function () {
         'method body, relation ?->, an enum return' => [null, false, "\$this->twin?->except(['id'])", 'unknown'],
         'method body, map proxy' => [null, false, "\$this->twins->map->only(['id', 'name'])", '({ id: number; name: string } | null)[]'],
         'method body, map proxy, an enum return' => [null, false, "\$this->twins->map->except(['id'])", 'unknown[]'],
-        'method body, multi-model accessor' => [null, false, "\$this->counterpart->only(['id'])", '{ id: number } | { id: number } | null'],
+        'method body, multi-model accessor' => [null, false, "\$this->counterpart->only(['id'])", '{ id: number } | null'],
         'method body, multi-model accessor, runtime keys' => [null, false, '$this->counterpart?->only($keys)', 'Record<string, unknown> | null'],
         'method body, multi-model accessor, an enum return' => [null, false, "\$this->counterpart->except(['id'])", 'unknown'],
         'getter body, a model return' => [ResourceExpressionHandlers::forModelClosures(), true, "\$this->only(['id'])", 'ClassTypedFilterOverrideModel | null'],
