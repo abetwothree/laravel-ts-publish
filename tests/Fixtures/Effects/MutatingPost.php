@@ -151,6 +151,34 @@ class MutatingPost extends Post
     }
 
     /**
+     * Reads the pin through a builder of an Attribute subclass that runs the getter, which clears the pin.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinEager(): Attribute
+    {
+        return EagerAttribute::get(function (): string {
+            $this->attributes['is_pinned'] = false;
+
+            return 'eager';
+        });
+    }
+
+    /**
+     * Reads the pin through a built Attribute subclass that runs the getter, which clears the pin.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinBuilt(): Attribute
+    {
+        return new EagerAttribute(get: function (): string {
+            $this->attributes['is_pinned'] = false;
+
+            return 'built';
+        });
+    }
+
+    /**
      * Reads the pin's shade through a static arrow function, with no setter.
      *
      * @return Attribute<string, never>

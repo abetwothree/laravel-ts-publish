@@ -241,9 +241,9 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether building a returned value may run code or give it a setter: anything but one Attribute's builders make
-     * with no setter or a `null` one, from arguments that run nothing, with each method called on it named and handed
-     * nothing; an unpack it cannot read may hold a setter.
+     * Whether building a returned value may run code or give it a setter: anything but one the builders of Eloquent's
+     * own Attribute make with no setter or a `null` one, from arguments that run nothing, with each method called on it
+     * named and handed nothing; an unpack it cannot read may hold a setter.
      */
     private static function buildsSetter(Expr $built): bool
     {
@@ -256,13 +256,11 @@ final readonly class PropertyHooks
         }
 
         if ($built instanceof StaticCall && $built->class instanceof Name && $built->name instanceof Identifier
-            && is_a($built->class->toString(), Attribute::class, true)
+            && self::namesAttribute($built->class)
             && in_array($built->name->toLowerString(), ['make', 'get', 'set'], true)
         ) {
             $arguments = CallArguments::for($built, new ReflectionMethod(Attribute::class, $built->name->toString()));
-        } elseif ($built instanceof New_ && $built->class instanceof Name
-            && is_a($built->class->toString(), Attribute::class, true)
-        ) {
+        } elseif ($built instanceof New_ && $built->class instanceof Name && self::namesAttribute($built->class)) {
             $arguments = CallArguments::for($built, new ReflectionMethod(Attribute::class, '__construct'));
         } else {
             return true;
@@ -273,6 +271,15 @@ final readonly class PropertyHooks
         return $arguments->hasUnpack()
             || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'))
             || ! array_all($arguments->bound(), static fn (Arg $argument): bool => self::runsNothing($argument->value));
+    }
+
+    /**
+     * Whether a name is Eloquent's own `Attribute`, whose builders only store what they are handed; a subclass may
+     * override one, or the constructor they all run, to call it.
+     */
+    private static function namesAttribute(Name $class): bool
+    {
+        return strcasecmp(ltrim($class->toString(), '\\'), Attribute::class) === 0;
     }
 
     /**
