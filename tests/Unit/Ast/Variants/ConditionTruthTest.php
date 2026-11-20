@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionTruth;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\DiscriminantValue;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FlagUnsettingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IssetDenyingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicGetItemResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OffsetClaimingPost;
@@ -169,6 +170,9 @@ it('decides isset() and empty() of a property only where checking it answers as 
     ],
     'a model\'s public property it unsets, past its own offsetExists()' => [
         '$this->resource->memo', 'isset($this->resource->memo)', null, PostResource::class, OffsetClaimingPost::class, null,
+    ],
+    'a model\'s public property the resource unsets, past its own offsetExists()' => [
+        '$this->resource->flagged', 'isset($this->resource->flagged)', null, FlagUnsettingResource::class, OffsetClaimingPost::class, null,
     ],
     'a property of a local, whose class no scope names' => [
         '$post->is_pinned', 'isset($post->is_pinned)', true, PostResource::class, Post::class, null,

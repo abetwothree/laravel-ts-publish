@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\PropertyHooks;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\UnsetProperties;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use Illuminate\Database\Eloquent\Model;
@@ -153,22 +154,25 @@ final readonly class ConditionTruth
         }
 
         $declaring = $this->scope->declaringClass;
+        $runtime = $this->scope->runtime->class;
         $steps = PropertyHooks::of($this->scope)->steps($this->read, $declaring, true);
 
-        return $steps !== [] && array_all($steps, function (array $step, int $index) use ($declaring): bool {
+        return $steps !== [] && array_all($steps, function (array $step, int $index) use ($declaring, $runtime): bool {
             [$property, $classes, $onThis] = $step;
             $forwarded = $index === 0 && ! $onThis;
             // JsonResource's own `__isset()` and `__get()` reach the model's member from JsonResource's scope.
             $scope = $forwarded ? new ReflectionClass(JsonResource::class) : $declaring;
+            // A property the runtime class's own code unsets is reached through the magic, as setHooks() reads it.
+            $unset = UnsetProperties::unsets($runtime, $property);
 
             return $classes !== []
-                && (! $forwarded || self::answersByFramework($this->scope->runtime->class, JsonResource::class))
-                && array_all($classes, static fn (ReflectionClass $class): bool => PropertyHooks::inPlace(
+                && (! $forwarded || self::answersByFramework($runtime, JsonResource::class))
+                && array_all($classes, static fn (ReflectionClass $class): bool => (! $unset && PropertyHooks::inPlace(
                     $class,
                     $property,
                     $scope,
                     false,
-                ) || self::answersByFramework($class, Model::class));
+                )) || self::answersByFramework($class, Model::class));
         });
     }
 
