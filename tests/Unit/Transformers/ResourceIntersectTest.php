@@ -38,6 +38,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectLibGloba
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmBesideCastNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectNestedArmGlobalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTwoPathsBuiltOnResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectTypeofValueGlobalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IntersectValueGlobalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PickBaseExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedPostIntersectResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinnedWrapsIntersectResource;
@@ -347,7 +349,17 @@ it('imports no global type TypeScript declares that a clause spells', function (
     ], '} & ({ at: Meta | Date | null });'],
     'the DOM\'s, inside generics' => [ExtendsDomGlobalResource::class, [], 'extends Partial<Response>, Pick<Event, "type">'],
     'the DOM\'s, in an object and a generic' => [IntersectDomGlobalsResource::class, [], '} & ({ n: Node; d: Document; q: Request; e: HTMLElement })'],
+    'a DOM value\'s typeof, beside a DOM type' => [IntersectTypeofValueGlobalResource::class, [], '} & ({ ctor: typeof Image; el: HTMLElement })'],
 ]);
+
+// DOM's `Image` is a value with no type, so `{ image: Image }` names the clause's own type and imports it.
+it('imports a name a clause spells as a type that the libs declare only as a value', function () {
+    $content = intersectedResourceFile(IntersectValueGlobalsResource::class);
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import type { Audio, Image, Option } from '@/types/media';",
+    ])->and($content)->toContain('} & ({ image: Image; audio: Audio; option: Option });');
+});
 
 // Two enums the file reads print one type name, both aliased, so the name binds neither and the clause imports it.
 it('imports a name a clause builds on that two enums the file reads both print', function (string $resource, string $declaration) {

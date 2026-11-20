@@ -671,6 +671,17 @@ describe('referencedTypeNames', function () {
         'the DOM\'s globals' => ['Partial<Response> | Pick<Event, "type"> | { n: Node; d: Document; q: Request; e: HTMLElement }', []],
         'the DOM\'s globals inside a generic' => ['Partial<Record<string, Element | Headers | AbortSignal | KeyboardEvent>>', []],
         'a global value' => ['ReturnType<typeof fetch> | { m: Meta }', ['Meta']],
+        'a global value the DOM declares with no type' => ['{ ctor: typeof Image; at: typeof NaN }', []],
+        'a global namespace, as a qualifier' => ['Intl.DateTimeFormat | WebAssembly.Module', []],
+    ]);
+
+    // DOM's `Image`, `Audio` and `Option` are values with no type, so a type position spelling one reads the clause's.
+    test('reads a global the libs declare only as a value, where a type stands', function (string $type, array $names) {
+        expect($this->service->referencedTypeNames($type))->toBe($names);
+    })->with([
+        'members' => ['{ image: Image; audio: Audio; option: Option }', ['Image', 'Audio', 'Option']],
+        'a generic\'s argument' => ['Partial<Proxy> | Array<Image>', ['Proxy', 'Image']],
+        'beside its typeof' => ['{ img: Image; ctor: typeof Image }', ['Image']],
     ]);
 
     test('reads each name once, in the order a type first spells it', function () {

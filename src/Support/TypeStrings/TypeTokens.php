@@ -45,7 +45,8 @@ final readonly class TypeTokens
      *
      * A member's, label's, parameter's or method's own name is none, nor is literal text, a primitive, a keyword, a gap
      * arm, a name after a `.`, a binder `infer`, a mapped type or a type parameter list declares, a predicate's
-     * parameter, or a global of the TypeScript libs (TsLibGlobals). The operand of `typeof` is one.
+     * parameter, or a global the TypeScript libs declare as a type, or as a value after `typeof` (TsLibGlobals). The
+     * operand of `typeof` is one.
      *
      * @return list<string>
      */
@@ -58,9 +59,13 @@ final readonly class TypeTokens
         foreach ($this->roles($tokens) as $index => $role) {
             $token = $tokens[$index][0];
 
+            // A global only a value declares, such as the DOM's `Image`, is no type: a type position names the file's.
+            $global = isset(TsLibGlobals::TYPES[$token])
+                || (($tokens[$index - 1][0] ?? '') === 'typeof' && isset(TsLibGlobals::VALUES[$token]));
+
             if ($role === 'binder') {
                 $binders[] = $token;
-            } elseif ($role === 'type' && ! isset(TsLibGlobals::NAMES[$token]) && ! VisibleGaps::isGap($token)) {
+            } elseif ($role === 'type' && ! $global && ! VisibleGaps::isGap($token)) {
                 $names[] = $token;
             }
         }
