@@ -15,6 +15,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PrivateHookParent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PropertyKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\ReferenceGetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicSetResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinForgettingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SettingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MagicSetFlags;
 use Workbench\App\Models\Post;
@@ -201,6 +202,9 @@ it('lists the __set() a write runs where it cannot set the property in place', f
         '$this->resource->label', [MagicSetFlags::class], InterveningResource::class, [],
     ],
     'the resource\'s own __set()' => ['$this->summary', [Post::class], MagicSetResource::class, [[null, 'summary']]],
+    'a public property the resource unsets, with a mutator' => [
+        '$this->resource->pin_open', [MutatingPost::class], PinForgettingResource::class, [[null, 'pin_open']],
+    ],
     'Eloquent\'s own __set(), for a protected property with no mutator' => [
         '$this->resource->keyField', [PropertyKeyPost::class], InterveningResource::class, [],
     ],

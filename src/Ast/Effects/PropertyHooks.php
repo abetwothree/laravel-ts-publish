@@ -84,7 +84,8 @@ final readonly class PropertyHooks
 
     /**
      * Whether code in a scope reaches a property an object of the class declares in place, past the magic methods: an
-     * instance property the scope may read, or set where it writes, which the app's own code never unsets.
+     * instance property the scope may read, or set where it writes, which no method of the class unsets; code outside
+     * the class may unset it too, which a caller weighs.
      *
      * @param  ReflectionClass<covariant object>  $class
      * @param  ReflectionClass<covariant object>  $scope  the class `self` names where the property is used
@@ -159,8 +160,8 @@ final readonly class PropertyHooks
 
     /**
      * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the `__set()` a write it
-     * cannot make in place runs: Eloquent's only where it runs a set mutator, or looks one up through, any other
-     * always, each with another `$this` than the path's.
+     * cannot make in place runs, as one the runtime class's own code unsets: Eloquent's only where it runs a set
+     * mutator, or looks one up through, any other always, each with another `$this` than the path's.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is written
      * @return list<HookRun>
@@ -178,7 +179,9 @@ final readonly class PropertyHooks
 
             if (self::runsSetHook($class, $property)) {
                 $runs[] = [$onThis ? $class : null, $property];
-            } elseif ($class->hasMethod('__set') && ! self::inPlace($class, $property, $declaring, true)
+            } elseif ($class->hasMethod('__set')
+                && (! self::inPlace($class, $property, $declaring, true)
+                    || UnsetProperties::unsets($this->runtime, $property))
                 && self::magicSetMayRun($class, $property)
             ) {
                 $runs[] = [null, $property];

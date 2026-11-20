@@ -730,6 +730,9 @@ it('reads a write PHP hands to an object\'s own __set() as a call', function (
     ],
     'the resource\'s own __set()' => ["\$this->summary = 'a'", MagicSetResource::class, Post::class, true],
     'a resource with no __set(), which keeps the write' => ["\$this->summary = 'a'", InterveningResource::class, Post::class, false],
+    'a public property the resource unsets, with a mutator' => [
+        "\$this->resource->pin_open = 'a'", PinForgettingResource::class, MutatingPost::class, true,
+    ],
     'Eloquent\'s own __set(), for an attribute with no mutator' => [
         "\$this->resource->title = 'a'", PinForgettingResource::class, MutatingPost::class, false,
     ],
