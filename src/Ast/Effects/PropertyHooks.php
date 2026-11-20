@@ -158,8 +158,9 @@ final readonly class PropertyHooks
     }
 
     /**
-     * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the set mutator a model
-     * runs for an attribute its `__set()` sets, or looks one up through, which runs with the model as `$this`.
+     * The set hook writing a `$this` path runs on its last step, as getHooks() lists one, or the `__set()` a write it
+     * cannot make in place runs: Eloquent's only where it runs a set mutator, or looks one up through, any other
+     * always, each with another `$this` than the path's.
      *
      * @param  ReflectionClass<object>  $declaring  the class `self` names where the path is written
      * @return list<HookRun>
@@ -177,8 +178,8 @@ final readonly class PropertyHooks
 
             if (self::runsSetHook($class, $property)) {
                 $runs[] = [$onThis ? $class : null, $property];
-            } elseif ($class->isSubclassOf(Model::class) && ! self::inPlace($class, $property, $declaring, true)
-                && self::runsSetMutator($class, $property)
+            } elseif ($class->hasMethod('__set') && ! self::inPlace($class, $property, $declaring, true)
+                && self::magicSetMayRun($class, $property)
             ) {
                 $runs[] = [null, $property];
             }
@@ -245,6 +246,19 @@ final readonly class PropertyHooks
     public function steps(ReadPath $path, ReflectionClass $declaring, bool $reads): array
     {
         return $this->walk($path, $declaring, $reads)[0];
+    }
+
+    /**
+     * Whether the `__set()` a class runs for a write of a property runs the app's code: Eloquent's own through a set
+     * mutator, any other always.
+     *
+     * @param  ReflectionClass<object>  $class
+     */
+    private static function magicSetMayRun(ReflectionClass $class, string $property): bool
+    {
+        return ! ($class->isSubclassOf(Model::class)
+            && $class->getMethod('__set')->getDeclaringClass()->getName() === Model::class)
+            || self::runsSetMutator($class, $property);
     }
 
     /**

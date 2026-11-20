@@ -14,8 +14,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\MutatingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\SelfHookGrandchild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\UnsetKeyPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicSetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinForgettingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SettingPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MagicSetFlags;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ConstFetch;
@@ -690,11 +694,45 @@ it('reads a write to a model attribute as a call where a set mutator runs', func
     'a protected property with a setXAttribute() mutator' => ["\$this->resource->pin_guard = 'a'", true],
     'a protected property with an Attribute setter' => ["\$this->resource->pin_lock = 'a'", true],
     'a private property with a mutator' => ["\$this->resource->pin_secret = 'a'", true],
-    'a protected(set) property with a mutator' => ["\$this->resource->pin_slot = 'a'", true],
-    'a private(set) property with a mutator' => ["\$this->resource->pin_seal = 'a'", true],
+    'a protected(set) property, which a write from anywhere else throws on' => ["\$this->resource->pin_slot = 'a'", true],
+    'a private(set) property, which a write from anywhere else throws on' => ["\$this->resource->pin_seal = 'a'", true],
     'a public property the model unsets, with a mutator' => ["\$this->resource->pin_memo = 'a'", true],
     'Model\'s own protected property, with a mutator' => ["\$this->resource->visible = 'a'", true],
     'a public property with a mutator, which the write sets in place' => ["\$this->resource->pin_open = 'a'", false],
+]);
+
+// PHP hands a write it cannot make in place to the object's `__set()`, which runs no mutator unless it is Eloquent's.
+it('reads a write PHP hands to an object\'s own __set() as a call', function (
+    string $write,
+    string $subject,
+    string $model,
+    bool $mayWrite,
+) {
+    expect(windowReach([$write, '$this->is_pinned ? 1 : null'], subject: $subject, model: $model))->toBe($mayWrite);
+})->with([
+    'a model\'s own __set(), for a property it hides' => [
+        "\$this->resource->hidden_note = 'a'", InterveningResource::class, SettingPost::class, true,
+    ],
+    'a model\'s own __set(), for an attribute it declares no property for' => [
+        "\$this->resource->other = 'a'", InterveningResource::class, SettingPost::class, true,
+    ],
+    'a model\'s own __set(), past a public property the write sets in place' => [
+        "\$this->resource->open_note = 'a'", InterveningResource::class, SettingPost::class, false,
+    ],
+    'a held object\'s __set(), for a property it hides' => [
+        "\$this->resource->title = 'a'", InterveningResource::class, MagicSetFlags::class, true,
+    ],
+    'a held object\'s __set(), for a property it lacks' => [
+        "\$this->resource->other = 'a'", InterveningResource::class, MagicSetFlags::class, true,
+    ],
+    'a held object\'s __set(), past a public property the write sets in place' => [
+        "\$this->resource->label = 'a'", InterveningResource::class, MagicSetFlags::class, false,
+    ],
+    'the resource\'s own __set()' => ["\$this->summary = 'a'", MagicSetResource::class, Post::class, true],
+    'a resource with no __set(), which keeps the write' => ["\$this->summary = 'a'", InterveningResource::class, Post::class, false],
+    'Eloquent\'s own __set(), for an attribute with no mutator' => [
+        "\$this->resource->title = 'a'", PinForgettingResource::class, MutatingPost::class, false,
+    ],
 ]);
 
 it('reads a set mutator in the last item\'s arm as a call that runs after its guard', function () {

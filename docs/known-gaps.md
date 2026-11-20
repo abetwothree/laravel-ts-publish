@@ -251,7 +251,8 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
   model, a resource helper's included;
 - a model's own `__get()` that writes the discriminant, run by a read of a property that code outside the model's own
   methods unsets, such as `unset($post->keyField)` in a resource or a controller;
-- a class cast's `set()`, or the resource's own `__set()`, that writes the discriminant;
+- a class cast's `set()` that writes the discriminant, or the resource's own `__set()` that does, run by a write
+  through a local that holds the resource, such as `$self->note = 'x'` after `$self = $this`;
 - on PHP 8.4, a `get` hook that writes the discriminant on a property the window reads, such as
   `$this->settings->count`, where the object's class adds the hook and an interface or a parent class types `settings`;
 - a gate or policy a `Gate` check runs, or a model's route key `route()` or `url()` reads, which the package trusts to

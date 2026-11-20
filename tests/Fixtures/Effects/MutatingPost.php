@@ -20,10 +20,10 @@ class MutatingPost extends Post
     /** Unset by the constructor, so a write reaches `__set()`. */
     public $pin_memo;
 
-    /** Set only by the model's family, so a write from anywhere else reaches `__set()`. */
+    /** Set only by the model's family, so a write from anywhere else throws. */
     public protected(set) ?string $pin_slot = null;
 
-    /** Set only by the model, so a write from anywhere else reaches `__set()`. */
+    /** Set only by the model, so a write from anywhere else throws. */
     public private(set) ?string $pin_seal = null;
 
     protected $table = 'posts';
