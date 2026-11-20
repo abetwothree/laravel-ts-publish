@@ -481,8 +481,10 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 
 - **No explicit default, optional key**: without a `default` argument the value can be a `MissingValue`, which Laravel
   removes, so the key publishes optional.
-- **An explicit default makes the key required**: `explicitDefault()` counts arguments the way
-  `func_num_args()` does, so a `null` written at the default position counts, and a spread counts as no default.
+- **An explicit default makes the key required**: `explicitDefault()` reads the `default` the call binds, by position
+  or by name, so a `null` written there counts. PHP allows no positional argument after a spread, so a bound default
+  is the one Laravel gets, but past three arguments Laravel 12.0's `when()`, `whenAppended()`, `transform()` and
+  `mergeWhen()` send a `MissingValue` for it, so with a spread their key stays optional.
   `applyConditionalDefault()` then unions the default's type in through `ValueResult::unionResults()`, which carries
   its import channels. Joining the type strings by hand would emit a token with no import.
   The key stays optional when the value or the default can itself be a `MissingValue`, as in

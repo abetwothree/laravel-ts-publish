@@ -184,21 +184,30 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
         $guard = $method === 'when' ? $condition : new BooleanNot($condition);
         $valueArm = new ConditionalArm($guard, $value, $this->whenValue($condition, $value, $method, $scope, $engine));
         $default = $this->explicitDefault($args);
-        $sent = $default === null
-            ? $this->missingValueSent($engine)
-            : $this->resolveConditionalDefault($default, 0, null, $scope, $engine);
-        $defaultArm = new ConditionalArm(null, $default, $sent, throws: $default !== null && $sent === null);
+        $sent = $default === null ? null : $this->resolveConditionalDefault($default, 0, null, $scope, $engine);
+        $throws = $default !== null && $sent === null;
+
+        // Past three arguments, which an unpack may pass, Laravel 12.0's when() sends a MissingValue for the default.
+        if ($default === null || ($method === 'when' && $args->hasUnpack())) {
+            $sent = $sent === null ? $this->missingValueSent($engine) : $this->leftOut($sent, $engine);
+            $throws = false;
+        }
+
+        $defaultArm = new ConditionalArm(null, $default, $sent, throws: $throws);
 
         return new ConditionalArms([$valueArm, $defaultArm]);
     }
 
     /**
      * Fold an explicit default into the value arm: it makes the key required, unless either arm can itself be a
-     * MissingValue, and unions in when it resolves. It is invoked with $defaultArgCount arguments, 0 for
-     * value($default) and 1 for transform()'s $default($value), whose one argument is $passedToDefault.
+     * MissingValue, or an unpack may pass past the three arguments an $exactCount helper sends its default at. It is
+     * invoked with $defaultArgCount arguments, 0 for value($default) and 1 for transform()'s $default($value), whose
+     * one argument is $passedToDefault.
      *
      * @param  ValueExpressionResult  $value
      * @param  PassedValue|null  $passedToDefault
+     * @param  bool  $exactCount  whether some supported Laravel sends a MissingValue in place of the default past three
+     *                            arguments, as Laravel 12.0's when(), whenAppended() and transform() do
      * @return ValueExpressionResult
      */
     protected function applyConditionalDefault(
@@ -208,35 +217,16 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
         ExpressionEngine $engine,
         int $defaultArgCount = 0,
         ?array $passedToDefault = null,
+        bool $exactCount = false,
     ): array {
         $defaultExpr = $this->explicitDefault($args);
+        $folded = $defaultExpr === null
+            ? $value
+            : $this->foldedDefault($value, $defaultExpr, $defaultArgCount, $passedToDefault, $scope, $engine);
 
-        if ($defaultExpr === null) {
-            return $this->leftOut($value, $engine);
-        }
+        $leftOut = $defaultExpr === null || ($exactCount && $args->hasUnpack());
 
-        $default = $this->resolveConditionalDefault($defaultExpr, $defaultArgCount, $passedToDefault, $scope, $engine);
-
-        // A default closure requiring more parameters than Laravel supplies it can never run, so its
-        // arm is unreachable — the value arm stands alone, optional only as its own value is.
-        if ($default === null) {
-            return $value;
-        }
-
-        // An `unknown` on either arm carries no type to union: an unresolved default leaves the value arm
-        // standing, and an unresolved value arm already admits whatever the default could produce.
-        if ($default['type'] === 'unknown' || $value['type'] === 'unknown') {
-            // Only a value arm with a type publishes without the default, so only then is an arm left out.
-            if ($value['type'] !== 'unknown') {
-                $value = DroppedUnionArms::leftOut($value, [[$defaultExpr, 'conditional-default']], $scope);
-            }
-
-            return [...$value, 'optional' => $value['optional'] || $default['optional']];
-        }
-
-        // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
-        // which an inline array's member and Inertia shared data do not honour.
-        return ValueResult::unionResults([$value, $default], countMembers: true);
+        return $leftOut ? $this->leftOut($folded, $engine) : $folded;
     }
 
     /**
@@ -278,7 +268,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
 
         $inner = $this->whenValue($condition->value, $valueArg->value, $method, $scope, $engine);
 
-        return $this->applyConditionalDefault($inner, $args, $scope, $engine);
+        return $this->applyConditionalDefault($inner, $args, $scope, $engine, exactCount: $method === 'when');
     }
 
     /**
@@ -330,16 +320,16 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
 
         // Same as whenHas(): a skipped $value is value(null) at runtime.
         if ($this->valueSkipped($args)) {
-            return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine);
+            return $this->applyConditionalDefault(['type' => 'null', 'optional' => false], $args, $scope, $engine, exactCount: true);
         }
 
         $fromValue = $this->resolveValueArgument($args, null, $scope, $engine);
 
         if ($fromValue !== null) {
-            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine);
+            return $this->applyConditionalDefault($fromValue, $args, $scope, $engine, exactCount: true);
         }
 
-        return $this->applyConditionalDefault($this->analyzeAttributeRead($attribute->value, $args, $scope), $args, $scope, $engine);
+        return $this->applyConditionalDefault($this->analyzeAttributeRead($attribute->value, $args, $scope), $args, $scope, $engine, exactCount: true);
     }
 
     /**
@@ -557,7 +547,15 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
         // argument — unlike the rest of the family's zero-argument value($default).
         $passed = ['value' => $value, 'resolved' => $resolvedValue, 'outer' => $outer];
 
-        return $this->applyConditionalDefault($inner, $args, $scope, $engine, defaultArgCount: 1, passedToDefault: $passed);
+        return $this->applyConditionalDefault(
+            $inner,
+            $args,
+            $scope,
+            $engine,
+            defaultArgCount: 1,
+            passedToDefault: $passed,
+            exactCount: true,
+        );
     }
 
     /**
@@ -835,17 +833,52 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
     }
 
     /**
-     * The default, where one was passed as Laravel's func_num_args() sees it: `default` counts as passed once
-     * passedCount() exceeds its declared position, whether it was written there or by name (a named argument
-     * implies every earlier position). A spread makes the count unknowable, so it bails.
+     * The value arm with a default unioned in, which makes the key required unless either arm is optional: the value
+     * arm alone where the default is a closure Laravel cannot call, and beside an arm left out where either is unknown.
+     *
+     * @param  ValueExpressionResult  $value
+     * @param  PassedValue|null  $passedToDefault
+     * @return ValueExpressionResult
+     */
+    private function foldedDefault(
+        array $value,
+        Expr $defaultExpr,
+        int $defaultArgCount,
+        ?array $passedToDefault,
+        AnalysisScope $scope,
+        ExpressionEngine $engine,
+    ): array {
+        $default = $this->resolveConditionalDefault($defaultExpr, $defaultArgCount, $passedToDefault, $scope, $engine);
+
+        // A default closure requiring more parameters than Laravel supplies it can never run, so its
+        // arm is unreachable — the value arm stands alone, optional only as its own value is.
+        if ($default === null) {
+            return $value;
+        }
+
+        // An `unknown` on either arm carries no type to union: an unresolved default leaves the value arm
+        // standing, and an unresolved value arm already admits whatever the default could produce.
+        if ($default['type'] === 'unknown' || $value['type'] === 'unknown') {
+            // Only a value arm with a type publishes without the default, so only then is an arm left out.
+            if ($value['type'] !== 'unknown') {
+                $value = DroppedUnionArms::leftOut($value, [[$defaultExpr, 'conditional-default']], $scope);
+            }
+
+            return [...$value, 'optional' => $value['optional'] || $default['optional']];
+        }
+
+        // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
+        // which an inline array's member and Inertia shared data do not honour.
+        return ValueResult::unionResults([$value, $default], countMembers: true);
+    }
+
+    /**
+     * The default the call binds, written at its position or by name (a named argument implies every earlier
+     * position). PHP allows no positional argument after an unpack, so a bound default is the one Laravel receives.
      */
     private function explicitDefault(CallArguments $args): ?Expr
     {
-        $position = $args->positionOf('default');
-
-        return ! $args->hasUnpack() && $position !== null && $args->passedCount() > $position
-            ? $args->named('default')?->value
-            : null;
+        return $args->named('default')?->value;
     }
 
     /**
