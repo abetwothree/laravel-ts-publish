@@ -18,7 +18,12 @@ reviews:
         A require-dev class, or a Laravel class missing from a supported Laravel version, is referenced by string
         FQCN behind `class_exists()` (docs/laravel-version-guards.md). Before calling an untyped case a bug, read
         docs/known-gaps.md: several gaps are deliberate. A change that makes a published TypeScript type less
-        specific, or turns a typed property into `unknown`, is a regression.
+        specific, or turns a typed property into `unknown`, is a regression. The repo's rules live in
+        .claude/rules/; each applies to the paths its frontmatter lists. Inference is held to the plausible-input
+        bar in .claude/rules/plausible-inputs.md: report a wrong or missing type for code an application plausibly
+        writes, and say how plausible the shape is. For contrived PHP (that rule lists examples, such as a redefined
+        built-in constant or a reference through a variable variable), suggest a docs/known-gaps.md line rather
+        than a fix, as a nitpick.
     - path: "src/Ast/**"
       instructions: >-
         The AST engine. It must not depend on any analyzer in src/Analyzers. `AstEngine` and `AnalysisResult` are
@@ -67,6 +72,7 @@ knowledge_base:
     filePatterns:
       - CLAUDE.md
       - AGENTS.md
+      - .claude/rules/**/*.md
       - README.md
       - CONTRIBUTING.md
       - GLOSSARY.md
