@@ -59,8 +59,12 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewSubjectReso
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTiesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportedNullsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReviewTransportsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamedWrapsDeclaredResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SpreadWrapHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusOrRowsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StatusWrapBesideBareRowsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoWrapsDeclaredResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapsBesideOneFilledEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReturnShapeFixture;
 use AbeTwoThree\LaravelTsPublish\Transformers\BroadcastEventTransformer;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -686,7 +690,55 @@ test('a bare enum the @return fills beside two enum wraps keeps its type import'
         ['../../../../../../workbench/app/enums' => ['StatusType']],
         ['../../../../../../workbench/app/enums' => ['Status']],
     ],
+    'two wraps, one enum filled bare' => [
+        WrapsBesideOneFilledEnumResource::class,
+        'AsEnum<typeof Status> | AsEnum<typeof Role> | { status: StatusType }[]',
+        ['../../../../../../workbench/app/enums' => ['StatusType']],
+        ['../../../../../../workbench/app/enums' => ['Role', 'Status']],
+    ],
 ]);
+
+// A spread helper's own `@return` types its keys where the caller writes them, wraps and all (GH-154, GH-160).
+test('a spread helper\'s @return keeps each wrap it types and the bare enums it fills', function () {
+    $data = new ResourceTransformer(SpreadWrapHelpersResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+        'subject' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { status: StatusType; role: RoleType }[]',
+        'pair' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
+    ])->and($data->typeImports)->toBe(['../../../../../../workbench/app/enums' => ['RoleType', 'StatusType']])
+        ->and($data->valueImports)->toBe([
+            '../../../../../../workbench/app/enums' => ['Role', 'Status as WorkbenchStatus'],
+            '../../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+        ]);
+});
+
+// The app's and the CRM's Status print one const name, so the merge reads each wrap's const by its class (GH-160).
+test('two wraps of enums one name spells keep their consts under a @return naming both', function () {
+    $data = new ResourceTransformer(SameNamedWrapsDeclaredResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+        'subject' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
+        'gap' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | WorkbenchStatusType | CrmStatusType',
+        'rows' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | { s: WorkbenchStatusType }[]',
+    ])->and($data->typeImports)->toBe([
+        '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+        '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+    ])->and($data->valueImports)->toBe([
+        '../../../../../../workbench/app/enums' => ['Status as WorkbenchStatus'],
+        '../../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+    ]);
+});
+
+// R7: a wrap sends the object, so a declared bare arm is another arm, standing beside the wraps only where a gap does.
+test('two wraps under a @return naming their enums bare publish the wraps, and the bare arms only beside a gap', function () {
+    $data = new ResourceTransformer(TwoWrapsDeclaredResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+        'subject' => 'AsEnum<typeof Status> | AsEnum<typeof Role>',
+        'gap' => 'AsEnum<typeof Status> | AsEnum<typeof Role> | StatusType | RoleType',
+    ])->and($data->typeImports)->toBe(['../../../../../../workbench/app/enums' => ['RoleType', 'StatusType']])
+        ->and($data->valueImports)->toBe(['../../../../../../workbench/app/enums' => ['Role', 'Status']]);
+});
 
 test('a key the body types with a model takes the @return member\'s enum or model at a position it leaves unknown', function () {
     expect(analyzedKeyTypes(AuthoredRowsResource::class))->toBe([

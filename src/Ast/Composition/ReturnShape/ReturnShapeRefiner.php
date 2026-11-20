@@ -161,6 +161,7 @@ final class ReturnShapeRefiner
             ...$analysis->declaredTokenFqcns[$name] ?? [],
             ...$declaredSlots,
         ]))));
+        $consts = TokenSlots::namesOf('consts', $analysis->wrapConstFqcns($name));
         $wraps = $analysis->topWrappedEnumFqcns($name);
         $written = $this->writtenWrap($analysis, $name);
         $read = $written === null ? $type : TsTypeString::substituteEnumType(
@@ -168,9 +169,10 @@ final class ReturnShapeRefiner
             ValueResult::enumTypeName($written),
             EnumWrapSpelling::ofEnum($written),
         );
-        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $relists)->merge(
-            [$read, $this->readSlots($analysis, $name, $read, $names)],
-            [$member['type'], TokenSlots::declaredSlots($member['type'], $declaredSlots, $names)],
+        $declared = TokenSlots::declaredSlots($member['type'], $declaredSlots, $names);
+        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $relists, $consts)->merge(
+            [$read, $this->readSlots($analysis, $name, $read, $names, $consts)],
+            [$member['type'], TokenSlots::withConstSlots($member['type'], $declared, [], $names, $consts)],
         );
 
         if ($merged === $read) {
@@ -185,6 +187,8 @@ final class ReturnShapeRefiner
             $analysis->inlineEnumResourceFqcns[$name] = [$written, ...$analysis->inlineEnumResourceFqcns[$name] ?? []];
         }
 
+        // A merge keeps every wrap the body sends, in its order, so the const queue already reads the merged text.
+        $slots = TokenSlots::withoutConstSlots($merged, $slots, $names, $consts);
         $imports = $this->importsSpelled($member['customImports'], $merged);
 
         if ($this->requeued($analysis, $name, $merged, $slots, $names)) {
@@ -217,17 +221,21 @@ final class ReturnShapeRefiner
     /**
      * The class behind each token of $names a key's text spells, as the publisher reads the key: by the slots a
      * docblock declared for it, else by its channels' queue in print order; null where no class answers to the name.
+     * Each const of $consts after `typeof` takes the enum its wrap queue gives it, in print order among them.
      *
      * @param  list<string>  $names
+     * @param  list<string>  $consts
      * @return Slots
      */
-    private function readSlots(MethodAnalysis $analysis, string $name, string $text, array $names): array
+    private function readSlots(MethodAnalysis $analysis, string $name, string $text, array $names, array $consts): array
     {
         $declared = $analysis->declaredTokenFqcns[$name] ?? null;
-
-        return $declared === null
+        $classes = $declared === null
             ? TokenSlots::queueRead($analysis->channelFqcns($name), $text, $names)
             : TokenSlots::declaredSlots($text, $declared, $names);
+        $wraps = TokenSlots::constRead($analysis->wrapConstFqcns($name), $text, $consts);
+
+        return TokenSlots::withConstSlots($text, $classes, $wraps, $names, $consts);
     }
 
     /**

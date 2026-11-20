@@ -17,8 +17,9 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * position an answer: a reading left `unknown` takes the declaration, a shape keeps the members the body sends, a list
  * or record merges its element or value, and a declaration within the reading refines it arm by arm, else it stays.
  *
- * Each side is a type beside the class behind each token of the names in play, in print order, so classes compare by
- * identity, never by spelling, and an enum the body wraps in an `EnumResource` is never that enum.
+ * Each side is a type beside the class behind each token of the names in play, and the enum behind each const a wrap
+ * spells, in print order, so classes compare by identity, never by spelling, and an enum the body wraps in an
+ * `EnumResource` is never that enum.
  *
  * A gap the body kept (VisibleGaps) stands for an arm no rule typed, so it takes each declared arm the other arms leave
  * out; a shape with the open marker may hold keys the body cannot name, so it keeps a member only declared.
@@ -45,11 +46,13 @@ final readonly class DeclaredTypeMerge
      * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
      * @param  bool  $relists  whether the client gets an array keyed only by ints as the list of its values in the
      *                         order it holds them, as `filter()` re-lists one in a resource that keeps no keys
+     * @param  list<string>  $consts  the consts whose every token after `typeof` a side's slots give a wrapped enum
      */
     public function __construct(
         private array $names,
         private array $bodyWraps = [],
         private bool $relists = false,
+        private array $consts = [],
     ) {}
 
     /**
@@ -780,7 +783,7 @@ final readonly class DeclaredTypeMerge
 
     /**
      * An arm with each read token a class stands behind spelled as that class, so arms compare by identity: a class
-     * the body wraps in an `EnumResource` apart from the enum itself.
+     * the body wraps in an `EnumResource` apart from the enum itself, and a wrap's const as the enum behind it.
      *
      * @param  Typed  $arm
      */
@@ -789,11 +792,13 @@ final readonly class DeclaredTypeMerge
         $text = '';
         $from = 0;
 
-        foreach ($this->names === [] ? [] : TokenSlots::tokens('classes', $this->names, $arm[0]) as $index => [$token, $offset, $read]) {
+        $tokens = TokenSlots::slottedTokens($this->names, $this->consts, $arm[0]);
+
+        foreach ($tokens as $index => [$token, $offset, $read, $isConst]) {
             $class = $arm[1][$index] ?? null;
 
             if ($read && $class !== null) {
-                $wrapped = $isBody && in_array($class, $this->bodyWraps, true);
+                $wrapped = ! $isConst && $isBody && in_array($class, $this->bodyWraps, true);
                 $text .= substr($arm[0], $from, $offset - $from).'\\'.($wrapped ? 'EnumResource<'.$class.'>' : $class);
                 $from = $offset + strlen($token);
             }
@@ -803,10 +808,10 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * How many tokens of the names in play a part of a type spells, each of which takes one slot.
+     * How many tokens of the names and consts in play a part of a type spells, each of which takes one slot.
      */
     private function count(string $text): int
     {
-        return $this->names === [] ? 0 : count(TokenSlots::tokens('classes', $this->names, $text));
+        return count(TokenSlots::slottedTokens($this->names, $this->consts, $text));
     }
 }

@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeChildResou
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeKeysResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeLevelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeModelReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperOffsetReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializableEnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
@@ -8223,6 +8224,24 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'state' => 'AsEnum<typeof Status> | VisibilityType | null',
         ]],
     ]);
+
+    // B5: an untyped helper's shape names its enum by its alias, so a key read off it keeps the class behind the token.
+    test('reads a key off an untyped helper\'s array as its member, beside a wrap or alone', function () {
+        $beside = new ResourceTransformer(WrapBesideReadResource::class)->data();
+        $alone = new ResourceTransformer(HelperOffsetReadsResource::class)->data();
+
+        expect($beside->properties['wrap_or_helper_offset']['type'])->toBe('AsEnum<typeof MediaType> | MediaTypeType')
+            ->and($beside->typeImports['../../../enums'])->toContain('MediaTypeType')
+            ->and(array_map(fn (array $property): string => $property['type'], $alone->properties))->toBe([
+                'kind' => 'MediaTypeType',
+                'crm' => 'CrmStatusType',
+                'picked' => 'WorkbenchStatusType | CrmStatusType',
+            ])
+            ->and($alone->typeImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['MediaTypeType', 'StatusType as WorkbenchStatusType'],
+                '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+            ]);
+    });
 
     // Q8: the app enum's wrap in two arms is one object, its const read by class beside the CRM enum's.
     test('keeps a literal repeating a wrap apart from one wrapping a same-named enum, each const imported once', function () {

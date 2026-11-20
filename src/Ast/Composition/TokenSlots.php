@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
  *
  * @phpstan-type Slots = list<class-string|null>
  * @phpstan-type Token = array{string, int, bool}
+ * @phpstan-type SlottedToken = array{string, int, bool, bool}
  * @phpstan-type DeclaredToken = array{token: string, offset: int, slot: class-string|null, own: bool, read: bool}
  * @phpstan-type DeclaredArm = array{0: string, 1: Slots, 2?: list<string>}
  *
@@ -61,15 +62,92 @@ final class TokenSlots
      */
     public static function queueRead(array $queue, string $text, array $names): array
     {
-        $spellings = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...))->spellings($text);
+        $queued = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...));
+
+        return self::readOff($queued, 'classes', $text, $names);
+    }
+
+    /**
+     * The enum a queue of wrapped enums, as a key's const channel lists them, gives each const of $consts a text spells
+     * after `typeof`, as the publisher's const walk hands them out; null for a const the queue holds no enum of.
+     *
+     * @param  list<class-string>  $queue
+     * @param  list<string>  $consts
+     * @return Slots
+     */
+    public static function constRead(array $queue, string $text, array $consts): array
+    {
+        $queued = new ClassTokenQueue($queue, ValueResult::enumConstName(...), anchor: TsTypeStringService::TYPEOF_ANCHOR);
+
+        return self::readOff($queued, 'consts', $text, $consts);
+    }
+
+    /**
+     * Each token of $names, and of $consts after `typeof`, in print order, beside whether it is a const's: a merge
+     * slots both, so a wrap's const keeps its enum as a class's token keeps its class.
+     *
+     * @param  list<string>  $names
+     * @param  list<string>  $consts
+     * @return list<SlottedToken>
+     */
+    public static function slottedTokens(array $names, array $consts, string $text): array
+    {
+        $classTokens = $names === [] ? [] : self::tokens('classes', $names, $text);
+        $constTokens = $consts === [] ? [] : self::tokens('consts', $consts, $text);
+        $tokens = [
+            ...array_map(static fn (array $token): array => [...$token, false], $classTokens),
+            ...array_map(static fn (array $token): array => [...$token, true], $constTokens),
+        ];
+        usort($tokens, static fn (array $a, array $b): int => $a[1] <=> $b[1]);
+
+        return $tokens;
+    }
+
+    /**
+     * One slot per token slottedTokens() reads, in print order: a token of $names takes the next class slot, and a
+     * const of $consts the next const slot.
+     *
+     * @param  Slots  $classSlots
+     * @param  Slots  $constSlots
+     * @param  list<string>  $names
+     * @param  list<string>  $consts
+     * @return Slots
+     */
+    public static function withConstSlots(
+        string $text,
+        array $classSlots,
+        array $constSlots,
+        array $names,
+        array $consts,
+    ): array {
         $slots = [];
 
-        foreach ($names === [] ? [] : self::tokens('classes', $names, $text) as [$token]) {
-            $next = $spellings === [] || $spellings[0][1] !== $token ? null : array_shift($spellings);
-            $slots[] = $next[0] ?? null;
+        foreach (self::slottedTokens($names, $consts, $text) as [, , , $isConst]) {
+            $slots[] = $isConst ? array_shift($constSlots) : array_shift($classSlots);
         }
 
         return $slots;
+    }
+
+    /**
+     * The class slots among slots withConstSlots() joined, each const's left out.
+     *
+     * @param  Slots  $slots
+     * @param  list<string>  $names
+     * @param  list<string>  $consts
+     * @return Slots
+     */
+    public static function withoutConstSlots(string $text, array $slots, array $names, array $consts): array
+    {
+        $classes = [];
+
+        foreach (self::slottedTokens($names, $consts, $text) as $index => [, , , $isConst]) {
+            if (! $isConst) {
+                $classes[] = $slots[$index] ?? null;
+            }
+        }
+
+        return $classes;
     }
 
     /**
@@ -414,6 +492,27 @@ final class TokenSlots
         }
 
         return $spans;
+    }
+
+    /**
+     * The class a queue gives each token of a channel's names in a text, in print order; null for a token of a name
+     * the queue holds no class of.
+     *
+     * @param  'classes'|'consts'  $channel
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    private static function readOff(ClassTokenQueue $queued, string $channel, string $text, array $names): array
+    {
+        $spellings = $queued->spellings($text);
+        $slots = [];
+
+        foreach ($names === [] ? [] : self::tokens($channel, $names, $text) as [$token]) {
+            $next = $spellings === [] || $spellings[0][1] !== $token ? null : array_shift($spellings);
+            $slots[] = $next[0] ?? null;
+        }
+
+        return $slots;
     }
 
     /**

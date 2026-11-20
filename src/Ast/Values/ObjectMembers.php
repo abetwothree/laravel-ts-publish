@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PresenceFacts from MethodAnalysis
+ * @phpstan-import-type TokenQueues from ClassIdentity
  *
  * @phpstan-type KeyedValues = list<array{string, ValueExpressionResult}>
  * @phpstan-type MemberChannel = array{
@@ -91,12 +92,6 @@ final class ObjectMembers
         }
 
         $queues = ClassIdentity::queues($value);
-        [
-            TokenKind::Model->value => $models,
-            TokenKind::Resource->value => $resources,
-            TokenKind::Enum->value => $enums,
-            TokenKind::WrapConst->value => $consts,
-        ] = $queues;
         $members = [];
 
         foreach ($printed as [$key, $type]) {
@@ -106,19 +101,13 @@ final class ObjectMembers
                 return null;
             }
 
-            $holdsObject = TsTypeShape::holdsKeyedObject($type);
+            // A printed `?` cannot tell an unset key from a removed value, so it reads as removed, as a when() is.
+            $member = self::memberValue($type, str_ends_with($key, '?'), $queues, $value['wrappedEnumFqcns'] ?? []);
 
-            $members[] = [$name, [
-                'type' => $type,
-                // A printed `?` cannot tell an unset key from a removed value, so it reads as removed, as a when() is.
-                'optional' => str_ends_with($key, '?'),
-                ...self::memberChannel($models->take($type), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
-                ...self::memberChannel($resources->take($type), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
-                ...self::memberChannel($enums->take($type), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
-                ...self::wrapChannels($consts->take($type), $value['wrappedEnumFqcns'] ?? []),
-                // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
-                ...(($value['keepsKeys'] ?? false) && $holdsObject ? ['keepsKeys' => true] : []),
-            ]];
+            // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
+            $members[] = [$name, ($value['keepsKeys'] ?? false) && TsTypeShape::holdsKeyedObject($type)
+                ? [...$member, 'keepsKeys' => true]
+                : $member];
         }
 
         if (array_any($queues, static fn (ClassTokenQueue $queue): bool => $queue->outrunsItsTokens())) {
@@ -126,6 +115,29 @@ final class ObjectMembers
         }
 
         return $members;
+    }
+
+    /**
+     * One member of a printed value as the value it holds, with the classes behind its own tokens taken next off the
+     * printed value's queues, which read its members in the order it spells them.
+     *
+     * @param  TokenQueues  $queues
+     * @param  list<class-string>  $wrapped  the enums the printed value wraps
+     * @return ValueExpressionResult
+     */
+    public static function memberValue(string $type, bool $optional, array $queues, array $wrapped): array
+    {
+        $holdsObject = TsTypeShape::holdsKeyedObject($type);
+        $taken = static fn (TokenKind $kind): array => $queues[$kind->value]->take($type);
+
+        return [
+            'type' => $type,
+            'optional' => $optional,
+            ...self::memberChannel($taken(TokenKind::Model), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
+            ...self::memberChannel($taken(TokenKind::Resource), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
+            ...self::memberChannel($taken(TokenKind::Enum), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
+            ...self::wrapChannels($taken(TokenKind::WrapConst), $wrapped),
+        ];
     }
 
     /**

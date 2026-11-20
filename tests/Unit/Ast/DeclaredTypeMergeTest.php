@@ -10,6 +10,7 @@ use Random\Randomizer;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\User as CrmUser;
 
 /**
@@ -398,6 +399,21 @@ test('a literal is within its scalar, null only within null, and a wrapped enum 
         ->and(mergedType('string', 'null'))->toBe('string')
         ->and($plain->merge(['StatusType | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))->toBe(['StatusType | \'a\'', [Status::class]])
         ->and($wraps->merge(['StatusType | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))->toBe(['StatusType | string', [Status::class]]);
+});
+
+// B4: the const after `typeof` takes a slot as a class's token does, so wraps of two enums one name spells stay apart.
+test('a wrap\'s const compares by the enum behind it, never by its spelling', function () {
+    $merge = new DeclaredTypeMerge(['StatusType'], consts: ['Status']);
+    $wraps = ['AsEnum<typeof Status> | AsEnum<typeof Status>', [Status::class, CrmStatus::class]];
+    $declared = ['StatusType | StatusType', [Status::class, CrmStatus::class]];
+
+    expect($merge->merge($wraps, $declared))->toBe($wraps)
+        ->and($merge->merge(['AsEnum<typeof Status> | AsEnum<typeof Status> | $gap1', $wraps[1]], $declared))->toBe([
+            'AsEnum<typeof Status> | AsEnum<typeof Status> | StatusType | StatusType',
+            [Status::class, CrmStatus::class, Status::class, CrmStatus::class],
+        ])
+        ->and($merge->merge(['AsEnum<typeof Status> | StatusType', [CrmStatus::class, Status::class]], ['StatusType', [Status::class]]))
+        ->toBe(['AsEnum<typeof Status> | StatusType', [CrmStatus::class, Status::class]]);
 });
 
 test('a wrapped enum beside a list keeps the body\'s arm and merges the list', function () {

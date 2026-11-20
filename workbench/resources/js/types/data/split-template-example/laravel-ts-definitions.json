@@ -15191,7 +15191,7 @@
             "properties": [
                 {
                     "name": "wrap_or_helper_offset",
-                    "type": "AsEnum<typeof MediaType>",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType",
                     "optional": false
                 },
                 {

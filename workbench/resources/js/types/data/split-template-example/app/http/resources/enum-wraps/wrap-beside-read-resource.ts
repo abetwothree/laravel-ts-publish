@@ -11,7 +11,7 @@ import type { MediaTypeType, StatusKind, StatusType } from '../../../enums';
  */
 export interface WrapBesideReadResource
 {
-    wrap_or_helper_offset: AsEnum<typeof MediaType>;
+    wrap_or_helper_offset: AsEnum<typeof MediaType> | MediaTypeType;
     wrap_or_nested_value: AsEnum<typeof MediaType> | MediaTypeType | string;
     wrap_or_nested_nullable_value: AsEnum<typeof MediaType> | MediaTypeType | null;
     match_wrap_read_literal: AsEnum<typeof Status> | StatusType | string;
