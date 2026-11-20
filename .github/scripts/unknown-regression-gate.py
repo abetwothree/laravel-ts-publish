@@ -196,6 +196,18 @@ def snapshot(rev: str) -> dict[tuple[str, str, str], str]:
     return out
 
 
+def has_unknown_arm(value: str) -> bool:
+    """Whether a value is a union with a top-level `unknown` arm, ignoring bars nested in braces, brackets or parens."""
+    depth, start, arms = 0, 0, []
+    for i, ch in enumerate(value):
+        depth += (ch in "{[(<") - (ch in "}])>" and value[i - 1] != "=")
+        if ch == "|" and depth == 0:
+            arms.append(value[start:i])
+            start = i + 1
+    arms.append(value[start:])
+    return any(arm.strip() == "unknown" for arm in arms)
+
+
 def detect_regressions(b: dict, h: dict) -> list:
     head_keys = list(h)
 
@@ -203,7 +215,8 @@ def detect_regressions(b: dict, h: dict) -> list:
         # True when every head member of k existed in base, so members alone are compared; a new member keeps k checked.
         # An inline-object parent counts a quoted `'tags.*'` sibling as a member, since it shares the `tags.` prefix, so
         # the sibling can mask it (type-inference-gates.md); a parent that is no inline object has no members.
-        if "{" not in h[k]:
+        # A direct `unknown` arm beside an object is a regression the members cannot show.
+        if "{" not in h[k] or has_unknown_arm(h[k]):
             return False
         members = [
             other for other in head_keys
@@ -369,6 +382,14 @@ SIBLING_HEAD = "export interface StorePostRequestProbe {\n    tags: unknown;\n  
 
 
 FLAT_BASE = "export interface P\n{\n    id: number;\n    k: boolean;\n    v: A | B;\n}\n"
+FOLD_BASE = "export interface R\n{\n    meta: { id: number };\n}\n"
+
+
+def fold_head(first: str, second: str) -> str:
+    """A split alias whose two arms carry `meta` as the given values, to fold against `FOLD_BASE`."""
+    return f"export type R = (\n    | {{ meta: {first}; k: 1 }}\n    | {{ meta: {second}; k: 2 }}\n);\n"
+
+
 SPLIT_HEAD = "export type P = {\n    id: unknown;\n} & (\n    | { k: true; v: A }\n    | { k: false; v: unknown }\n);\n"
 
 
@@ -450,7 +471,19 @@ def run_parsetest() -> int:
         failed += 1
         print(f"FAIL - shared row and arm regressing after an interface splits (synthetic)\n  got: {bad}")
 
-    total = len(PARSE_CASES) + len(SPLIT_CASES) + 7
+    base = parse_source(FOLD_BASE)
+    for label, arms, want in (
+        ("an object beside a direct unknown arm", ("{ id: number }", "unknown"), ["R.meta"]),
+        ("the same object in both arms", ("{ id: number }", "{ id: number }"), []),
+    ):
+        bad = detect_regressions(base, parse_source(fold_head(*arms)))
+        if sorted(f"{k[0]}.{k[1]}" for k, _, _ in bad) == want:
+            print(f"PASS - folded parent with {label} (synthetic)")
+        else:
+            failed += 1
+            print(f"FAIL - folded parent with {label} (synthetic)\n  got: {bad}")
+
+    total = len(PARSE_CASES) + len(SPLIT_CASES) + 9
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")
         return 1
