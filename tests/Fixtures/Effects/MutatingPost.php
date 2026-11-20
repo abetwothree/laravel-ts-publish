@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects;
 
 use Closure;
+use DateTimeImmutable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Workbench\App\Models\Post;
 
@@ -110,6 +111,56 @@ class MutatingPost extends Post
     }
 
     /**
+     * Reads the pin's title through a getter a helper that clears the pin builds, which Eloquent's look-up runs.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinTitle(): Attribute
+    {
+        return Attribute::get($this->clearingGetter());
+    }
+
+    /**
+     * Reads the pin's code, cached by a call handed a helper's result, which Eloquent's look-up runs.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinCode(): Attribute
+    {
+        return Attribute::get(fn (): string => 'code')->shouldCache($this->clearPin());
+    }
+
+    /**
+     * Reads the pin's tone through a first-class callable of what a helper that clears the pin returns.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinTone(): Attribute
+    {
+        return Attribute::get($this->clearingFormatter()->format(...));
+    }
+
+    /**
+     * Reads the pin's shade through a static arrow function, with no setter.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinShade(): Attribute
+    {
+        return Attribute::get(static fn (): string => 'shade');
+    }
+
+    /**
+     * Reads the pin's hue through a first-class callable of its own method, with no setter.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function pinHue(): Attribute
+    {
+        return Attribute::get($this->hueOf(...));
+    }
+
+    /**
      * A getter and a setter that clears the pin, by the names Attribute::make() takes.
      *
      * @return array{get: Closure(string): string, set: Closure(string): array<string, mixed>}
@@ -120,6 +171,46 @@ class MutatingPost extends Post
             'get' => fn (string $value): string => $value,
             'set' => fn (string $value): array => ['is_pinned' => false, 'pin_tag' => $value],
         ];
+    }
+
+    /**
+     * Clears the pin, then hands back a getter.
+     *
+     * @return Closure(): string
+     */
+    private function clearingGetter(): Closure
+    {
+        $this->attributes['is_pinned'] = false;
+
+        return fn (): string => 'title';
+    }
+
+    /**
+     * Clears the pin.
+     */
+    private function clearPin(): bool
+    {
+        $this->attributes['is_pinned'] = false;
+
+        return true;
+    }
+
+    /**
+     * Clears the pin, then hands back a formatter.
+     */
+    private function clearingFormatter(): DateTimeImmutable
+    {
+        $this->attributes['is_pinned'] = false;
+
+        return new DateTimeImmutable;
+    }
+
+    /**
+     * Names the hue.
+     */
+    private function hueOf(): string
+    {
+        return 'hue';
     }
 
     /**

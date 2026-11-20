@@ -13,10 +13,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\ConstFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
+use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -224,8 +228,9 @@ final readonly class PropertyHooks
 
     /**
      * Whether running a method returning an `Attribute` may write the model or give it a setter: its body is not one
-     * `return` of Attribute::make(), get(), set() or `new Attribute`, left as written or with a method such as
-     * shouldCache() called on it, built with no setter or a `null` one; and so where its body cannot be read.
+     * `return` of Attribute::make(), get(), set() or `new Attribute` built with no setter or a `null` one, from
+     * arguments that run nothing, as written or with a method such as shouldCache() called on it bare; and so where its
+     * body cannot be read.
      *
      * @param  ReflectionClass<Model>  $model
      */
@@ -238,12 +243,17 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether a returned value may be an `Attribute` with a setter: anything but one Attribute's builders make with
-     * no setter or a `null` one; an unpack it cannot read may hold a setter.
+     * Whether building a returned value may run code or give it a setter: anything but one Attribute's builders make
+     * with no setter or a `null` one, from arguments that run nothing, and with no method called on it handed one; an
+     * unpack it cannot read may hold a setter.
      */
     private static function buildsSetter(Expr $built): bool
     {
         while ($built instanceof MethodCall) {
+            if ($built->getRawArgs() !== []) {
+                return true;
+            }
+
             $built = $built->var;
         }
 
@@ -263,7 +273,27 @@ final readonly class PropertyHooks
         $setter = $arguments->named('set')?->value;
 
         return $arguments->hasUnpack()
-            || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'));
+            || ($setter !== null && ! ($setter instanceof ConstFetch && $setter->name->toLowerString() === 'null'))
+            || ! array_all($arguments->bound(), static fn (Arg $argument): bool => self::runsNothing($argument->value));
+    }
+
+    /**
+     * Whether passing a value runs no code: a closure or an arrow function written there, a constant, or a first-class
+     * callable of a function, of a method of `$this` or of a named class, whose receiver PHP reads with no code run.
+     */
+    private static function runsNothing(Expr $value): bool
+    {
+        if (ClosureReach::isClosure($value) || $value instanceof ConstFetch) {
+            return true;
+        }
+
+        return $value instanceof CallLike && $value->isFirstClassCallable() && match (true) {
+            $value instanceof FuncCall => $value->name instanceof Name,
+            $value instanceof MethodCall, $value instanceof NullsafeMethodCall => ReadPath::isThis($value->var)
+                && $value->name instanceof Identifier,
+            $value instanceof StaticCall => $value->class instanceof Name && $value->name instanceof Identifier,
+            default => false,
+        };
     }
 
     /**
