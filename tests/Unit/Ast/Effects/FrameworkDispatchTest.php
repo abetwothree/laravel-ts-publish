@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkDispatch;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkFamily;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\ReadOnlyCalls;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AliasUnsetKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\AttributeWritingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\ComputedUnsetKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\HookedKeyPost;
@@ -48,6 +49,11 @@ it('trusts an Eloquent reader only where each model method it dispatches to only
     ],
     'getKey(), past a getKeyName() returning a property the model unsets by a computed name' => [
         ComputedUnsetKeyPost::class,
+        'getKey',
+        false,
+    ],
+    'getKey(), past a getKeyName() returning a property the model unsets through a local' => [
+        AliasUnsetKeyPost::class,
         'getKey',
         false,
     ],

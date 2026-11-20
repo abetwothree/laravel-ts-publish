@@ -8,7 +8,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DeclaringFile;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar\String_;
@@ -17,8 +16,9 @@ use PhpParser\NodeFinder;
 use ReflectionClass;
 
 /**
- * The properties the app's own code unsets on `$this`: once unset, PHP reaches a declared property through the runtime
- * class's magic methods, as it does one the class lacks. The literal-getter trust and the dispatch walk both read it.
+ * The properties the app's own code may unset on `$this`: once unset, PHP reaches a declared property through the
+ * runtime class's magic methods, as it does one the class lacks. The literal-getter trust and the dispatch walk both
+ * read it.
  *
  * @phpstan-type Unsets = array{names: list<string>, any: bool}
  *
@@ -28,7 +28,7 @@ final class UnsetProperties
 {
     /**
      * Whether a method the app declares on the runtime class or an ancestor below the framework may unset
-     * `$this->{name}`: by that name, quoted or not, or by one it computes, which may be any.
+     * `$this->{name}`: by that name, quoted or not, on any object, or by one it computes, which may be any.
      *
      * @param  ReflectionClass<object>  $runtime
      */
@@ -40,7 +40,7 @@ final class UnsetProperties
     }
 
     /**
-     * What the app's methods unset on `$this`, read once a publish run per runtime class.
+     * What the app's methods unset, read once a publish run per runtime class.
      *
      * @param  ReflectionClass<object>  $runtime
      * @return Unsets
@@ -54,8 +54,8 @@ final class UnsetProperties
     }
 
     /**
-     * The names each method the app declares on the runtime class or an ancestor below the framework unsets on `$this`,
-     * beside whether one unsets a name it computes.
+     * The names each method the app declares on the runtime class or an ancestor below the framework unsets on any
+     * object, beside whether one unsets a name it computes.
      *
      * @param  ReflectionClass<object>  $runtime
      * @return Unsets
@@ -77,7 +77,8 @@ final class UnsetProperties
 
                 foreach (new NodeFinder()->findInstanceOf($body ?? [], Unset_::class) as $unset) {
                     foreach ($unset->vars as $var) {
-                        $name = $var instanceof PropertyFetch && ReadPath::isThis($var->var) ? $var->name : null;
+                        // A local may hold `$this`, so a property unset on any object counts.
+                        $name = $var instanceof PropertyFetch ? $var->name : null;
 
                         if ($name instanceof Identifier || $name instanceof String_) {
                             $names[] = $name instanceof String_ ? $name->value : $name->toString();
