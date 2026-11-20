@@ -115,6 +115,28 @@ trait ResolvesImportConflicts
     }
 
     /**
+     * Map each enum's const, under the name this file gives it, to the enum's globally-qualified value type: the
+     * globals file has no `AsEnum` import, so it spells a wrap of the enum by that type.
+     *
+     * @param  list<string>  $fqcns
+     * @return array<string, string> constName|alias => 'dot.separated.namespace.NameType'
+     */
+    protected function qualifiedConstTypes(array $fqcns): array
+    {
+        $map = [];
+
+        foreach ($fqcns as $fqcn) {
+            $constName = $this->enumConstMap[$fqcn] ?? null;
+
+            if ($constName !== null) {
+                $map[$this->constImportAliases[$fqcn] ?? $constName] = TsNaming::globalNamespace($fqcn).'.'.$constName.'Type';
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * Map each sibling name the file aliased to its globally-qualified name, as a globalAliasMap() maps type aliases.
      *
      * @return array<string, string> alias => 'dot.separated.namespace.Name'

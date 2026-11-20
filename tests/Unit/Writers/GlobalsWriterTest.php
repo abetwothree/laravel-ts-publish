@@ -552,6 +552,11 @@ test('the globals template qualifies each name through its own transformer\'s ma
         {
             return ['EventName' => 'own.elsewhere.EventName'];
         }
+
+        public function globalEnumConstMap(): array
+        {
+            return [];
+        }
     };
 
     $content = view('laravel-ts-publish::globals', [

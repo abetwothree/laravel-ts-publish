@@ -284,25 +284,7 @@ class ResourceTransformer extends CoreTransformer
      */
     public function globalEnumConstMap(): array
     {
-        $map = [];
-
-        foreach ($this->enumPropertyFqcns() as $fqcn) {
-            $constAlias = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn] ?? null;
-
-            // rewriteEnumResourceTypes() may have cleared enumFqcnMap; enumConstMap is never cleared.
-            $originalConstName = $this->enumConstMap[$fqcn] ?? null;
-
-            if ($constAlias === null || $originalConstName === null) {
-                continue; // @codeCoverageIgnore
-            }
-
-            $typeName = $originalConstName.'Type';
-            $ns = TsNaming::globalNamespace($fqcn);
-
-            $map[$constAlias] = $ns.'.'.$typeName;
-        }
-
-        return $map;
+        return $this->qualifiedConstTypes($this->enumPropertyFqcns());
     }
 
     /**

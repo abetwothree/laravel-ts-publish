@@ -185,13 +185,14 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @foreach ($transformers as $transformer)
 @php
 $references = $transformer->globalTypeReferenceMap();
+$enumConsts = $transformer->globalEnumConstMap();
 @endphp
         export interface {{ $transformer->eventName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $prop)
 @php
 $optional = $prop['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '';
 @endphp
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($prop['type'], $enumConsts), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
         }
 @endforeach

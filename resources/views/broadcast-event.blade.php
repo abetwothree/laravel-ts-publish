@@ -2,7 +2,10 @@
 @foreach ($data->typeImports as $path => $types)
 import type { {{ implode(', ', $types) }} } from '{{ $path }}';
 @endforeach
-@if(count($data->typeImports) > 0)
+@foreach ($data->valueImports as $path => $names)
+import { {{ implode(', ', $names) }} } from '{{ $path }}';
+@endforeach
+@if(count($data->typeImports) > 0 || count($data->valueImports) > 0)
 
 @endif
 {!! JsEmitter::formatJsDoc($data->description) !!}

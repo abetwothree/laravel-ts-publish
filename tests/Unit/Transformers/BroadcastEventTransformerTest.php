@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableWrapEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NestedEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\PostOwnJsonEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RedundantArmsEvent;
@@ -854,4 +855,38 @@ test('an event publishes no case value beside its enum\'s alias and no empty lis
         'tags' => '(PriorityType | null)[]',
         'kept' => 'StatusType | 0',
     ])->and($transformer->typeImports)->toBe(['../../../../../workbench/app/enums' => ['PriorityType', 'StatusType']]);
+});
+
+// An inline array spells its wrap `AsEnum<typeof Status>`, so the event imports the const and `AsEnum` (GH-109).
+test('an event imports the const and the AsEnum type a nested enum resource spells', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NestedEnumWrapEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($transformer->properties['probe']['type'])->toBe('{ w: AsEnum<typeof Status> }')
+        ->and($transformer->data()->typeImports)->toBe(['@tolki/ts' => ['AsEnum']])
+        ->and($transformer->data()->valueImports)->toBe(['../../../../../workbench/app/enums' => ['Status']])
+        ->and(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+            "import type { AsEnum } from '@tolki/ts';",
+            "import { Status } from '../../../../../workbench/app/enums';",
+        ]);
+});
+
+// The globals file has no `AsEnum` import, so an event's wrap folds to its enum's value type, as a resource's does.
+test('the globals file folds an event\'s nested wrap to its enum\'s value type', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NestedEnumWrapEvent::class]);
+
+    $content = view('laravel-ts-publish::globals', [
+        'globalTypesByNamespace' => [],
+        'globalAliasMap' => [],
+        'externalTypeImports' => [],
+        'groupedModels' => collect(),
+        'groupedEnums' => collect(),
+        'groupedResources' => collect(),
+        'groupedFormRequests' => collect(),
+        'groupedBroadcastEvents' => collect(['stub.events' => collect([$transformer])]),
+    ])->render();
+
+    expect($content)->toContain('probe: { w: workbench.app.enums.StatusType };')->not->toContain('AsEnum');
 });
