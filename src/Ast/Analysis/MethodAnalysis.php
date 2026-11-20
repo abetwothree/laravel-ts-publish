@@ -1004,8 +1004,8 @@ class MethodAnalysis
 
     /**
      * Leave out every union arm a sibling admits from each key's type, body type and fill, except a key a cast types:
-     * `never[]` beside a list or `[]`, and a case literal beside the alias of an enum read but not wrapped. Alike arms
-     * then keep one, unless a name on the key spells two classes, a slot is declared or `$queuesLater` holds.
+     * `never[]` beside a list or `[]`, and a case literal beside the alias of an enum it reads. Alike arms then keep
+     * one, unless a name on the key spells two classes, a slot is declared or `$queuesLater` holds.
      *
      * @param  (Closure(string): bool)|null  $queuesLater  whether the caller still queues classes on a key, by its name
      */

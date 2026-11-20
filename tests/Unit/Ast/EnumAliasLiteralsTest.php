@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
+use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\BackedRenamedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\BackedRevaluedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Billing\Stage as BillingStage;
@@ -13,6 +14,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRenamedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\PureRevaluedCases;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\Shipping\Stage as ShippingStage;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Enums\UnsafeIntegerBackedStatus;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapBesideCaseValueResource;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Enums\MediaType;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
@@ -117,31 +120,17 @@ it('admits nothing under an alias the enum\'s own override is spelled like', fun
 });
 
 it('leaves out an alias a model or resource on the same key publishes under', function () {
-    expect(EnumValueTypes::aliasLiterals([MediaType::class], [], ['MediaTypeType']))->toBe([
+    expect(EnumValueTypes::aliasLiterals([MediaType::class], ['MediaTypeType']))->toBe([
         'MediaTypeKind' => ['Image', 'Video', 'Audio', 'Document', 'Archive'],
     ]);
 });
 
-it('admits nothing under the names of an enum also wrapped in an EnumResource', function () {
-    expect(EnumValueTypes::aliasLiterals([MediaType::class], [MediaType::class]))->toBe([]);
-});
-
-it('admits nothing under a name an enum also wrapped spells too', function () {
-    $this->mock(EnumsCollector::class)->shouldReceive('collect')
-        ->andReturn(collect([BillingStage::class, ShippingStage::class]));
-
-    expect(EnumValueTypes::aliasLiterals([BillingStage::class], [ShippingStage::class]))->toBe([
-        'StageType' => [],
-        'StageKind' => [],
-    ]);
-});
-
 it('admits nothing for no enum', function () {
-    expect(EnumValueTypes::aliasLiterals([]))->toBe([])
-        ->and(EnumValueTypes::aliasLiterals([], [MediaType::class]))->toBe([]);
+    expect(EnumValueTypes::aliasLiterals([]))->toBe([]);
 });
 
-it('builds a key\'s alias literals from the enums it reads and wraps and the names its other classes print', function (
+// K1: a wrap's alias token, with the tolki package off, rides the read channel, so only the enums read count.
+it('builds a key\'s alias literals from the enums it reads, whatever it wraps, and the names its other classes print', function (
     array $read,
     array $wrapped,
     array $takenNames,
@@ -153,7 +142,11 @@ it('builds a key\'s alias literals from the enums it reads and wraps and the nam
         'PriorityType' => [0, 1, 2, 3],
         'PriorityKind' => ['Low', 'Medium', 'High', 'Critical'],
     ]],
-    'an enum the key also wraps' => [[MediaType::class], [MediaType::class], [], []],
+    'an enum the key also wraps' => [[MediaType::class], [MediaType::class], [], [
+        'MediaTypeType' => ['image', 'video', 'audio', 'document', 'archive'],
+        'MediaTypeKind' => ['Image', 'Video', 'Audio', 'Document', 'Archive'],
+    ]],
+    'an enum the key only wraps' => [[], [MediaType::class], [], []],
     'a name another class prints' => [[MediaType::class], [], ['MediaTypeType'], [
         'MediaTypeKind' => ['Image', 'Video', 'Audio', 'Document', 'Archive'],
     ]],
@@ -182,7 +175,7 @@ it('keeps two arms spelled alike apart where an enum the key wraps prints a name
         ->andReturn(collect([BillingStage::class, ShippingStage::class]));
 
     expect(EnumValueTypes::absorbRules([BillingStage::class], [ShippingStage::class], [], [], false))->toBe([
-        ['StageType' => [], 'StageKind' => []],
+        ['StageType' => ['open', 'closed', 'disputed'], 'StageKind' => ['Open', 'Closed', 'Disputed']],
         false,
     ]);
 });
@@ -233,4 +226,29 @@ it('gives no case literals for an alias the enum cannot use or does not spell', 
 
 it('gives no case literals for an enum ts:publish writes no file for', function () {
     expect(EnumValueTypes::caseLiterals(BackedRenamedCases::class, 'BackedRenamedCasesType'))->toBeNull();
+});
+
+// K1: the alias a read spells beside a wrap of its enum takes the case's value in, there and in the globals file's fold.
+it('publishes a case\'s value beside a wrap of its enum as the enum\'s alias', function () {
+    $transformer = new ResourceTransformer(WrapBesideCaseValueResource::class);
+    $types = array_map(fn (array $property): string => $property['type'], $transformer->data()->properties);
+
+    expect($types)->toBe([
+        'pair' => '{ w: AsEnum<typeof MediaType>; v: MediaTypeType }',
+        'wrap_or_pair' => 'AsEnum<typeof MediaType> | { v: MediaTypeType }',
+        'wrap_or_case' => "AsEnum<typeof MediaType> | 'image'",
+    ])->and(TsTypeString::rewriteAsEnumToType($types['wrap_or_pair'], $transformer->globalEnumConstMap()))
+        ->toBe('workbench.app.enums.MediaTypeType | { v: MediaTypeType }');
+});
+
+// With the tolki package off a wrap prints its enum's alias, which admits a case's value as a read's alias does.
+it('publishes a case\'s value beside a wrap of its enum as the alias the wrap prints with the tolki package off', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(WrapBesideCaseValueResource::class)->data()->properties))
+        ->toBe([
+            'pair' => '{ w: MediaTypeType; v: MediaTypeType }',
+            'wrap_or_pair' => 'MediaTypeType | { v: MediaTypeType }',
+            'wrap_or_case' => 'MediaTypeType',
+        ]);
 });

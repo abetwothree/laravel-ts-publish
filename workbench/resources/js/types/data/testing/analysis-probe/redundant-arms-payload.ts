@@ -23,7 +23,7 @@ export interface RedundantArmsPayloadProbe
     other_enum_case_kept: 'spring' | MediaTypeType;
     cases_without_alias_kept: 'image' | 'video';
     wrap_beside_case_kept: AsEnum<typeof MediaType> | 'image';
-    wrap_and_read_kept: { w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType };
+    wrap_and_read_kept: { w: AsEnum<typeof MediaType>; v: MediaTypeType };
     emptied_list: PriorityType[];
     filled_list: PriorityType[];
     nullable_list: PriorityType[] | null;

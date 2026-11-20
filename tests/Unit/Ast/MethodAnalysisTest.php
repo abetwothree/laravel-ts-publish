@@ -802,10 +802,10 @@ it('leaves out each arm a sibling admits in a key no cast types, by the enums on
     'a case literal beside its enum\'s alias' => [
         "'image' | MediaTypeType | null", ['directEnumFqcns' => ['k' => MediaType::class]], 'MediaTypeType | null',
     ],
-    'a case literal of an enum the key wraps in an EnumResource' => [
-        "'image' | MediaTypeType | null",
-        ['directEnumFqcns' => ['k' => MediaType::class], 'wrappedEnums' => ['k' => [MediaType::class]]],
-        "'image' | MediaTypeType | null",
+    'a case literal beside the alias of an enum the key also wraps' => [
+        "AsEnum<typeof MediaType> | 'image' | MediaTypeType | null",
+        ['directEnumFqcns' => ['k' => MediaType::class], 'inlineEnumResourceFqcns' => ['k' => [MediaType::class]], 'wrappedEnums' => ['k' => [MediaType::class]]],
+        'AsEnum<typeof MediaType> | MediaTypeType | null',
     ],
     'a case literal beside an alias no enum on the key admits it under' => [
         "'image' | MediaTypeType | null", ['directEnumFqcns' => ['other' => MediaType::class]], "'image' | MediaTypeType | null",
@@ -814,9 +814,9 @@ it('leaves out each arm a sibling admits in a key no cast types, by the enums on
         "{ v: 'image' | MediaTypeType }", ['inlineEnumFqcns' => ['k' => [MediaType::class]]], '{ v: MediaTypeType }',
     ],
     'a case literal in an inline object of an enum it also wraps' => [
-        "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
-        ['inlineEnumFqcns' => ['k' => [MediaType::class, MediaType::class]], 'inlineEnumResourceFqcns' => ['k' => [MediaType::class]], 'wrappedEnums' => ['k' => [MediaType::class]]],
-        "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
+        "{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }",
+        ['inlineEnumFqcns' => ['k' => [MediaType::class]], 'inlineEnumResourceFqcns' => ['k' => [MediaType::class]], 'wrappedEnums' => ['k' => [MediaType::class]]],
+        '{ w: AsEnum<typeof MediaType>; v: MediaTypeType }',
     ],
     'an empty list beside a list, with no channel' => ['never[] | PriorityType[]', [], 'PriorityType[]'],
     'a case literal of one of two same-named enums, the other wrapped' => [
@@ -832,6 +832,34 @@ it('leaves out each arm a sibling admits in a key no cast types, by the enums on
         "'image' | MediaTypeType",
         ['directEnumFqcns' => ['k' => MediaType::class], 'nestedResources' => ['k' => 'Some\\Http\\Resources\\MediaTypeType']],
         "'image' | MediaTypeType",
+    ],
+]);
+
+// With the tolki package off a wrap prints its enum's alias, which admits a case's value as any alias does.
+it('leaves out a case literal beside the alias a wrap prints with the tolki package off', function (
+    string $type,
+    array $channels,
+    string $absorbed,
+) {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+    $analysis = new MethodAnalysis(...[
+        'properties' => [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']],
+        ...$channels,
+    ]);
+
+    $analysis->absorbRedundantArms();
+
+    expect($analysis->properties[0]['type'])->toBe($absorbed);
+})->with([
+    'beside the alias' => [
+        "'image' | MediaTypeType | null",
+        ['directEnumFqcns' => ['k' => MediaType::class], 'wrappedEnums' => ['k' => [MediaType::class]]],
+        'MediaTypeType | null',
+    ],
+    'in an inline object' => [
+        "{ w: MediaTypeType; v: 'image' | MediaTypeType }",
+        ['inlineEnumFqcns' => ['k' => [MediaType::class, MediaType::class]], 'wrappedEnums' => ['k' => [MediaType::class]]],
+        '{ w: MediaTypeType; v: MediaTypeType }',
     ],
 ]);
 

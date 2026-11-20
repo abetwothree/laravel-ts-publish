@@ -802,8 +802,8 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself or the value' => ['status_case_or_value', 'StatusType', true],
         'a read of the value-or-case-value getter' => ['status_or_draft_read', 'StatusType', false],
         'a read of the value-or-case-value getter, or a case' => ['status_or_draft_or_published', 'StatusType', false],
-        'a wrap, the value or a case\'s value of one enum' => ['priority_wrap_value_or_low', 'AsEnum<typeof Priority> | never[] | PriorityType | 0', false],
-        'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'AsEnum<typeof Priority> | PriorityType | 0', false],
+        'a wrap, the value or a case\'s value of one enum' => ['priority_wrap_value_or_low', 'AsEnum<typeof Priority> | never[] | PriorityType', false],
+        'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'AsEnum<typeof Priority> | PriorityType', false],
     ]);
 
     test('a column\'s getter absorbs a case value into its enum\'s alias, with no AsEnum wrap', function (string $column, string $type) {
@@ -816,7 +816,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself or a case\'s value' => ['category', 'StatusType'],
     ]);
 
-    test('the model\'s absorbing keeps a case literal of an enum the key wraps, or beside a name a class on the key prints', function () {
+    test('the model\'s absorbing keeps a case literal beside a name a class on the key prints, whatever it wraps', function () {
         $transformer = new AbsorbingModelTransformer(Post::class);
         $info = [
             ...LaravelTsPublish::emptyTypeScriptInfo(),
@@ -825,13 +825,18 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             'enumTypes' => ['StatusType'],
             'enumFqcns' => [Status::class],
         ];
+        $wrapped = [...$info, 'wrappedEnumFqcns' => [Status::class]];
 
         expect($transformer->absorbed($info))->toBe([...$info, 'type' => 'StatusType', 'sendsEnumScalar' => true])
-            ->and($transformer->absorbed([...$info, 'wrappedEnumFqcns' => [Status::class]])['type'])->toBe('0 | StatusType')
+            ->and($transformer->absorbed($wrapped))->toBe([...$wrapped, 'type' => 'StatusType', 'sendsEnumScalar' => true])
             ->and($transformer->absorbed([...$info, 'classes' => ['StatusType'], 'classFqcns' => [User::class]])['type'])
             ->toBe('0 | StatusType')
             ->and($transformer->absorbed([...$info, 'classes' => ['Report'], 'classFqcns' => ['Some\\Models\\StatusType']])['type'])
             ->toBe('StatusType');
+
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        expect($transformer->absorbed($wrapped)['type'])->toBe('StatusType');
     });
 
     test('the model\'s absorbing keeps one of two arms it made alike, unless a name spells two classes or a token queue is kept', function () {

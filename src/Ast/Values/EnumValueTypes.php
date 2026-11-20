@@ -174,15 +174,16 @@ final class EnumValueTypes
 
     /**
      * Each usable alias of the enums a key or value reads beside the case scalars it admits. Enums sharing an alias
-     * name admit under it only what all of them admit; an enum in `$wrapped` admits nothing under its names, and a
-     * name in `$takenNames`, which another class on the key prints, is left out.
+     * name admit under it only what all of them admit, and a name in `$takenNames`, which another class on the key
+     * prints, is left out.
+     *
+     * A wrap prints its enum's alias only with the tolki package off, where its token rides the read channel too.
      *
      * @param  list<class-string>  $read  the enums it reads directly
-     * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`
      * @param  list<string>  $takenNames
      * @return AliasLiterals
      */
-    public static function aliasLiterals(array $read, array $wrapped = [], array $takenNames = []): array
+    public static function aliasLiterals(array $read, array $takenNames = []): array
     {
         if ($read === []) {
             return [];
@@ -191,8 +192,8 @@ final class EnumValueTypes
         $admitted = [];
         $usable = [];
 
-        foreach (array_unique([...$read, ...$wrapped]) as $enum) {
-            $own = in_array($enum, $wrapped, true) ? [] : self::ownAliasLiterals($enum);
+        foreach (array_unique($read) as $enum) {
+            $own = self::ownAliasLiterals($enum);
 
             // A name this enum spells but cannot use admits nothing, since a token of that name may be this enum's.
             foreach (ValueResult::enumNames($enum) as $alias) {
@@ -223,8 +224,9 @@ final class EnumValueTypes
     }
 
     /**
-     * A key's rules for leaving out redundant arms: aliasLiterals() over its enums, and whether two arms spelled alike
-     * are one, which holds while it keeps no token queue, no name spells two of its classes and none is queued later.
+     * A key's rules for leaving out redundant arms: aliasLiterals() over the enums it reads, and whether two arms spelled
+     * alike are one, which holds while it keeps no token queue, no name spells two of its classes and none is queued
+     * later.
      *
      * @param  list<class-string>  $read  the enums it reads directly
      * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`
@@ -242,7 +244,7 @@ final class EnumValueTypes
         ?Closure $queuesLater = null,
     ): array {
         return [
-            self::aliasLiterals($read, $wrapped, $takenNames),
+            self::aliasLiterals($read, $takenNames),
             ! $keepsTokens
                 && ! self::namesTwoClasses([...$read, ...$wrapped], $classes)
                 && ! ($queuesLater !== null && $queuesLater()),
