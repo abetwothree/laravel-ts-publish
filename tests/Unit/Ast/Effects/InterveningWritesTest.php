@@ -485,6 +485,33 @@ it('reads a discriminant held by a local, which only the window can write', func
     'a write through the local' => ['$post->is_pinned = false', true],
 ]);
 
+// extract() and a variable variable may rebind any local by a name the source does not spell, but never `$this`.
+it('reads extract() and a variable variable as a write of any local', function (string $call, string $read, bool $mayWrite) {
+    expect(windowReach([$call, "{$read} ? 1 : null"], $read))->toBe($mayWrite);
+})->with([
+    'extract() with a leading backslash' => ['\\extract($o)', '$flag', true],
+    'extract() through the namespace fallback' => ['extract($o)', '$flag', true],
+    'extract() of a literal' => ["extract(['flag' => false])", '$flag', true],
+    'extract() with a prefix mode' => ["extract(\$o, EXTR_PREFIX_ALL, 'p')", '$flag', true],
+    'extract() with flags it cannot read' => ['extract($o, $mode)', '$flag', true],
+    'extract() with flags named first' => ['extract(flags: EXTR_OVERWRITE, array: $o)', '$flag', true],
+    'extract() with EXTR_SKIP' => ['extract($o, EXTR_SKIP)', '$flag', false],
+    'extract() with EXTR_SKIP named, fully qualified' => ['extract(flags: \\EXTR_SKIP, array: $o)', '$flag', false],
+    'extract() before a property of a local' => ['extract($o)', '$post->is_pinned', true],
+    'extract() before a $this read' => ['extract($o)', '$this->is_pinned', false],
+    'a function named extract in another namespace' => ['Helpers\\extract($o)', '$flag', false],
+    'a variable variable' => ['$$n = false', '$flag', true],
+    'a braced variable variable' => ['${$n} = false', '$flag', true],
+    'a variable variable in a destructuring' => ['[$$n] = [false]', '$flag', true],
+    'a member of a variable variable' => ['$$n->is_pinned = false', '$post->is_pinned', true],
+    'a variable variable bound by reference' => ['$this->clearFlag($$n)', '$flag', true],
+    'a variable variable before a $this read' => ['$$n = false', '$this->is_pinned', false],
+    'a quoted variable name' => ["\${'flag'} = false", '$flag', true],
+    'another quoted variable name' => ["\${'other'} = false", '$flag', false],
+    'compact()' => ["compact('flag')", '$flag', false],
+    'parse_str() into another local' => ['parse_str($s, $out)', '$flag', false],
+]);
+
 it('reads a get hook\'s self:: as the class that declares the hook', function (string $subject, bool $mayWrite) {
     expect(windowReach(['$this->tick', '$this->is_pinned ? 1 : null'], subject: $subject))->toBe($mayWrite);
 })->with([
