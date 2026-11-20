@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\UnsetProperties;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
@@ -150,7 +151,7 @@ final readonly class PropertyHooks
 
             if (self::runsSetHook($class, $property)) {
                 $runs[] = [$onThis ? $class : null, $property];
-            } elseif ($class->isSubclassOf(Model::class) && ! $class->hasProperty($property)
+            } elseif ($class->isSubclassOf(Model::class) && ! self::setsInPlace($class, $property, $declaring)
                 && self::runsSetMutator($class, $property)
             ) {
                 $runs[] = [null, $property];
@@ -204,6 +205,31 @@ final readonly class PropertyHooks
     public function classesOf(ReadPath $path, ReflectionClass $declaring): array
     {
         return $this->walk($path, $declaring, true)[1];
+    }
+
+    /**
+     * Whether a write from a class's code sets a property the model declares in place, past `__set()`: an instance
+     * property that class may set, which the app's own code never unsets.
+     *
+     * @param  ReflectionClass<Model>  $model
+     * @param  ReflectionClass<object>  $scope  the class `self` names where the write is made
+     */
+    private static function setsInPlace(ReflectionClass $model, string $property, ReflectionClass $scope): bool
+    {
+        if (! $model->hasProperty($property)) {
+            return false;
+        }
+
+        $declared = $model->getProperty($property);
+        $owner = $declared->getDeclaringClass();
+        $settable = match (true) {
+            $declared->isPrivate() || $declared->isPrivateSet() => $scope->getName() === $owner->getName(),
+            $declared->isProtected() || $declared->isProtectedSet() => $scope->getName() === $owner->getName()
+                || $scope->isSubclassOf($owner) || $owner->isSubclassOf($scope),
+            default => true,
+        };
+
+        return $settable && ! $declared->isStatic() && ! UnsetProperties::unsets($model, $property);
     }
 
     /**

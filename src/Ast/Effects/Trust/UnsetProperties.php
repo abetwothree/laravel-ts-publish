@@ -30,7 +30,7 @@ final class UnsetProperties
      * Whether a method the app declares on the runtime class or an ancestor below the framework may unset
      * `$this->{name}`: by that name, quoted or not, on any object, or by one it computes, which may be any.
      *
-     * @param  ReflectionClass<object>  $runtime
+     * @param  ReflectionClass<covariant object>  $runtime
      */
     public static function unsets(ReflectionClass $runtime, string $name): bool
     {
@@ -42,7 +42,7 @@ final class UnsetProperties
     /**
      * What the app's methods unset, read once a publish run per runtime class.
      *
-     * @param  ReflectionClass<object>  $runtime
+     * @param  ReflectionClass<covariant object>  $runtime
      * @return Unsets
      */
     private static function unsetsOf(ReflectionClass $runtime): array
@@ -57,7 +57,7 @@ final class UnsetProperties
      * The names each method the app declares on the runtime class or an ancestor below the framework unsets on any
      * object, beside whether one unsets a name it computes.
      *
-     * @param  ReflectionClass<object>  $runtime
+     * @param  ReflectionClass<covariant object>  $runtime
      * @return Unsets
      */
     private static function scanned(ReflectionClass $runtime): array

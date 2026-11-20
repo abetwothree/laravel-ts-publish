@@ -159,6 +159,34 @@ it('lists the set mutator a write of a model attribute runs, whose body runs on 
     'an Attribute whose getter is a static arrow function' => ['$this->resource->pin_shade', []],
     'an attribute with no mutator' => ['$this->resource->title', []],
     'an attribute written on the resource, which keeps it' => ['$this->pin_note', []],
+    'a protected property' => ['$this->resource->pin_guard', [[null, 'pin_guard']]],
+    'a protected property with an Attribute setter' => ['$this->resource->pin_lock', [[null, 'pin_lock']]],
+    'a private property' => ['$this->resource->pin_secret', [[null, 'pin_secret']]],
+    'a protected(set) property' => ['$this->resource->pin_slot', [[null, 'pin_slot']]],
+    'a private(set) property' => ['$this->resource->pin_seal', [[null, 'pin_seal']]],
+    'a public property the model unsets' => ['$this->resource->pin_memo', [[null, 'pin_memo']]],
+    'Model\'s own protected property' => ['$this->resource->visible', [[null, 'visible']]],
+    'a public property, which the write sets in place' => ['$this->resource->pin_open', []],
+]);
+
+// PHP runs `__set()` only for a property the writing scope cannot set in place, or one the model's own code unsets.
+it('sets a property in place from a scope that may write it', function (string $path, array $runs) {
+    $model = new ReflectionClass(MutatingPost::class);
+    $written = ReadPath::of(runtimeClassCall($path));
+    assert($written instanceof ReadPath);
+
+    expect(array_map(
+        static fn (array $run): array => [$run[0]?->getName(), $run[1]],
+        new PropertyHooks($model, false, [])->setHooks($written, $model),
+    ))->toBe($runs);
+})->with([
+    'a protected property' => ['$this->pin_guard', []],
+    'a private property' => ['$this->pin_secret', []],
+    'a protected(set) property' => ['$this->pin_slot', []],
+    'a private(set) property' => ['$this->pin_seal', []],
+    'Model\'s own protected property' => ['$this->visible', []],
+    'a public property the model unsets' => ['$this->pin_memo', [[null, 'pin_memo']]],
+    'an attribute the model declares no property for' => ['$this->pin_reset', [[null, 'pin_reset']]],
 ]);
 
 it('reads a private hooked property a parent declares only in the parent\'s body', function (string $declaring, array $runs) {

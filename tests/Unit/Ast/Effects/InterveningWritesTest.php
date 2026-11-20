@@ -687,6 +687,14 @@ it('reads a write to a model attribute as a call where a set mutator runs', func
     'an Attribute whose getter is a closure with its own return' => ["\$this->resource->caption = 'a'", false],
     'an attribute with no mutator' => ["\$this->resource->title = 'a'", false],
     'a write the resource keeps, which runs no mutator' => ['$this->pin_reset = true', false],
+    'a protected property with a setXAttribute() mutator' => ["\$this->resource->pin_guard = 'a'", true],
+    'a protected property with an Attribute setter' => ["\$this->resource->pin_lock = 'a'", true],
+    'a private property with a mutator' => ["\$this->resource->pin_secret = 'a'", true],
+    'a protected(set) property with a mutator' => ["\$this->resource->pin_slot = 'a'", true],
+    'a private(set) property with a mutator' => ["\$this->resource->pin_seal = 'a'", true],
+    'a public property the model unsets, with a mutator' => ["\$this->resource->pin_memo = 'a'", true],
+    'Model\'s own protected property, with a mutator' => ["\$this->resource->visible = 'a'", true],
+    'a public property with a mutator, which the write sets in place' => ["\$this->resource->pin_open = 'a'", false],
 ]);
 
 it('reads a set mutator in the last item\'s arm as a call that runs after its guard', function () {

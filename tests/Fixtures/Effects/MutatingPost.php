@@ -14,7 +14,39 @@ use Workbench\App\Models\Post;
  */
 class MutatingPost extends Post
 {
+    /** Set from anywhere, so a write reaches the property and runs no mutator. */
+    public $pin_open;
+
+    /** Unset by the constructor, so a write reaches `__set()`. */
+    public $pin_memo;
+
+    /** Set only by the model's family, so a write from anywhere else reaches `__set()`. */
+    public protected(set) ?string $pin_slot = null;
+
+    /** Set only by the model, so a write from anywhere else reaches `__set()`. */
+    public private(set) ?string $pin_seal = null;
+
     protected $table = 'posts';
+
+    /** Hidden outside the model's family, so a write from anywhere else reaches `__set()`. */
+    protected $pin_guard;
+
+    /** Hidden outside the model's family, with an `Attribute` setter. */
+    protected $pin_lock;
+
+    /** Hidden outside the model. */
+    private $pin_secret;
+
+    /**
+     * A post whose `pin_memo` reaches `__set()`.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function __construct(array $attributes = [])
+    {
+        parent::__construct($attributes);
+        unset($this->pin_memo);
+    }
 
     /**
      * Clears the pin as it stores the reset flag.
@@ -26,6 +58,69 @@ class MutatingPost extends Post
     }
 
     /**
+     * Clears the pin as it stores the open note.
+     */
+    public function setPinOpenAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['pin_open'] = $value;
+    }
+
+    /**
+     * Clears the pin as it stores the memo.
+     */
+    public function setPinMemoAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['pin_memo'] = $value;
+    }
+
+    /**
+     * Clears the pin as it stores the slot.
+     */
+    public function setPinSlotAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['pin_slot'] = $value;
+    }
+
+    /**
+     * Clears the pin as it stores the seal.
+     */
+    public function setPinSealAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['pin_seal'] = $value;
+    }
+
+    /**
+     * Clears the pin as it stores the guard.
+     */
+    public function setPinGuardAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['pin_guard'] = $value;
+    }
+
+    /**
+     * Clears the pin as it stores the secret.
+     */
+    public function setPinSecretAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['pin_secret'] = $value;
+    }
+
+    /**
+     * Clears the pin as it stores the attributes Eloquent's own protected `$visible` is named for.
+     */
+    public function setVisibleAttribute(string $value): void
+    {
+        $this->attributes['is_pinned'] = false;
+        $this->attributes['visible'] = $value;
+    }
+
+    /**
      * Sets the pin's note, and clears the pin with it.
      *
      * @return Attribute<never, string>
@@ -33,6 +128,16 @@ class MutatingPost extends Post
     protected function pinNote(): Attribute
     {
         return Attribute::set(fn (string $value): array => ['is_pinned' => false, 'pin_note' => $value]);
+    }
+
+    /**
+     * Sets the lock, and clears the pin with it.
+     *
+     * @return Attribute<never, string>
+     */
+    protected function pinLock(): Attribute
+    {
+        return Attribute::set(fn (string $value): array => ['is_pinned' => false, 'pin_lock' => $value]);
     }
 
     /**
