@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Effects;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
+use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\FrameworkFamily;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\Trust\UnsetProperties;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
@@ -252,15 +253,16 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether the `__set()` a class runs for a write of a property runs the app's code: Eloquent's own through a set
-     * mutator, any other always.
+     * Whether the `__set()` a class runs for a write of a property runs the app's code: Eloquent's own, past the
+     * `setAttribute()` it calls, through a set mutator, any other always.
      *
      * @param  ReflectionClass<object>  $class
      */
     private static function magicSetMayRun(ReflectionClass $class, string $property): bool
     {
         return ! ($class->isSubclassOf(Model::class)
-            && $class->getMethod('__set')->getDeclaringClass()->getName() === Model::class)
+            && $class->getMethod('__set')->getDeclaringClass()->getName() === Model::class
+            && FrameworkFamily::Eloquent->declares($class->getMethod('setAttribute')))
             || self::runsSetMutator($class, $property);
     }
 

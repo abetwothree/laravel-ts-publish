@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicSetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OwnWhenResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinForgettingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadingWhenResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeSettingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SettingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MagicSetFlags;
 use PhpParser\Node\ArrayItem;
@@ -722,6 +723,15 @@ it('reads a write PHP hands to an object\'s own __set() as a call', function (
     ],
     'a model\'s own __set(), past a public property the write sets in place' => [
         "\$this->resource->open_note = 'a'", InterveningResource::class, SettingPost::class, false,
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for a property it hides' => [
+        "\$this->resource->hidden_note = 'a'", InterveningResource::class, AttributeSettingPost::class, true,
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for an attribute it declares no property for' => [
+        "\$this->resource->other = 'a'", InterveningResource::class, AttributeSettingPost::class, true,
+    ],
+    'a model\'s own setAttribute(), past a public property the write sets in place' => [
+        "\$this->resource->open_note = 'a'", InterveningResource::class, AttributeSettingPost::class, false,
     ],
     'a held object\'s __set(), for a property it hides' => [
         "\$this->resource->title = 'a'", InterveningResource::class, MagicSetFlags::class, true,

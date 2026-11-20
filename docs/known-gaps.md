@@ -239,7 +239,8 @@ misses these writes, so a variant can pair a value with the arm PHP sends for an
 - an object built with the model and held in a property or a local, such as `$this->pins->clear()` after
   `$this->pins = new Pins($resource)` in the constructor;
 - the discriminant bound by reference to a local, such as `$r = &$this->pinned; $r = false;`, in the window or in a
-  method it calls;
+  method it calls, or a local discriminant bound before the window, as `$x = &$$n;`, `extract($o, EXTR_REFS)` or
+  `$refs = [&$flag];` do, then written through that reference in the window;
 - an accessor, a `getXAttribute()` method or an `Attribute` getter, or a relation method, that writes the discriminant
   when the window reads its attribute or relation, directly or through an Eloquent reader such as `getKey()`, which
   runs it by a name it computes;

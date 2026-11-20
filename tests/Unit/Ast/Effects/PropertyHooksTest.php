@@ -16,6 +16,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\PropertyKeyPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Effects\ReferenceGetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicSetResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PinForgettingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeSettingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\SettingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MagicSetFlags;
 use Workbench\App\Models\Post;
@@ -191,6 +192,15 @@ it('lists the __set() a write runs where it cannot set the property in place', f
     ],
     'a model\'s own __set(), past a public property' => [
         '$this->resource->open_note', [SettingPost::class], InterveningResource::class, [],
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for a property it hides' => [
+        '$this->resource->hidden_note', [AttributeSettingPost::class], InterveningResource::class, [[null, 'hidden_note']],
+    ],
+    'Eloquent\'s __set() past a model\'s own setAttribute(), for an attribute it declares no property for' => [
+        '$this->resource->other', [AttributeSettingPost::class], InterveningResource::class, [[null, 'other']],
+    ],
+    'a model\'s own setAttribute(), past a public property' => [
+        '$this->resource->open_note', [AttributeSettingPost::class], InterveningResource::class, [],
     ],
     'a held object\'s __set(), for a property it hides' => [
         '$this->resource->title', [MagicSetFlags::class], InterveningResource::class, [[null, 'title']],

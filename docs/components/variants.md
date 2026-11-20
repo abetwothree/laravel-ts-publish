@@ -134,9 +134,10 @@ it, so in the last item the call counts, not where the body is written. Code may
   receive the call: `$this`, a class keyword, the class's or an ancestor's name, or an object holding the read. A
   closure hands a callee what it returns or yields, not what a closure nested in it returns or yields.
 - A property hook may write ([`PropertyHooks`]), and so may the `__set()` a write PHP cannot make in place runs: any
-  but Eloquent's always, and Eloquent's through a set mutator or the method returning an `Attribute` it runs on a write
-  to look for a setter, unless its body is one `return` of Eloquent's own `Attribute`, not a subclass's, built with
-  none, where no argument and no name of a method called on it runs code.
+  but Eloquent's always, as Eloquent's does past an app's `setAttribute()`, and Eloquent's otherwise through a set
+  mutator or the method returning an `Attribute` it runs on a write to look for a setter, unless its body is one
+  `return` of Eloquent's own `Attribute`, not a subclass's, built with none, where no argument and no name of a method
+  called on it runs code.
 - `eval`, `include` and a call by a name the source does not spell may write.
 
 A call on the read itself, or on an object that does not hold it, counts only through what it is handed.
