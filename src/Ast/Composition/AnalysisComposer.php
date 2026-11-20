@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
@@ -16,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use Closure;
-use Illuminate\Support\Facades\Config;
 
 /**
  * Turns one MethodAnalysis into an AnalysisResult whose three fields agree with each other.
@@ -291,7 +291,7 @@ final class AnalysisComposer
      */
     private function rewriteEnumResourceTypes(MethodAnalysis $analysis): void
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return;
         }
 
@@ -304,14 +304,14 @@ final class AnalysisComposer
             if (isset($analysis->directEnumFqcns[$propName])) {
                 // A mixed ternary collapsed both arms to one deduped token, so substitution cannot
                 // tell them apart — synthesize the union from each arm's own recorded shape.
-                $type = 'AsEnum<typeof '.$constName.'>'.($arm['wrapIsCollection'] ? '[]' : '')
+                $type = EnumWrapSpelling::of($constName, $arm['wrapIsCollection'])
                     .' | '.$typeName.($arm['directIsArray'] ? '[]' : '')
                     .($arm['nullable'] ? ' | null' : '');
             } else {
                 $type = TsTypeString::substituteEnumType(
                     $this->properties[$propName]['type'],
                     $typeName,
-                    'AsEnum<typeof '.$constName.'>',
+                    EnumWrapSpelling::of($constName),
                 );
             }
 
@@ -364,7 +364,7 @@ final class AnalysisComposer
             }
 
             $fqcn = $fqcns[$index++];
-            $rewritten[] = 'AsEnum<typeof '.($this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn]).'>';
+            $rewritten[] = EnumWrapSpelling::of($this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn]);
         }
 
         return implode(' | ', $rewritten);
@@ -402,7 +402,7 @@ final class AnalysisComposer
      */
     private function buildValueImports(MethodAnalysis $analysis): array
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return [];
         }
 

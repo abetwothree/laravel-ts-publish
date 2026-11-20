@@ -569,14 +569,23 @@ export interface DepotAll extends Depot, DepotRelations {}
 TYPESCRIPT);
     });
 
-    test('enum property info built without the bare-arm flag renders as it did before the flag', function (string $template) {
+    test('enum property info built by hand, without the bare-arm flag or the spelled type, renders as it did before them', function (string $template) {
         config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
 
         $transformer = new PreBareFlagModelTransformer(Team::class);
+        $built = (fn (): array => $this->buildEnumColumns())->call($transformer);
 
-        expect($transformer->data()->enumColumns['week_days'])
-            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true])
+        expect($built['week_days'])->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true])
+            ->and($transformer->data()->enumColumns['week_days'])
+            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'asEnumType' => 'AsEnum<typeof WeekDays>[]'])
             ->and((new ModelWriter(new Filesystem))->write($transformer))
+            ->toContain('    week_days: AsEnum<typeof WeekDays>[] | null;');
+    })->with(['model-full', 'model-split']);
+
+    test('a DTO built from the full lists alone renders each enum column as its AsEnum type', function (string $template) {
+        config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+        expect((new ModelWriter(new Filesystem))->write(new FullListsModelTransformer(Team::class)))
             ->toContain('    week_days: AsEnum<typeof WeekDays>[] | null;');
     })->with(['model-full', 'model-split']);
 });

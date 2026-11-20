@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
@@ -52,6 +53,13 @@ use ReflectionClass;
  * @phpstan-type TsTypeOverrides = array<string, string>
  * @phpstan-type EnumFqcnInfo = array{fqcn: string, nullable: bool, isCollection: bool, alsoBare: bool}
  * @phpstan-type EnumListFlags = array{isCollection: bool, alsoBare: bool}
+ * @phpstan-type EnumPropertyRow = array{
+ *    constName: string,
+ *    nullable: bool,
+ *    isCollection?: bool,
+ *    alsoBare?: bool,
+ *    asEnumType?: string,
+ * }
  * @phpstan-type ResolvedImports = array{
  *    typeImports: TypesImportMap,
  *    valueImports: ValuesImportMap,
@@ -166,9 +174,9 @@ class ModelTransformer extends CoreTransformer
     {
         $hasEnums = $this->shouldGenerateHasEnums();
         $imports = $this->buildResolvedImports();
-        $enumColumns = $hasEnums ? $this->buildEnumColumns() : [];
-        $enumMutators = $hasEnums ? $this->buildEnumMutators() : [];
-        $enumAppends = $hasEnums ? $this->buildEnumAppends() : [];
+        $enumColumns = $hasEnums ? array_map($this->withAsEnumType(...), $this->buildEnumColumns()) : [];
+        $enumMutators = $hasEnums ? array_map($this->withAsEnumType(...), $this->buildEnumMutators()) : [];
+        $enumAppends = $hasEnums ? array_map($this->withAsEnumType(...), $this->buildEnumAppends()) : [];
 
         return new TsModelDto(
             modelName: $this->modelName,
@@ -1042,41 +1050,23 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * The enum columns' rows of the model's Resource interface.
+     *
      * @return array<string, EnumPropertyInfo>
      */
     protected function buildEnumColumns(): array
     {
-        $result = [];
-
-        foreach ($this->enumColumnProperties as $name => $info) {
-            $result[$name] = [
-                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
-                'nullable' => $info['nullable'],
-                'isCollection' => $info['isCollection'],
-                'alsoBare' => $info['alsoBare'],
-            ];
-        }
-
-        return $result;
+        return array_map($this->enumPropertyInfo(...), $this->enumColumnProperties);
     }
 
     /**
+     * The enum mutators' rows of the model's Resource interface.
+     *
      * @return array<string, EnumPropertyInfo>
      */
     protected function buildEnumMutators(): array
     {
-        $result = [];
-
-        foreach ($this->enumMutatorProperties as $name => $info) {
-            $result[$name] = [
-                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
-                'nullable' => $info['nullable'],
-                'isCollection' => $info['isCollection'],
-                'alsoBare' => $info['alsoBare'],
-            ];
-        }
-
-        return $result;
+        return array_map($this->enumPropertyInfo(...), $this->enumMutatorProperties);
     }
 
     /**
@@ -1086,17 +1076,42 @@ class ModelTransformer extends CoreTransformer
      */
     protected function buildEnumAppends(): array
     {
-        $result = [];
+        return array_map($this->enumPropertyInfo(...), $this->enumAppendsProperties);
+    }
 
-        foreach ($this->enumAppendsProperties as $name => $info) {
-            $result[$name] = [
-                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
-                'nullable' => $info['nullable'],
-                'isCollection' => $info['isCollection'],
-                'alsoBare' => $info['alsoBare'],
-            ];
+    /**
+     * One enum property's row of the model's Resource interface.
+     *
+     * @param  EnumFqcnInfo  $info
+     * @return EnumPropertyInfo
+     */
+    protected function enumPropertyInfo(array $info): array
+    {
+        // Spelled here too: an override of data() written before the key builds its rows from these methods alone.
+        return $this->withAsEnumType([
+            'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
+            'nullable' => $info['nullable'],
+            'isCollection' => $info['isCollection'],
+            'alsoBare' => $info['alsoBare'],
+        ]);
+    }
+
+    /**
+     * An enum row with the `AsEnum` type the model templates print, spelled from its keys where it has none, as a row
+     * an override builds by hand.
+     *
+     * @param  EnumPropertyRow  $row
+     * @return EnumPropertyInfo
+     */
+    protected function withAsEnumType(array $row): array
+    {
+        if (isset($row['asEnumType'])) {
+            return $row;
         }
 
-        return $result;
+        $row['asEnumType'] = EnumWrapSpelling::of($row['constName'], $row['isCollection'] ?? false)
+            .(($row['alsoBare'] ?? false) ? ' | '.EnumWrapSpelling::of($row['constName']) : '');
+
+        return $row;
     }
 }

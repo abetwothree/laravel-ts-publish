@@ -11,11 +11,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\InterveningWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Effects\PropertyHooks;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
-use Illuminate\Support\Facades\Config;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -345,7 +345,7 @@ final class VariantReader
         ];
 
         // Only the tolki package prints an enum resource apart from a read of its enum, as `AsEnum<typeof X>`.
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             [$wraps, $reads] = [[], [...$reads, ...$wraps]];
         }
 

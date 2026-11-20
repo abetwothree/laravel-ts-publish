@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
-use Illuminate\Support\Facades\Config;
 
 /**
  * Turns a MethodAnalysis's FQCN channels into resolved type/value import maps.
@@ -167,7 +167,7 @@ final class AnalysisImports
      */
     private function asEnumWrappedOnlyFqcns(MethodAnalysis $analysis): array
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return [];
         }
 
@@ -208,7 +208,7 @@ final class AnalysisImports
      */
     private function buildValueImports(MethodAnalysis $analysis): array
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return [];
         }
 

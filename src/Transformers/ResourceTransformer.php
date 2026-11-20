@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -1134,7 +1135,7 @@ class ResourceTransformer extends CoreTransformer
                 // Mixed ternary: one branch wraps the enum, the other reads it directly. The
                 // analyzer collapses both to a single deduped bare type name, so substitution can't
                 // tell the arms apart here — synthesize the union from each arm's own recorded shape.
-                $wrappedTypeName = 'AsEnum<typeof '.$constName.'>'.($info['wrapIsCollection'] ? '[]' : '');
+                $wrappedTypeName = EnumWrapSpelling::of($constName, $info['wrapIsCollection']);
                 $directTypeName = $enumTypeName.($info['directIsArray'] ? '[]' : '');
 
                 $type = $wrappedTypeName.' | '.$directTypeName;
@@ -1153,7 +1154,7 @@ class ResourceTransformer extends CoreTransformer
                 $type = TsTypeString::substituteEnumType(
                     $this->properties[$propName]['type'],
                     $searchTypeName,
-                    'AsEnum<typeof '.$constName.'>',
+                    EnumWrapSpelling::of($constName),
                 );
             }
 
@@ -1184,7 +1185,7 @@ class ResourceTransformer extends CoreTransformer
                 } elseif (isset($fqcns[$fqcnIndex])) {
                     $fqcn = $fqcns[$fqcnIndex++];
                     $constName = $this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn];
-                    $rewritten[] = 'AsEnum<typeof '.$constName.'>';
+                    $rewritten[] = EnumWrapSpelling::of($constName);
 
                     // A mixed ternary elsewhere may still emit XType, which needs the type import.
                     if (! $this->readsEnumDirectly($fqcn)) {

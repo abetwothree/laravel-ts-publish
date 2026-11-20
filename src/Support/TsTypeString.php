@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\AsEnumSpelling;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeTokens;
@@ -476,21 +477,19 @@ class TsTypeString
         foreach ($constToTypeMap as $constAlias => $qualifiedTypeName) {
             $lastDot = strrpos($qualifiedTypeName, '.');
             $bareTypeName = $lastDot === false ? $qualifiedTypeName : substr($qualifiedTypeName, $lastDot + 1);
+            $wrap = AsEnumSpelling::pattern($constAlias);
 
             // A trailing `[` means the bare arm is array-shaped and the AsEnum arm is not (or vice
             // versa) — a genuinely different pair, not the redundant same-shaped one this folds.
-            $pairPattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>\s*\|\s*'
-                .preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$\[])/';
+            $pairPattern = '/'.$wrap.'\s*\|\s*'.preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$\[])/';
             $typeStr = preg_replace($pairPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
 
             // Same pair reversed: the bare alias would be re-qualified afterwards, recreating the duplicate.
             // Only ResourceTransformer::rewriteEnumResourceTypes() emits this pair shape, always forward-ordered.
-            $reversedPattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'\s*\|\s*AsEnum<typeof\s+'
-                .preg_quote($constAlias, '/').'\s*>/';
+            $reversedPattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'\s*\|\s*'.$wrap.'/';
             $typeStr = preg_replace($reversedPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
 
-            $singlePattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>/';
-            $typeStr = preg_replace($singlePattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
+            $typeStr = preg_replace('/'.$wrap.'/', $qualifiedTypeName, $typeStr) ?? $typeStr;
         }
 
         return $typeStr;

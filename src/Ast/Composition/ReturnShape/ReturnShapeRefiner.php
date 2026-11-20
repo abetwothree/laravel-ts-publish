@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -17,7 +18,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
-use Illuminate\Support\Facades\Config;
 use ReflectionMethod;
 
 /**
@@ -166,7 +166,7 @@ final class ReturnShapeRefiner
         $read = $written === null ? $type : TsTypeString::substituteEnumType(
             $type,
             ValueResult::enumTypeName($written),
-            'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
+            EnumWrapSpelling::ofEnum($written),
         );
         [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $relists)->merge(
             [$read, $this->readSlots($analysis, $name, $read, $names)],
@@ -209,7 +209,7 @@ final class ReturnShapeRefiner
         $wrapped = $analysis->enumResources[$name] ?? null;
 
         return $wrapped === null || ($analysis->directEnumFqcns[$name] ?? null) === $wrapped
-            || isset($analysis->multiEnumResourceFqcns[$name]) || ! Config::boolean('ts-publish.enums.use_tolki_package')
+            || isset($analysis->multiEnumResourceFqcns[$name]) || ! EnumWrapSpelling::enabled()
             ? null
             : $wrapped;
     }
@@ -251,9 +251,7 @@ final class ReturnShapeRefiner
         $held = $analysis->channelFqcns($name);
         // Several wraps the tolki rewrite spells as `AsEnum`, one top arm each, bring only their enums' consts, so a
         // bare token of an enum past its own arm still needs a channel that imports its type.
-        $wraps = Config::boolean('ts-publish.enums.use_tolki_package')
-            ? ($analysis->multiEnumResourceFqcns[$name] ?? [])
-            : [];
+        $wraps = EnumWrapSpelling::enabled() ? ($analysis->multiEnumResourceFqcns[$name] ?? []) : [];
         $added = array_values(array_unique(array_diff(
             self::withoutOneOfEach($classes, $wraps),
             self::withoutOneOfEach($held, $wraps),

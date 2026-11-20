@@ -97,6 +97,9 @@ The helpers and the test that pins them live in these files:
   [AST engine § Redundant arms](ast-engine.md#redundant-arms) says who calls it and with which map.
 - [`Support\TypeStrings\LiteralArm`](../../src/Support/TypeStrings/LiteralArm.php): the scalar a literal union arm
   spells, a quoted string, a JSON number, `true` or `false`, or null for any other arm. Static and `@internal`.
+- [`Support\TypeStrings\AsEnumSpelling`](../../src/Support/TypeStrings/AsEnumSpelling.php): the tolki package's
+  `AsEnum<typeof Const>` type, written and read back by pattern; the one string in `src/` that spells it, which
+  `EnumWrapSpellingTest` guards. Static and `@internal`.
 - [`Support\TypeStrings\TsLibGlobals`](../../src/Support/TypeStrings/TsLibGlobals.php): every global name declared
   by the TypeScript lib files that the repo's tsconfigs load, which a type spells with no import: `TYPES`;
   `NAMESPACES` (`Temporal`, and `globalThis`, which no lib file declares), which only a qualifier or a `typeof`
@@ -224,7 +227,8 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
 `TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
-`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and `TypeTokens`;
+`AsEnumSpelling::pattern()`, `VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and
+`TypeTokens`;
 `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and
 `TsTypeShape`. That one-way dependency is
 what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and

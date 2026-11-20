@@ -21,6 +21,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
 | `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]) and a discriminant's read ([`InterveningWrites`]), which share the code `Trust/` knows only reads. For a discriminant: what a callable value may run ([`ClosureReach`], [`ValueUse`]), the method a callable names ([`CallableTargets`]), the `$this` method and hook bodies read, three levels deep and once a run ([`BodyReads`]), and property hooks and model set mutators ([`PropertyHooks`]) |
 | `Effects/Trust/` | What the write checks trust to only read: the framework calls they know ([`ReadOnlyCalls`]), and a resource helper or Eloquent reader walked as the runtime class dispatches it ([`FrameworkDispatch`]), by its family's rules ([`FrameworkFamily`], [`LiteralGetter`]): [Variants § The dispatch walk](variants.md#the-dispatch-walk) |
+| `Enums/` | How an `EnumResource` wrap publishes: whether the tolki package is on, and the `AsEnum` type it spells |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |

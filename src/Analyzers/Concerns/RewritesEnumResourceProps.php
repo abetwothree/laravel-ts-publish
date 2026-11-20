@@ -7,9 +7,9 @@ namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use Illuminate\Support\Facades\Config;
 
 /**
  * The page props and shared data an `EnumResource` wraps, which Inertia sends as the resource's objects rather than the
@@ -31,7 +31,7 @@ trait RewritesEnumResourceProps
      */
     protected function rewriteEnumResourceTypes(array $props, MethodAnalysis $analysis): array
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return $props;
         }
 
@@ -57,23 +57,17 @@ trait RewritesEnumResourceProps
     }
 
     /**
-     * The `AsEnum<typeof Const>` an enum's resource publishes as.
-     *
-     * @param  class-string  $fqcn
-     */
-    private static function asEnum(string $fqcn): string
-    {
-        return 'AsEnum<typeof '.ValueResult::enumConstName($fqcn).'>';
-    }
-
-    /**
      * The type with each of an enum's type tokens spelled as its resource's `AsEnum<typeof Const>`.
      *
      * @param  class-string  $fqcn
      */
     private static function wrapEnum(string $type, string $fqcn): string
     {
-        return TsTypeString::substituteEnumType($type, ValueResult::enumTypeName($fqcn), self::asEnum($fqcn));
+        return TsTypeString::substituteEnumType(
+            $type,
+            ValueResult::enumTypeName($fqcn),
+            EnumWrapSpelling::ofEnum($fqcn),
+        );
     }
 
     /**
@@ -87,7 +81,7 @@ trait RewritesEnumResourceProps
     private static function wrapBesideBareRead(string $type, array $arm): string
     {
         $bare = ValueResult::enumTypeName($arm['fqcn']).($arm['directIsArray'] ? '[]' : '');
-        $own = self::asEnum($arm['fqcn']).($arm['wrapIsCollection'] ? '[]' : '');
+        $own = EnumWrapSpelling::ofEnum($arm['fqcn'], $arm['wrapIsCollection']);
         $members = TsTypeString::splitTopLevelUnion($type);
         $wrapped = array_map(
             static fn (string $member): string => $member === $bare ? $member : self::wrapEnum($member, $arm['fqcn']),

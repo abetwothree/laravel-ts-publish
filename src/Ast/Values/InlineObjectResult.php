@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -17,7 +18,6 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
-use Illuminate\Support\Facades\Config;
 
 /**
  * An analysis as the inline object type it publishes, intersected with the arms its spreads add, carrying the import
@@ -148,7 +148,7 @@ final class InlineObjectResult
             return ['type' => 'Record<string, unknown>', 'optional' => false];
         }
 
-        $useTolki = Config::boolean('ts-publish.enums.use_tolki_package');
+        $useTolki = EnumWrapSpelling::enabled();
 
         // Tolki on: EnumResource-wrapped properties render as `AsEnum<typeof X>`, matching the
         // top-level enum resource transformer. Substituting the bare token in place keeps every
@@ -162,7 +162,6 @@ final class InlineObjectResult
                 $fqcn = $analysis->enumResources[$prop['name']];
                 $constName = ValueResult::enumConstName($fqcn);
                 $bareTypeName = ValueResult::enumTypeName($fqcn);
-                $asEnumType = 'AsEnum<typeof '.$constName.'>';
 
                 // A mixed wrap/direct ternary needs both arms named, whether or not the merged union
                 // still shows them apart; blanket substitution would rewrite the direct arm too.
@@ -173,10 +172,10 @@ final class InlineObjectResult
                     ? $this->expandMixedEnumType(
                         $members,
                         $bareTypeName,
-                        $asEnumType,
+                        $constName,
                         $analysis->enumResourceArmShapes[$prop['name']] ?? null,
                     )
-                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, $asEnumType);
+                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, EnumWrapSpelling::of($constName));
             }
 
             unset($prop);
@@ -554,10 +553,10 @@ final class InlineObjectResult
      * @param  list<string>  $members
      * @param  EnumResourceArmShape|null  $armShape
      */
-    private function expandMixedEnumType(array $members, string $bareTypeName, string $asEnumType, ?array $armShape): string
+    private function expandMixedEnumType(array $members, string $bareTypeName, string $constName, ?array $armShape): string
     {
         if ($armShape !== null) {
-            $wrapped = $asEnumType.($armShape['wrapIsCollection'] ? '[]' : '');
+            $wrapped = EnumWrapSpelling::of($constName, $armShape['wrapIsCollection']);
             $direct = $bareTypeName.($armShape['directIsArray'] ? '[]' : '');
             $others = array_values(array_filter(
                 $members,
@@ -571,8 +570,8 @@ final class InlineObjectResult
         $hasCollectionArm = in_array($collectionType, $members, true);
 
         $expanded = array_map(fn (string $member): string => match (true) {
-            $member === $collectionType => $asEnumType.'[]',
-            ! $hasCollectionArm && $member === $bareTypeName => $asEnumType.' | '.$bareTypeName,
+            $member === $collectionType => EnumWrapSpelling::of($constName, list: true),
+            ! $hasCollectionArm && $member === $bareTypeName => EnumWrapSpelling::of($constName).' | '.$bareTypeName,
             default => $member,
         }, $members);
 

@@ -754,9 +754,9 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->toHaveKey('visibility')
             ->toHaveKey('priority');
 
-        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
-        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
-        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
+        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Status>']);
+        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Visibility>']);
+        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Priority>']);
     });
 
     test('enumColumns is empty when enums_use_tolki_package is disabled', function () {
@@ -1032,14 +1032,14 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         $data = (new ModelTransformer(Team::class))->data();
 
         expect($data->enumColumns['week_days'])
-            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false]);
+            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof WeekDays>[]']);
     });
 
     test('enumColumns marks a scalar enum column as not a collection', function () {
         $data = (new ModelTransformer(Post::class))->data();
 
         expect($data->enumColumns['status'])
-            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Status>']);
     });
 
     test('keeps the enum of a column or accessor that publishes a list of it or the enum alone', function () {
@@ -1047,10 +1047,10 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
 
         expect($data->columns['meta_info']['type'])->toBe('StatusType[] | StatusType | null')
             ->and($data->enumColumns['meta_info'])
-            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true, 'asEnumType' => 'AsEnum<typeof Status>[] | AsEnum<typeof Status>'])
             ->and($data->appends['grades']['type'])->toBe('StatusType[] | StatusType')
             ->and($data->enumAppends['grades'])
-            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => true, 'alsoBare' => true]);
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => true, 'alsoBare' => true, 'asEnumType' => 'AsEnum<typeof Status>[] | AsEnum<typeof Status>']);
     });
 
     test('prints a list of the AsEnum wrap or the wrap alone in the Resource interface', function (string $template) {
@@ -1074,10 +1074,10 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
 
         expect($data->columns['meta_info']['type'])->toBe('StatusType | StatusType[] | null')
             ->and($data->enumColumns['meta_info'])
-            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true, 'asEnumType' => 'AsEnum<typeof Status>[] | AsEnum<typeof Status>'])
             ->and($data->columns['tags']['type'])->toBe('StatusType[] | null')
             ->and($data->enumColumns['tags'])
-            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Status>[]'])
             ->and($content)
             ->toContain("export interface EnumListUnionModelResource extends Omit<EnumListUnionModel, 'tags' | 'meta_info'>")
             ->toContain('    meta_info: AsEnum<typeof Status>[] | AsEnum<typeof Status> | null;')
@@ -1940,7 +1940,7 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
             ->and($data->combinedMutators)->toBe([])
             ->and($data->combinedAppends)->toBe([])
             ->and($data->combinedEnums)
-            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]])
+            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Priority>']])
             ->and($data->combinedTypeImports)->toBe(['../enums' => ['PriorityType'], '.' => ['Order', 'User']])
             ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']]);
     });
