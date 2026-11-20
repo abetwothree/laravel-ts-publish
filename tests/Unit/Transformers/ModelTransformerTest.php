@@ -36,6 +36,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrapAccessorGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\AbsorbingModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
@@ -2325,4 +2326,39 @@ test('a getter reading getAttribute() of a literal key publishes the attribute i
     $data = (new ModelTransformer(AttributeCardPost::class))->data();
 
     expect($data->mutators['shout']['type'] ?? null)->toBe('string');
+});
+
+// A shape holding a wrap spells its enum's const after `typeof`, and a wrap alone its enum's type, so the model imports
+// both, and `AsEnum`, though no column reads the enum (GH-96).
+test('a model imports AsEnum, the const and the enum type its accessors\' wraps spell', function (string $template) {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+    $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(WrapAccessorGrade::class));
+
+    expect(array_values(preg_grep('/^(import |    (shape|wrap): )/', explode("\n", $content)) ?: []))->toBe([
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../workbench/app/enums';",
+        "import type { PriorityType } from '../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: PriorityType;',
+    ]);
+})->with(['model-full', 'model-split']);
+
+// The globals file has no `AsEnum` import, so an accessor's wrap folds to its enum's value type there (GH-96).
+test('the globals file folds an accessor\'s wrap to its enum\'s value type', function () {
+    $content = view('laravel-ts-publish::globals', [
+        'globalTypesByNamespace' => [],
+        'globalAliasMap' => [],
+        'externalTypeImports' => [],
+        'groupedModels' => collect(['stub.models' => collect([new ModelTransformer(WrapAccessorGrade::class)])]),
+        'groupedEnums' => collect(),
+        'groupedResources' => collect(),
+        'groupedFormRequests' => collect(),
+        'groupedBroadcastEvents' => collect(),
+    ])->render();
+
+    expect($content)->toContain('shape: { a: workbench.app.enums.PriorityType; b: number };')
+        ->toContain('wrap: workbench.app.enums.PriorityType;')
+        ->not->toContain('AsEnum');
 });

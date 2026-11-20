@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumValueAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrapAccessorGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
@@ -377,3 +378,13 @@ test('an appended accessor\'s EnumResource wrap publishes the null filter() send
     'the model merged' => [AppendedWrapMergeResource::class],
     'no toArray() of its own' => [AppendedWrapDelegatedResource::class],
 ]);
+
+// The model file imports what these spell: the const after `typeof`, and the enum's type (GH-96).
+test('an accessor\'s shape publishes its wrap as AsEnum, and a wrap alone publishes its enum\'s type', function () {
+    $data = (new ModelTransformer(WrapAccessorGrade::class))->data();
+
+    expect($data->appends['shape']['type'])->toBe('{ a: AsEnum<typeof Priority>; b: number }')
+        ->and($data->appends['wrap']['type'])->toBe('PriorityType')
+        ->and($data->valueImports)->toBe(['../../../../../workbench/app/enums' => ['Priority']])
+        ->and($data->typeImports)->toBe(['../../../../../workbench/app/enums' => ['PriorityType']]);
+});

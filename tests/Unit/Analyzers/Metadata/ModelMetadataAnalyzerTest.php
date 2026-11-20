@@ -25,6 +25,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalar
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumWrapMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NinthTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
@@ -319,4 +320,15 @@ test('publishes no case value beside its enum\'s alias and no empty list beside 
 
     expect($analysis->types)->toBe(['status' => 'StatusType', 'tags' => '(PriorityType | null)[]', 'kept' => 'StatusType | 0'])
         ->and($analysis->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']]);
+});
+
+// The engine spells a nested wrap `AsEnum<typeof Status>`, so the companion imports the const and `AsEnum` (GH-96).
+test('a companion that spells a wrap imports its const and the AsEnum type', function () {
+    $analysis = resolve(ModelMetadataAnalyzer::class)
+        ->analyze(NestedEnumWrapMetadataProvider::class, ['probe'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe(['probe' => '{ w: AsEnum<typeof Status> }'])
+        ->and($analysis->typeImports)->toBe(['@tolki/ts' => ['AsEnum']])
+        ->and($analysis->valueImports)->toBe(['../enums' => ['Status']])
+        ->and($analysis->importedNames())->toBe(['AsEnum', 'Status']);
 });

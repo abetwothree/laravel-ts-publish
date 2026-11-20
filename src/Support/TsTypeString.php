@@ -121,7 +121,8 @@ class TsTypeString
                 continue;
             }
 
-            if (in_array($token, ['Record', 'Date', 'true', 'false'], true)) {
+            // A `typeof` reads the name after it, which the check reads as its own token.
+            if (in_array($token, ['Record', 'Date', 'true', 'false', 'typeof'], true)) {
                 continue;
             }
 

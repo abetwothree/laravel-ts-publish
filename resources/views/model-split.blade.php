@@ -1,5 +1,5 @@
 @use('AbeTwoThree\LaravelTsPublish\Facades\JsEmitter')
-@if($usesTolkiPackage && (count($data->enumColumns) > 0 || count($data->enumMutators) > 0 || count($data->enumAppends) > 0))
+@if($usesTolkiPackage && count($data->valueImports) > 0)
 import { type AsEnum } from '@tolki/ts';
 
 @endif{{-- end tolki package --}}

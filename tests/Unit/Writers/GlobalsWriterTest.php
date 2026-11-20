@@ -497,6 +497,11 @@ test('the globals template qualifies each name through its own transformer\'s ma
                 'RelationName' => 'own.elsewhere.RelationName',
             ];
         }
+
+        public function globalEnumConstMap(): array
+        {
+            return [];
+        }
     };
 
     $collection = new class

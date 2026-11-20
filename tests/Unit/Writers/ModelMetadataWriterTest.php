@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstEmptyValue
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\AstUnimportableModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\CustomModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EmptyValuesModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumWrapMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TupleShapeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelMetadataTransformer;
 use AbeTwoThree\LaravelTsPublish\Writers\ModelMetadataWriter;
@@ -123,4 +124,16 @@ test('renders a list whose type declares numeric object keys, and one whose type
     expect((new ModelMetadataWriter(new Filesystem))->write(new ModelMetadataTransformer(User::class)))
         ->toContain('    numeric_keys: [{}, []],')
         ->toContain('    tuple: [{}, []],');
+});
+
+test('renders a companion that spells a wrap, importing its const and the AsEnum type', function () {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.model_metadata.provider_class', NestedEnumWrapMetadataProvider::class);
+
+    $content = new ModelMetadataWriter(new Filesystem)->write(new ModelMetadataTransformer(User::class));
+
+    expect(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+        "import type { AsEnum } from '@tolki/ts';",
+        "import { Status } from '../enums';",
+    ])->and($content)->toContain("    probe: { w: AsEnum<typeof Status> };\n");
 });
