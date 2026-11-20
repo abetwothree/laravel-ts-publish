@@ -677,6 +677,7 @@ describe('referencedTypeNames', function () {
         'a global value' => ['ReturnType<typeof fetch> | { m: Meta }', ['Meta']],
         'a global value the DOM declares with no type' => ['{ ctor: typeof Image; at: typeof NaN }', []],
         'a global namespace, as a qualifier' => ['Intl.DateTimeFormat | WebAssembly.Module', []],
+        'a global namespace\'s typeof, and globalThis\'s' => ['typeof Intl | typeof Temporal.Now | typeof globalThis', []],
     ]);
 
     // DOM's `Image`, `Audio` and `Option` are values with no type, so a type position spelling one reads the clause's.
@@ -686,6 +687,8 @@ describe('referencedTypeNames', function () {
         'members' => ['{ image: Image; audio: Audio; option: Option }', ['Image', 'Audio', 'Option']],
         'a generic\'s argument' => ['Partial<Proxy> | Array<Image>', ['Proxy', 'Image']],
         'beside its typeof' => ['{ img: Image; ctor: typeof Image }', ['Image']],
+        // A namespace is no type, so standing alone it names the clause's own.
+        'a namespace standing alone' => ['{ t: Temporal; i: Intl[] }', ['Temporal', 'Intl']],
     ]);
 
     test('reads each name once, in the order a type first spells it', function () {

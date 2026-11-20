@@ -23,15 +23,20 @@ it('equals what the generator reads from the installed TypeScript', function () 
 
 it('holds the global types of TypeScript and the DOM, and no name only a module declares', function () {
     expect(TsLibGlobals::TYPES)
-        ->toHaveKeys(['Date', 'Partial', 'PropertyKey', 'Response', 'HTMLElement', 'Intl'])
-        ->not->toHaveKeys(['fetch', 'Image', 'Audio', 'Option', 'Proxy', 'NaN'])
+        ->toHaveKeys(['Date', 'Partial', 'PropertyKey', 'Response', 'HTMLElement'])
+        ->not->toHaveKeys(['fetch', 'Image', 'Audio', 'Option', 'Proxy', 'NaN', 'Intl', 'Temporal', 'globalThis'])
         ->not->toHaveKey('Meta')
         ->not->toHaveKey('IteratorObjectConstructor');
 });
 
-it('holds apart each global the libs declare only as a value', function () {
+it('holds apart each global the libs declare only as a value, and globalThis, which no lib declares', function () {
     expect(TsLibGlobals::VALUES)
-        ->toHaveKeys(['fetch', 'Image', 'Audio', 'Option', 'Proxy', 'NaN', 'Infinity'])
+        ->toHaveKeys(['fetch', 'Image', 'Audio', 'Option', 'Proxy', 'NaN', 'Infinity', 'globalThis'])
         ->not->toHaveKeys(['Date', 'HTMLElement', 'Intl', 'Meta'])
         ->and(array_intersect_key(TsLibGlobals::VALUES, TsLibGlobals::TYPES))->toBe([]);
+});
+
+it('holds apart each namespace no type of the libs shares a name with', function () {
+    expect(array_keys(TsLibGlobals::NAMESPACES))->toBe(['CSS', 'Intl', 'Reflect', 'Temporal', 'WebAssembly'])
+        ->and(array_intersect_key(TsLibGlobals::NAMESPACES, TsLibGlobals::TYPES + TsLibGlobals::VALUES))->toBe([]);
 });
