@@ -46,7 +46,7 @@ it('reads a callable pair by its keys 0 and 1, as PHP does', function (string $a
     'a by-reference item, which PHP calls as it calls a copy' => ["[&\$x, 'm']", "\$x, 'm'"],
     'a key past 1 beside a computed key, which no key removes' => ["[\$k => \$a, 2 => 'm']", null],
     'a string key beside an unpacked item' => ["['mode' => \$a, ...\$x]", null],
-    'a keyless item past the largest int key, where PHP throws' => ["[9223372036854775807 => \$a, 'm']", null],
+    'a keyless item past the largest int key, where PHP throws' => ['['.PHP_INT_MAX." => \$a, 'm']", null],
     // PHP spreads a literal's items in its place, its int keys renumbered and its string keys kept.
     'a spread literal' => ["[...[\$this, 'm']]", "\$this, 'm'"],
     'a spread literal keyed out of order, renumbered' => ["[...[1 => 'm', 0 => \$this]]", "'m', \$this"],
