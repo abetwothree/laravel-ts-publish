@@ -561,6 +561,14 @@ A contributor whose `#[TsType]` spells the composed name, `{Basename}Type`, with
 itself (TS2310); with an import, the name is aliased instead. Two contributors importing one name from two modules
 make the module import it twice (TS2300). `ts:publish` warns of both. Give the override an import or another name.
 
+### A model, form request or broadcast event extending a type of its own name fails `tsc`
+
+`#[TsExtends('User', '@/contracts/user')]` on model `User`, or a `ts_extends` config entry naming the same, imports
+`User` beside the file's own `export interface User` and fails with TS2440. An API resource aliases such an import by
+its path and respells the clause, `#[TsIntersect]` included, but the other three publishers settle their clauses
+without the name they declare ([`ParsesTsExtends`](../src/Transformers/Concerns/ParsesTsExtends.php)). Give the
+imported type another name.
+
 ### A composed type fails `tsc` when a contributor is not an object type, or two contributors disagree on a member
 
 The package reads only an override's spelling, so it cannot tell what the type it names holds. An override naming an
