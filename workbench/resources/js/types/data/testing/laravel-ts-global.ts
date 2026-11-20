@@ -6722,6 +6722,16 @@ declare global {
             title: string;
         }
     }
+    export namespace workbench.app.http.resources.sameNamed {
+        /**
+         * The `Address` model beside `AddressResource`, which publishes as `Address` too (GH-76): side by side in an object, and
+         * as the two arms of a ternary. Each value keeps its own class's alias.
+         */
+        export interface AddressKindsResource {
+            data: { address: workbench.app.models.Address | null; raw: workbench.app.http.resources.Address | null };
+            either: workbench.app.models.Address | null;
+        }
+    }
     export namespace workbench.blog.http.resources {
         export interface ApiArticleResource {
             morphValue: string;

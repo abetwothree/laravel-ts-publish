@@ -20884,6 +20884,21 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\SameNamed\\AddressKindsResource": {
+            "name": "AddressKindsResource",
+            "properties": [
+                {
+                    "name": "data",
+                    "type": "{ address: ModelsAddress | null; raw: ResourcesAddress | null }",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "ModelsAddress | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SamePatternKeysResource": {
             "name": "SamePatternKeysResource",
             "properties": [
