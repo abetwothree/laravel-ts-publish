@@ -8,6 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\ConditionTruth;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\DiscriminantValue;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\IssetDenyingResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MagicGetItemResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OffsetClaimingPost;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt\Expression;
 use Random\Engine\Xoshiro256StarStar;
@@ -15,6 +18,7 @@ use Random\Randomizer;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Post;
 
 /**
  * Parse one PHP expression, names resolved as the analyzer resolves them, with the workbench's Status and Priority
@@ -30,10 +34,18 @@ function conditionTruthExpr(string $php): Expr
 }
 
 /**
- * What ConditionTruth decides a guard as, with the read sending the value.
+ * What ConditionTruth decides a guard as, with the read sending the value, on a resource holding a model.
+ *
+ * @param  class-string  $resource
+ * @param  class-string<Post>|null  $model
  */
-function conditionTruthOf(string $read, string $guard, bool|int|string|UnitEnum|null $value): ?bool
-{
+function conditionTruthOf(
+    string $read,
+    string $guard,
+    bool|int|string|UnitEnum|null $value,
+    string $resource = PostResource::class,
+    ?string $model = Post::class,
+): ?bool {
     $path = ReadPath::of(conditionTruthExpr($read));
     assert($path !== null);
 
@@ -41,7 +53,7 @@ function conditionTruthOf(string $read, string $guard, bool|int|string|UnitEnum|
         conditionTruthExpr($guard),
         $path,
         new DiscriminantValue($value, JsEmitter::toJsLiteral($value)),
-        new AnalysisScope(new ReflectionClass(PostResource::class)),
+        new AnalysisScope(new ReflectionClass($resource), $model),
     );
 }
 
@@ -108,6 +120,60 @@ it('decides a guard by PHP\'s own operators on the value the read sends', functi
     'isset() of two, the second unknown' => ['$this->priority', 'isset($this->priority, $this->x)', Priority::Low, null],
     'a constant nothing defines' => ['$this->is_pinned', '$this->is_pinned === NOT_DEFINED_ANYWHERE', true, null],
     'a constant alone' => ['$this->is_pinned', 'Status::Draft->value === 0', false, true],
+]);
+
+// isset() runs `__isset()` and empty() runs it before `__get()`, so each answers as a read only where the two agree.
+it('decides isset() and empty() of a property only where checking it answers as reading it', function (
+    string $read,
+    string $guard,
+    ?bool $value,
+    string $resource,
+    ?string $model,
+    ?bool $holds,
+) {
+    expect(conditionTruthOf($read, $guard, $value, $resource, $model))->toBe($holds);
+})->with([
+    'JsonResource\'s own magic over Eloquent\'s own, empty()' => [
+        '$this->is_pinned', 'empty($this->is_pinned)', true, PostResource::class, Post::class, false,
+    ],
+    'JsonResource\'s own magic over Eloquent\'s own, isset()' => [
+        '$this->is_pinned', 'isset($this->is_pinned)', null, PostResource::class, Post::class, false,
+    ],
+    'Eloquent\'s own magic, read on the model' => [
+        '$this->resource->is_pinned', 'isset($this->resource->is_pinned)', true, PostResource::class, Post::class, true,
+    ],
+    'a local' => ['$flag', 'empty($flag)', false, IssetDenyingResource::class, Post::class, true],
+    'a property the resource declares, past its own __isset()' => [
+        '$this->pinned', 'isset($this->pinned)', true, IssetDenyingResource::class, Post::class, true,
+    ],
+    'a model\'s public property, past its own offsetExists()' => [
+        '$this->resource->flagged', 'isset($this->resource->flagged)', null, PostResource::class, OffsetClaimingPost::class, false,
+    ],
+    'a resource\'s own __isset(), empty()' => [
+        '$this->is_pinned', 'empty($this->is_pinned)', true, IssetDenyingResource::class, Post::class, null,
+    ],
+    'a resource\'s own __isset(), isset()' => [
+        '$this->is_pinned', 'isset($this->is_pinned)', true, IssetDenyingResource::class, Post::class, null,
+    ],
+    'a resource\'s own __get()' => [
+        '$this->is_pinned', 'isset($this->is_pinned)', true, MagicGetItemResource::class, Post::class, null,
+    ],
+    'a model\'s own offsetExists()' => [
+        '$this->is_pinned', 'isset($this->is_pinned)', null, PostResource::class, OffsetClaimingPost::class, null,
+    ],
+    'a model\'s own offsetExists(), read on the model' => [
+        '$this->resource->is_pinned', 'empty($this->resource->is_pinned)', null, PostResource::class, OffsetClaimingPost::class, null,
+    ],
+    'a model\'s public property it unsets, past its own offsetExists()' => [
+        '$this->resource->memo', 'isset($this->resource->memo)', null, PostResource::class, OffsetClaimingPost::class, null,
+    ],
+    'a property of a local, whose class no scope names' => [
+        '$post->is_pinned', 'isset($post->is_pinned)', true, PostResource::class, Post::class, null,
+    ],
+    'a resource holding no model it names' => ['$this->is_pinned', 'isset($this->is_pinned)', true, PostResource::class, null, null],
+    'no isset() or empty() on a resource\'s own __isset()' => [
+        '$this->is_pinned', '! $this->is_pinned', true, IssetDenyingResource::class, Post::class, false,
+    ],
 ]);
 
 /**

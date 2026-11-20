@@ -83,6 +83,32 @@ final readonly class PropertyHooks
     }
 
     /**
+     * Whether code in a scope reaches a property an object of the class declares in place, past the magic methods: an
+     * instance property the scope may read, or set where it writes, which the app's own code never unsets.
+     *
+     * @param  ReflectionClass<covariant object>  $class
+     * @param  ReflectionClass<covariant object>  $scope  the class `self` names where the property is used
+     */
+    public static function inPlace(ReflectionClass $class, string $property, ReflectionClass $scope, bool $writes): bool
+    {
+        if (! $class->hasProperty($property)) {
+            return false;
+        }
+
+        $declared = $class->getProperty($property);
+        $owner = $declared->getDeclaringClass();
+        $same = $scope->getName() === $owner->getName();
+        $reachable = match (true) {
+            $declared->isPrivate() || ($writes && $declared->isPrivateSet()) => $same,
+            $declared->isProtected() || ($writes && $declared->isProtectedSet()) => $same || $scope->isSubclassOf($owner)
+                || $owner->isSubclassOf($scope),
+            default => true,
+        };
+
+        return $reachable && ! $declared->isStatic() && ! UnsetProperties::unsets($class, $property);
+    }
+
+    /**
      * What the hooks read here hang on besides the path, for a memo key.
      */
     public function key(): string
@@ -151,7 +177,7 @@ final readonly class PropertyHooks
 
             if (self::runsSetHook($class, $property)) {
                 $runs[] = [$onThis ? $class : null, $property];
-            } elseif ($class->isSubclassOf(Model::class) && ! self::setsInPlace($class, $property, $declaring)
+            } elseif ($class->isSubclassOf(Model::class) && ! self::inPlace($class, $property, $declaring, true)
                 && self::runsSetMutator($class, $property)
             ) {
                 $runs[] = [null, $property];
@@ -208,28 +234,17 @@ final readonly class PropertyHooks
     }
 
     /**
-     * Whether a write from a class's code sets a property the model declares in place, past `__set()`: an instance
-     * property that class may set, which the app's own code never unsets.
+     * Each step of a `$this` path in order, as its property, the classes it reads that on and whether that is `$this`;
+     * no class past a step whose class the engine cannot name, and no step for any other root.
      *
-     * @param  ReflectionClass<Model>  $model
-     * @param  ReflectionClass<object>  $scope  the class `self` names where the write is made
+     * @param  ReflectionClass<object>  $declaring
+     * @param  bool  $reads  whether the last step is read, as a first step `$this` lacks is through the resource's
+     *                       `__get()`, which no `__set()` matches for a write
+     * @return list<PathStep>
      */
-    private static function setsInPlace(ReflectionClass $model, string $property, ReflectionClass $scope): bool
+    public function steps(ReadPath $path, ReflectionClass $declaring, bool $reads): array
     {
-        if (! $model->hasProperty($property)) {
-            return false;
-        }
-
-        $declared = $model->getProperty($property);
-        $owner = $declared->getDeclaringClass();
-        $settable = match (true) {
-            $declared->isPrivate() || $declared->isPrivateSet() => $scope->getName() === $owner->getName(),
-            $declared->isProtected() || $declared->isProtectedSet() => $scope->getName() === $owner->getName()
-                || $scope->isSubclassOf($owner) || $owner->isSubclassOf($scope),
-            default => true,
-        };
-
-        return $settable && ! $declared->isStatic() && ! UnsetProperties::unsets($model, $property);
+        return $this->walk($path, $declaring, $reads)[0];
     }
 
     /**
@@ -368,20 +383,6 @@ final readonly class PropertyHooks
         }
 
         return $held;
-    }
-
-    /**
-     * Each step of a `$this` path in order, as its property, the classes it reads that on and whether that is `$this`;
-     * no class past a step whose class the engine cannot name, and no step for any other root.
-     *
-     * @param  ReflectionClass<object>  $declaring
-     * @param  bool  $reads  whether the last step is read, as a first step `$this` lacks is through the resource's
-     *                       `__get()`, which no `__set()` matches for a write
-     * @return list<PathStep>
-     */
-    private function steps(ReadPath $path, ReflectionClass $declaring, bool $reads): array
-    {
-        return $this->walk($path, $declaring, $reads)[0];
     }
 
     /**
