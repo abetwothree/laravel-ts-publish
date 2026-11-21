@@ -6512,6 +6512,26 @@ declare global {
             mode_title: string | null;
         }
     }
+    export namespace workbench.app.http.resources.droppedArms {
+        /**
+         * Under Laravel's `array<string, mixed>` stub, an arm no rule types beside a typed one (GH-161): `cache()` sends
+         * `null` here, beside an arrow override, a list of them, and lists of two same-named users.
+         */
+        export interface ArmBesideDropResource {
+            cb: () => string;
+            cbs: (() => string)[];
+            users: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+        /** A key the `@return` does not name, holding an arm no rule types beside two same-named users (GH-161). */
+        export interface ArmBesideTypedKeyResource {
+            n: number;
+            users: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+        /** The same-named users of ArmBesideDropResource joined by a returned variable's branches (GH-161). */
+        export interface WalkedArmDropResource {
+            users: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+    }
     export namespace workbench.app.http.resources.enumWraps {
         /**
          * Branches writing a wrap or a read of the app's or the CRM's `Status` into one key (GH-160, GH-76). Each branch sends
@@ -6774,6 +6794,33 @@ declare global {
          */
         export interface DeclaredStatusesResource {
             statuses: { a: workbench.app.enums.StatusType; b: workbench.crm.enums.StatusType; c: workbench.app.enums.StatusType | null };
+        }
+    }
+    export namespace workbench.app.http.resources.spreads {
+        /**
+         * Two returns; the first spreads a local an inner `if` may write over an earlier `by` (GH-161). Where the local holds
+         * `by`, Laravel sends the title there.
+         */
+        export interface BranchedLocalSpreadResource {
+            by?: { name: string | null; email: string | null };
+            n?: number;
+        }
+        /**
+         * A helper whose local may leave `by` unset, defaulted by `??=`, spread over an earlier `by` (GH-161). The helper
+         * always writes `by`, so Laravel sends the title or `'z'`, never the author.
+         */
+        export interface CoalescedHelperSpreadResource {
+            id: number;
+            by: { name: string | null; email: string | null };
+        }
+        /**
+         * Spreads of maps and lists that write keys again or add numbered keys (GH-161, GH-153): a map local given a named
+         * key over an earlier key, a list spread after a map, and a list spread beside a named key.
+         */
+        export interface MapSpreadsResource {
+            named_key_over_key: { by: { name: string | null; email: string | null }; z: number };
+            list_after_map: Record<string, string>;
+            list_beside_key: { x: string };
         }
     }
     export namespace workbench.blog.http.resources {

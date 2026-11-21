@@ -14795,6 +14795,51 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideDropResource": {
+            "name": "ArmBesideDropResource",
+            "properties": [
+                {
+                    "name": "cb",
+                    "type": "() => string",
+                    "optional": false
+                },
+                {
+                    "name": "cbs",
+                    "type": "(() => string)[]",
+                    "optional": false
+                },
+                {
+                    "name": "users",
+                    "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideTypedKeyResource": {
+            "name": "ArmBesideTypedKeyResource",
+            "properties": [
+                {
+                    "name": "n",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "users",
+                    "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\WalkedArmDropResource": {
+            "name": "WalkedArmDropResource",
+            "properties": [
+                {
+                    "name": "users",
+                    "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DuplicateKeyCastResource": {
             "name": "DuplicateKeyCastResource",
             "properties": [
@@ -21784,6 +21829,56 @@
                     "name": "customer",
                     "type": "{ name: string; initials: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean } | { name: string; email: string; phone: string | null; avatar: string | null; role: RoleType | null; is_premium: boolean; name_titled: string; morph: string } | null",
                     "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\BranchedLocalSpreadResource": {
+            "name": "BranchedLocalSpreadResource",
+            "properties": [
+                {
+                    "name": "by",
+                    "type": "{ name: string | null; email: string | null }",
+                    "optional": true
+                },
+                {
+                    "name": "n",
+                    "type": "number",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\CoalescedHelperSpreadResource": {
+            "name": "CoalescedHelperSpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "{ name: string | null; email: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\MapSpreadsResource": {
+            "name": "MapSpreadsResource",
+            "properties": [
+                {
+                    "name": "named_key_over_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "list_after_map",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "list_beside_key",
+                    "type": "{ x: string }",
+                    "optional": false
                 }
             ]
         },
