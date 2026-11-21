@@ -63,6 +63,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeHelperSpr
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NamesakeInvoiceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedSignatureTextKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastSpreadResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OnlyTwoClassAccessorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OnlyTwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostParentUnionVariableResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PregMatchFlagsResource;
@@ -8388,6 +8390,29 @@ test('reads a helper\'s declared shape alternating two same-named enums token by
         '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
         '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
     ]);
+});
+
+// A key the resource's own only() keeps names each class behind its tokens, two same-named enums' too.
+test('publishes each class of an attribute the resource\'s own only() keeps, token by token', function () {
+    $twoClasses = new ResourceTransformer(OnlyTwoClassAccessorsResource::class)->data();
+    $sameNamed = new ResourceTransformer(OnlyTwoStatusPostResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $twoClasses->properties))->toBe([
+        'id' => 'number',
+        'last_user_activity_by_typed' => 'CrmUser | WorkbenchUser | null',
+        'review_priority' => 'StatusType | PriorityType | null',
+    ])
+        ->and(array_merge(...array_values($twoClasses->typeImports)))->toEqualCanonicalizing([
+            'PriorityType', 'StatusType', 'User as CrmUser', 'User as WorkbenchUser',
+        ])
+        ->and(array_map(fn (array $property): string => $property['type'], $sameNamed->properties))->toBe([
+            'either_status' => 'WorkbenchStatusType | CrmStatusType',
+            'alternating_statuses' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }',
+        ])
+        ->and($sameNamed->typeImports)->toBe([
+            '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+            '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+        ]);
 });
 
 test('reads a model getter alternating two same-named enums token by token, at the top level and a level down', function () {

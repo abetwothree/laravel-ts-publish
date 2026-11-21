@@ -7,6 +7,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OnlyTwoClassAccessorsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OnlyTwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNameAddressResource;
 use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
@@ -244,6 +246,37 @@ describe('AstEngine::analyze()', function () {
             ->and($result->typeImports['../../enums'])->toContain('StatusType')
             ->and($result->valueImports)->toBe([]);
     });
+
+    // Every publisher imports what its types spell (R6), so an attribute the resource's own only() keeps imports each
+    // class it names, each token aliased by its own class where two of them share a name.
+    test('imports every class of an attribute the resource\'s own only() keeps, token by token', function (string $resource, array $types, array $imports) {
+        $result = resolve(AstEngine::class)->analyze($resource, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(array_column($result->properties, 'type', 'name'))->toBe($types)
+            ->and($result->typeImports)->toBe($imports);
+    })->with([
+        'two enums, and two models that share a name' => [
+            OnlyTwoClassAccessorsResource::class,
+            [
+                'id' => 'number',
+                'last_user_activity_by_typed' => 'CrmUser | WorkbenchUser | null',
+                'review_priority' => 'StatusType | PriorityType | null',
+            ],
+            [
+                '../../../crm/models' => ['User as CrmUser'],
+                '../../enums' => ['PriorityType', 'StatusType'],
+                '../../models' => ['User as WorkbenchUser'],
+            ],
+        ],
+        'two enums that share a name' => [
+            OnlyTwoStatusPostResource::class,
+            [
+                'either_status' => 'WorkbenchStatusType | CrmStatusType',
+                'alternating_statuses' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }',
+            ],
+            ['../../../crm/enums' => ['StatusType as CrmStatusType'], '../../enums' => ['StatusType as WorkbenchStatusType']],
+        ],
+    ]);
 
     test('forwards the method and model class to analyzeMethod()', function () {
         $engine = resolve(AstEngine::class);

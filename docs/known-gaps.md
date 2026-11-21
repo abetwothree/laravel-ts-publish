@@ -388,15 +388,6 @@ nothing records which enum the hand-written token means, so the bare `StatusType
 With one such enum in the file it compiles. Give one enum a distinct name with `#[TsEnum]`, or type the key with an
 import-aware `#[TsCasts]` entry that names a type your own module exports.
 
-### `analyze()` imports one enum of an attribute a resource's own `only()` keeps
-
-Where `toArray()` returns `$this->only([...])` or `$this->except([...])` over an attribute typed as two enums, such as
-an accessor's `Attribute<Status|Priority|null, never>`, `AstEngine::analyze()` returns
-`StatusType | PriorityType | null` but imports only `StatusType`, which is `TS2304` in a module built from the result.
-`ts:publish` imports both. Read the attribute under its own key, `'review_priority' => $this->review_priority`, which
-imports both through `analyze()` too.
-
-
 ### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
 
 `$this->resource->value` in a resource wrapping a pure enum, such as `UnitEnumResource.value`, publishes
