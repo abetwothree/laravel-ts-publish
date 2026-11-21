@@ -12,11 +12,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\ResolvesCallbackValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\SplitsOnCondition;
@@ -71,7 +71,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
     use InspectsResourceCalls;
     use ReadsNonNullGuards;
     use ResolvesCallbackValues;
-    use ResolvesEnumPropertyArgTypes;
+    use ResolvesModelAttributeTypes;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
 

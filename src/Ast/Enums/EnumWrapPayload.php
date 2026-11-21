@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
@@ -41,7 +41,7 @@ use ReflectionMethod;
 final class EnumWrapPayload
 {
     use InspectsAstNodes;
-    use ResolvesEnumPropertyArgTypes;
+    use ResolvesModelAttributeTypes;
 
     /**
      * What an `EnumResource::make()` or `new EnumResource()` payload publishes as its wrap.

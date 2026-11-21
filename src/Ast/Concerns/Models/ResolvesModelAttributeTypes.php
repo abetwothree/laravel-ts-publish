@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -26,7 +26,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
  *
  * @internal
  */
-trait ResolvesEnumPropertyArgTypes
+trait ResolvesModelAttributeTypes
 {
     /**
      * Resolve the TypeScript type, optional enum FQCN, class FQCNs and `#[TsType]` imports for a model attribute.

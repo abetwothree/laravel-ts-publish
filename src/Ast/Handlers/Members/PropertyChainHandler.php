@@ -7,8 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DecomposesPropertyChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceSubject;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
@@ -37,7 +37,7 @@ final class PropertyChainHandler implements ExpressionHandler
     use DecomposesPropertyChains;
     use InspectsAstNodes;
     use InspectsResourceSubject;
-    use ResolvesEnumPropertyArgTypes;
+    use ResolvesModelAttributeTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
