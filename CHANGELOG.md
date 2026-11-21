@@ -2,6 +2,37 @@
 
 All notable changes to `laravel-ts-publish` will be documented in this file.
 
+## v2.11.0 - 2026-11-21
+
+### What's new
+
+- **Discriminated unions.** When a resource key's value depends on another key with a finite set of values (a boolean, an enum, a literal union), the key publishes one arm per value, so checking that key narrows the others. On by default; turn it off with `resources.discriminated_unions` or `#[TsResource(discriminated: false)]`. (#157)
+- **`#[TsIntersect]`.** A repeatable resource attribute that intersects the published type with a type you name, for links inference cannot read.
+- **Clause imports.** `#[TsExtends]`, `#[TsIntersect]` and `ts_extends` on a resource import names nested in generics and object types, and skip TypeScript's own globals. (#104)
+- **Tree-shakable output.** Generated enum, route and broadcast-event files mark their module-level calls `/* @__PURE__ */`, so bundlers drop the ones you don't import. (#168)
+- **Fixes.** A conditional helper's default followed by more arguments now follows Laravel's own rule, and editing a helper function a resource calls refreshes that resource's cached types.
+
+### Type changes you will see
+
+```diff
+-export interface PinnedPostResource { id: number; is_pinned: boolean; placement: PinnedPlacementResource | FeedPlacementResource }
++export type PinnedPostResource = { id: number } & (
++    | { is_pinned: true; placement: PinnedPlacementResource }
++    | { is_pinned: false; placement: FeedPlacementResource }
++);
+
+```
+### What's Changed
+
+* GH-168 Mark generated module-level calls pure so bundlers drop unused exports by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/172
+* GH-174 The discriminant check sees writes it missed, and keeps reads it declined by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/175
+* GH-174: framework dispatch and argument bindings in the discriminant check by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/176
+* GH-174: CodeRabbit rounds 3 and 4 on #173 — write check, clause imports, conditional defaults and the cache by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/177
+* GH-157 Publish a discriminated union when a key follows a sibling key's value by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/173
+* Develop by @abetwothree in https://github.com/abetwothree/laravel-ts-publish/pull/178
+
+**Full Changelog**: https://github.com/abetwothree/laravel-ts-publish/compare/v2.10.1...v2.11.0
+
 ## v2.10.1 - 2026-11-18
 
 ### What's new
@@ -16,6 +47,7 @@ All notable changes to `laravel-ts-publish` will be documented in this file.
 + status_or_pending: PaymentStatusType;
 - priorities: (PriorityType | null)[] | never[];
 + priorities: (PriorityType | null)[];
+
 
 ```
 - An accessor that returns an enum's `->value` keeps the enum's alias in `{Model}Resource` and `{Model}MutatorsResource` instead of `AsEnum<typeof …>`, because Laravel sends the scalar.
@@ -334,6 +366,7 @@ Turn it on:
 
 
 
+
 ```
 Every published model gains a companion beside its interface. `user.ts` gets `user_meta.ts`:
 
@@ -353,6 +386,7 @@ export const UserModelMetadata = {
 
 
 
+
 ```
 `as const` keeps every value a literal type. `satisfies` checks it against the declared shape without widening it. The companion joins the existing barrel, so one import path serves both:
 
@@ -360,6 +394,7 @@ export const UserModelMetadata = {
 import { User, UserModelMetadata } from '@js/types/data/app/models';
 
 form.commentable_type = UserModelMetadata.morphClass;
+
 
 
 
@@ -403,6 +438,7 @@ final class AppModelMetadataProvider implements ModelMetadataProvider
 
 
 
+
 ```
 Providers resolve through the container, so constructor injection works. Values may be scalars, arrays, enums, or objects implementing `Arrayable` or `JsonSerializable`, nested and normalized recursively.
 
@@ -411,6 +447,7 @@ Providers resolve through the container, so constructor injection works. Values 
 ```php
 #[TsCasts(['role' => ['type' => 'RoleType', 'import' => '../enums']])]
 public function provide(Model $model): array
+
 
 
 
@@ -432,6 +469,7 @@ export const UserModelMetadata = {
     morphClass: string;
     role: RoleType;
 };
+
 
 
 
@@ -464,6 +502,7 @@ Page props type from the expression you wrote:
 ```diff
 - export type StorePageProps = Inertia.SharedData & { post: string };
 + export type StorePageProps = Inertia.SharedData & { post: Post };
+
 
 
 
@@ -513,6 +552,7 @@ $result = resolve(AstEngine::class)->analyze(App\Http\Resources\PostResource::cl
 $result->properties;   // the typed property list ts:publish would generate
 $result->typeImports;  // the `import type` lines those types need
 $result->valueImports; // the value imports an AsEnum<typeof X> wrapper reads
+
 
 
 
