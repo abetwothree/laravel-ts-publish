@@ -36,6 +36,16 @@ final class AnalysisImports
     protected string $namespacePath = '';
 
     /**
+     * The enums an analysis reads, each once: those that need a TypeScript type import.
+     *
+     * @return list<class-string>
+     */
+    public static function enumTypeFqcns(MethodAnalysis $analysis): array
+    {
+        return array_values(array_unique($analysis->directEnumFqcns));
+    }
+
+    /**
      * Build the type and value import maps for one analysis.
      *
      * $fromNamespacePath is the importing file's namespace path (e.g. 'workbench/app/events').
@@ -49,7 +59,7 @@ final class AnalysisImports
 
         $enumFqcnMap = [];
 
-        foreach ($this->enumTypeFqcns($analysis) as $fqcn) {
+        foreach (self::enumTypeFqcns($analysis) as $fqcn) {
             $enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
         }
@@ -120,16 +130,6 @@ final class AnalysisImports
     protected function formatConstImportName(string $fqcn): string
     {
         return $this->enumConstMap[$fqcn] ?? class_basename($fqcn);
-    }
-
-    /**
-     * Enum FQCNs that need a TypeScript type import.
-     *
-     * @return list<class-string>
-     */
-    private function enumTypeFqcns(MethodAnalysis $analysis): array
-    {
-        return array_values(array_unique($analysis->directEnumFqcns));
     }
 
     /**

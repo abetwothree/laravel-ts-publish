@@ -141,7 +141,7 @@ final class AnalysisComposer
         $this->resourceFqcnMap = [];
         $this->modelFqcnMap = [];
 
-        foreach ($this->enumTypeFqcns($analysis) as $fqcn) {
+        foreach (AnalysisImports::enumTypeFqcns($analysis) as $fqcn) {
             $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
         }
@@ -378,16 +378,6 @@ final class AnalysisComposer
         }
 
         return $queues;
-    }
-
-    /**
-     * Enum FQCNs that need a bare TypeScript type name.
-     *
-     * @return list<class-string>
-     */
-    private function enumTypeFqcns(MethodAnalysis $analysis): array
-    {
-        return array_values(array_unique($analysis->directEnumFqcns));
     }
 
     /**

@@ -462,7 +462,7 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected function registerAnalysisFqcns(MethodAnalysis $analysis): void
     {
-        foreach ($this->enumFqcns($analysis) as $fqcn) {
+        foreach (AnalysisImports::enumTypeFqcns($analysis) as $fqcn) {
             $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
         }
 
@@ -770,15 +770,5 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->properties = TopLevelRenumbering::rekey($this->properties, $renumbered);
 
         return $this;
-    }
-
-    /**
-     * Every enum FQCN the analysis reached, across all three enum channels.
-     *
-     * @return list<class-string>
-     */
-    private function enumFqcns(MethodAnalysis $analysis): array
-    {
-        return array_values(array_unique($analysis->directEnumFqcns));
     }
 }
