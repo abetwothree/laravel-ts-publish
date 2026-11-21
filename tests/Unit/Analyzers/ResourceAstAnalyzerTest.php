@@ -99,6 +99,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAtt
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\GapModeMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FilteredSameNamedRows;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\GapModeHeldValue;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ValuesOfSameNamedLists;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclinedTopLevelSpreadResource;
@@ -192,6 +193,7 @@ use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\EnumWraps\BranchedSameNamedWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\DeclaredWrapRowsResource;
+use Workbench\App\Http\Resources\EnumWraps\FilteredSameNamedListsResource;
 use Workbench\App\Http\Resources\EnumWraps\KeyedSameNamedMapsResource;
 use Workbench\App\Http\Resources\EnumWraps\NestedWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\RowsBesideWrapsResource;
@@ -8376,6 +8378,78 @@ test('keeps two same-named enums apart in the object arm a filtered list or a ke
         'keyed' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<string, { app: WorkbenchStatusType; crm: CrmStatusType }>',
     ]);
 });
+
+// GH-76: a resource re-indexes a filtered list's Record arm into its list arm, and each token after it keeps its class.
+test('keeps each class of one name apart past a filtered list the resource re-indexes', function (bool $tolki, array $types, array $values) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+    $data = new ResourceTransformer(FilteredSameNamedListsResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe($types)
+        ->and(analyzedKeyTypes(FilteredSameNamedListsResource::class))->toBe($types)
+        ->and($data->typeImports)->toBe([
+            '../../../../crm/enums' => ['StatusType as CrmStatusType'],
+            '../../../enums' => ['StatusType as WorkbenchStatusType'],
+            '../../../models' => ['Address as WorkbenchAddress2'],
+            '..' => ['Address as WorkbenchAddress'],
+        ])
+        ->and($data->valueImports)->toBe($values);
+})->with([
+    'with the tolki package' => [true, [
+        'either' => '(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]',
+        'app_after' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'crm_after' => '{ list: (WorkbenchStatusType | CrmStatusType)[]; one: CrmStatusType }',
+        'model_after' => '{ list: (WorkbenchAddress | WorkbenchAddress2)[]; one: WorkbenchAddress2 | null }',
+        'wrap_after' => '{ list: (AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[]; one: AsEnum<typeof WorkbenchStatus> }',
+        'reads' => '(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]',
+        'wraps' => '(AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[] | AsEnum<typeof WorkbenchStatus>[]',
+        'addresses' => '(WorkbenchAddress | WorkbenchAddress2)[] | (WorkbenchAddress2 | null)[]',
+        'mixed' => '(WorkbenchAddress | AsEnum<typeof CrmStatus> | WorkbenchAddress2 | AsEnum<typeof WorkbenchStatus>)[] | AsEnum<typeof WorkbenchStatus>[]',
+    ], [
+        '../../../../crm/enums' => ['Status as CrmStatus'],
+        '../../../enums' => ['Status as WorkbenchStatus'],
+    ]],
+    'without the tolki package' => [false, [
+        'either' => '(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]',
+        'app_after' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'crm_after' => '{ list: (WorkbenchStatusType | CrmStatusType)[]; one: CrmStatusType }',
+        'model_after' => '{ list: (WorkbenchAddress | WorkbenchAddress2)[]; one: WorkbenchAddress2 | null }',
+        'wrap_after' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'reads' => '(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]',
+        'wraps' => '(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]',
+        'addresses' => '(WorkbenchAddress | WorkbenchAddress2)[] | (WorkbenchAddress2 | null)[]',
+        'mixed' => '(WorkbenchAddress | CrmStatusType | WorkbenchAddress2 | WorkbenchStatusType)[] | WorkbenchStatusType[]',
+    ], []],
+]);
+
+// GH-76: array_values(), values() and an array cast merge a list's arms, and keep each token after them on its class.
+test('keeps each class of one name apart past the values of a filtered or keyed list', function (bool $tolki, array $types) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+    expect(analyzedKeyTypes(ValuesOfSameNamedLists::class, 'payload'))->toBe($types);
+})->with([
+    'with the tolki package' => [true, [
+        'values' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'one_class' => '{ list: WorkbenchStatusType[]; one: CrmStatusType }',
+        'of_all' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'of_key_by' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'collection_values' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'wraps' => '{ list: (AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[]; one: AsEnum<typeof WorkbenchStatus> }',
+        'models' => '{ list: (WorkbenchAddress | WorkbenchAddress2)[]; one: WorkbenchAddress2 | null }',
+        'either_values' => 'CrmStatusType[] | WorkbenchStatusType[]',
+        'either_cast' => 'Record<string, CrmStatusType> | Record<string, WorkbenchStatusType>',
+    ]],
+    'without the tolki package' => [false, [
+        'values' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'one_class' => '{ list: WorkbenchStatusType[]; one: CrmStatusType }',
+        'of_all' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'of_key_by' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'collection_values' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'wraps' => '{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }',
+        'models' => '{ list: (WorkbenchAddress | WorkbenchAddress2)[]; one: WorkbenchAddress2 | null }',
+        'either_values' => 'CrmStatusType[] | WorkbenchStatusType[]',
+        'either_cast' => 'Record<string, CrmStatusType> | Record<string, WorkbenchStatusType>',
+    ]],
+]);
 
 // I2: a declared shape names the class behind each of its enum tokens, so alternating same-named enums keep theirs.
 test('reads a helper\'s declared shape alternating two same-named enums token by token', function () {

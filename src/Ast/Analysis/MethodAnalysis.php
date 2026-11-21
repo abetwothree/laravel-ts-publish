@@ -967,16 +967,23 @@ class MethodAnalysis
     }
 
     /**
-     * Rewrite every property's type, body type and fill, except a key a cast types and a value that keeps its keys.
+     * Rewrite every property's type, body type and fill, except a key a cast types and a value that keeps its keys. A
+     * type's queues keep to the tokens its new text spells, so a token after an arm the rewrite drops keeps its class.
      *
      * @param  Closure(string): string  $rewrite
      */
     public function rewritePropertyTypes(Closure $rewrite): void
     {
         // An internal function's callable, such as `strtolower(...)`, throws on the row rewriteTypes() also passes.
+        $text = static fn (string $type): string => $rewrite($type);
+        $rows = array_count_values(array_column($this->properties, 'name'));
+
         $this->rewriteTypes(
-            static fn (string $type): string => $rewrite($type),
+            $text,
             fn (array $property): bool => ! isset($this->casts[$property['name']]) && ! ($property['keepsKeys'] ?? false),
+            fn (string $type, array $property): string => $rows[$property['name']] === 1
+                ? $this->retypedByClass($property['name'], $type, $text)
+                : $text($type),
         );
     }
 
@@ -1088,6 +1095,21 @@ class MethodAnalysis
     }
 
     /**
+     * Set a key's queue on a map, or clear it where the queue is empty.
+     *
+     * @param  FqcnQueueMap  $map
+     * @param  list<class-string>  $fqcns
+     */
+    private static function setQueue(array &$map, string $name, array $fqcns): void
+    {
+        if ($fqcns === []) {
+            unset($map[$name]);
+        } else {
+            $map[$name] = $fqcns;
+        }
+    }
+
+    /**
      * Every class the given single-entry and list channels hold, once each.
      *
      * @param  list<ClassMapType>  $single
@@ -1192,6 +1214,50 @@ class MethodAnalysis
     }
 
     /**
+     * A key's type rewritten, its queues kept to the classes behind the tokens the new text spells
+     * (ValueResult::retypedByClass()).
+     *
+     * @param  Closure(string): string  $rewrite
+     */
+    private function retypedByClass(string $name, string $type, Closure $rewrite): string
+    {
+        if (! $this->hasFqcnChannel($name)) {
+            return $rewrite($type);
+        }
+
+        $retyped = ValueResult::retypedByClass($this->tokenResult($name, $type), $rewrite)
+            ?? $this->tokenResult($name, $rewrite($type));
+        self::setQueue($this->inlineEnumFqcns, $name, $retyped['embeddedEnumFqcns'] ?? []);
+        self::setQueue($this->inlineModelFqcns, $name, $retyped['embeddedModelFqcns'] ?? []);
+        self::setQueue($this->inlineResourceFqcns, $name, $retyped['embeddedResourceFqcns'] ?? []);
+        self::setQueue($this->inlineEnumResourceFqcns, $name, $retyped['embeddedEnumResourceFqcns'] ?? []);
+        self::setQueue($this->alikeClassFqcns, $name, $retyped['alikeClassFqcns'] ?? []);
+
+        return $retyped['type'];
+    }
+
+    /**
+     * A key's type beside the classes its channels queue behind its tokens, as a value carries them.
+     *
+     * @return ValueExpressionResult
+     */
+    private function tokenResult(string $name, string $type): array
+    {
+        return [
+            'type' => $type,
+            'optional' => false,
+            ...(isset($this->directEnumFqcns[$name]) ? ['directEnumFqcn' => $this->directEnumFqcns[$name]] : []),
+            ...(isset($this->modelFqcns[$name]) ? ['modelFqcn' => $this->modelFqcns[$name]] : []),
+            ...(isset($this->nestedResources[$name]) ? ['resourceFqcn' => $this->nestedResources[$name]] : []),
+            'embeddedEnumFqcns' => $this->inlineEnumFqcns[$name] ?? [],
+            'embeddedModelFqcns' => $this->inlineModelFqcns[$name] ?? [],
+            'embeddedResourceFqcns' => $this->inlineResourceFqcns[$name] ?? [],
+            'embeddedEnumResourceFqcns' => $this->inlineEnumResourceFqcns[$name] ?? [],
+            'alikeClassFqcns' => $this->alikeClassFqcns[$name] ?? [],
+        ];
+    }
+
+    /**
      * Whether another analysis names no key this one holds: the contract merge() checks; a signature may repeat.
      */
     private function holdsNoneOf(self $source): bool
@@ -1203,19 +1269,20 @@ class MethodAnalysis
     }
 
     /**
-     * Rewrite the type, body type and fill of each property $takes takes.
+     * Rewrite the type, body type and fill of each property $takes takes, the type through $retype where given.
      *
      * @param  Closure(string, AnalyzedProperty): string  $rewrite  each text, beside the row it belongs to
      * @param  Closure(AnalyzedProperty): bool  $takes
+     * @param  (Closure(string, AnalyzedProperty): string)|null  $retype
      */
-    private function rewriteTypes(Closure $rewrite, Closure $takes): void
+    private function rewriteTypes(Closure $rewrite, Closure $takes, ?Closure $retype = null): void
     {
         foreach ($this->properties as &$property) {
             if (! $takes($property)) {
                 continue;
             }
 
-            $property['type'] = $rewrite($property['type'], $property);
+            $property['type'] = ($retype ?? $rewrite)($property['type'], $property);
 
             foreach (['bodyType', 'fillType'] as $field) {
                 if (isset($property[$field])) {

@@ -6527,6 +6527,22 @@ declare global {
             subject: workbench.app.enums.StatusType | { s: workbench.app.enums.StatusType }[];
         }
         /**
+         * Lists array_filter() keeps of the app's and the CRM's `Status`, or of the `Address` model and its resource, each
+         * beside a later token of that name (GH-76, GH-160). The resource re-indexes each filtered list, so every token after
+         * one still names its own class.
+         */
+        export interface FilteredSameNamedListsResource {
+            either: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+            app_after: { list: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[]; one: workbench.app.enums.StatusType };
+            crm_after: { list: (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)[]; one: workbench.crm.enums.StatusType };
+            model_after: { list: (workbench.app.http.resources.Address | workbench.app.models.Address)[]; one: workbench.app.models.Address | null };
+            wrap_after: { list: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[]; one: workbench.app.enums.StatusType };
+            reads: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+            wraps: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+            addresses: (workbench.app.http.resources.Address | workbench.app.models.Address)[] | (workbench.app.models.Address | null)[];
+            mixed: (workbench.app.http.resources.Address | workbench.crm.enums.StatusType | workbench.app.models.Address | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+        }
+        /**
          * Rows keyed by name and mapped to the app's and the CRM's `Status` (GH-160, GH-76): wrapped, read, and in an object.
          * The list arm and the Record arm name each enum alike.
          */

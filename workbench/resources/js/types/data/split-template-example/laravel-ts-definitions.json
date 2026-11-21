@@ -15074,6 +15074,56 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\FilteredSameNamedListsResource": {
+            "name": "FilteredSameNamedListsResource",
+            "properties": [
+                {
+                    "name": "either",
+                    "type": "(CrmStatusType | EnumsStatusType)[] | EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "app_after",
+                    "type": "{ list: (CrmStatusType | EnumsStatusType)[]; one: EnumsStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "crm_after",
+                    "type": "{ list: (EnumsStatusType | CrmStatusType)[]; one: CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "model_after",
+                    "type": "{ list: (ResourcesAddress | ModelsAddress)[]; one: ModelsAddress | null }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_after",
+                    "type": "{ list: (AsEnum<typeof CrmStatus> | AsEnum<typeof EnumsStatus>)[]; one: AsEnum<typeof EnumsStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(CrmStatusType | EnumsStatusType)[] | EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof CrmStatus> | AsEnum<typeof EnumsStatus>)[] | AsEnum<typeof EnumsStatus>[]",
+                    "optional": false
+                },
+                {
+                    "name": "addresses",
+                    "type": "(ResourcesAddress | ModelsAddress)[] | (ModelsAddress | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "(ResourcesAddress | AsEnum<typeof CrmStatus> | ModelsAddress | AsEnum<typeof EnumsStatus>)[] | AsEnum<typeof EnumsStatus>[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EnumWraps\\KeyedSameNamedMapsResource": {
             "name": "KeyedSameNamedMapsResource",
             "properties": [

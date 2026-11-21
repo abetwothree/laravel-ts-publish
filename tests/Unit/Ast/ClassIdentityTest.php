@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use Workbench\App\Enums\Grade as GradeEnum;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
@@ -555,4 +556,76 @@ describe('ClassIdentity::modelQueueByToken()', function () {
         ],
         'no class at all' => [['type' => 'string', 'optional' => false]],
     ]);
+});
+
+describe('ClassIdentity::retyped()', function () {
+    test('keeps each queue to the classes behind the tokens the re-indexed text spells', function (array $result, array $retyped) {
+        expect(ClassIdentity::retyped($result, ResourceReindexing::reindexedType(...)))->toBe($retyped);
+    })->with([
+        'a filtered list of two same-named enums beside a later one' => [
+            [
+                'type' => '{ list: (StatusType | StatusType)[] | Record<number, StatusType | StatusType>; one: StatusType }',
+                'optional' => false,
+                'embeddedEnumFqcns' => [CrmStatus::class, Status::class, CrmStatus::class, Status::class, Status::class],
+            ],
+            [
+                'type' => '{ list: (StatusType | StatusType)[]; one: StatusType }',
+                'optional' => false,
+                'embeddedEnumFqcns' => [CrmStatus::class, Status::class, Status::class],
+            ],
+        ],
+        'arms of one text but other classes stay two' => [
+            [
+                'type' => 'StatusType[] | Record<number, StatusType>',
+                'optional' => false,
+                'embeddedEnumFqcns' => [CrmStatus::class, Status::class],
+            ],
+            [
+                'type' => 'StatusType[] | StatusType[]',
+                'optional' => false,
+                'embeddedEnumFqcns' => [CrmStatus::class, Status::class],
+            ],
+        ],
+        'a model and a resource of one name, its record kept to the tokens left' => [
+            [
+                'type' => '(Address | Address)[] | Record<number, Address | Address> | Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class, Address::class, Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class, AddressResource::class],
+                'alikeClassFqcns' => [AddressResource::class, Address::class, AddressResource::class, Address::class, Address::class],
+            ],
+            [
+                'type' => '(Address | Address)[] | Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class, Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+                'alikeClassFqcns' => [AddressResource::class, Address::class, Address::class],
+            ],
+        ],
+        'wraps\' consts, a single channel first and a class no token spells last' => [
+            [
+                'type' => 'AsEnum<typeof Status>[] | Record<number, AsEnum<typeof Status>> | VisibilityType',
+                'optional' => false,
+                'directEnumFqcn' => Visibility::class,
+                'embeddedEnumFqcns' => [CrmStatus::class],
+                'embeddedEnumResourceFqcns' => [CrmStatus::class, CrmStatus::class],
+            ],
+            [
+                'type' => 'AsEnum<typeof Status>[] | VisibilityType',
+                'optional' => false,
+                'directEnumFqcn' => Visibility::class,
+                'embeddedEnumFqcns' => [CrmStatus::class],
+                'embeddedEnumResourceFqcns' => [CrmStatus::class],
+            ],
+        ],
+    ]);
+
+    test('cannot tell a token\'s class where two kinds read it and no record says whose it is', function () {
+        expect(ClassIdentity::retyped([
+            'type' => 'Address[] | Record<number, Address>',
+            'optional' => false,
+            'embeddedModelFqcns' => [Address::class],
+            'embeddedResourceFqcns' => [AddressResource::class],
+        ], ResourceReindexing::reindexedType(...)))->toBeNull();
+    });
 });

@@ -163,6 +163,35 @@ final class ValueResult
     }
 
     /**
+     * A result retyped by a rewrite of its text that may merge, drop or repeat arms, each queue kept to the tokens the
+     * new text spells (ClassIdentity::retyped()), or the text alone where a token's class cannot be told; null where
+     * the rewrite reads no type.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  Closure(string): ?string  $rewrite
+     * @return ValueExpressionResult|null
+     */
+    public static function retypedByClass(array $result, Closure $rewrite): ?array
+    {
+        $type = $rewrite($result['type']);
+
+        if ($type === null) {
+            return null;
+        }
+
+        $queuesNoClass = static fn (): bool => array_all(
+            TokenKind::cases(),
+            static fn (TokenKind $kind): bool => $kind->channelFqcns($result) === [],
+        );
+
+        if ($type === $result['type'] || $queuesNoClass()) {
+            return [...$result, 'type' => $type];
+        }
+
+        return ClassIdentity::retyped($result, $rewrite) ?? [...$result, 'type' => $type];
+    }
+
+    /**
      * A result retyped by a text spelling its type's tokens twice, as `X[] | Record<string, X>` spells `X[]`'s: each
      * queue of the classes behind its tokens reads twice, or the second copy would take the last class of each name.
      *

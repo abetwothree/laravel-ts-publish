@@ -19,6 +19,7 @@ use Closure;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  *
  * @phpstan-type TokenQueues = array<value-of<TokenKind>, ClassTokenQueue>
+ * @phpstan-type TokenMark = array{TokenKind, class-string}
  *
  * @internal
  */
@@ -33,6 +34,11 @@ final class ClassIdentity
         [TokenKind::Enum],
         [TokenKind::WrapConst],
     ];
+
+    /** The byte around the index of the kind and class behind a token, carried through retyped()'s rewrite. */
+    private const string MARK = "\x1F";
+
+    private const string MARK_PATTERN = '/\x1F(\d+)\x1F/';
 
     /**
      * The classes behind a result's tokens, one queue per token kind. Where its record says which tokens of a name a
@@ -234,6 +240,82 @@ final class ClassIdentity
     }
 
     /**
+     * A result retyped by a rewrite of its text that may drop, merge or repeat arms, as a resource's re-index does.
+     * Each token carries its class through the rewrite, so two arms merge only where their classes match too, and each
+     * queue lists the classes behind the tokens the new text spells. Null where a token's class cannot be told, or the
+     * rewrite reads no type.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  Closure(string): ?string  $rewrite
+     * @return ValueExpressionResult|null
+     */
+    public static function retyped(array $result, Closure $rewrite): ?array
+    {
+        $queues = self::queues($result);
+        [$marked, $marks] = self::marked($result['type'], $queues);
+        $rewritten = $marked === null ? null : $rewrite($marked);
+
+        if ($rewritten === null) {
+            return null;
+        }
+
+        preg_match_all(self::MARK_PATTERN, $rewritten, $matches);
+        $read = array_map(static fn (string $index): array => $marks[(int) $index], $matches[1]);
+        $isClass = static fn (TokenKind $kind): bool => $kind === TokenKind::Model || $kind === TokenKind::Resource;
+        $printed = self::readClasses($read, $isClass);
+        /** @var array<value-of<TokenKind>, list<class-string>> $embedded */
+        $embedded = [];
+
+        foreach (TokenKind::cases() as $kind) {
+            $unread = $queues[$kind->value]->unread();
+            $classes = [...self::readClasses($read, static fn (TokenKind $read): bool => $read === $kind), ...$unread];
+            $rest = self::pastSingle($kind, self::singleOf($kind, $result), $classes);
+
+            if ($rest === null) {
+                return null;
+            }
+
+            $embedded[$kind->value] = $rest;
+
+            if ($isClass($kind)) {
+                array_push($printed, ...$unread);
+            }
+        }
+
+        $recordsAlike = ($result['alikeClassFqcns'] ?? []) !== [];
+        unset(
+            $result['embeddedModelFqcns'], $result['embeddedResourceFqcns'], $result['embeddedEnumFqcns'],
+            $result['embeddedEnumResourceFqcns'], $result['alikeClassFqcns'],
+        );
+        $retyped = [...$result, 'type' => (string) preg_replace(self::MARK_PATTERN, '', $rewritten)];
+
+        if ($embedded[TokenKind::Model->value] !== []) {
+            $retyped['embeddedModelFqcns'] = $embedded[TokenKind::Model->value];
+        }
+
+        if ($embedded[TokenKind::Resource->value] !== []) {
+            $retyped['embeddedResourceFqcns'] = $embedded[TokenKind::Resource->value];
+        }
+
+        if ($embedded[TokenKind::Enum->value] !== []) {
+            $retyped['embeddedEnumFqcns'] = $embedded[TokenKind::Enum->value];
+        }
+
+        if ($embedded[TokenKind::WrapConst->value] !== []) {
+            $retyped['embeddedEnumResourceFqcns'] = $embedded[TokenKind::WrapConst->value];
+        }
+
+        $models = TokenKind::Model->channelFqcns($retyped);
+        $alike = $recordsAlike ? self::alikeRecord($models, TokenKind::Resource->channelFqcns($retyped), $printed) : [];
+
+        if ($alike !== []) {
+            $retyped['alikeClassFqcns'] = $alike;
+        }
+
+        return $retyped;
+    }
+
+    /**
      * The result's model queue, when two of its models share a name and the queue does not outrun the type's tokens.
      *
      * Reads the model channels only. ResultTypeInfoBridge hands the queue on as a type info's classTokenFqcns.
@@ -253,6 +335,99 @@ final class ClassIdentity
         $queue->take($result['type']);
 
         return $queue->outrunsItsTokens() ? null : $models;
+    }
+
+    /**
+     * The class a result's single channel of a kind holds; null for none, and for a wrap's const, which has none.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return class-string|null
+     */
+    private static function singleOf(TokenKind $kind, array $result): ?string
+    {
+        return match ($kind) {
+            TokenKind::Model => $result['modelFqcn'] ?? null,
+            TokenKind::Resource => $result['resourceFqcn'] ?? null,
+            TokenKind::Enum => $result['directEnumFqcn'] ?? null,
+            TokenKind::WrapConst => null,
+        };
+    }
+
+    /**
+     * A kind's classes, one per token in print order, less its single channel's, which a queue reads first of its name;
+     * null where the first class of that name is another.
+     *
+     * @param  class-string|null  $single
+     * @param  list<class-string>  $classes
+     * @return list<class-string>|null
+     */
+    private static function pastSingle(TokenKind $kind, ?string $single, array $classes): ?array
+    {
+        if ($single === null) {
+            return $classes;
+        }
+
+        $name = $kind->nameOf($single);
+        $first = array_find_key($classes, static fn (string $fqcn): bool => $kind->nameOf($fqcn) === $name);
+
+        if ($first === null || $classes[$first] !== $single) {
+            return null;
+        }
+
+        unset($classes[$first]);
+
+        return array_values($classes);
+    }
+
+    /**
+     * The classes behind the marks read, in print order, of each kind $takes takes.
+     *
+     * @param  list<TokenMark>  $read
+     * @param  Closure(TokenKind): bool  $takes
+     * @return list<class-string>
+     */
+    private static function readClasses(array $read, Closure $takes): array
+    {
+        $classes = [];
+
+        foreach ($read as [$kind, $fqcn]) {
+            if ($takes($kind)) {
+                $classes[] = $fqcn;
+            }
+        }
+
+        return $classes;
+    }
+
+    /**
+     * A type with each token its queues read followed by a mark of the kind and class behind it, beside what each
+     * mark's index names; a null type where two kinds read one token, as the queues cannot say whose it is.
+     *
+     * @param  TokenQueues  $queues
+     * @return array{string|null, list<TokenMark>}
+     */
+    private static function marked(string $type, array $queues): array
+    {
+        /** @var list<TokenMark> $marks */
+        $marks = [];
+
+        foreach ($queues as $kind => $queue) {
+            $mark = static function (string $fqcn, string $spelled) use ($kind, &$marks): string {
+                /** @var TokenMark $entry */
+                $entry = [TokenKind::from($kind), $fqcn];
+                $index = array_search($entry, $marks, true);
+
+                if ($index === false) {
+                    $index = count($marks);
+                    $marks[] = $entry;
+                }
+
+                return $spelled.self::MARK.$index.self::MARK;
+            };
+            $type = $queue->rewrite($type, $mark);
+        }
+
+        return [str_contains($type, self::MARK.self::MARK) ? null : $type, $marks];
     }
 
     /**

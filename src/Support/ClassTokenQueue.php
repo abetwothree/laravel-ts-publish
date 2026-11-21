@@ -194,6 +194,22 @@ final class ClassTokenQueue
     }
 
     /**
+     * The classes this queue hands out that no token has read, name by name: each name's entries past its tokens.
+     *
+     * @return list<class-string>
+     */
+    public function unread(): array
+    {
+        $unread = [];
+
+        foreach ($this->queues as $name => $fqcns) {
+            array_push($unread, ...array_filter(array_slice($fqcns, $this->seen[$name] ?? 0), $this->handsOut(...)));
+        }
+
+        return $unread;
+    }
+
+    /**
      * Whether a name the tokens read is queued for two classes, and more often than they read it: a class then sits
      * behind another's token, and the queue cannot say which token is whose. Ask once take() has read the whole arm.
      */

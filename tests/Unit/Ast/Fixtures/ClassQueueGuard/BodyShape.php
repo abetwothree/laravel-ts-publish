@@ -9,8 +9,9 @@ use LogicException;
 
 /**
  * Where a guard body puts its arms: a top-level ternary, the same under a key or in a list, through `when()` or through
- * `match`, a return of its own each, or a returned variable each arm overwrites on its flag. Each shape writes the
- * value and reads its union's members back out of the published type.
+ * `match`, a return of its own each, a returned variable each arm overwrites on its flag, or a ternary after a list
+ * array_filter() keeps of every arm, last written first. Each shape writes the value and reads its union's members back
+ * out of the published type.
  */
 enum BodyShape: string
 {
@@ -21,6 +22,7 @@ enum BodyShape: string
     case Match = 'match';
     case Returns = 'returns';
     case Writes = 'branch writes';
+    case AfterFiltered = 'after a filtered list';
 
     private const array FLAGS = ['a', 'b', 'c'];
 
@@ -61,12 +63,16 @@ enum BodyShape: string
 
     /**
      * The union members the shape's arms publish as, read out of the key's type; a member of another shape stays whole,
-     * so its tokens fail the oracle.
+     * so its tokens fail the oracle. A filtered list's element members come before the ternary's after it.
      *
      * @return list<string>
      */
     public function members(string $type): array
     {
+        if ($this === self::AfterFiltered) {
+            return self::afterFiltered($type);
+        }
+
         $members = [];
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $member) {
@@ -116,6 +122,28 @@ enum BodyShape: string
     }
 
     /**
+     * The members of `{ l: L; o: O }`: the element members of the list `L`, then the members of `O`; the type whole
+     * where it is no such object.
+     *
+     * @return list<string>
+     */
+    private static function afterFiltered(string $type): array
+    {
+        $members = TsTypeShape::members($type);
+
+        if ($members === null || array_column($members, 0) !== ['l', 'o']) {
+            return [$type];
+        }
+
+        $listed = self::listed($members[0][1]);
+
+        return [
+            ...($listed === null ? [$members[0][1]] : TsTypeShape::splitTopLevel($listed, ['|'])),
+            ...TsTypeShape::splitTopLevel($members[1][1], ['|']),
+        ];
+    }
+
+    /**
      * The element type of a list member, `(A | B)[]` or `A[]`; null for any other member.
      */
     private static function listed(string $member): ?string
@@ -147,6 +175,8 @@ enum BodyShape: string
                 ? "\$this->when(\$this->resource->a, {$first})"
                 : "\$this->when(\$this->resource->a, {$first}, ".self::ternary($rest[0], array_slice($rest, 1), 1).')',
             self::Match => self::match($arms),
+            self::AfterFiltered => "['l' => array_filter([".implode(', ', array_reverse($arms))."]), 'o' => "
+                .self::ternary($first, $rest).']',
             self::Returns, self::Writes => throw new LogicException("A {$this->value} body writes no one value."),
         };
     }

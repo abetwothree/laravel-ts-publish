@@ -298,3 +298,10 @@ it('reads each class under the name its closure gives it, and leaves nothing by 
         ->and(ClassTokenQueue::perToken([UserResource::class, CrmUserResource::class], 'UserResource | null', $nameOf))
         ->toBe([UserResource::class, CrmUserResource::class]);
 });
+
+it('lists each class no token read, past the tokens that read its name', function () {
+    $queue = new ClassTokenQueue([User::class, CrmUser::class, Post::class], class_basename(...));
+    $queue->take('User | null');
+
+    expect($queue->unread())->toBe([CrmUser::class, Post::class]);
+});

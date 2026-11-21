@@ -256,9 +256,11 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             return $receiverResult['type'] === 'unknown' ? null : $this->keyedAll($receiverResult);
         }
 
-        $type = $method === 'values' ? ArrayArms::valuesList($receiverResult['type']) : $receiverResult['type'];
+        $listed = $method === 'values'
+            ? ValueResult::retypedByClass($receiverResult, ArrayArms::valuesList(...))
+            : $receiverResult;
 
-        return $type === null || $type === 'unknown' ? null : [...$receiverResult, 'type' => $type];
+        return $listed === null || $listed['type'] === 'unknown' ? null : $listed;
     }
 
     /**

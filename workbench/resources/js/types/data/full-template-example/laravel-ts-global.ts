@@ -6527,6 +6527,22 @@ declare global {
             subject: app.enums.StatusType | { s: app.enums.StatusType }[];
         }
         /**
+         * Lists array_filter() keeps of the app's and the CRM's `Status`, or of the `Address` model and its resource, each
+         * beside a later token of that name (GH-76, GH-160). The resource re-indexes each filtered list, so every token after
+         * one still names its own class.
+         */
+        export interface FilteredSameNamedListsResource {
+            either: (crm.enums.StatusType | app.enums.StatusType)[] | app.enums.StatusType[];
+            app_after: { list: (crm.enums.StatusType | app.enums.StatusType)[]; one: app.enums.StatusType };
+            crm_after: { list: (app.enums.StatusType | crm.enums.StatusType)[]; one: crm.enums.StatusType };
+            model_after: { list: (app.http.resources.Address | app.models.Address)[]; one: app.models.Address | null };
+            wrap_after: { list: (crm.enums.StatusType | app.enums.StatusType)[]; one: app.enums.StatusType };
+            reads: (crm.enums.StatusType | app.enums.StatusType)[] | app.enums.StatusType[];
+            wraps: (crm.enums.StatusType | app.enums.StatusType)[] | app.enums.StatusType[];
+            addresses: (app.http.resources.Address | app.models.Address)[] | (app.models.Address | null)[];
+            mixed: (app.http.resources.Address | crm.enums.StatusType | app.models.Address | app.enums.StatusType)[] | app.enums.StatusType[];
+        }
+        /**
          * Rows keyed by name and mapped to the app's and the CRM's `Status` (GH-160, GH-76): wrapped, read, and in an object.
          * The list arm and the Record arm name each enum alike.
          */

@@ -117,23 +117,21 @@ final class CastHandler implements ExpressionHandler
         $cast = resolve(ReceiverClassResolver::class)->resolve($operand, $scope) !== null ? null : ValueResult::gapTransparent(
             $engine->resolve($operand),
             static function (array $result): ?array {
-                $arms = ArrayArms::arms(
-                    $result['type'],
-                    static fn (string $arm): ?string => match (true) {
-                        $arm === 'null' => 'never[]',
-                        ArrayArms::isArray($arm) => $arm,
-                        default => null,
-                    },
-                    skipNull: false,
-                );
-
-                if ($arms === null || $arms === []) {
-                    return null;
-                }
-
                 unset($result['keepsKeys']);
 
-                return [...$result, 'type' => RedundantArms::joined($arms)];
+                return ValueResult::retypedByClass($result, static function (string $type): ?string {
+                    $arms = ArrayArms::arms(
+                        $type,
+                        static fn (string $arm): ?string => match (true) {
+                            $arm === 'null' => 'never[]',
+                            ArrayArms::isArray($arm) => $arm,
+                            default => null,
+                        },
+                        skipNull: false,
+                    );
+
+                    return $arms === null || $arms === [] ? null : RedundantArms::joined($arms);
+                });
             },
         );
 

@@ -48,8 +48,8 @@ final readonly class GuardCase
 
     /**
      * The members the union must publish, in order: one per distinct arm, first written first, and `null` last, where
-     * every union hoists it, an untyped arm left out; or `unknown` alone where returns write one. Each member is the
-     * classes its tokens name.
+     * every union hoists it, an untyped arm left out; or `unknown` alone where returns write one. A filtered list's
+     * members come first, last written first and with no null. Each member is the classes its tokens name.
      *
      * @return list<list<class-string>>
      */
@@ -68,8 +68,14 @@ final readonly class GuardCase
 
         $null = array_key_exists(ArmKind::Null->value, $distinct) ? [ArmKind::Null->classes()] : [];
         unset($distinct[ArmKind::Null->value]);
+        $filtered = [];
+        $listed = $this->shape === BodyShape::AfterFiltered ? array_reverse($this->arms) : [];
 
-        return [...array_values($distinct), ...$null];
+        foreach (array_filter($listed, static fn (ArmKind $arm): bool => $arm !== ArmKind::Null) as $arm) {
+            $filtered[$arm->value] = $arm->classes();
+        }
+
+        return [...array_values($filtered), ...array_values($distinct), ...$null];
     }
 
     /**

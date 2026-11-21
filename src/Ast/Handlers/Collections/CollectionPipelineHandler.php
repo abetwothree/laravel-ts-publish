@@ -143,15 +143,15 @@ final class CollectionPipelineHandler implements ExpressionHandler
      */
     private function valuesListed(?array $items): ?array
     {
-        $type = $items === null ? null : ArrayArms::valuesList($items['type']);
+        $listed = $items === null ? null : ValueResult::retypedByClass($items, ArrayArms::valuesList(...));
 
-        if ($items === null || $type === null) {
+        if ($listed === null) {
             return null;
         }
 
-        unset($items['keepsKeys'], $items['unnamedKeys']);
+        unset($listed['keepsKeys'], $listed['unnamedKeys']);
 
-        return [...$items, 'type' => $type, 'optional' => false, 'listKeys' => true];
+        return [...$listed, 'optional' => false, 'listKeys' => true];
     }
 
     /**

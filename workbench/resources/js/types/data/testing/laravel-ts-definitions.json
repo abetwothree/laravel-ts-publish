@@ -15074,6 +15074,56 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\FilteredSameNamedListsResource": {
+            "name": "FilteredSameNamedListsResource",
+            "properties": [
+                {
+                    "name": "either",
+                    "type": "(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "app_after",
+                    "type": "{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "crm_after",
+                    "type": "{ list: (WorkbenchStatusType | CrmStatusType)[]; one: CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "model_after",
+                    "type": "{ list: (WorkbenchAddress | WorkbenchAddress2)[]; one: WorkbenchAddress2 | null }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_after",
+                    "type": "{ list: (AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[]; one: AsEnum<typeof WorkbenchStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[] | AsEnum<typeof WorkbenchStatus>[]",
+                    "optional": false
+                },
+                {
+                    "name": "addresses",
+                    "type": "(WorkbenchAddress | WorkbenchAddress2)[] | (WorkbenchAddress2 | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "(WorkbenchAddress | AsEnum<typeof CrmStatus> | WorkbenchAddress2 | AsEnum<typeof WorkbenchStatus>)[] | AsEnum<typeof WorkbenchStatus>[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EnumWraps\\KeyedSameNamedMapsResource": {
             "name": "KeyedSameNamedMapsResource",
             "properties": [
