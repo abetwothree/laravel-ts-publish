@@ -9,8 +9,10 @@ use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\EnumWraps\WrapHelpersResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
@@ -95,6 +97,28 @@ it('hands two same-named classes out member by member, a nested object\'s on its
     expect($analysis->modelFqcns)->toBe(['a' => CrmUser::class, User::class => User::class])
         ->and($analysis->inlineModelFqcns)->toBe(['b' => [User::class]])
         ->and($analysis->nestedResources)->toBe(['d' => CrmUserResource::class, 'e' => UserResource::class]);
+});
+
+it('hands a model and a resource that print one name out by its record, a member holding both keeping its own', function () {
+    $members = ObjectMembers::members([
+        'type' => '{ pair: { address: Address; raw: Address }; raw: Address; address: Address }',
+        'optional' => false,
+        'embeddedModelFqcns' => [Address::class, Address::class],
+        'embeddedResourceFqcns' => [AddressResource::class, AddressResource::class],
+        'alikeClassFqcns' => [AddressResource::class, Address::class, Address::class, AddressResource::class],
+    ]);
+
+    expect($members)->toBe([
+        ['pair', [
+            'type' => '{ address: Address; raw: Address }',
+            'optional' => false,
+            'embeddedModelFqcns' => [Address::class],
+            'embeddedResourceFqcns' => [AddressResource::class],
+            'alikeClassFqcns' => [AddressResource::class, Address::class],
+        ]],
+        ['raw', ['type' => 'Address', 'optional' => false, 'modelFqcn' => Address::class]],
+        ['address', ['type' => 'Address', 'optional' => false, 'resourceFqcn' => AddressResource::class]],
+    ]);
 });
 
 it('reads an enum behind its Kind token from the queue its Type token reads', function () {

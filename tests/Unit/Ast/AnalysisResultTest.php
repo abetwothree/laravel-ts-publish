@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNameAddressResource;
 use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -86,6 +87,20 @@ describe('AstEngine::analyze()', function () {
         expect($resource)->not->toBe($model)
             ->and($type('data'))->toBe("{ address: {$resource} | null; raw: {$model} | null }")
             ->and($type('either'))->toBe("{$model} | {$resource} | null");
+    });
+
+    test('keeps each alike token on its own class where a value holding both kinds is spread or read back', function () {
+        $result = resolve(AstEngine::class)->analyze(SameNameAddressResource::class, 'toArray', null, 'workbench/app/http/resources');
+        [$resource, $model] = array_map(
+            static fn (string $path): string => ImportMaps::localName($result->typeImports[$path][0] ?? ''),
+            ['.', '../../models'],
+        );
+        $type = static fn (string $name): ?string => collect($result->properties)->firstWhere('name', $name)['type'] ?? null;
+        $pair = "{ address: {$resource} | null; raw: {$model} | null }";
+
+        expect($resource)->not->toBe($model)
+            ->and($type('nested_spread'))->toBe("{ pair: {$pair}; n: number }")
+            ->and($type('nested_read'))->toBe("{ p: {$pair} }");
     });
 
     test('aliases the two same-named resources of one morph union apart, in an inline array too', function () {

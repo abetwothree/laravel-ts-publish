@@ -112,6 +112,14 @@ describe('a member that spells one name for a model and for a resource', functio
             'pair_spread',
             '{ address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null; n: number }',
         ],
+        'an array holding a pair, spread into another array' => [
+            'nested_spread',
+            '{ pair: { address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null }; n: number }',
+        ],
+        'a pair read back from the array holding it' => [
+            'nested_read',
+            '{ p: { address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null } }',
+        ],
     ]);
 });
 

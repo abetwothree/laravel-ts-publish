@@ -21,6 +21,7 @@ class SameNameAddressResource extends JsonResource
     public function toArray(Request $request): array
     {
         $pair = ['address' => new AddressResource($this->primaryAddress), 'raw' => $this->primaryAddress];
+        $outer = ['pair' => ['address' => new AddressResource($this->primaryAddress), 'raw' => $this->primaryAddress]];
 
         return [
             'data_pair' => ['data' => ['raw' => $this->primaryAddress, 'address' => new AddressResource($this->primaryAddress)]],
@@ -38,6 +39,8 @@ class SameNameAddressResource extends JsonResource
             'resource_or_models' => ['x' => $request->boolean('a') ? new AddressResource($this->primaryAddress) : $this->addresses],
             'pair_read_back' => ['p' => $pair['address'], 'q' => $pair['raw']],
             'pair_spread' => [...$pair, 'n' => 1],
+            'nested_spread' => [...$outer, 'n' => 1],
+            'nested_read' => ['p' => $outer['pair']],
         ];
     }
 }

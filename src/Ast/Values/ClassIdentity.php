@@ -60,6 +60,18 @@ final class ClassIdentity
     }
 
     /**
+     * The queue a result's models and resources are read off together, in print order, where its record says which
+     * tokens of a name both kinds print are whose; null otherwise. A reader taking members off the result's queues
+     * takes each member's tokens off this one too, so the member keeps its own record (alikeRecord()).
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public static function alikeQueue(array $result): ?ClassTokenQueue
+    {
+        return self::recordsAlike($result) ? self::classQueue($result) : null;
+    }
+
+    /**
      * Whether one name spells two different classes, of one kind or of a model and a resource.
      *
      * @param  list<ValueExpressionResult>  $results
@@ -154,7 +166,7 @@ final class ClassIdentity
 
         foreach ($arms as $arm) {
             $queues = self::queues($arm);
-            $classQueue = self::recordsAlike($arm) ? self::classQueue($arm) : null;
+            $classQueue = self::alikeQueue($arm);
             $ordered = $ordered && self::ordersAlike(self::channelClasses($arm), $arm['alikeClassFqcns'] ?? []);
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {

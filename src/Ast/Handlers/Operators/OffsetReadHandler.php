@@ -116,6 +116,7 @@ final class OffsetReadHandler implements ExpressionHandler
     {
         [$type, $gaps] = VisibleGaps::aside($holder['type']);
         $queues = ClassIdentity::queues($holder);
+        $classes = ClassIdentity::alikeQueue($holder);
         $members = [];
 
         foreach (TsTypeShape::splitTopLevel($type, ['|']) as $arm) {
@@ -126,7 +127,7 @@ final class OffsetReadHandler implements ExpressionHandler
 
             $member = $arm === 'null'
                 ? ['type' => 'null', 'optional' => false]
-                : $this->armMember($arm, $key, $queues, $holder['wrappedEnumFqcns'] ?? []);
+                : $this->armMember($arm, $key, $queues, $holder['wrappedEnumFqcns'] ?? [], $classes);
 
             if ($member === null) {
                 return null;
@@ -152,10 +153,16 @@ final class OffsetReadHandler implements ExpressionHandler
      *
      * @param  TokenQueues  $queues
      * @param  list<class-string>  $wrapped  the enums the holder wraps
+     * @param  ClassTokenQueue|null  $classes  the holder's models and resources read together, where it records them
      * @return ValueExpressionResult|null
      */
-    private function armMember(string $arm, string $key, array $queues, array $wrapped): ?array
-    {
+    private function armMember(
+        string $arm,
+        string $key,
+        array $queues,
+        array $wrapped,
+        ?ClassTokenQueue $classes,
+    ): ?array {
         $parts = match (true) {
             TsTypeShape::isWrapped($arm, '{', '}') => $this->objectParts($arm, $key),
             TsTypeShape::isWrapped($arm, '[', ']') => $this->tupleParts($arm, $key),
@@ -164,7 +171,7 @@ final class OffsetReadHandler implements ExpressionHandler
         $member = null;
 
         foreach ($parts as [$type, $optional, $named]) {
-            $value = ObjectMembers::memberValue($type, $optional, $queues, $wrapped);
+            $value = ObjectMembers::memberValue($type, $optional, $queues, $wrapped, $classes);
             $member ??= $named ? $value : null;
         }
 

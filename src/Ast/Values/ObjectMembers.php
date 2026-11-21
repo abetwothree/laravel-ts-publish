@@ -90,6 +90,8 @@ final class ObjectMembers
         }
 
         $queues = ClassIdentity::queues($value);
+        $classes = ClassIdentity::alikeQueue($value);
+        $wrapped = $value['wrappedEnumFqcns'] ?? [];
         $members = [];
 
         foreach ($printed as [$key, $type]) {
@@ -100,7 +102,7 @@ final class ObjectMembers
             }
 
             // A printed `?` cannot tell an unset key from a removed value, so it reads as removed, as a when() is.
-            $member = self::memberValue($type, str_ends_with($key, '?'), $queues, $value['wrappedEnumFqcns'] ?? []);
+            $member = self::memberValue($type, str_ends_with($key, '?'), $queues, $wrapped, $classes);
 
             // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
             $members[] = [$name, ($value['keepsKeys'] ?? false) && TsTypeShape::holdsKeyedObject($type)
@@ -119,22 +121,34 @@ final class ObjectMembers
      * One member of a printed value as the value it holds, with the classes behind its own tokens taken next off the
      * printed value's queues, which read its members in the order it spells them.
      *
+     * A member holding a model and a resource of one name keeps its record of whose each token is, read off the printed
+     * value's `$classes` (ClassIdentity::alikeQueue()).
+     *
      * @param  TokenQueues  $queues
      * @param  list<class-string>  $wrapped  the enums the printed value wraps
      * @return ValueExpressionResult
      */
-    public static function memberValue(string $type, bool $optional, array $queues, array $wrapped): array
-    {
+    public static function memberValue(
+        string $type,
+        bool $optional,
+        array $queues,
+        array $wrapped,
+        ?ClassTokenQueue $classes = null,
+    ): array {
         $holdsObject = TsTypeShape::holdsKeyedObject($type);
         $taken = static fn (TokenKind $kind): array => $queues[$kind->value]->take($type);
+        $models = $taken(TokenKind::Model);
+        $resources = $taken(TokenKind::Resource);
+        $alike = ClassIdentity::alikeRecord($models, $resources, $classes?->take($type) ?? []);
 
         return [
             'type' => $type,
             'optional' => $optional,
-            ...self::memberChannel($taken(TokenKind::Model), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
-            ...self::memberChannel($taken(TokenKind::Resource), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
+            ...self::memberChannel($models, $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
+            ...self::memberChannel($resources, $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
             ...self::memberChannel($taken(TokenKind::Enum), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
             ...self::wrapChannels($taken(TokenKind::WrapConst), $wrapped),
+            ...($alike === [] ? [] : ['alikeClassFqcns' => $alike]),
         ];
     }
 
