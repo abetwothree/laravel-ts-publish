@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
@@ -10,6 +11,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapMerge
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamedWrapAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamedWrapAccessorReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapAccessorDelegatedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapAccessorReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedPriorityPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppendedPriorityWrapPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
@@ -25,6 +31,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\Accounting\Models\Payment;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\BulletinArchive;
@@ -388,3 +397,66 @@ test('an accessor\'s wrap publishes as AsEnum, alone or in its shape', function 
         ->and($data->valueImports)->toBe(['../../../../../workbench/app/enums' => ['Priority']])
         ->and($data->typeImports)->toBe([]);
 });
+
+// A resource reading an accessor's wrap imports what it spells: the const after each `typeof`, and `AsEnum` (GH-160).
+test('a resource imports the consts its model\'s accessor wraps spell, however it reads them', function (string $resource, bool $tolki, array $lines, array $values) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
+
+    expect(array_values(preg_grep('/^(import |    (shape|wrap|appended|nested|statuses)\??: )/', explode("\n", $content)) ?: []))
+        ->toBe($lines)
+        ->and(resolve(AstEngine::class)->analyze($resource)->valueImports)->toBe($values);
+})->with([
+    'read directly, appended and nested' => [WrapAccessorReadsResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+        '    appended?: AsEnum<typeof Priority>;',
+        '    nested: { s: { a: AsEnum<typeof Priority>; b: number } };',
+    ], ['./workbench/app/enums' => ['Priority']]],
+    'kept by only()' => [WrapAccessorOnlyResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+    ], ['./workbench/app/enums' => ['Priority']]],
+    'sent by the model\'s own array' => [WrapAccessorDelegatedResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+    ], ['./workbench/app/enums' => ['Priority']]],
+    'the app\'s and the CRM\'s Status, read directly' => [SameNamedWrapAccessorReadsResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status as WorkbenchStatus } from '../../../../../../workbench/app/enums';",
+        "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+        '    statuses: { a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof WorkbenchStatus>; c: AsEnum<typeof CrmStatus> };',
+    ], [
+        './workbench/app/enums' => ['Status as WorkbenchStatus'],
+        './workbench/crm/enums' => ['Status as CrmStatus'],
+    ]],
+    'the app\'s and the CRM\'s Status, kept by only()' => [SameNamedWrapAccessorOnlyResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status as WorkbenchStatus } from '../../../../../../workbench/app/enums';",
+        "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+        '    statuses: { a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof WorkbenchStatus>; c: AsEnum<typeof CrmStatus> };',
+    ], [
+        './workbench/app/enums' => ['Status as WorkbenchStatus'],
+        './workbench/crm/enums' => ['Status as CrmStatus'],
+    ]],
+    'read directly, without the tolki package' => [WrapAccessorReadsResource::class, false, [
+        "import type { PriorityType } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: PriorityType; b: number };',
+        '    wrap: PriorityType;',
+        '    appended?: PriorityType;',
+        '    nested: { s: { a: PriorityType; b: number } };',
+    ], []],
+    'the app\'s and the CRM\'s Status, without the tolki package' => [SameNamedWrapAccessorOnlyResource::class, false, [
+        "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+        "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+        '    statuses: { a: WorkbenchStatusType; b: WorkbenchStatusType; c: CrmStatusType };',
+    ], []],
+]);

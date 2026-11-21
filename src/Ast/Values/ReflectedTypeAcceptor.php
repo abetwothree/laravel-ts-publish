@@ -71,6 +71,8 @@ final class ReflectedTypeAcceptor
             $result['typedByClass'] = true;
         }
 
+        $result = ValueResult::withWrapChannels($result, $tsInfo);
+
         return ($tsInfo['closedToDottedKeys'] ?? false) ? ValueResult::closeToDottedKeys($result) : $result;
     }
 }

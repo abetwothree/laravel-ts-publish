@@ -40,7 +40,9 @@ use ReflectionClass;
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool,
- *      typedByClass?: true
+ *      typedByClass?: true,
+ *      wrappedEnumFqcns?: list<class-string>,
+ *      wrapConstFqcns?: list<class-string>
  * }
  *
  * @internal
@@ -315,6 +317,26 @@ final class ValueResult
 
         if ($attribute['typedByClass'] ?? false) {
             $result['typedByClass'] = true;
+        }
+
+        return self::withWrapChannels($result, $attribute);
+    }
+
+    /**
+     * Carry the enums a type info's wraps send and the const behind each `typeof` token it spells onto a result.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  array{wrappedEnumFqcns?: list<class-string>, wrapConstFqcns?: list<class-string>}  $info
+     * @return ValueExpressionResult
+     */
+    public static function withWrapChannels(array $result, array $info): array
+    {
+        if (($info['wrappedEnumFqcns'] ?? []) !== []) {
+            $result['wrappedEnumFqcns'] = $info['wrappedEnumFqcns'];
+        }
+
+        if (($info['wrapConstFqcns'] ?? []) !== []) {
+            $result['embeddedEnumResourceFqcns'] = $info['wrapConstFqcns'];
         }
 
         return $result;

@@ -22,7 +22,9 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports: TypesImportMap,
  *      keepsKeys?: bool,
- *      typedByClass?: true
+ *      typedByClass?: true,
+ *      wrappedEnumFqcns?: list<class-string>,
+ *      wrapConstFqcns?: list<class-string>
  * }
  *
  * @internal
@@ -66,6 +68,8 @@ trait ResolvesModelAttributeTypes
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
             ...(($tsInfo['typedByClass'] ?? false) ? ['typedByClass' => true] : []),
+            ...(isset($tsInfo['wrappedEnumFqcns']) ? ['wrappedEnumFqcns' => $tsInfo['wrappedEnumFqcns']] : []),
+            ...(isset($tsInfo['wrapConstFqcns']) ? ['wrapConstFqcns' => $tsInfo['wrapConstFqcns']] : []),
         ];
     }
 }

@@ -113,8 +113,9 @@ trait FiltersModelAttributes
     /**
      * Filter a ResourceAnalysis to include or exclude properties by key list.
      *
-     * A kept key keeps its enum and model queues, each class on them keyed by itself as addProperty() keys it, and the
-     * custom imports its type spells, so it imports and aliases every class it names; a left-out key's classes go.
+     * A kept key keeps its enum, model and wrap const queues, each class on them keyed by itself as addProperty() keys
+     * it, the enums it wraps, and the custom imports its type spells, so it imports and aliases every class it names; a
+     * left-out key's classes go.
      *
      * @param  list<string>  $keys
      */
@@ -144,6 +145,8 @@ trait FiltersModelAttributes
             modelFqcns: [...array_intersect_key($analysis->modelFqcns, $kept), ...self::selfKeyed($inlineModelFqcns)],
             inlineEnumFqcns: $inlineEnumFqcns,
             inlineModelFqcns: $inlineModelFqcns,
+            inlineEnumResourceFqcns: array_intersect_key($analysis->inlineEnumResourceFqcns, $kept),
+            wrappedEnums: array_intersect_key($analysis->wrappedEnums, $kept),
         );
     }
 

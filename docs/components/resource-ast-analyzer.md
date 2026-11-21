@@ -994,6 +994,7 @@ value degrades to `unknown`.
 | Models and enums together (`Order\|Status`) | yes | `embeddedEnumFqcns` and `embeddedModelFqcns`, never the single-entry channels |
 | A `#[TsType(import: ...)]` class | yes | `customImports` |
 | A composed class, whose override joins two or more | yes | `customImports`, keyed by `ComposedClassTypes::marker()` |
+| An `EnumResource` wrap an accessor returns (`AsEnum<typeof C>`) | yes | `embeddedEnumResourceFqcns` from `wrapConstFqcns`, one per `typeof` token; `wrappedEnumFqcns` |
 | A non-`Model` class token, one `toTsType()` did not turn into a shape | **no**, `unknown` | none: no published file to import |
 | `void`, `never`, `unknown`, `unknown \| null` or an empty type | **no**, `unknown` | none: no TypeScript shape |
 
@@ -1012,9 +1013,10 @@ the event, metadata and shared-data code that calls it resolves it there.
 `AccessorBodyAnalyzer` that needs an engine result in the model layer's `TypeScriptTypeInfo`. It imports only through
 the five channels the acceptor writes, `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`, `embeddedModelFqcns` and
 `customImports`, and through the const queue, `embeddedEnumResourceFqcns`, which it hands on as `wrapConstFqcns` for the
-consts a wrap's type spells. It unions `customImports` rather than replacing them. It also copies facts only the model
-reads: `wrappedEnumFqcns` for its dedupe, `enumTokenFqcns`, the enum behind each enum token where two of its enums share
-a name, and `sendsEnumScalar`, which keeps the alias in its `…Resource` interfaces
+consts a wrap's type spells. It unions `customImports` rather than replacing them. It also copies `wrappedEnumFqcns`;
+the acceptor and the model-attribute readers carry both wrap channels back, so a resource reading the accessor imports
+its consts. It copies facts only the model reads: `enumTokenFqcns`, the enum behind each enum token where two of its
+enums share a name, and `sendsEnumScalar`, which keeps the alias in its `…Resource` interfaces
 ([AST engine § Redundant arms](ast-engine.md#redundant-arms)). Reading any other channel, such as a resource channel,
 changes behavior and needs its own audit.
 

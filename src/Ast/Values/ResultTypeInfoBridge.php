@@ -10,7 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 
 /**
  * Carry a ValueExpressionResult into a TypeScriptTypeInfo, the inverse of `ReflectedTypeAcceptor::accept()`: it imports
- * only through the five channels the acceptor writes, never a resource, and copies the wrap channels and
+ * only through the channels the acceptor writes, never a resource, the wrap channels among them, and copies
  * `sendsEnumScalar`, which only the model reads. See docs/components/resource-ast-analyzer.md.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler

@@ -32,7 +32,9 @@ use ReflectionClass;
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports: array<string, list<string>>,
- *      keepsKeys?: bool
+ *      keepsKeys?: bool,
+ *      wrappedEnumFqcns?: list<class-string>,
+ *      wrapConstFqcns?: list<class-string>
  * }
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
@@ -102,6 +104,8 @@ trait ResolvesModelTypes
             ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ...(isset($tsInfo['wrappedEnumFqcns']) ? ['wrappedEnumFqcns' => $tsInfo['wrappedEnumFqcns']] : []),
+            ...(isset($tsInfo['wrapConstFqcns']) ? ['wrapConstFqcns' => $tsInfo['wrapConstFqcns']] : []),
         ];
     }
 
@@ -231,7 +235,7 @@ trait ResolvesModelTypes
         $classFqcns = $info['classFqcns'];
         $enumFqcns = $info['enumFqcns'];
 
-        return [
+        return ValueResult::withWrapChannels([
             'type' => $info['type'],
             'optional' => false,
             // Two enums queue per token, as a `$this->attribute` read does, so the file imports each one it spells.
@@ -241,7 +245,7 @@ trait ResolvesModelTypes
             ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
             ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
             ...(($info['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-        ];
+        ], $info);
     }
 
     /**
