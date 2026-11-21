@@ -38,7 +38,7 @@ use Closure;
  *      models: list<class-string>,
  *      resources: list<class-string>,
  *      enums: list<class-string>,
- *      enumResources: list<class-string>,
+ *      wrapConsts: list<class-string>,
  * }
  * @phpstan-type MemberNames = array<string, list<string>>
  *
@@ -206,7 +206,7 @@ final class InlineObjectResult
         // Spread arms lead the type, so their tokens lead each queue.
         $armFqcns = $this->spreadArmFqcns($spreadArms);
         $embeddedEnumFqcns = [...$armFqcns['enums'], ...$embeddedEnumFqcns];
-        $embeddedEnumResourceFqcns = [...$armFqcns['enumResources'], ...$embeddedEnumResourceFqcns];
+        $embeddedEnumResourceFqcns = [...$armFqcns['wrapConsts'], ...$embeddedEnumResourceFqcns];
 
         $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
         $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
@@ -457,7 +457,7 @@ final class InlineObjectResult
      */
     private function spreadArmFqcns(array $spreadArms): array
     {
-        $fqcns = ['models' => [], 'resources' => [], 'enums' => [], 'enumResources' => []];
+        $fqcns = ['models' => [], 'resources' => [], 'enums' => [], 'wrapConsts' => []];
 
         foreach ($spreadArms as $arm) {
             if (! isset($arm['result'])) {
@@ -471,7 +471,7 @@ final class InlineObjectResult
             array_push($fqcns['models'], ...self::channelFqcns($result['modelFqcn'] ?? null, $result['embeddedModelFqcns'] ?? []));
             array_push($fqcns['resources'], ...self::channelFqcns($result['resourceFqcn'] ?? null, $result['embeddedResourceFqcns'] ?? []));
             array_push($fqcns['enums'], ...self::channelFqcns($result['directEnumFqcn'] ?? null, $result['embeddedEnumFqcns'] ?? []));
-            array_push($fqcns['enumResources'], ...($result['embeddedEnumResourceFqcns'] ?? []));
+            array_push($fqcns['wrapConsts'], ...($result['embeddedEnumResourceFqcns'] ?? []));
         }
 
         return $fqcns;
