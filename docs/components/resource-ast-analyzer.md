@@ -875,7 +875,8 @@ A numeric key goes through two layers:
 - **Re-index**: an API resource sends an array whose keys all pass `is_numeric()` as a list, at any depth, and keeps
   every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher, with
   the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's `$preserveKeys`.
-  Each key's queues keep to the tokens its new text spells (`MethodAnalysis::rewritePropertyTypes()`).
+  Each key's queues and declared slots keep to the tokens its new text spells (`MethodAnalysis::rewritePropertyTypes()`,
+  `TokenSlots::retyped()`).
   `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()` and a spread
   `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a key whose
   result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as does
