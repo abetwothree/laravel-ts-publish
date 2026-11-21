@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
@@ -60,19 +60,19 @@ final class AnalysisImports
         $enumFqcnMap = [];
 
         foreach (self::enumTypeFqcns($analysis) as $fqcn) {
-            $enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
-            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
+            $enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
+            $this->enumConstMap[$fqcn] = EnumNames::constName($fqcn);
         }
 
         foreach ($this->writtenWrapConsts($analysis) as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         // Every caller keeps only the names its type spells, so a backed enum offers its `…Kind` beside its `…Type`.
         $this->siblingImportNames = [];
 
         foreach (array_keys($enumFqcnMap) as $fqcn) {
-            foreach (ValueResult::enumSiblingNames($fqcn) as $name) {
+            foreach (EnumNames::siblingNames($fqcn) as $name) {
                 $this->siblingImportNames[$fqcn][$name] = $name;
             }
         }

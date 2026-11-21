@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
@@ -172,7 +172,7 @@ trait ResolvesImportConflicts
                     continue;
                 }
 
-                foreach (ValueResult::enumSiblingNames($fqcn) as $name) {
+                foreach (EnumNames::siblingNames($fqcn) as $name) {
                     if (TsTypeString::typeNameOccursIn($name, $entries[$key]['type'])) {
                         $registry->registerSibling($fqcn, $name);
                     }

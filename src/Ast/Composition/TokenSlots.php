@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
@@ -62,7 +62,7 @@ final class TokenSlots
      */
     public static function queueRead(array $queue, string $text, array $names): array
     {
-        $queued = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...));
+        $queued = new ClassTokenQueue($queue, self::typeName(...), EnumNames::siblingNames(...));
 
         return self::readOff($queued, 'classes', $text, $names);
     }
@@ -77,7 +77,7 @@ final class TokenSlots
      */
     public static function constRead(array $queue, string $text, array $consts): array
     {
-        $queued = new ClassTokenQueue($queue, ValueResult::enumConstName(...), anchor: TsTypeStringService::TYPEOF_ANCHOR);
+        $queued = new ClassTokenQueue($queue, EnumNames::constName(...), anchor: TsTypeStringService::TYPEOF_ANCHOR);
 
         return self::readOff($queued, 'consts', $text, $consts);
     }
@@ -271,7 +271,7 @@ final class TokenSlots
         $names = array_map(self::typeName(...), $enums);
 
         return count(array_unique($names)) === count($names)
-            || new ClassTokenQueue($enums, self::typeName(...), ValueResult::enumSiblingNames(...))->take($type) === $enumSlots;
+            || new ClassTokenQueue($enums, self::typeName(...), EnumNames::siblingNames(...))->take($type) === $enumSlots;
     }
 
     /**
@@ -328,7 +328,7 @@ final class TokenSlots
     public static function typeName(string $fqcn): string
     {
         return TolkiTypes::MAP[$fqcn]
-            ?? (enum_exists($fqcn) ? ValueResult::enumTypeName($fqcn) : TsNaming::resourceTypeName($fqcn));
+            ?? (enum_exists($fqcn) ? EnumNames::typeName($fqcn) : TsNaming::resourceTypeName($fqcn));
     }
 
     /**
@@ -342,10 +342,10 @@ final class TokenSlots
     {
         $names = $channel === 'classes'
             ? array_merge([], ...array_map(
-                static fn (string $fqcn): array => [self::typeName($fqcn), ...ValueResult::enumSiblingNames($fqcn)],
+                static fn (string $fqcn): array => [self::typeName($fqcn), ...EnumNames::siblingNames($fqcn)],
                 $fqcns,
             ))
-            : array_map(ValueResult::enumConstName(...), $fqcns);
+            : array_map(EnumNames::constName(...), $fqcns);
 
         return array_values(array_unique($names));
     }

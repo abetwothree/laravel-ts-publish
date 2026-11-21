@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Enums;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 
@@ -38,7 +37,7 @@ final class EnumWrapImports
         $aliased = [];
 
         foreach ($queue as $fqcn) {
-            $unread[ValueResult::enumConstName($fqcn)][] = $fqcn;
+            $unread[EnumNames::constName($fqcn)][] = $fqcn;
 
             if (isset($aliases[$fqcn])) {
                 $aliased[$aliases[$fqcn]] = $fqcn;
@@ -55,7 +54,7 @@ final class EnumWrapImports
 
         foreach ($matches[0] as $token) {
             $fqcn = $aliased[$token] ?? $unread[$token][0] ?? null;
-            $const = $fqcn === null ? null : ValueResult::enumConstName($fqcn);
+            $const = $fqcn === null ? null : EnumNames::constName($fqcn);
             $at = $const === null ? false : array_search($fqcn, $unread[$const], true);
 
             if ($at !== false) {

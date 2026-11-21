@@ -66,7 +66,7 @@ use PhpParser\Node\Expr;
  * }
  *
  * `directEnumFqcn` says the value holds this enum, and its type may spell the enum's override instead of its
- * `…Type`, so test ValueResult::readsEnumType() before treating the enum's name as spelled. `resolvedFqcn` says the
+ * `…Type`, so test EnumNames::readsType() before treating the enum's name as spelled. `resolvedFqcn` says the
  * value is the keys that resource's `resolve()` returns, typed as Inertia sends them, so a spread takes its keys.
  *
  * `wrappedEnumFqcns` is the set of enums the value wraps in an `EnumResource`, at any depth, in first-seen order, read

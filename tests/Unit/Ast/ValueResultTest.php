@@ -9,14 +9,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
-use Workbench\App\Enums\UiTone;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\User;
 use Workbench\App\ValueObjects\OpaqueHandle;
 use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\User as CrmUser;
-use Workbench\Shipping\Enums\Status as ShipmentStatus;
 
 describe('ValueResult::withAttributeChannels()', function () {
     test('carries each FQCN kind on the channel its count picks', function (array $attribute, array $channels) {
@@ -254,24 +252,6 @@ describe('ValueResult::unionResults() over arms that keep their keys', function 
         ]);
 
         expect($result)->not->toHaveKey('keepsKeys');
-    });
-});
-
-describe('ValueResult::enumTypeName()', function () {
-    test('names an enum by the type its file exports', function () {
-        expect(ValueResult::enumTypeName(Status::class))->toBe('StatusType')
-            ->and(ValueResult::enumTypeName(CrmStatus::class))->toBe('StatusType')
-            ->and(ValueResult::enumTypeName(ShipmentStatus::class))->toBe('ShipmentStatusType');
-    });
-});
-
-describe('ValueResult::readsEnumType()', function () {
-    test("tells a value spelling its enum's type from one of an overridden enum, which spells the override", function () {
-        expect(ValueResult::readsEnumType(['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class]))
-            ->toBeTrue()
-            ->and(ValueResult::readsEnumType(['type' => 'UiToneDto', 'optional' => false, 'directEnumFqcn' => UiTone::class]))
-            ->toBeFalse()
-            ->and(ValueResult::readsEnumType(['type' => 'StatusType', 'optional' => false]))->toBeFalse();
     });
 });
 

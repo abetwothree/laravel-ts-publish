@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -174,7 +174,7 @@ final class CastChannels
             $named = $declared === null ? null : $this->byKind(array_values(array_filter($declared)));
 
             [$kept, $carriedEnums] = $this->divide(
-                $enums, $type, $brought, ValueResult::enumTypeName(...), $broughtOver, $named['enums'] ?? null,
+                $enums, $type, $brought, EnumNames::typeName(...), $broughtOver, $named['enums'] ?? null,
             );
             $this->queue($analysis->inlineEnumFqcns, $analysis->directEnumFqcns, $name, $kept);
 
@@ -200,7 +200,7 @@ final class CastChannels
             // does not bring stays, and the publisher keeps the ones the text writes.
             $keptWraps = array_values(array_filter(
                 $wraps,
-                fn (string $fqcn): bool => ! in_array(ValueResult::enumConstName($fqcn), $brought, true),
+                fn (string $fqcn): bool => ! in_array(EnumNames::constName($fqcn), $brought, true),
             ));
 
             if ($keptWraps !== []) {

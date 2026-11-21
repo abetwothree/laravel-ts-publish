@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -101,7 +102,7 @@ trait ResolvesEnumPropertyArgTypes
                 return null;
             }
 
-            $type = ValueResult::enumTypeName($enum);
+            $type = EnumNames::typeName($enum);
 
             return [
                 ...$result,
@@ -196,7 +197,7 @@ trait ResolvesEnumPropertyArgTypes
         $type = $spelled
             ? TsTypeString::substituteEnumType(
                 $payload['type'],
-                ValueResult::enumTypeName($enum),
+                EnumNames::typeName($enum),
                 EnumWrapSpelling::ofEnum($enum),
             )
             : $payload['type'];
@@ -249,7 +250,7 @@ trait ResolvesEnumPropertyArgTypes
         }
 
         $retyped = LaravelTsPublish::retypedEnumType($enum);
-        $enumType = $retyped ?? ValueResult::enumTypeName($enum);
+        $enumType = $retyped ?? EnumNames::typeName($enum);
         $held = TsTypeString::withoutNullArm($resolved['type']);
         // A map over a nullable attribute holds the enum or null in each element; a list with another arm beside it is
         // not one list of the enum.
@@ -261,7 +262,7 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $name = ValueResult::enumTypeName($enum);
+        $name = EnumNames::typeName($enum);
         $type = match (true) {
             $retyped === null => $resolved['type'],
             $held === $enumType => $name,
@@ -353,7 +354,7 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $type = ValueResult::enumTypeName($enum);
+        $type = EnumNames::typeName($enum);
 
         return [
             ...ValueResult::unknown(),

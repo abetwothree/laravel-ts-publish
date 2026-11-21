@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
@@ -108,7 +108,7 @@ final class DiscriminantValues
     {
         $named = array_values(array_filter(
             $enums,
-            static fn (string $enum): bool => in_array($arm, ValueResult::enumNames($enum), true),
+            static fn (string $enum): bool => in_array($arm, EnumNames::names($enum), true),
         ));
         $enum = count($named) === 1 ? $named[0] : null;
         $literals = $enum === null ? null : EnumValueTypes::caseLiterals($enum, $arm);

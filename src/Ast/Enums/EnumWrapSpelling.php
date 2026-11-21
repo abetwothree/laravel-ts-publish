@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Enums;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\AsEnumSpelling;
 use Illuminate\Support\Facades\Config;
 
@@ -36,6 +35,6 @@ final class EnumWrapSpelling
      */
     public static function ofEnum(string $enum, bool $list = false): string
     {
-        return self::of(ValueResult::enumConstName($enum), $list);
+        return self::of(EnumNames::constName($enum), $list);
     }
 }

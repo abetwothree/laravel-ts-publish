@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString;
@@ -55,8 +56,8 @@ enum TokenKind: string
         return match ($this) {
             self::Model => class_basename($fqcn),
             self::Resource => TsNaming::resourceTypeName($fqcn),
-            self::Enum => ValueResult::enumTypeName($fqcn),
-            self::WrapConst => ValueResult::enumConstName($fqcn),
+            self::Enum => EnumNames::typeName($fqcn),
+            self::WrapConst => EnumNames::constName($fqcn),
         };
     }
 
@@ -67,7 +68,7 @@ enum TokenKind: string
      */
     public function siblingNames(string $fqcn): array
     {
-        return $this === self::Enum ? ValueResult::enumSiblingNames($fqcn) : [];
+        return $this === self::Enum ? EnumNames::siblingNames($fqcn) : [];
     }
 
     /**

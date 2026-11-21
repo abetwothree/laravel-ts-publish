@@ -6,9 +6,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -142,12 +142,12 @@ final class AnalysisComposer
         $this->modelFqcnMap = [];
 
         foreach (AnalysisImports::enumTypeFqcns($analysis) as $fqcn) {
-            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
-            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
+            $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
+            $this->enumConstMap[$fqcn] = EnumNames::constName($fqcn);
         }
 
         foreach ($analysis->allWrapConstFqcns() as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         foreach ($analysis->nestedResources as $fqcn) {
@@ -164,11 +164,11 @@ final class AnalysisComposer
      */
     private function registerCarried(MethodAnalysis $analysis): void
     {
-        $enumTypeName = ValueResult::enumTypeName(...);
+        $enumTypeName = EnumNames::typeName(...);
 
         foreach ($this->carriedInUse($analysis->carried['enums'] ?? [], $this->enumFqcnMap, $enumTypeName) as $fqcn => $name) {
             $this->enumFqcnMap[$fqcn] ??= $name;
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         foreach ($this->carriedInUse($analysis->carried['models'] ?? [], $this->modelFqcnMap, class_basename(...)) as $fqcn => $name) {

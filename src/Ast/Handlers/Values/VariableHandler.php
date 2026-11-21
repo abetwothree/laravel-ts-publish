@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
@@ -693,7 +694,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             [...(isset($declared['directEnumFqcn']) ? [$declared['directEnumFqcn']] : []), ...$declared['embeddedEnumFqcns'] ?? []],
             [...(isset($filled['directEnumFqcn']) ? [$filled['directEnumFqcn']] : []), ...$filled['embeddedEnumFqcns'] ?? []],
             $spelled,
-            ValueResult::enumNames(...),
+            EnumNames::names(...),
         );
         $custom = ImportMaps::spelledIn($declared['customImports'] ?? [], $spelled);
 

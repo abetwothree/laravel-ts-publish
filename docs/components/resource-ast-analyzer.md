@@ -1125,14 +1125,14 @@ the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEn
 mapping, naming no enum. So a case, a constant holding one, a declared type, a cast or an accessor publishes that type,
 an override with its `customImports`. A case keeps its enum channel (`ValueResolver::resolveConstantValue()`), so a
 receiver, a wrap and every carrier that moves a channel still know the enum, and each sink drops the `…Type` the text
-never spells. A union arm spelling no `…Type` rides the embedded queue (`ValueResult::readsEnumType()`), so a ternary of
-a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
-`ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
-names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
-for a value of a declared type (`ResolvesEnumPropertyArgTypes::heldEnum()`). `->value` and `->name` keep the enum's
-names through `EnumValueTypes`, except a case's own, which publish its literal. `LaravelTsPublish::retypedEnumType()` is
-the one test for such an enum, and the type it publishes as. An `AsEnumCollection` cast's `EnumResource::collection()`
-and a model's `{Model}Resource` column still miss the wrap
+never spells. A union arm spelling no `…Type` rides the embedded queue (`EnumNames::readsType()`), so a ternary of a
+wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
+`EnumNames::typeName()`, which its wrap spells as `AsEnum<typeof C>` with the tolki package on. The enum comes from the
+class a case or `from()` names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an
+attribute, and the receiver class for a value of a declared type (`ResolvesEnumPropertyArgTypes::heldEnum()`). `->value`
+and `->name` keep the enum's names through `EnumValueTypes`, except a case's own, which publish its literal.
+`LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the type it publishes as. An
+`AsEnumCollection` cast's `EnumResource::collection()` and a model's `{Model}Resource` column still miss the wrap
 ([known gaps](../known-gaps.md#two-reads-of-a-column-cast-to-an-overridden-enum-miss-its-asenumtypeof-x)).
 
 ### The inline wrap's own const token is aliased by the transformer, not here

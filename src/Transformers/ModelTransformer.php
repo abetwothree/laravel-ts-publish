@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -771,16 +771,16 @@ class ModelTransformer extends CoreTransformer
 
         $typed = array_values(array_filter(
             $wrapped,
-            static fn (string $fqcn): bool => ! in_array(ValueResult::enumTypeName($fqcn), $info['enumTypes'], true)
-                && TsTypeString::typeNameOccursIn(ValueResult::enumTypeName($fqcn), $type),
+            static fn (string $fqcn): bool => ! in_array(EnumNames::typeName($fqcn), $info['enumTypes'], true)
+                && TsTypeString::typeNameOccursIn(EnumNames::typeName($fqcn), $type),
         ));
 
         foreach ($typed as $fqcn) {
-            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
         }
 
         foreach ([...$consts, ...$typed] as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         return $typed;

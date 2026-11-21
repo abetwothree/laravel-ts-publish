@@ -9,19 +9,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
-use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
-use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -56,9 +54,6 @@ final class ValueResult
         'optional', 'absent', 'removed', 'unnamedKeys', 'listKeys', 'absentReadsNull', 'absentKeys', 'heldObject',
         'mayHoldObject', 'heldProp', 'returnsCallable', 'closedToDottedKeys', 'resolvedFqcn',
     ];
-
-    /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
-    private static array $enumNames = [];
 
     /**
      * The fallback result for an expression that resolves to no useful type.
@@ -134,7 +129,7 @@ final class ValueResult
 
         $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
 
-        if (count($enums) === 1 && self::enumTypeName($enums[0]) === $element) {
+        if (count($enums) === 1 && EnumNames::typeName($enums[0]) === $element) {
             $value['directEnumFqcn'] = $enums[0];
         }
 
@@ -599,74 +594,6 @@ final class ValueResult
         }
 
         return $union;
-    }
-
-    /**
-     * The name an enum's type is spelled with.
-     */
-    public static function enumTypeName(string $fqcn): string
-    {
-        return self::enumConstName($fqcn).'Type';
-    }
-
-    /**
-     * The name a backed enum's case-name union is spelled with: its published const name and `Kind`.
-     */
-    public static function enumKindName(string $fqcn): string
-    {
-        return self::enumConstName($fqcn).'Kind';
-    }
-
-    /**
-     * The name an enum's const is spelled with, as the enum's own file exports it, whatever #[TsType] it carries.
-     */
-    public static function enumConstName(string $fqcn): string
-    {
-        // On a memo hit too: each consumer's cache entry depends on the files the name is read from.
-        DependencyRecorder::recordClass($fqcn);
-
-        return self::$enumNames[$fqcn] ??= TsNaming::enumName($fqcn);
-    }
-
-    /**
-     * The names beside its type name that an enum's tokens are spelled with: a backed enum's `…Kind`.
-     *
-     * An import channel carries the enum behind each of these tokens too, so a queue reads them as the enum's own.
-     *
-     * @return list<string>
-     */
-    public static function enumSiblingNames(string $fqcn): array
-    {
-        return enum_exists($fqcn) && is_a($fqcn, BackedEnum::class, true) ? [self::enumKindName($fqcn)] : [];
-    }
-
-    /**
-     * Whether a result spells its enum's `…Type`, the name the AsEnum rewrite of a wrap of the enum replaces.
-     *
-     * @param  ValueExpressionResult  $result
-     */
-    public static function readsEnumType(array $result): bool
-    {
-        return isset($result['directEnumFqcn'])
-            && TsTypeString::typeNameOccursIn(self::enumTypeName($result['directEnumFqcn']), $result['type']);
-    }
-
-    /**
-     * Every name an enum's tokens are spelled with: its type name, then each sibling name.
-     *
-     * @return non-empty-list<string>
-     */
-    public static function enumNames(string $fqcn): array
-    {
-        return [self::enumTypeName($fqcn), ...self::enumSiblingNames($fqcn)];
-    }
-
-    /**
-     * Forget each enum's name, so a run reads every enum's `#[TsEnum]` afresh.
-     */
-    public static function forgetEnumNames(): void
-    {
-        self::$enumNames = [];
     }
 
     /**

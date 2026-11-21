@@ -10,10 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantUnions;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
@@ -364,7 +364,7 @@ class ResourceTransformer extends CoreTransformer
         $names = [
             ...array_values($this->resourceFqcnMap),
             ...array_values($this->modelFqcnMap),
-            ...array_merge([], ...array_map(ValueResult::enumNames(...), array_keys($this->enumFqcnMap))),
+            ...array_merge([], ...array_map(EnumNames::names(...), array_keys($this->enumFqcnMap))),
             ...array_values(array_intersect_key($this->enumConstMap, $consts)),
         ];
         // Two classes of one name are both aliased, so that name binds neither.
@@ -508,8 +508,8 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->directEnumFqcns as $propName => $fqcn) {
             if (! isset($this->enumFqcnMap[$fqcn])) {
-                $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
-                $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
+                $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
+                $this->enumConstMap[$fqcn] = EnumNames::constName($fqcn);
             }
             $this->propertyEnumFqcns[$propName] = $fqcn;
         }
@@ -540,7 +540,7 @@ class ResourceTransformer extends CoreTransformer
 
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
-                $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+                $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
             }
             $this->propertyInlineEnumResourceFqcns[$propName] = $fqcns;
         }
@@ -757,14 +757,14 @@ class ResourceTransformer extends CoreTransformer
             ]));
         }
 
-        $enumTypeName = ValueResult::enumTypeName(...);
+        $enumTypeName = EnumNames::typeName(...);
 
         foreach ($this->carriedInUse('enums', $this->enumFqcnMap, $attributed, $this->clauses(), $enumTypeName) as $fqcn => $typeName) {
             $this->enumFqcnMap[$fqcn] ??= $typeName;
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
-        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->clauses(), ValueResult::enumNames(...));
+        $this->enumFqcnMap = $this->keepSpelled($this->enumFqcnMap, $attributed, $this->clauses(), EnumNames::names(...));
 
         return $this;
     }

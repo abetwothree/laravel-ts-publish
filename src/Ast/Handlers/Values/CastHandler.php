@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -73,12 +74,12 @@ final class CastHandler implements ExpressionHandler
         $built = fn (string $arm): ?string => $this->builtObject($arm, $literalOperand);
 
         return ValueResult::gapTransparent($engine->resolve($operand), static function (array $result) use ($isObject, $built): ?array {
-            $enum = ! $isObject && ValueResult::readsEnumType($result) ? $result['directEnumFqcn'] ?? null : null;
+            $enum = ! $isObject && EnumNames::readsType($result) ? $result['directEnumFqcn'] ?? null : null;
             $arms = ArrayArms::arms($result['type'], static fn (string $arm): ?string => match (true) {
                 $arm === 'unknown' => null,
                 $arm === 'null' => TsTypeStringService::EMPTY_OBJECT,
                 $isObject => $arm,
-                $enum !== null && $arm === ValueResult::enumTypeName($enum) => '{ scalar: '.$arm.' }',
+                $enum !== null && $arm === EnumNames::typeName($enum) => '{ scalar: '.$arm.' }',
                 default => $built($arm),
             }, skipNull: false);
 

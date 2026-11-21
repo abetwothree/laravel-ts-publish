@@ -18,13 +18,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -553,7 +553,7 @@ class InertiaPageAnalyzer
             array_unique($candidates),
             // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
             fn (string $fqcn): bool => enum_exists($fqcn)
-                ? array_any(ValueResult::enumNames($fqcn), fn (string $name): bool => $this->typeSpells($pageType, $name))
+                ? array_any(EnumNames::names($fqcn), fn (string $name): bool => $this->typeSpells($pageType, $name))
                 : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
         ));
     }
@@ -568,7 +568,7 @@ class InertiaPageAnalyzer
         return array_values(array_filter(
             $analysis->allWrapConstFqcns(),
             fn (string $fqcn): bool => preg_match(
-                TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], TokenKind::WrapConst->anchor()),
+                TsTypeString::queuedTokenPattern([EnumNames::constName($fqcn)], TokenKind::WrapConst->anchor()),
                 $pageType,
             ) === 1,
         ));

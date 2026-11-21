@@ -13,13 +13,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
@@ -3364,7 +3364,7 @@ class LaravelTsPublish
 
             return $fqcns === [] || ($classTokens !== [] && count($fqcns) < count($queued))
                 ? []
-                : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))->take($info['type']);
+                : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), EnumNames::siblingNames(...))->take($info['type']);
         }
 
         $classes = array_values(array_unique(array_filter($classTokens)));
@@ -3374,7 +3374,7 @@ class LaravelTsPublish
         }
 
         // ClassTokenQueue cannot hold a null, so the class tokens read their slots and the enums their own queue.
-        $enums = new ClassTokenQueue($info['enumFqcns'], TokenSlots::typeName(...), ValueResult::enumSiblingNames(...));
+        $enums = new ClassTokenQueue($info['enumFqcns'], TokenSlots::typeName(...), EnumNames::siblingNames(...));
         $tokens = TokenSlots::declaredTokens($info['type'], $classTokens, TokenSlots::namesOf('classes', $info['enumFqcns']));
 
         return array_map(

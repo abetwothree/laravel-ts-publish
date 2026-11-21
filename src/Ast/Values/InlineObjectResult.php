@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
@@ -85,7 +86,7 @@ final class InlineObjectResult
         return ! array_any($nested, static fn (string $enum): bool => array_any(
             $held,
             static fn (string $other): bool => $other !== $enum
-                && ValueResult::enumTypeName($other) === ValueResult::enumTypeName($enum),
+                && EnumNames::typeName($other) === EnumNames::typeName($enum),
         ));
     }
 
@@ -230,7 +231,7 @@ final class InlineObjectResult
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
             fn (string $fqcn): bool => array_any(
-                ValueResult::enumNames($fqcn),
+                EnumNames::names($fqcn),
                 fn (string $name): bool => TsTypeString::typeNameOccursIn($name, $result['type']),
             ),
         ));

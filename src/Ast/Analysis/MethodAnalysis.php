@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Analysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
@@ -620,7 +621,7 @@ class MethodAnalysis
         $names = array_column($this->classSpellings($name), 1);
 
         foreach ([...$held, ...$this->wrappedEnumFqcns($name)] as $enum) {
-            array_push($names, ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum));
+            array_push($names, EnumNames::constName($enum), ...EnumNames::names($enum));
         }
 
         return array_values(array_unique($names));

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCase;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
@@ -196,7 +197,7 @@ final class EnumValueTypes
             $own = self::ownAliasLiterals($enum);
 
             // A name this enum spells but cannot use admits nothing, since a token of that name may be this enum's.
-            foreach (ValueResult::enumNames($enum) as $alias) {
+            foreach (EnumNames::names($enum) as $alias) {
                 $scalars = $own[$alias] ?? [];
                 $admitted[$alias] = array_key_exists($alias, $admitted)
                     ? self::sharedScalars($admitted[$alias], $scalars)
@@ -263,7 +264,7 @@ final class EnumValueTypes
         $spellings = $classes;
 
         foreach (array_unique($enums) as $enum) {
-            foreach ([ValueResult::enumConstName($enum), ...ValueResult::enumNames($enum)] as $name) {
+            foreach ([EnumNames::constName($enum), ...EnumNames::names($enum)] as $name) {
                 $spellings[] = [$enum, $name];
             }
         }
@@ -368,11 +369,11 @@ final class EnumValueTypes
         $literals = [];
 
         if (self::aliasUsable($cases, carriesImports: true, fromNames: false)) {
-            $literals[ValueResult::enumTypeName($enum)] = $cases['backed'] ? $cases['values'] : $cases['names'];
+            $literals[EnumNames::typeName($enum)] = $cases['backed'] ? $cases['values'] : $cases['names'];
         }
 
         if ($cases['backed'] && self::aliasUsable($cases, carriesImports: true, fromNames: true)) {
-            $literals[ValueResult::enumKindName($enum)] = $cases['names'];
+            $literals[EnumNames::kindName($enum)] = $cases['names'];
         }
 
         $override = LaravelTsPublish::retypedEnumType($enum);
@@ -409,7 +410,7 @@ final class EnumValueTypes
     private static function alias(string $enum, bool $kind): array
     {
         return [
-            ...self::typed($kind ? ValueResult::enumKindName($enum) : ValueResult::enumTypeName($enum)),
+            ...self::typed($kind ? EnumNames::kindName($enum) : EnumNames::typeName($enum)),
             'directEnumFqcn' => $enum,
             'sendsEnumScalar' => true,
         ];

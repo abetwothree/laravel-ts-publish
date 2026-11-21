@@ -10,10 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
@@ -453,7 +453,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->propertyConstFqcns[$name] = $fqcns;
 
         foreach ($fqcns as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
     }
 
@@ -463,7 +463,7 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function registerAnalysisFqcns(MethodAnalysis $analysis): void
     {
         foreach (AnalysisImports::enumTypeFqcns($analysis) as $fqcn) {
-            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+            $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
         }
 
         foreach ($analysis->modelFqcns as $fqcn) {
@@ -541,7 +541,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $modelNames = $this->ownNames($this->modelFqcnMap);
 
         foreach ($analysis->carried['enums'] ?? [] as $fqcn) {
-            $typeName = ValueResult::enumTypeName($fqcn);
+            $typeName = EnumNames::typeName($fqcn);
 
             if (CastChannels::spelledUnclaimed($typeName, $types, $enumNames, $this->tsExtends)) {
                 $this->enumFqcnMap[$fqcn] ??= $typeName;
