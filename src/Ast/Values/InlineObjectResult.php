@@ -12,7 +12,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\BuildsInlineObjectTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
-use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -132,8 +131,6 @@ final class InlineObjectResult
             return ['type' => 'Record<string, unknown>', 'optional' => false];
         }
 
-        $useTolki = EnumWrapSpelling::enabled();
-
         // Each spread resource intersects with the remaining explicit keys, minus whichever of its
         // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
         // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
@@ -162,21 +159,10 @@ final class InlineObjectResult
             $result['keepsKeys'] = true;
         }
 
-        // Propagate import metadata so FQCNs referenced inside the inline object reach the outer analysis.
-        // With Tolki enabled, enum resources need value imports (const) rather than type imports; direct
-        // enum accesses always need type imports.
-        if ($useTolki) {
-            // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
-            // occurrences of each bare enum name in the rendered type, so a real repeat must survive.
-            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, false);
-            // Never deduped either, for the same reason, on the wraps' const channel.
-            $embeddedEnumResourceFqcns = array_merge([], ...array_values($analysis->inlineEnumResourceFqcns));
-        } else {
-            // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports. Never
-            // deduped, same positional reasoning as the Tolki-on branch above.
-            $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, true);
-            $embeddedEnumResourceFqcns = [];
-        }
+        // Never deduped: aliasPropertyType() walks each queue positionally against the left-to-right occurrences of
+        // each name in the rendered type, so a real repeat must survive.
+        $embeddedEnumFqcns = $this->memberEnumFqcns($analysis);
+        $embeddedEnumResourceFqcns = array_merge([], ...array_values($analysis->inlineEnumResourceFqcns));
 
         // Spread arms lead the type, so their tokens lead each queue.
         $armFqcns = $this->spreadArmFqcns($spreadArms);
@@ -307,12 +293,11 @@ final class InlineObjectResult
      * spells them. An enum a member nests is on its own queue already, so the one keyed by its FQCN is not read again.
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
-     * order. With `$withWraps`, a member's `EnumResource` consts join its own enums for type imports. A wrap's enum
-     * rides its member's queue alone, as one printed without the tolki package is a token of that member.
+     * order. A wrap printed without the tolki package is a token of its member, so its enum rides that queue alone.
      *
      * @return list<class-string>
      */
-    private function memberEnumFqcns(MethodAnalysis $analysis, bool $withWraps): array
+    private function memberEnumFqcns(MethodAnalysis $analysis): array
     {
         $fqcns = [];
         $memberNames = array_unique(array_column($analysis->properties, 'name'));
@@ -324,7 +309,6 @@ final class InlineObjectResult
                 $fqcns,
                 ...($direct !== null ? [$direct] : []),
                 ...($analysis->inlineEnumFqcns[$memberName] ?? []),
-                ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
             );
         }
 

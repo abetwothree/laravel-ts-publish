@@ -138,7 +138,8 @@ test('joinInto() keeps two same-named enums as two arms, read or wrapped, each t
     'wrapped' => [true, 'AsEnum<typeof Status>', 'inlineEnumResourceFqcns'],
 ]);
 
-// A strict join's `unknown` stands for the branch it cannot type, so reading the key by class must not drop that branch.
+// A strict join's `unknown` stands for the branch it cannot type, so reading the key by class must not drop that
+// branch.
 test('joinInto() keeps a strict join\'s unknown beside two models of one name, and a dropping join reads them by class', function () {
     $branches = fn (): array => [joinBranch('User', User::class), joinBranch('unknown'), joinBranch('User', CrmUser::class)];
     $strict = new MethodAnalysis;

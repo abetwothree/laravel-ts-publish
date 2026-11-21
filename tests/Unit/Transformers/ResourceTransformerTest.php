@@ -5238,7 +5238,8 @@ describe('the enum consts a resource imports', function () {
             ->and($transformer->valueImports)->toBe(['../../../../../../workbench/app/enums' => ['Status as WorkbenchStatus']]);
     });
 
-    // A member's helper cast drops the wrap of the app `Status` from the text, so only the CRM `Status` is left to name.
+    // A member's helper cast drops the wrap of the app `Status` from the text, so only the CRM `Status` is left to
+    // name.
     test('a wrap a member\'s cast displaced reaches no outer const', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
 

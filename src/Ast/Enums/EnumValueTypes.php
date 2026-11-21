@@ -224,9 +224,9 @@ final class EnumValueTypes
     }
 
     /**
-     * A key's rules for leaving out redundant arms: aliasLiterals() over the enums it reads, and whether two arms spelled
-     * alike are one, which holds while it keeps no token queue, no name spells two of its classes and none is queued
-     * later.
+     * A key's rules for leaving out redundant arms: aliasLiterals() over the enums it reads, and whether two arms
+     * spelled alike are one, which holds while it keeps no token queue, no name spells two of its classes and none is
+     * queued later.
      *
      * @param  list<class-string>  $read  the enums it reads directly
      * @param  list<class-string>  $wrapped  the enums it wraps in an `EnumResource`

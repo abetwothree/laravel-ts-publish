@@ -17,6 +17,7 @@ use Closure;
  * holds both records which of those tokens is whose (`alikeClassFqcns`), and the alias passes read that record.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type TokenSpelling from ClassTokenQueue
  *
  * @phpstan-type TokenQueues = array<value-of<TokenKind>, ClassTokenQueue>
  * @phpstan-type TokenMark = array{TokenKind, class-string}
@@ -545,7 +546,7 @@ final class ClassIdentity
      * Each class of a kind's list beside the name its token is spelled with.
      *
      * @param  list<class-string>  $fqcns
-     * @return list<array{class-string, string}>
+     * @return list<TokenSpelling>
      */
     private static function named(TokenKind $kind, array $fqcns): array
     {
@@ -555,7 +556,7 @@ final class ClassIdentity
     /**
      * Whether two different classes of the list are spelled with one name.
      *
-     * @param  list<array{class-string, string}>  $named  each class beside the name its token is spelled with
+     * @param  list<TokenSpelling>  $named  each class beside the name its token is spelled with
      */
     private static function sharesAName(array $named): bool
     {

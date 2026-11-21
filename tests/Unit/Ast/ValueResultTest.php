@@ -281,7 +281,8 @@ describe('ValueResult::arrayWrapType()', function () {
     ]);
 });
 
-// GH-76: a keyed list spells its element twice, so each per-token queue reads twice and the Record arm keeps its classes.
+// GH-76: a keyed list spells its element twice, so each per-token queue reads twice and the Record arm keeps its
+// classes.
 describe('ValueResult::keyedList()', function () {
     test('reads each per-token queue twice, a single channel leading each copy, and leaves a single class as it is', function () {
         $pair = ValueResult::keyedList([
