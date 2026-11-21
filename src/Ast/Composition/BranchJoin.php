@@ -112,7 +112,7 @@ final class BranchJoin
         /** @var array<array-key, Slots> $slots */
         $slots = [];
         $unalike = [];
-        /** @var array<array-key, ValueExpressionResult> $apart each key whose branches print two classes alike: their union */
+        /** @var array<array-key, ValueExpressionResult> $apart each key whose branches print two classes alike */
         $apart = [];
 
         foreach ($propertyMap as $name => $entries) {

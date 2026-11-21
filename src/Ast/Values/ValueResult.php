@@ -163,7 +163,7 @@ final class ValueResult
     }
 
     /**
-     * A result retyped by a text spelling its type's tokens twice over, as `X[] | Record<string, X>` spells `X[]`'s: each
+     * A result retyped by a text spelling its type's tokens twice, as `X[] | Record<string, X>` spells `X[]`'s: each
      * queue of the classes behind its tokens reads twice, or the second copy would take the last class of each name.
      *
      * @param  ValueExpressionResult  $result
