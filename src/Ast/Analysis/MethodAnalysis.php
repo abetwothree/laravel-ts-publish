@@ -8,7 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;

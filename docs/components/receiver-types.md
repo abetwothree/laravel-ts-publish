@@ -619,7 +619,7 @@ These pages cover the neighbors of receiver resolution:
 
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
-[`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
+[`EnumValueTypes`]: ../../src/Ast/Enums/EnumValueTypes.php
 [`InstanceofNarrowing`]: ../../src/Ast/Receivers/InstanceofNarrowing.php
 [`LoadedRelations`]: ../../src/Ast/Receivers/LoadedRelations.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php

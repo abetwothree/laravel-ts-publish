@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Collectors\EnumsCollector;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;

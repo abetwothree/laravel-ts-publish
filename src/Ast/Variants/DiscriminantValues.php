@@ -6,7 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;

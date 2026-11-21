@@ -1159,7 +1159,7 @@ These pages cover the engine's neighbors:
 [`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
-[`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Values/EnumValueTypes.php
+[`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Enums/EnumValueTypes.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
