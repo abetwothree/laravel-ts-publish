@@ -77,10 +77,15 @@ to `classFqcns`.
 
 Two more builders write one queue entry per token. `ValueResult::unionResults()` reads a union by class, one member per
 class, when its arms spell one name for two classes, and keeps the merge by text when an arm queues a name for two
-classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineObjectResult::memberFqcns()`
+classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineObjectResult::memberClasses()`
 queues each member of an inline array through `ClassTokenQueue::perToken()`, as `mergeTypeScriptInfos()` does for each
 decorated arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a
 resource do not both queue, so `User[] | Record<string, User>` queues its class twice.
+
+A model and a resource can print one name, as `Address` and `AddressResource` do. Each kind's channel keeps its own
+tokens' order only, so a union or an inline object holding both records which of those tokens is whose
+(`alikeClassFqcns`), and `ClassIdentity::queueByToken()` reorders a key's queue by that record wherever it still lines
+up with the channels. Where no record lines up, the queue stays as it came.
 
 Callers fill their queues in one of three ways:
 

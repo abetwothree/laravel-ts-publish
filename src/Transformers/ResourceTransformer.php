@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\JsonApiResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ModelClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantUnions;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExtends;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsIntersect;
@@ -156,6 +157,14 @@ class ResourceTransformer extends CoreTransformer
      * @var array<array-key, list<class-string>>
      */
     protected array $propertyInlineResourceFqcns = [];
+
+    /**
+     * Property name => the model or resource behind each token of a name a model and a resource both print, in print
+     * order, which ClassIdentity::queueByToken() reads beside the key's queues.
+     *
+     * @var array<array-key, list<class-string>>
+     */
+    protected array $propertyAlikeClassFqcns = [];
 
     /**
      * Property name => the enum behind each `typeof` const the key's wraps write, one per token in type order, at any
@@ -542,6 +551,8 @@ class ResourceTransformer extends CoreTransformer
         foreach ($analysis->inlineResourceFqcns as $propName => $fqcns) {
             $this->propertyInlineResourceFqcns[$propName] = $fqcns;
         }
+
+        $this->propertyAlikeClassFqcns = $analysis->alikeClassFqcns;
 
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             foreach ($fqcns as $fqcn) {
@@ -1245,6 +1256,8 @@ class ResourceTransformer extends CoreTransformer
      * FQCN queue: a property in more than one map gets each map's entries concatenated, so its length can
      * exceed real occurrences; aliasPropertyType() consumes only the matching prefix — never dedupe it.
      *
+     * A name a model and a resource both print reads the key's record of its tokens (ClassIdentity::queueByToken()).
+     *
      * @return array<array-key, list<class-string>>
      */
     protected function mergePropertyFqcnMaps(): array
@@ -1258,7 +1271,6 @@ class ResourceTransformer extends CoreTransformer
             }
         }
 
-        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([
             $this->propertyModelFqcnsList,
             $this->propertyEnumFqcnsList,
@@ -1269,6 +1281,10 @@ class ResourceTransformer extends CoreTransformer
             foreach ($map as $propName => $propFqcns) {
                 $merged[$propName] = [...($merged[$propName] ?? []), ...$propFqcns];
             }
+        }
+
+        foreach ($this->propertyAlikeClassFqcns as $propName => $alike) {
+            $merged[$propName] = ClassIdentity::queueByToken($merged[$propName] ?? [], $alike);
         }
 
         return $merged;

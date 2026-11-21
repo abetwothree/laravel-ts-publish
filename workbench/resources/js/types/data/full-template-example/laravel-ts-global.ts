@@ -6728,8 +6728,8 @@ declare global {
          * as the two arms of a ternary. Each value keeps its own class's alias.
          */
         export interface AddressKindsResource {
-            data: { address: app.models.Address | null; raw: app.http.resources.Address | null };
-            either: app.models.Address | null;
+            data: { address: app.http.resources.Address | null; raw: app.models.Address | null };
+            either: app.models.Address | app.http.resources.Address | null;
         }
     }
     export namespace blog.http.resources {

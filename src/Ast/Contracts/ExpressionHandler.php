@@ -34,6 +34,7 @@ use PhpParser\Node\Expr;
  *      embeddedEnumResourceFqcns?: list<class-string>,
  *      embeddedModelFqcns?: list<class-string>,
  *      embeddedResourceFqcns?: list<class-string>,
+ *      alikeClassFqcns?: list<class-string>,
  *      wrappedEnumFqcns?: list<class-string>,
  *      customImports?: TypesImportMap,
  *      carriedFqcns?: CarriedMap,
@@ -60,6 +61,7 @@ use PhpParser\Node\Expr;
  *      embeddedEnumResourceFqcns?: list<class-string>,
  *      embeddedModelFqcns?: list<class-string>,
  *      embeddedResourceFqcns?: list<class-string>,
+ *      alikeClassFqcns?: list<class-string>,
  *      wrappedEnumFqcns?: list<class-string>,
  *      customImports?: TypesImportMap,
  *      carriedFqcns?: CarriedMap
@@ -68,6 +70,9 @@ use PhpParser\Node\Expr;
  * `directEnumFqcn` says the value holds this enum, and its type may spell the enum's override instead of its
  * `…Type`, so test EnumNames::readsType() before treating the enum's name as spelled. `resolvedFqcn` says the
  * value is the keys that resource's `resolve()` returns, typed as Inertia sends them, so a spread takes its keys.
+ *
+ * `alikeClassFqcns` lists the model or resource behind each token of a name a model and a resource both print, in
+ * print order: their own channels each keep one kind's order, so only this says which of those tokens is whose.
  *
  * `wrappedEnumFqcns` is the set of enums the value wraps in an `EnumResource`, at any depth, in first-seen order, read
  * as no token: a wrap's const rides `embeddedEnumResourceFqcns`, or its value type `embeddedEnumFqcns` without the

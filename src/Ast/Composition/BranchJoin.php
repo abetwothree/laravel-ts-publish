@@ -102,6 +102,8 @@ final class BranchJoin
         /** @var array<array-key, Slots> $slots */
         $slots = [];
         $unalike = [];
+        /** @var array<array-key, list<class-string>> $alike each key kept apart: its union's record of alike tokens */
+        $alike = [];
 
         foreach ($propertyMap as $name => $entries) {
             if ($keepsFirstUntyped && $entries[0]['type'] === 'unknown') {
@@ -125,8 +127,10 @@ final class BranchJoin
 
             // Text alone unions two same-named classes into one token; queueSplitClasses() queues both in branch order.
             if ($keepsClassesApart && $bound && self::spellsClassesAlike($classed[$name])) {
-                $type = ValueResult::unionResults($classed[$name])['type'];
+                $union = ValueResult::unionResults($classed[$name]);
+                $type = $union['type'];
                 $bodyType = $type;
+                $alike[$name] = $union['alikeClassFqcns'] ?? [];
             }
 
             if ($keySlots !== []) {
@@ -178,6 +182,10 @@ final class BranchJoin
         $target->inlineEnumFqcns = $channels->inlineEnumFqcns;
         $target->inlineModelFqcns = $channels->inlineModelFqcns;
         $target->inlineResourceFqcns = $channels->inlineResourceFqcns;
+        $target->alikeClassFqcns = array_filter(
+            array_replace($channels->alikeClassFqcns, $alike),
+            static fn (array $fqcns): bool => $fqcns !== [],
+        );
         $target->inlineEnumResourceFqcns = $channels->inlineEnumResourceFqcns;
         $target->wrappedEnums = $channels->wrappedEnums;
         $target->casts = self::castsEveryBranchAgrees($analyses, array_keys($propertyMap));
@@ -404,30 +412,31 @@ final class BranchJoin
             ...(isset($analysis->nestedResources[$name]) ? ['resourceFqcn' => $analysis->nestedResources[$name]] : []),
             ...(($analysis->inlineModelFqcns[$name] ?? []) !== [] ? ['embeddedModelFqcns' => $analysis->inlineModelFqcns[$name]] : []),
             ...(($analysis->inlineResourceFqcns[$name] ?? []) !== [] ? ['embeddedResourceFqcns' => $analysis->inlineResourceFqcns[$name]] : []),
+            ...(($analysis->alikeClassFqcns[$name] ?? []) !== [] ? ['alikeClassFqcns' => $analysis->alikeClassFqcns[$name]] : []),
         ];
     }
 
     /**
-     * Whether a key's branch values spell two different models, or two different resources, with one name.
+     * Whether a key's branch values spell two different models or resources with one name, a model's and a resource's
+     * included.
      *
      * @param  list<ValueExpressionResult>  $values
      */
     private static function spellsClassesAlike(array $values): bool
     {
-        $models = [];
-        $resources = [];
+        $classes = [];
 
         foreach ($values as $value) {
             foreach ([...isset($value['modelFqcn']) ? [$value['modelFqcn']] : [], ...$value['embeddedModelFqcns'] ?? []] as $fqcn) {
-                $models[class_basename($fqcn)][$fqcn] = true;
+                $classes[class_basename($fqcn)][$fqcn] = true;
             }
 
             foreach ([...isset($value['resourceFqcn']) ? [$value['resourceFqcn']] : [], ...$value['embeddedResourceFqcns'] ?? []] as $fqcn) {
-                $resources[TsNaming::resourceTypeName($fqcn)][$fqcn] = true;
+                $classes[TsNaming::resourceTypeName($fqcn)][$fqcn] = true;
             }
         }
 
-        return array_any([...$models, ...$resources], static fn (array $fqcns): bool => count($fqcns) > 1);
+        return array_any($classes, static fn (array $fqcns): bool => count($fqcns) > 1);
     }
 
     /**

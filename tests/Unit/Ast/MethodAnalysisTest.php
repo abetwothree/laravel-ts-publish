@@ -374,6 +374,7 @@ it('takes over every field of another analysis, both flags included', function (
     $source->holdsUnreadKeys = true;
     $source->holdsUnnamedKeys = true;
     $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
+    $source->alikeClassFqcns = ['a' => ['App\\R', 'App\\M']];
     $source->heldObjectKeys = ['a' => true];
     $source->closedToDottedKeys = ['a' => true];
     $source->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
@@ -689,7 +690,7 @@ it('moves every per-key map with its key, through every method that moves, slice
     // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
     $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
 
-    expect($maps)->toHaveCount(12);
+    expect($maps)->toHaveCount(13);
 
     foreach ($maps as $map) {
         expect($slice->{$map})->toBe(['k' => ['K']], $map)

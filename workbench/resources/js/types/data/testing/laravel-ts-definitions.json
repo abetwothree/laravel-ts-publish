@@ -20889,12 +20889,12 @@
             "properties": [
                 {
                     "name": "data",
-                    "type": "{ address: WorkbenchAddress2 | null; raw: WorkbenchAddress | null }",
+                    "type": "{ address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null }",
                     "optional": false
                 },
                 {
                     "name": "either",
-                    "type": "WorkbenchAddress2 | null",
+                    "type": "WorkbenchAddress2 | WorkbenchAddress | null",
                     "optional": false
                 }
             ]

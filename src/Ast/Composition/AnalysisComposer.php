@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -359,7 +360,8 @@ final class AnalysisComposer
      *
      * A property in more than one map gets each map's entries concatenated, so the queue can be
      * longer than the type's real occurrences; aliasPropertyType() consumes only the matching
-     * prefix, which is also why a repeat must survive as a repeat.
+     * prefix, which is also why a repeat must survive as a repeat. A name a model and a resource
+     * both print reads the key's record of its tokens (ClassIdentity::queueByToken()).
      *
      * @return array<array-key, list<class-string>>
      */
@@ -374,11 +376,14 @@ final class AnalysisComposer
             }
         }
 
-        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $propName => $fqcns) {
                 $queues[$propName] = [...($queues[$propName] ?? []), ...$fqcns];
             }
+        }
+
+        foreach ($analysis->alikeClassFqcns as $propName => $alike) {
+            $queues[$propName] = ClassIdentity::queueByToken($queues[$propName] ?? [], $alike);
         }
 
         return $queues;

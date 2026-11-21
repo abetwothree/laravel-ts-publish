@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\OverrideUnionShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\RenamedResourceShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AliasedShareMiddleware;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastOverInheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastUnreadChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAddressKinds;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableHelperArguments;
@@ -535,6 +537,24 @@ test('a shared resource value publishes what Inertia sends', function () {
             './workbench/app/http/resources' => ['PostCollection', 'UserResource', 'WarehouseResource'],
             '@tolki/types' => ['AnonymousResourceCollection'],
         ]);
+});
+
+// GH-76: AddressResource publishes as `Address`, so each token must name the class its value holds.
+test('shared data gives a model and a resource published under one name each its own alias, token by token', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithAddressKinds::class);
+    $imports = $result['typeImports'] ?? [];
+    $local = static function (string $path) use ($imports): string {
+        expect($imports[$path] ?? [])->toHaveCount(1);
+
+        return ImportMaps::localName($imports[$path][0]);
+    };
+    $resource = $local('./workbench/app/http/resources');
+    $model = $local('./workbench/app/models');
+
+    expect($resource)->not->toBe($model)
+        ->and($result['sharedPageProps'] ?? null)->toBe(
+            "{ pair: { address: { data: {$resource} }; raw: {$model} }, either: { data: {$resource} } | {$model} }"
+        );
 });
 
 test('a shared resource value publishes bare after JsonResource::withoutWrapping()', function () {

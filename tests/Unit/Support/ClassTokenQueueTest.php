@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
@@ -143,6 +144,22 @@ it('reads the name after `typeof` only under that anchor, and every other name o
         ->and($consts->take('StatusType | Status'))->toBe([])
         ->and($types->take('AsEnum<typeof Status>'))->toBe([])
         ->and($types->take('StatusType | Status'))->toBe([Status::class]);
+});
+
+it('reads every token but hands out only the classes it is given, so two queues over one list split its tokens', function () {
+    $nameOf = static fn (string $fqcn): string => $fqcn === Address::class ? 'Address' : TsNaming::resourceTypeName($fqcn);
+    $queue = static fn (string $kept): ClassTokenQueue => new ClassTokenQueue(
+        [AddressResource::class, Address::class],
+        $nameOf,
+        hands: static fn (string $fqcn): bool => $fqcn === $kept,
+    );
+    [$models, $resources] = [$queue(Address::class), $queue(AddressResource::class)];
+    $spell = static fn (string $fqcn): string => $fqcn === Address::class ? 'Model' : 'Resource';
+
+    expect([$models->take('{ address: Address'), $resources->take('{ address: Address')])->toBe([[], [AddressResource::class]])
+        ->and([$models->take('; raw: Address }'), $resources->take('; raw: Address }')])->toBe([[Address::class], []])
+        ->and($queue(Address::class)->rewrite('Address | Address', $spell))->toBe('Address | Model')
+        ->and($queue(AddressResource::class)->rewrite('Address | Address', $spell))->toBe('Resource | Address');
 });
 
 it('outruns its tokens just as well when the resource naming closure names its classes', function () {

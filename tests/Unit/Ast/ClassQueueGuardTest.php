@@ -23,12 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard\Publish
  */
 function classQueueGuardPending(): array
 {
-    return [
-        // A model and a resource printed alike are never told apart by class, so they fold or their aliases swap.
-        'Task 9' => [
-            [ArmKind::AddressModel, ArmKind::AddressResource],
-        ],
-    ];
+    return [];
 }
 
 /**
@@ -203,14 +198,14 @@ afterEach(function () {
 test('each token a union publishes names the class its arm holds', $guard)
     ->with(classQueueGuardFamilies(null));
 
-test('each token of a union of a model and a resource of one name names its arm\'s class', $guard)
-    ->with(classQueueGuardFamilies('Task 9'))
-    ->todo('Task 9');
-
 // A family a task fixed must leave the pending list, or its rows would stay todo while they pass.
-test('each family a task is still pending on fails one of its bodies', function (ArmKind $first, ArmKind $second) {
+test('each family a task is still pending on fails one of its bodies', function (?ArmKind $first, ?ArmKind $second) {
+    if ($first === null || $second === null) {
+        $this->markTestSkipped('No task is pending on a family.');
+    }
+
     $cases = GuardCases::of($first, $second, classQueueGuardSetting('GUARD_SEED', 160), classQueueGuardSetting('GUARD_CASES', 120));
 
     expect(array_any($cases, fn (GuardCase $case): bool => classQueueGuardMismatch($case, $this->guardFiles) !== null))
         ->toBeTrue("No body of {$first->value} × {$second->value} fails: move it out of classQueueGuardPending().");
-})->with(classQueueGuardPendingFamilies());
+})->with(classQueueGuardPendingFamilies() ?: ['no family is pending' => [null, null]]);

@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AlikeArmsOfSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AlikeArmsResource;
@@ -265,6 +266,7 @@ use Workbench\App\Http\Resources\RedundantArmsResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
+use Workbench\App\Http\Resources\SameNamed\AddressKindsResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
 use Workbench\App\Http\Resources\StatsSummaryResource;
 use Workbench\App\Http\Resources\StockroomExceptResource;
@@ -1676,6 +1678,22 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($data->properties['admin']['type'])->toBe('ModelsUser');
         expect($data->properties['customer_resource']['type'])->toBe('CrmUserResource');
         expect($data->properties['admin_resource']['type'])->toBe('ResourcesUserResource');
+    });
+
+    // GH-76: AddressResource publishes as `Address`, so each token must name the class its value holds.
+    test('gives a model and a resource published under one name each its own alias, token by token', function () {
+        $data = new ResourceTransformer(AddressKindsResource::class)->data();
+        $local = static function (string $path) use ($data): string {
+            expect($data->typeImports[$path] ?? [])->toHaveCount(1);
+
+            return ImportMaps::localName($data->typeImports[$path][0]);
+        };
+        $resource = $local('..');
+        $model = $local('../../../models');
+
+        expect($resource)->not->toBe($model)
+            ->and($data->properties['data']['type'])->toBe("{ address: {$resource} | null; raw: {$model} | null }")
+            ->and($data->properties['either']['type'])->toBe("{$model} | {$resource} | null");
     });
 
     test('aliases both same-named consts wrapped again inside one inline object', function () {

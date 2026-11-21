@@ -19,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
-use Closure;
 
 /**
  * An analysis as the inline object type it publishes, intersected with the arms its spreads add, carrying the import
@@ -38,10 +37,17 @@ use Closure;
  * @phpstan-type SpreadArmFqcns = array{
  *      models: list<class-string>,
  *      resources: list<class-string>,
+ *      classes: list<class-string>,
+ *      ordered: bool,
  *      enums: list<class-string>,
  *      wrapConsts: list<class-string>,
  * }
- * @phpstan-type MemberNames = array<string, list<string>>
+ * @phpstan-type MemberClasses = array{
+ *      models: list<class-string>,
+ *      resources: list<class-string>,
+ *      classes: list<class-string>,
+ *      ordered: bool,
+ * }
  *
  * @internal
  */
@@ -209,22 +215,11 @@ final class InlineObjectResult
         $embeddedEnumFqcns = [...$armFqcns['enums'], ...$embeddedEnumFqcns];
         $embeddedEnumResourceFqcns = [...$armFqcns['wrapConsts'], ...$embeddedEnumResourceFqcns];
 
-        $resourceNameOf = static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn);
-        $sharedNames = $this->sharedNames($analysis, $resourceNameOf);
-
         // Spread arms lead the type, then each key once, at its first position, with every occurrence kept: the
         // self-keyed $analysis->modelFqcns map collapses repeated FQCNs onto one key, dropping a multi-FQCN accessor
         // member's own arms.
-        $embeddedModelFqcns = [
-            ...$armFqcns['models'],
-            ...$this->memberFqcns(
-                $analysis,
-                $analysis->inlineModelFqcns,
-                $analysis->modelFqcns,
-                class_basename(...),
-                $sharedNames,
-            ),
-        ];
+        $memberClasses = $this->memberClasses($analysis);
+        $embeddedModelFqcns = [...$armFqcns['models'], ...$memberClasses['models']];
 
         // An enum none of whose names occurs in the final type must not claim an import the transformer would then emit
         // unused; a `…Kind` is one of them.
@@ -266,19 +261,22 @@ final class InlineObjectResult
         // Nested resources are tracked separately so they merge into resource imports, not model imports. One entry
         // per resource token, in the order the type spells them: spread arms lead the type, then each member, and a
         // member whose own union names two resources carries both. Never deduped, as for the models above.
-        $embeddedResourceFqcns = [
-            ...$armFqcns['resources'],
-            ...$this->memberFqcns(
-                $analysis,
-                $analysis->inlineResourceFqcns,
-                $analysis->nestedResources,
-                $resourceNameOf,
-                $sharedNames,
-            ),
-        ];
+        $embeddedResourceFqcns = [...$armFqcns['resources'], ...$memberClasses['resources']];
 
         if ($embeddedResourceFqcns !== []) {
             $result['embeddedResourceFqcns'] = $embeddedResourceFqcns;
+        }
+
+        // A member or arm that holds a model and a resource of one name without saying whose each token is leaves the
+        // object's order unknown too.
+        $alike = $armFqcns['ordered'] && $memberClasses['ordered'] ? ClassIdentity::alikeRecord(
+            $embeddedModelFqcns,
+            $embeddedResourceFqcns,
+            [...$armFqcns['classes'], ...$memberClasses['classes']],
+        ) : [];
+
+        if ($alike !== []) {
+            $result['alikeClassFqcns'] = $alike;
         }
 
         foreach ($spreadArms as $arm) {
@@ -306,35 +304,34 @@ final class InlineObjectResult
     }
 
     /**
-     * The class behind each token of the members' types, in the order the inline object type spells them.
+     * The model and the resource behind each token of the members' types, in the order the inline object type spells
+     * them: per kind, and as one queue in token order across the two (ClassIdentity::queueByToken()).
      *
      * That type keeps a key declared twice at its first position with its last value, so each key is walked once: a
      * second row for it would queue the same classes again and push every later token onto the wrong alias.
      *
-     * @param  InlineModelFqcnsMap|InlineResourceFqcnsMap  $queues  member name => the class behind each of its tokens
-     * @param  ClassMapType  $singles  member name => the one class its type names, for a member without a queue
-     * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
-     * @param  MemberNames  $sharedNames  member name => the names it queues on both channels
-     * @return list<class-string>
+     * @return MemberClasses
      */
-    private function memberFqcns(
-        MethodAnalysis $analysis,
-        array $queues,
-        array $singles,
-        Closure $nameOf,
-        array $sharedNames,
-    ): array {
-        $fqcns = [];
+    private function memberClasses(MethodAnalysis $analysis): array
+    {
+        $classes = ['models' => [], 'resources' => [], 'classes' => [], 'ordered' => true];
         $types = array_column($analysis->properties, 'type', 'name');
 
         foreach (array_unique(array_column($analysis->properties, 'name')) as $memberName) {
-            $queue = $this->memberQueue($memberName, $queues, $singles);
-            $shared = $sharedNames[$memberName] ?? [];
+            $models = $this->memberQueue($memberName, $analysis->inlineModelFqcns, $analysis->modelFqcns);
+            $resources = $this->memberQueue($memberName, $analysis->inlineResourceFqcns, $analysis->nestedResources);
+            $shared = $this->sharedNames($models, $resources);
+            $models = ClassTokenQueue::perToken($models, $types[$memberName], TokenKind::Model->nameOf(...), $shared);
+            $resources = ClassTokenQueue::perToken($resources, $types[$memberName], TokenKind::Resource->nameOf(...), $shared);
+            $alike = $analysis->alikeClassFqcns[$memberName] ?? [];
 
-            array_push($fqcns, ...ClassTokenQueue::perToken($queue, $types[$memberName], $nameOf, $shared));
+            array_push($classes['models'], ...$models);
+            array_push($classes['resources'], ...$resources);
+            array_push($classes['classes'], ...ClassIdentity::queueByToken([...$models, ...$resources], $alike));
+            $classes['ordered'] = $classes['ordered'] && ClassIdentity::ordersAlike([...$models, ...$resources], $alike);
         }
 
-        return $fqcns;
+        return $classes;
     }
 
     /**
@@ -375,28 +372,21 @@ final class InlineObjectResult
     }
 
     /**
-     * The names each member queues on both channels, a class on each: a model and a resource under one name.
+     * The names a member queues on both channels, a class on each: a model and a resource under one name.
      *
-     * Both queues are merged for aliasing, models first, so a name queued on both is left as it came on both.
+     * The member's record of those tokens says which is whose only while each channel keeps the entries it came with,
+     * so both are left as they came.
      *
-     * @param  Closure(class-string): string  $resourceNameOf
-     * @return MemberNames
+     * @param  list<class-string>  $models
+     * @param  list<class-string>  $resources
+     * @return list<string>
      */
-    private function sharedNames(MethodAnalysis $analysis, Closure $resourceNameOf): array
+    private function sharedNames(array $models, array $resources): array
     {
-        $shared = [];
-
-        foreach (array_unique(array_column($analysis->properties, 'name')) as $memberName) {
-            $models = $this->memberQueue($memberName, $analysis->inlineModelFqcns, $analysis->modelFqcns);
-            $resources = $this->memberQueue($memberName, $analysis->inlineResourceFqcns, $analysis->nestedResources);
-
-            $shared[$memberName] = array_values(array_intersect(
-                array_map(class_basename(...), $models),
-                array_map($resourceNameOf, $resources),
-            ));
-        }
-
-        return $shared;
+        return array_values(array_intersect(
+            array_map(TokenKind::Model->nameOf(...), $models),
+            array_map(TokenKind::Resource->nameOf(...), $resources),
+        ));
     }
 
     /**
@@ -458,19 +448,25 @@ final class InlineObjectResult
      */
     private function spreadArmFqcns(array $spreadArms): array
     {
-        $fqcns = ['models' => [], 'resources' => [], 'enums' => [], 'wrapConsts' => []];
+        $fqcns = ['models' => [], 'resources' => [], 'classes' => [], 'ordered' => true, 'enums' => [], 'wrapConsts' => []];
 
         foreach ($spreadArms as $arm) {
             if (! isset($arm['result'])) {
                 $fqcns[$arm['isModel'] ? 'models' : 'resources'][] = $arm['fqcn'];
+                $fqcns['classes'][] = $arm['fqcn'];
 
                 continue;
             }
 
             $result = $arm['result'];
+            $models = self::channelFqcns($result['modelFqcn'] ?? null, $result['embeddedModelFqcns'] ?? []);
+            $resources = self::channelFqcns($result['resourceFqcn'] ?? null, $result['embeddedResourceFqcns'] ?? []);
+            $alike = $result['alikeClassFqcns'] ?? [];
 
-            array_push($fqcns['models'], ...self::channelFqcns($result['modelFqcn'] ?? null, $result['embeddedModelFqcns'] ?? []));
-            array_push($fqcns['resources'], ...self::channelFqcns($result['resourceFqcn'] ?? null, $result['embeddedResourceFqcns'] ?? []));
+            array_push($fqcns['models'], ...$models);
+            array_push($fqcns['resources'], ...$resources);
+            array_push($fqcns['classes'], ...ClassIdentity::queueByToken([...$models, ...$resources], $alike));
+            $fqcns['ordered'] = $fqcns['ordered'] && ClassIdentity::ordersAlike([...$models, ...$resources], $alike);
             array_push($fqcns['enums'], ...self::channelFqcns($result['directEnumFqcn'] ?? null, $result['embeddedEnumFqcns'] ?? []));
             array_push($fqcns['wrapConsts'], ...($result['embeddedEnumResourceFqcns'] ?? []));
         }

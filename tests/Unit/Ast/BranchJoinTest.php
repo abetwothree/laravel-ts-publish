@@ -10,6 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr\Variable;
+use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -98,6 +100,16 @@ test('joinInto() keeps two models one name spells as two arms, each queued, only
     expect(array_column($apart->properties, 'type'))->toBe(['User | User'])
         ->and($apart->inlineModelFqcns)->toBe(['k' => [User::class, CrmUser::class]])
         ->and(array_column($folded->properties, 'type'))->toBe(['User']);
+});
+
+test('joinInto() keeps a model and a resource one name spells as two arms, each token read as its own class', function () {
+    $resource = new MethodAnalysis;
+    $resource->addProperty('k', ['type' => 'Address', 'optional' => false, 'resourceFqcn' => AddressResource::class]);
+    $apart = new MethodAnalysis;
+    BranchJoin::joinInto($apart, [$resource, joinBranch('Address', Address::class)], keepsClassesApart: true);
+
+    expect(array_column($apart->properties, 'type'))->toBe(['Address | Address'])
+        ->and($apart->classFqcns('k'))->toBe([AddressResource::class, Address::class]);
 });
 
 test('a join decides which branches count on their gap-free text, the lone `null` included, and keeps each gap', function () {

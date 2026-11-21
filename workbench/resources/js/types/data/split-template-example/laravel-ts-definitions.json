@@ -20889,12 +20889,12 @@
             "properties": [
                 {
                     "name": "data",
-                    "type": "{ address: ModelsAddress | null; raw: ResourcesAddress | null }",
+                    "type": "{ address: ResourcesAddress | null; raw: ModelsAddress | null }",
                     "optional": false
                 },
                 {
                     "name": "either",
-                    "type": "ModelsAddress | null",
+                    "type": "ModelsAddress | ResourcesAddress | null",
                     "optional": false
                 }
             ]

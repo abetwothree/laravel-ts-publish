@@ -11,6 +11,7 @@ use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Grade;
 use Workbench\App\Models\User;
@@ -89,6 +90,20 @@ describe('ClassIdentity::queues()', function () {
             ->and($queues['consts']->take($result['type']))->toBe([Status::class, Visibility::class]);
     });
 
+    test('reads a model and a resource that print one name in their record\'s order, each queue keeping its own', function () {
+        $queues = ClassIdentity::queues([
+            'type' => '{ address: Address; raw: Address }',
+            'optional' => false,
+            'embeddedModelFqcns' => [Address::class],
+            'embeddedResourceFqcns' => [AddressResource::class],
+            'alikeClassFqcns' => [AddressResource::class, Address::class],
+        ]);
+        $taken = static fn (string $piece): array => [$queues['models']->take($piece), $queues['resources']->take($piece)];
+
+        expect($taken('{ address: Address'))->toBe([[], [AddressResource::class]])
+            ->and($taken('; raw: Address }'))->toBe([[Address::class], []]);
+    });
+
     test('reads a name after `typeof` as a const, and the same name bare as a model', function () {
         $type = 'AsEnum<typeof Grade> | Grade';
         $queues = ClassIdentity::queues([
@@ -157,7 +172,58 @@ describe('ClassIdentity::spellsTwoClassesAlike()', function () {
             ],
             true,
         ],
+        'a model and a resource published under its name' => [
+            [
+                ['type' => 'Address | null', 'optional' => false, 'resourceFqcn' => AddressResource::class],
+                ['type' => 'Address | null', 'optional' => false, 'modelFqcn' => Address::class],
+            ],
+            true,
+        ],
+        'a model and a resource under a name of its own' => [
+            [
+                ['type' => 'User', 'optional' => false, 'modelFqcn' => User::class],
+                ['type' => 'UserResource', 'optional' => false, 'resourceFqcn' => UserResource::class],
+            ],
+            false,
+        ],
     ]);
+});
+
+describe('ClassIdentity::queueByToken()', function () {
+    test('reads a name a model and a resource both print in the order its record gives', function () {
+        expect(ClassIdentity::queueByToken([Address::class, AddressResource::class], [AddressResource::class, Address::class]))
+            ->toBe([AddressResource::class, Address::class])
+            ->and(ClassIdentity::queueByToken([AddressResource::class, Address::class], [Address::class, AddressResource::class]))
+            ->toBe([Address::class, AddressResource::class]);
+    });
+
+    test('keeps every other class where its own kind queued it', function () {
+        expect(ClassIdentity::queueByToken(
+            [Status::class, User::class, Address::class, CrmUser::class, UserResource::class, AddressResource::class],
+            [AddressResource::class, Address::class],
+        ))->toBe([Status::class, User::class, CrmUser::class, UserResource::class, AddressResource::class, Address::class]);
+    });
+
+    test('leaves the queue as it came where no record lines up with it', function (array $queue, array $alike) {
+        expect(ClassIdentity::queueByToken($queue, $alike))->toBe($queue)
+            ->and(ClassIdentity::ordersAlike($queue, $alike))->toBeFalse();
+    })->with([
+        'no record' => [[AddressResource::class, Address::class], []],
+        'a record missing a model\'s token' => [[Address::class, Address::class, AddressResource::class], [AddressResource::class, Address::class]],
+        'a record naming a class the queue does not hold' => [[Address::class, AddressResource::class], [AddressResource::class, Address::class, User::class]],
+        'a record naming a class of a name only one kind prints' => [
+            [Address::class, CrmUser::class, AddressResource::class],
+            [AddressResource::class, CrmUser::class, Address::class],
+        ],
+    ]);
+
+    test('leaves the queue as it came, and its order known, where no name is printed by both kinds', function () {
+        $queue = [User::class, CrmUser::class, UserResource::class];
+
+        expect(ClassIdentity::queueByToken($queue, [UserResource::class]))->toBe($queue)
+            ->and(ClassIdentity::ordersAlike($queue, []))->toBeTrue()
+            ->and(ClassIdentity::ordersAlike([Address::class, AddressResource::class], [AddressResource::class, Address::class]))->toBeTrue();
+    });
 });
 
 describe('ClassIdentity::membersByClass()', function () {
@@ -324,7 +390,110 @@ describe('ClassIdentity::membersByClass()', function () {
             ['type' => 'string', 'optional' => false],
             ['type' => 'string', 'optional' => false],
         ],
+        'a resource and a model published under one name are two members, recorded in arm order' => [
+            [
+                ['type' => 'Address | null', 'optional' => false, 'resourceFqcn' => AddressResource::class],
+                ['type' => 'Address | null', 'optional' => false, 'modelFqcn' => Address::class],
+            ],
+            true,
+            [
+                'type' => 'Address | null',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+            ],
+            [
+                'type' => 'Address | Address | null',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+                'alikeClassFqcns' => [AddressResource::class, Address::class],
+            ],
+        ],
+        'a model and a resource published under one name, the model first' => [
+            [
+                ['type' => 'Address', 'optional' => false, 'modelFqcn' => Address::class],
+                ['type' => 'Address', 'optional' => false, 'resourceFqcn' => AddressResource::class],
+                ['type' => 'Address', 'optional' => false, 'modelFqcn' => Address::class],
+            ],
+            true,
+            [
+                'type' => 'Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+            ],
+            [
+                'type' => 'Address | Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+                'alikeClassFqcns' => [Address::class, AddressResource::class],
+            ],
+        ],
+        'an arm holding both reads its own record' => [
+            [
+                [
+                    'type' => '{ address: Address; raw: Address }',
+                    'optional' => false,
+                    'embeddedModelFqcns' => [Address::class],
+                    'embeddedResourceFqcns' => [AddressResource::class],
+                    'alikeClassFqcns' => [AddressResource::class, Address::class],
+                ],
+                ['type' => 'Address', 'optional' => false, 'modelFqcn' => Address::class],
+            ],
+            true,
+            [
+                'type' => '{ address: Address; raw: Address } | Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class, Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+            ],
+            [
+                'type' => '{ address: Address; raw: Address } | Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class, Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+                'alikeClassFqcns' => [AddressResource::class, Address::class, Address::class],
+            ],
+        ],
     ]);
+
+    test('reads an arm\'s record past a member that repeats an earlier arm', function () {
+        $alike = [Address::class, AddressResource::class];
+
+        expect(ValueResult::unionResults([
+            ['type' => 'Address', 'optional' => false, 'modelFqcn' => Address::class],
+            [
+                'type' => 'Address | Address',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+                'alikeClassFqcns' => $alike,
+            ],
+        ]))->toBe([
+            'type' => 'Address | Address',
+            'optional' => false,
+            'embeddedModelFqcns' => [Address::class],
+            'embeddedResourceFqcns' => [AddressResource::class],
+            'alikeClassFqcns' => $alike,
+        ]);
+    });
+
+    test('records no order where an arm holds a model and a resource of one name and does not say whose each token is', function () {
+        $union = ValueResult::unionResults([
+            ['type' => 'Address', 'optional' => false, 'resourceFqcn' => AddressResource::class],
+            [
+                'type' => '{ a: Address; b: Address }',
+                'optional' => false,
+                'embeddedModelFqcns' => [Address::class],
+                'embeddedResourceFqcns' => [AddressResource::class],
+            ],
+        ]);
+
+        expect($union['type'])->toBe('Address | { a: Address; b: Address }')
+            ->and($union)->not->toHaveKey('alikeClassFqcns');
+    });
 
     test('keeps the merge by text where an arm queues a name for two classes more often than it spells it', function () {
         $byText = ['type' => 'User[] | User', 'optional' => false, 'embeddedModelFqcns' => [User::class, CrmUser::class, CrmUser::class]];

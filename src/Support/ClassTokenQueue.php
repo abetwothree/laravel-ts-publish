@@ -36,13 +36,21 @@ final class ClassTokenQueue
      * Queue each class under its name. A token spelling one of its sibling names, as an enum's `…Kind` is beside its
      * `…Type`, reads the same queue, so two same-named enums' tokens of either name keep one order.
      *
+     * With `$hands`, a token whose class it refuses is read and passed over: two queues over one list split its tokens.
+     *
      * @param  list<class-string>  $fqcns  one per token, in the order the arm's type spells them
      * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
      * @param  (Closure(class-string): list<string>)|null  $alsoSpelledAs  the class's sibling names
      * @param  string  $anchor  the pattern each token follows, as TsTypeString::queuedTokenPattern() reads it
+     * @param  (Closure(class-string): bool)|null  $hands  the classes whose tokens it hands out; null for every class
      */
-    public function __construct(array $fqcns, Closure $nameOf, ?Closure $alsoSpelledAs = null, string $anchor = '')
-    {
+    public function __construct(
+        array $fqcns,
+        Closure $nameOf,
+        ?Closure $alsoSpelledAs = null,
+        string $anchor = '',
+        private readonly ?Closure $hands = null,
+    ) {
         foreach ($fqcns as $fqcn) {
             $name = $nameOf($fqcn);
             $this->queues[$name][] = $fqcn;
@@ -154,7 +162,9 @@ final class ClassTokenQueue
             return [];
         }
 
-        return array_map(fn (string $spelled): array => [$this->classFor($spelled), $spelled], $matches[0]);
+        $spellings = array_map(fn (string $spelled): array => [$this->classFor($spelled), $spelled], $matches[0]);
+
+        return array_values(array_filter($spellings, fn (array $spelling): bool => $this->handsOut($spelling[0])));
     }
 
     /**
@@ -174,7 +184,9 @@ final class ClassTokenQueue
 
         foreach ($matches[0] as [$spelled, $at]) {
             $end = $at + strlen($spelled);
-            $rewritten .= substr($text, $from, $at - $from).$spell($this->classFor($spelled), $spelled, substr($text, $end, 1));
+            $class = $this->classFor($spelled);
+            $respelled = $this->handsOut($class) ? $spell($class, $spelled, substr($text, $end, 1)) : $spelled;
+            $rewritten .= substr($text, $from, $at - $from).$respelled;
             $from = $end;
         }
 
@@ -192,6 +204,16 @@ final class ClassTokenQueue
             fn (int $read, string $name): bool => $read < count($this->queues[$name])
                 && count(array_unique($this->queues[$name])) > 1,
         );
+    }
+
+    /**
+     * Whether this queue hands out the token of a class it read.
+     *
+     * @param  class-string  $fqcn
+     */
+    private function handsOut(string $fqcn): bool
+    {
+        return $this->hands === null || ($this->hands)($fqcn);
     }
 
     /**

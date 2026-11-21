@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DispatchesFqcnResults;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -116,6 +117,15 @@ class MethodAnalysis
      * @var array<array-key, Slots>
      */
     public array $declaredTokenFqcns = [];
+
+    /**
+     * Property name => the model or resource behind each token of a name a model and a resource both print in its
+     * value, in print order: the value's `alikeClassFqcns`, which ClassIdentity::queueByToken() reads beside the
+     * key's channels where they still line up.
+     *
+     * @var FqcnQueueMap
+     */
+    public array $alikeClassFqcns = [];
 
     /**
      * Property name => the nulls of a value addProperty() last gave the key that PHP holds as an object on some arm
@@ -297,6 +307,12 @@ class MethodAnalysis
             $name, $result, $this->directEnumFqcns, $this->nestedResources, $this->modelFqcns, $this->wrappedEnums,
         );
 
+        if (($result['alikeClassFqcns'] ?? []) === []) {
+            unset($this->alikeClassFqcns[$name]);
+        } else {
+            $this->alikeClassFqcns[$name] = $result['alikeClassFqcns'];
+        }
+
         foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
             $this->inlineEnumFqcns[$name][] = $fqcn;
         }
@@ -377,12 +393,17 @@ class MethodAnalysis
                 unset($this->declaredTokenFqcns[$property['name']]);
             }
 
+            if (! isset($source->alikeClassFqcns[$property['name']])) {
+                unset($this->alikeClassFqcns[$property['name']]);
+            }
+
             unset($this->closedToDottedKeys[$property['name']]);
         }
 
         // A spread would renumber a numeric cast key.
         $this->casts = array_replace($this->casts, $source->casts);
         $this->declaredTokenFqcns = array_replace($this->declaredTokenFqcns, $source->declaredTokenFqcns);
+        $this->alikeClassFqcns = array_replace($this->alikeClassFqcns, $source->alikeClassFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
 
@@ -435,6 +456,7 @@ class MethodAnalysis
         $this->casts = $source->casts;
         $this->carried = $source->carried;
         $this->declaredTokenFqcns = $source->declaredTokenFqcns;
+        $this->alikeClassFqcns = $source->alikeClassFqcns;
         $this->heldObjectKeys = $source->heldObjectKeys;
         $this->closedToDottedKeys = $source->closedToDottedKeys;
         $this->flatTypeAlias = $source->flatTypeAlias;
@@ -538,7 +560,10 @@ class MethodAnalysis
      */
     public function requeueInline(string $name, array $inline): void
     {
-        unset($this->inlineEnumFqcns[$name], $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name]);
+        unset(
+            $this->inlineEnumFqcns[$name], $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name],
+            $this->alikeClassFqcns[$name],
+        );
         $this->queueEmbeddedClasses($name, $inline);
     }
 
@@ -628,17 +653,28 @@ class MethodAnalysis
     }
 
     /**
-     * The enums, models and resources behind a property's type tokens, each kind in the order its channels queue them.
+     * The enums, models and resources behind a property's type tokens: the enums in the order their channels queue
+     * them, then the models and resources as classFqcns() lists them.
      *
      * @return list<class-string>
      */
     public function channelFqcns(string $name): array
     {
-        return [
-            ...$this->readEnumFqcns($name),
+        return [...$this->readEnumFqcns($name), ...$this->classFqcns($name)];
+    }
+
+    /**
+     * The models and resources behind a property's type tokens as one queue, each name's classes in the order its
+     * tokens print, a name a model and a resource both print included (ClassIdentity::queueByToken()).
+     *
+     * @return list<class-string>
+     */
+    public function classFqcns(string $name): array
+    {
+        return ClassIdentity::queueByToken([
             ...$this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
             ...$this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
-        ];
+        ], $this->alikeClassFqcns[$name] ?? []);
     }
 
     /**
@@ -740,7 +776,7 @@ class MethodAnalysis
             $this->nestedResources[$name], $this->directEnumFqcns[$name], $this->modelFqcns[$name],
             $this->inlineEnumFqcns[$name], $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name],
             $this->inlineEnumResourceFqcns[$name], $this->wrappedEnums[$name], $this->casts[$name],
-            $this->declaredTokenFqcns[$name],
+            $this->declaredTokenFqcns[$name], $this->alikeClassFqcns[$name],
         );
     }
 
@@ -882,6 +918,7 @@ class MethodAnalysis
         $this->wrappedEnums = TopLevelRenumbering::rekey($this->wrappedEnums, $names);
         $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
+        $this->alikeClassFqcns = TopLevelRenumbering::rekey($this->alikeClassFqcns, $names);
         $this->heldObjectKeys = TopLevelRenumbering::rekey($this->heldObjectKeys, $names);
         $this->closedToDottedKeys = TopLevelRenumbering::rekey($this->closedToDottedKeys, $names);
     }
@@ -906,6 +943,7 @@ class MethodAnalysis
         $slice->wrappedEnums = array_intersect_key($this->wrappedEnums, $key);
         $slice->casts = array_intersect_key($this->casts, $key);
         $slice->declaredTokenFqcns = array_intersect_key($this->declaredTokenFqcns, $key);
+        $slice->alikeClassFqcns = array_intersect_key($this->alikeClassFqcns, $key);
         $slice->heldObjectKeys = array_intersect_key($this->heldObjectKeys, $key);
         $slice->closedToDottedKeys = array_intersect_key($this->closedToDottedKeys, $key);
 

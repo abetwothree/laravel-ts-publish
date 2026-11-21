@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -16,6 +17,7 @@ use Workbench\App\Http\Resources\CommentResource;
 use Workbench\App\Http\Resources\DepotTierKeyedResource;
 use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageReviewResource;
+use Workbench\App\Http\Resources\SameNamed\AddressKindsResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
@@ -68,6 +70,22 @@ describe('AstEngine::analyze()', function () {
             ->toBe('{ clearance: ClearanceType; clearance_type: AsEnum<typeof CrmClearanceType> }')
             ->and($result->typeImports)->toBe(['../../enums' => ['ClearanceType']])
             ->and($result->valueImports)->toBe(['../../../crm/enums' => ['ClearanceType as CrmClearanceType']]);
+    });
+
+    // GH-76: AddressResource publishes as `Address`, so each token must name the class its value holds.
+    test('gives a model and a resource published under one name each its own alias, token by token', function () {
+        $result = resolve(AstEngine::class)->analyze(AddressKindsResource::class, 'toArray', null, 'workbench/app/http/resources/same-named');
+        $local = static function (string $path) use ($result): string {
+            expect($result->typeImports[$path] ?? [])->toHaveCount(1);
+
+            return ImportMaps::localName($result->typeImports[$path][0]);
+        };
+        [$resource, $model] = [$local('..'), $local('../../../models')];
+        $type = static fn (string $name): ?string => collect($result->properties)->firstWhere('name', $name)['type'] ?? null;
+
+        expect($resource)->not->toBe($model)
+            ->and($type('data'))->toBe("{ address: {$resource} | null; raw: {$model} | null }")
+            ->and($type('either'))->toBe("{$model} | {$resource} | null");
     });
 
     test('aliases the two same-named resources of one morph union apart, in an inline array too', function () {
