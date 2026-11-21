@@ -32,6 +32,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeK
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalDocblockEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\RedundantArmsMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumUnionMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
@@ -275,6 +276,21 @@ test('a union of direct enums keeps both imports, which the engine keys by FQCN'
 
     expect($analysis->types)->toBe(['role' => 'RoleType | StatusType'])
         ->and($analysis->typeImports)->toBe(['../enums' => ['RoleType', 'StatusType']]);
+});
+
+// Q5: the engine keys both enums by FQCN too, so only the key's own queue says which token is whose.
+test('a union of two same-named enums aliases each token by its own class', function () {
+    $analysis = resolve(ModelMetadataAnalyzer::class)
+        ->analyze(SameNamedEnumUnionMetadataProvider::class, ['either', 'pair', 'last'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe([
+        'either' => 'CrmStatusType | WorkbenchStatusType',
+        'pair' => '{ crm: CrmStatusType; app: WorkbenchStatusType }',
+        'last' => 'WorkbenchStatusType',
+    ])->and($analysis->typeImports)->toBe([
+        '../../crm/enums' => ['StatusType as CrmStatusType'],
+        '../enums' => ['StatusType as WorkbenchStatusType'],
+    ]);
 });
 
 test('a trait-supplied provide() in its own file infers its body and keeps its declared sources', function () {
