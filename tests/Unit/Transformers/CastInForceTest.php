@@ -142,7 +142,7 @@ describe('a cast that spells an enum resource\'s own type', function () {
         ],
     ]);
 
-    // No cast is involved: the later spread's value takes the key, and the earlier spread's wrap must not be rewritten.
+    // No cast is involved: the later spread's value takes the key, and the earlier spread's wrap leaves no const.
     it('publishes a later spread\'s key over an earlier spread\'s enum resource with no wrap and no import', function () {
         expect(castInForceLines(SpreadOverSpreadEnumResource::class))->toBe(['    k: string;']);
     });

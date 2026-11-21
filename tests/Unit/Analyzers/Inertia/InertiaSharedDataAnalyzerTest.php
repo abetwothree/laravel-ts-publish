@@ -436,7 +436,7 @@ test('an override drops the type import the displaced type kept alive', function
 
 // ─── EnumResource props ──────────────────────────────────────────
 
-test('an EnumResource shared prop is rewritten to AsEnum and imports the enum const', function () {
+test('an EnumResource shared prop spells AsEnum where it is read and imports the enum const', function () {
     $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
 
     // The type import is gone on purpose: no prop spells the bare RoleType/StatusType any more, so
@@ -600,7 +600,7 @@ test('a bare enum case shared prop publishes its enum and imports its type', fun
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
 });
 
-test('the EnumResource rewrite is inert when the tolki package is disabled', function () {
+test('an EnumResource shared prop spells its enum type when the tolki package is disabled', function () {
     config()->set('ts-publish.enums.use_tolki_package', false);
 
     $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);

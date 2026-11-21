@@ -2742,10 +2742,9 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
 });
 
 describe('ResourceTransformer with RelationChainResource — EnumResource::make() array-wrapped by a map() chain', function () {
-    // Regression pin for change #2: EnumResource::make() wraps each element, so the JSON is an
-    // array of flattened enum objects, not raw enum values — AsEnum<typeof Role>[] is correct;
-    // the old RoleType[] (a plain, un-rewritten type import) was wrong. A null role sends `[]`.
-    test('member_role_resources rewrites to (AsEnum<typeof Role> | never[])[] with tolki enabled', function () {
+    // EnumResource::make() wraps each element, so the JSON is a list of enum objects, not raw values; a null role
+    // sends `[]`.
+    test('member_role_resources spells each mapped wrap as (AsEnum<typeof Role> | never[])[] with tolki enabled', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
 
@@ -2782,7 +2781,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
 });
 
 describe('ResourceTransformer with EnumCollectionResource — EnumResource::collection() shapes', function () {
-    test('accessor-backed list<Enum> rewrites to AsEnum<typeof Status>[]', function () {
+    test('a collection wrap of an accessor-backed list<Enum> spells AsEnum<typeof Status>[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2791,7 +2790,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 
     // Matches the model precedent at workbench team.ts: week_days: AsEnum<typeof WeekDays>[] | null.
-    test('AsEnumCollection cast rewrites to AsEnum<typeof WeekDays>[] | null', function () {
+    test('a collection wrap of an AsEnumCollection cast spells AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2809,7 +2808,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
 
     // The reported bug pattern, $this->whenHas('kinds', EnumResource::collection(...)): a wrap passed as the value, a
     // first-class callable included, spells the attribute's type as the wrap.
-    test('first-class callable inside whenHas() rewrites to AsEnum<typeof WeekDays>[] | null', function () {
+    test('a first-class callable inside whenHas() spells its wrap as AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2817,7 +2816,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['week_days_when_has']['optional'])->toBeTrue();
     });
 
-    test('EnumResource::collection() value inside whenAppended() rewrites to AsEnum<typeof Status>[]', function () {
+    test('an EnumResource::collection() value inside whenAppended() spells AsEnum<typeof Status>[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2825,9 +2824,8 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['status_history_when_appended']['optional'])->toBeTrue();
     });
 
-    // An explicit default arm's 'string' type can't fold into the old AsEnum rebuild. The
-    // substitution-based rewrite reproduces the full union losslessly instead: the reported bug
-    // was this property emitting the raw StatusType[] instead of the AsEnum-wrapped element type.
+    // The wrap substitutes its element token, so the default's `string` arm stays: the reported bug was this property
+    // emitting the raw StatusType[] instead of the wrapped element type.
     test('whenHas() with an explicit default keeps the full union, AsEnum-wrapped', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
@@ -2837,7 +2835,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['week_days_when_has_default']['optional'])->toBeFalse();
     });
 
-    test('local variable ->map() with an EnumResource::make() body rewrites to (AsEnum<typeof Role> | never[])[]', function () {
+    test('a local variable ->map() with an EnumResource::make() body spells (AsEnum<typeof Role> | never[])[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 

@@ -594,8 +594,8 @@ test('a merge naming an override spelled like a class the key holds declares the
         ->and($analysis->customImports)->toBe(['@js/types/ui' => ['User']]);
 });
 
-// With the tolki rewrite off no wrap is written as `AsEnum`, so the wrap and the rows' bare status publish alike.
-test('an enum a key wraps, filled bare in its rows, publishes bare with the tolki rewrite off', function () {
+// With the tolki package off no wrap is written as `AsEnum`, so the wrap and the rows' bare status publish alike.
+test('an enum a key wraps, filled bare in its rows, publishes bare with the tolki package off', function () {
     config()->set('ts-publish.enums.use_tolki_package', false);
     $data = new ResourceTransformer(ReviewStatusRowsResource::class)->data();
 
