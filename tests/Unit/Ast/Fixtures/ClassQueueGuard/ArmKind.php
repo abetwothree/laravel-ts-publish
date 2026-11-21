@@ -32,6 +32,7 @@ enum ArmKind: string
     case AddressResource = 'AddressResource';
     case Null = 'null';
     case Rows = 'rows';
+    case Untyped = 'untyped';
 
     /**
      * The PHP expression the arm writes in a generated resource's toArray().
@@ -53,6 +54,7 @@ enum ArmKind: string
             self::Null => 'null',
             self::Rows => "array_map(fn (GuardRow \$r) => ['c' => \$r->crmStatus, 's' => \$r->status], "
                 .'$this->resource->rows)',
+            self::Untyped => 'json_decode($this->resource->pick)',
         };
     }
 
@@ -73,7 +75,7 @@ enum ArmKind: string
             self::CrmUserResource => [CrmUserResource::class],
             self::AddressModel => [Address::class],
             self::AddressResource => [AddressResource::class],
-            self::Null => [],
+            self::Null, self::Untyped => [],
             self::Rows => [CrmStatus::class, Status::class],
         };
     }

@@ -136,10 +136,11 @@ final class BranchJoin
                 : self::branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
 
             // Text alone unions two same-named classes into one token, so the key reads its classes off their union.
-            if ($bound && ClassIdentity::spellsTwoClassesAlike($classed[$name])) {
+            if (self::keepsClassesApart($type, $keySlots, $entries, $classed[$name])) {
                 $apart[$name] = ValueResult::unionResults($classed[$name]);
                 $type = $apart[$name]['type'];
                 $bodyType = $type;
+                $fillType = $fillType === null ? null : $type;
             }
 
             if ($keySlots !== []) {
@@ -428,6 +429,24 @@ final class BranchJoin
             ...(($analysis->inlineEnumResourceFqcns[$name] ?? []) !== [] ? ['embeddedEnumResourceFqcns' => $analysis->inlineEnumResourceFqcns[$name]] : []),
             ...(($analysis->wrappedEnums[$name] ?? []) !== [] ? ['wrappedEnumFqcns' => $analysis->wrappedEnums[$name]] : []),
         ];
+    }
+
+    /**
+     * Whether a key's branch values, joined into $type, are joined again by class: where two classes of any token kind
+     * print one name, and the join kept a type with no declared slots from fills that each repeat their branch's value.
+     *
+     * A strict join's `unknown` stands, as a union by class would drop the branch it stands for. Declared slots say
+     * whose each token is themselves, and a fill another branch's value stands beside would lose its arm.
+     *
+     * @param  Slots  $keySlots
+     * @param  list<AnalyzedProperty>  $entries
+     * @param  list<ValueExpressionResult>  $values
+     */
+    private static function keepsClassesApart(string $type, array $keySlots, array $entries, array $values): bool
+    {
+        return $type !== 'unknown' && $keySlots === []
+            && array_all($entries, static fn (array $entry): bool => ($entry['fillType'] ?? $entry['type']) === $entry['type'])
+            && ClassIdentity::spellsTwoClassesAlike($values);
     }
 
     /**

@@ -25,6 +25,15 @@ enum BodyShape: string
     private const array FLAGS = ['a', 'b', 'c'];
 
     /**
+     * Whether the shape joins its arms as branches, where an untyped arm is decided as a join decides it: a strict
+     * join of returns publishes `unknown`, and a returned variable's join leaves it out.
+     */
+    public function joinsBranches(): bool
+    {
+        return $this === self::Returns || $this === self::Writes;
+    }
+
+    /**
      * The statements of the generated resource's toArray(), its key `v` holding the arms in order.
      *
      * @param  non-empty-list<string>  $arms  PHP expressions.

@@ -43,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedUntypedPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SignedInUserController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TopLevelKeysController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
@@ -1517,6 +1518,22 @@ it('spells a wrapped enum\'s const after typeof beside the same-named model, whe
         '../../../../../../workbench/app/enums' => ['Grade as WorkbenchGrade2'],
         '../../../../../../workbench/app/models' => ['Grade as WorkbenchGrade'],
     ])->and([$sent->grade->subject, $sent->badge->name, $sent->badge->value])->toBe(['Math', 'Pass', 'pass']);
+});
+
+// GH-76: render branches holding the app's and the CRM's User keep both, each aliased, but an untyped render keeps the
+// prop unknown, as a strict join stands for the branch it cannot type.
+it('keeps two same-named models apart across render branches, and an untyped render\'s prop unknown', function () {
+    app(Router::class)->get('/same-named/returns', [SameNamedUntypedPropsController::class, 'returns']);
+    app(Router::class)->get('/same-named/literals', [SameNamedUntypedPropsController::class, 'literals']);
+    $transformer = new RouteTransformer(SameNamedUntypedPropsController::class);
+
+    expect(array_column($transformer->actions, 'pageType'))->toBe([
+        'Inertia.SharedData & { user: unknown }',
+        'Inertia.SharedData & { user: WorkbenchUser | CrmUser | null }',
+    ])->and($transformer->typeImports)->toBe([
+        '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+    ]);
 });
 
 it('binds each same-named enum token to its own class on either side of a key the printer renumbers or marks optional', function () {

@@ -85,6 +85,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildC
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UntypedReturnBesideSameNamedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariadicWalkResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarehouseWrapOrObjectWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GapModeReadsPost;
@@ -8357,6 +8358,11 @@ test('keeps two classes of one name apart through a method\'s returns and a retu
         'resource' => 'WorkbenchAddress | WorkbenchAddress2 | null',
         'model' => 'WorkbenchAddress2 | null',
     ]);
+});
+
+// A strict join's `unknown` stands for the return it cannot type, whatever two classes of one name the others hold.
+test('keeps a key unknown where one return is untyped beside two classes of one name', function () {
+    expect(resourceProps(UntypedReturnBesideSameNamedResource::class))->toBe(['status' => 'unknown', 'user' => 'unknown']);
 });
 
 // GH-76: array_filter() and a keyed collection's all() spell each row twice, so the object arm keeps each row's classes.

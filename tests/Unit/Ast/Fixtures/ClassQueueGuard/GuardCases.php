@@ -9,7 +9,8 @@ use Random\Randomizer;
 
 /**
  * The guard's seeded generator: the bodies of one family, each a shape over two to four arms of the family's two
- * kinds, both of them written at least once, drawn without replacement.
+ * kinds, both of them written at least once, drawn without replacement. An untyped arm is written only where branches
+ * join.
  */
 final class GuardCases
 {
@@ -24,7 +25,9 @@ final class GuardCases
         $family = hash('sha256', "{$seed}|{$first->value}|{$second->value}", true);
         $bodies = [];
 
-        foreach (BodyShape::cases() as $shape) {
+        $untyped = $first === ArmKind::Untyped || $second === ArmKind::Untyped;
+
+        foreach (array_filter(BodyShape::cases(), static fn (BodyShape $shape): bool => ! $untyped || $shape->joinsBranches()) as $shape) {
             foreach (self::armLists($first, $second) as $arms) {
                 $bodies[] = new GuardCase($shape, $arms);
             }

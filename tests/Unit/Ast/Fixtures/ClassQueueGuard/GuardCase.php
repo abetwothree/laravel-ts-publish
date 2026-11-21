@@ -48,15 +48,21 @@ final readonly class GuardCase
 
     /**
      * The members the union must publish, in order: one per distinct arm, first written first, and `null` last, where
-     * every union hoists it. Each member is the classes its tokens name.
+     * every union hoists it, an untyped arm left out; or `unknown` alone where returns write one. Each member is the
+     * classes its tokens name.
      *
      * @return list<list<class-string>>
      */
     public function expected(): array
     {
+        // A strict join of returns cannot say what the untyped branch sends, and a dropping join leaves it out.
+        if ($this->shape === BodyShape::Returns && in_array(ArmKind::Untyped, $this->arms, true)) {
+            return [[]];
+        }
+
         $distinct = [];
 
-        foreach ($this->arms as $arm) {
+        foreach (array_filter($this->arms, static fn (ArmKind $arm): bool => $arm !== ArmKind::Untyped) as $arm) {
             $distinct[$arm->value] = $arm->classes();
         }
 
