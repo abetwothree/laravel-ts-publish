@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\PrintsTopLevelMembers;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
@@ -79,7 +78,6 @@ class InertiaPageAnalyzer
 {
     use InspectsAstNodes;
     use PrintsTopLevelMembers;
-    use RewritesEnumResourceProps;
 
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
@@ -415,7 +413,7 @@ class InertiaPageAnalyzer
             $analysis->absorbRedundantArms();
             resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
 
-            $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
+            $props = $this->collectProps($analysis);
             $members = $this->buildMembersWithOverrides(
                 $props,
                 $casts,
