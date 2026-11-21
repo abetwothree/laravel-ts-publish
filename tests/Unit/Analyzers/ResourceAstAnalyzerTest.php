@@ -19,6 +19,8 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Casts\GapModeLabelCast;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\GapModeShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AddressKindsOverwriteResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AddressKindsReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousMethodSpellingResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousModelCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AmbiguousSpellingResource;
@@ -8334,6 +8336,26 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'reads' => '(WorkbenchStatusType | CrmStatusType)[] | Record<string, (WorkbenchStatusType | CrmStatusType)>',
             'objects' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<string, { app: WorkbenchStatusType; crm: CrmStatusType }>',
         ]],
+    ]);
+});
+
+// GH-76: a method's returns and a returned variable's branches keep a model and a resource of one name apart, and two
+// models of one name, each under its own alias.
+test('keeps two classes of one name apart through a method\'s returns and a returned variable\'s branches', function () {
+    $returns = new ResourceTransformer(AddressKindsReturnsResource::class)->data();
+    $overwrite = new ResourceTransformer(AddressKindsOverwriteResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $returns->properties))->toBe([
+        'address' => 'WorkbenchAddress | WorkbenchAddress2 | null',
+        'user' => 'WorkbenchUser | CrmUser | null',
+    ])->and($returns->typeImports)->toBe([
+        '../../../../../../workbench/app/http/resources' => ['Address as WorkbenchAddress'],
+        '../../../../../../workbench/app/models' => ['Address as WorkbenchAddress2', 'User as WorkbenchUser'],
+        '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+    ])->and(array_map(fn (array $property): string => $property['type'], $overwrite->properties))->toBe([
+        'data' => '{ resource: WorkbenchAddress | WorkbenchAddress2 | null; model: WorkbenchAddress2 | null }',
+        'resource' => 'WorkbenchAddress | WorkbenchAddress2 | null',
+        'model' => 'WorkbenchAddress2 | null',
     ]);
 });
 
