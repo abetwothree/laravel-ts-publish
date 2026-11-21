@@ -2902,9 +2902,8 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 });
 
-// Regression: the mixed-ternary arm shape (Task 28) is recorded once, by ValueResult::withEnumArmShapes(), but is
-// only useful if every ResourceAnalysis-building collector threads it through to the transformer —
-// not only ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
+// Regression: every ResourceAnalysis-building collector publishes which arm of a mixed ternary is the list, not only
+// ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
 describe('ResourceTransformer with mixed-ternary collector regressions', function () {
     test('mergeReturnBranches() carries the arm shape across multiple return branches', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
