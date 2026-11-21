@@ -13,7 +13,8 @@ use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
  * A test-only resource whose `@return` fills a gap with `Person`, an override spelled `User`, beside a list
- * array_filter() keeps of the app's and the CRM's `Status` and a later app one; the resource re-indexes the list (GH-76).
+ * array_filter() keeps of the app's and the CRM's `Status` and a later app one; the resource re-indexes
+ * the list (GH-76).
  *
  * @mixin User
  */

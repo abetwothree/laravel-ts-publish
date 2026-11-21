@@ -9,7 +9,9 @@ use Inertia\Middleware;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Models\Address;
 
-/** Shares the `Address` model beside `AddressResource`, which publishes as `Address` too, the resource first (GH-76). */
+/**
+ * Shares the `Address` model beside `AddressResource`, which publishes as `Address` too, the resource first (GH-76).
+ */
 final class MiddlewareWithAddressKinds extends Middleware
 {
     public function share(Request $request): array
