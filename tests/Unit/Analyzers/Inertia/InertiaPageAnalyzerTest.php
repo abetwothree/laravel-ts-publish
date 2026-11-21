@@ -62,6 +62,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\PostPages;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AlikeWithExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -1536,6 +1537,17 @@ it('keeps two same-named models apart across render branches, and an untyped ren
     ]);
 });
 
+// GH-76: a resource's `with()` keys join its response with the record of which `Address` token is the model's.
+it('keeps a model and a resource of one name apart in the keys a resource\'s with() sends', function () {
+    app(Router::class)->get('/extras/alike', [AlikeWithExtrasController::class, 'show']);
+    $transformer = new RouteTransformer(AlikeWithExtrasController::class);
+
+    expect($transformer->actions[0]['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { item: { data: AlikeWithExtrasResource; meta: { a: WorkbenchAddress2 | null; '
+            .'both: (WorkbenchAddress | WorkbenchAddress2 | null)[] } } }',
+    );
+});
+
 it('binds each same-named enum token to its own class on either side of a key the printer renumbers or marks optional', function () {
     app(Router::class)->get('/pair/around', [SameNamedEnumPairController::class, 'aroundPrintedKeys']);
     $transformer = new RouteTransformer(SameNamedEnumPairController::class);
@@ -2882,7 +2894,7 @@ it('spells each wrap of a page prop where it is read, beside a case, another wra
         .'nested_two_wraps: { x: AsEnum<typeof Visibility> | never[] | AsEnum<typeof Status> } }');
 });
 
-// G18: a resource's body resolve() returns for a page keeps its map()s as Collections, which no filter() enters, so
+// GH-108: a resource's body resolve() returns for a page keeps its map()s as Collections, which no filter() enters, so
 // each wrap in a row prints its own `AsEnum`, beside the `[]` a wrap of a null enum sends.
 it('spells each wrap in a kept map of a resource a page resolves', function () {
     $analysis = resolve(AstEngine::class)->analyzeMethod(KeptMapWrapsResource::class, reading: Reading::InertiaFiltered);
