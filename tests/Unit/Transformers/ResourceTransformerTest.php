@@ -2711,9 +2711,8 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
             ->and($data->properties['priority_when_not_null_make']['optional'])->toBeFalse();
     });
 
-    // Full-pipeline pin: rewriteEnumResourceTypes() only iterates top-level properties, so it never
-    // touches this nested key — analyzeInlineArray()'s own mixed-arm expansion is what reaches the
-    // emitted file, and the transformer must leave both arms standing.
+    // Full-pipeline pin: the nested key's wrap and bare read each spell their own arm, and the transformer must leave
+    // both standing.
     test('ternary_enums_array keeps both mixed arms through the full transformer pipeline', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
