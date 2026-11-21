@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
@@ -112,8 +113,8 @@ trait FiltersModelAttributes
     /**
      * Filter a ResourceAnalysis to include or exclude properties by key list.
      *
-     * A kept key keeps its enum and model queues, each class on them keyed by itself as addProperty() keys it, so a key
-     * naming two enums or two models imports and aliases each.
+     * A kept key keeps its enum and model queues, each class on them keyed by itself as addProperty() keys it, and the
+     * custom imports its type spells, so it imports and aliases every class it names; a left-out key's classes go.
      *
      * @param  list<string>  $keys
      */
@@ -126,39 +127,23 @@ trait FiltersModelAttributes
                 : ! in_array($prop['name'], $keys, true),
         ));
 
-        $inlineEnumFqcns = self::keptKeys($analysis->inlineEnumFqcns, $keys, $include);
-        $inlineModelFqcns = self::keptKeys($analysis->inlineModelFqcns, $keys, $include);
+        $kept = array_flip(array_column($filteredProperties, 'name'));
+        $inlineEnumFqcns = array_intersect_key($analysis->inlineEnumFqcns, $kept);
+        $inlineModelFqcns = array_intersect_key($analysis->inlineModelFqcns, $kept);
 
         return new ResourceAnalysis(
             properties: $filteredProperties,
+            customImports: ImportMaps::spelledIn(
+                $analysis->customImports,
+                implode(' | ', array_column($filteredProperties, 'type')),
+            ),
             directEnumFqcns: [
-                ...self::keptKeys($analysis->directEnumFqcns, $keys, $include),
+                ...array_intersect_key($analysis->directEnumFqcns, $kept),
                 ...self::selfKeyed($inlineEnumFqcns),
             ],
-            modelFqcns: [
-                ...self::keptKeys($analysis->modelFqcns, $keys, $include),
-                ...self::selfKeyed($inlineModelFqcns),
-            ],
+            modelFqcns: [...array_intersect_key($analysis->modelFqcns, $kept), ...self::selfKeyed($inlineModelFqcns)],
             inlineEnumFqcns: $inlineEnumFqcns,
             inlineModelFqcns: $inlineModelFqcns,
-        );
-    }
-
-    /**
-     * The entries of a per-key map whose key the filter keeps.
-     *
-     * @template T
-     *
-     * @param  array<array-key, T>  $map
-     * @param  list<string>  $keys
-     * @return array<array-key, T>
-     */
-    private static function keptKeys(array $map, array $keys, bool $include): array
-    {
-        return array_filter(
-            $map,
-            static fn (int|string $key): bool => in_array($key, $keys, true) === $include,
-            ARRAY_FILTER_USE_KEY,
         );
     }
 

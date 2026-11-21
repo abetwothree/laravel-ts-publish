@@ -1044,12 +1044,13 @@ steps depend on it:
   where a type or an extends clause spells its name with no class of that name behind it.
   After aliasing, `pruneUnspelledImports()` drops each import whose local, aliased name no type spells.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
-  analysis from its properties, its enum and model channels and their per-key queues, so a key naming two enums or two
-  models imports and aliases each, through `analyze()` too (`OnlyTwoClassAccessorsResource`). It loses every
-  `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and `resolveMultiEnumAccessorFqcns()` import back, by the
-  key's name, which is the attribute's own, what no per-key queue covers. A class or a `#[TsType]` import comes back
-  only while the key's type spells it, and for a cast key only what its text spells and its import does not bring. The
-  `Stockroom` and `Bulletin` resources pin these reads.
+  analysis from the kept keys alone: their properties, their enum and model channels with the per-key queues, and the
+  `#[TsType]` imports their types spell. A key naming two enums or two models imports and aliases each, through
+  `analyze()` too, and a left-out key's classes force no alias (`OnlyTwoClassAccessorsResource`,
+  `ExceptAppStatusesResource`). `resolveMultiClassAccessorFqcns()` and `resolveMultiEnumAccessorFqcns()` import back,
+  by the key's name, which is the attribute's own, what no per-key queue covers. A class or a `#[TsType]` import comes
+  back only while the key's type spells it, and for a cast key only what its text spells and its import does not
+  bring. The `Stockroom` and `Bulletin` resources pin these reads.
 
 The token test matches a name wherever it stands, inside a string or a comment too, so it can keep an import that ends
 up unused; see

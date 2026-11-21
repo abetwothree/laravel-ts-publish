@@ -7,9 +7,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisComposer;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExceptAppStatusesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExceptTwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OnlyTwoClassAccessorsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OnlyTwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNameAddressResource;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Enums\Clearance;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
@@ -22,6 +25,8 @@ use Workbench\App\Http\Resources\ImageDelegatedResource;
 use Workbench\App\Http\Resources\ImageReviewResource;
 use Workbench\App\Http\Resources\SameNamed\AddressKindsResource;
 use Workbench\App\Http\Resources\ServiceReturnResource;
+use Workbench\App\Http\Resources\StockroomExceptResource;
+use Workbench\App\Http\Resources\StockroomOnlyResource;
 use Workbench\App\Http\Resources\TernaryResource;
 use Workbench\App\Http\Resources\ToArrayCastsResource;
 use Workbench\App\Http\Resources\UserResource;
@@ -247,12 +252,12 @@ describe('AstEngine::analyze()', function () {
             ->and($result->valueImports)->toBe([]);
     });
 
-    // Every publisher imports what its types spell (R6), so an attribute the resource's own only() keeps imports each
-    // class it names, each token aliased by its own class where two of them share a name.
-    test('imports every class of an attribute the resource\'s own only() keeps, token by token', function (string $resource, array $types, array $imports) {
+    // A module built from the result must import exactly the classes its types spell, so an attribute the resource's
+    // own only() or except() keeps imports each class it names, each token aliased by its own class.
+    test('imports every class of an attribute the resource\'s own only() or except() keeps, token by token', function (string $resource, array $types, array $imports) {
         $result = resolve(AstEngine::class)->analyze($resource, 'toArray', null, 'workbench/app/http/resources');
 
-        expect(array_column($result->properties, 'type', 'name'))->toBe($types)
+        expect(array_intersect_key(array_column($result->properties, 'type', 'name'), $types))->toBe($types)
             ->and($result->typeImports)->toBe($imports);
     })->with([
         'two enums, and two models that share a name' => [
@@ -276,7 +281,43 @@ describe('AstEngine::analyze()', function () {
             ],
             ['../../../crm/enums' => ['StatusType as CrmStatusType'], '../../enums' => ['StatusType as WorkbenchStatusType']],
         ],
+        'two enums that share a name, through except()' => [
+            ExceptTwoStatusPostResource::class,
+            [
+                'status_or_lead' => 'WorkbenchStatusType | CrmStatusType | null',
+                'either_status' => 'WorkbenchStatusType | CrmStatusType',
+                'alternating_statuses' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }',
+            ],
+            [
+                '../../../crm/enums' => ['StatusType as CrmStatusType'],
+                '../../../crm/models' => ['User'],
+                '../../enums' => ['StatusType as WorkbenchStatusType'],
+            ],
+        ],
     ]);
+
+    test('imports the #[TsType] class of a key the resource\'s own only() or except() keeps', function (string $resource) {
+        $result = resolve(AstEngine::class)->analyze($resource, 'toArray', null, 'workbench/app/http/resources');
+
+        expect(array_intersect_key(array_column($result->properties, 'type', 'name'), ['contact' => '', 'layout' => '']))
+            ->toBe([
+                'contact' => 'User | MenuSettingsType | null',
+                'layout' => '{ manager: User | null; settings: MenuSettingsType | null }',
+            ])
+            ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType'], '../../models' => ['User']]);
+    })->with([StockroomOnlyResource::class, StockroomExceptResource::class]);
+
+    // A key except() leaves out takes its classes with it, so the CRM `Status` left alone keeps its bare name, as
+    // ts:publish prints it.
+    test('aliases no class a key the resource\'s own except() leaves out names, as ts:publish does', function () {
+        $result = resolve(AstEngine::class)->analyze(ExceptAppStatusesResource::class, 'toArray', null, 'workbench/app/http/resources');
+        $published = new ResourceTransformer(ExceptAppStatusesResource::class)->data();
+
+        expect(collect($result->properties)->firstWhere('name', 'current_crm_status')['type'])->toBe('StatusType | null')
+            ->and($published->properties['current_crm_status']['type'])->toBe('StatusType | null')
+            ->and($result->typeImports['../../../crm/enums'])->toBe(['StatusType'])
+            ->and($result->typeImports['../../enums'])->toBe(['ColorType', 'PriorityType']);
+    });
 
     test('forwards the method and model class to analyzeMethod()', function () {
         $engine = resolve(AstEngine::class);
