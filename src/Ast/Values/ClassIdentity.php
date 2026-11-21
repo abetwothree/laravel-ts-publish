@@ -241,14 +241,13 @@ final class ClassIdentity
     }
 
     /**
-     * A result retyped by a rewrite of its text that may drop, merge or repeat arms, as a resource's re-index does.
-     * Each token carries its class through the rewrite, so two arms merge only where their classes match too, and each
-     * queue lists the classes behind the tokens the new text spells. Null where a token's class cannot be told, or the
-     * rewrite reads no type.
+     * A result retyped by a rewrite that may drop, merge or repeat arms: each token carries its class through it, so
+     * arms merge only where their classes match and each queue keeps the classes of the tokens left.
+     * The rewrite must read a token and the mark after it as one opaque name.
      *
      * @param  ValueExpressionResult  $result
      * @param  Closure(string): ?string  $rewrite
-     * @return ValueExpressionResult|null
+     * @return ValueExpressionResult|null null where a token's class cannot be told or the rewrite reads no type
      */
     public static function retyped(array $result, Closure $rewrite): ?array
     {
