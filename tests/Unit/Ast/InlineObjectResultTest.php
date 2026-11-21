@@ -54,18 +54,27 @@ it('reads a fill class-less whatever its siblings', function () {
         ->and($analysis->hasFqcnChannel('filled'))->toBeFalse();
 });
 
-it('queues the enums a member wraps on the object\'s enum queue, as their tokens read bare', function (bool $tolki) {
+it('queues the enums a member wraps on the queue its tokens are read by', function (bool $tolki, string $subject, string $channel, array $consts) {
     config()->set('ts-publish.enums.use_tolki_package', $tolki);
     $analysis = new MethodAnalysis;
     $analysis->addProperty('first', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => CrmStatus::class]);
-    $analysis->addProperty('subject', ['type' => 'StatusType | RoleType', 'optional' => false, 'multiEnumResourceFqcns' => [Status::class, Role::class]]);
+    $analysis->addProperty('subject', [
+        'type' => $subject,
+        'optional' => false,
+        $channel => [Status::class, Role::class],
+        'wrappedEnumFqcns' => [Status::class, Role::class],
+    ]);
 
     $result = new InlineObjectResult()->of($analysis);
 
-    expect($result['type'])->toBe('{ first: StatusType; subject: StatusType | RoleType }')
-        ->and($result['embeddedEnumFqcns'] ?? [])->toBe([CrmStatus::class, Status::class, Role::class])
-        ->and($result)->not->toHaveKey('embeddedEnumResourceFqcns');
-})->with(['tolki on' => [true], 'tolki off' => [false]]);
+    expect($result['type'])->toBe('{ first: StatusType; subject: '.$subject.' }')
+        ->and($result['embeddedEnumFqcns'] ?? [])->toBe($tolki ? [CrmStatus::class] : [CrmStatus::class, Status::class, Role::class])
+        ->and($result['embeddedEnumResourceFqcns'] ?? [])->toBe($consts)
+        ->and($result['wrappedEnumFqcns'])->toBe([Status::class, Role::class]);
+})->with([
+    'tolki on' => [true, 'AsEnum<typeof Status> | AsEnum<typeof Role>', 'embeddedEnumResourceFqcns', [Status::class, Role::class]],
+    'tolki off' => [false, 'StatusType | RoleType', 'embeddedEnumFqcns', []],
+]);
 
 it('prints the open marker in the gap mode where the object may hold keys no name names, and none out of it', function (array $properties, array $arms, bool $shows, string $type) {
     $analysis = new MethodAnalysis;

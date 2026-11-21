@@ -302,8 +302,7 @@ class MethodAnalysis
         }
 
         $this->dispatchFqcnResults(
-            $name, $result, $this->enumResources, $this->directEnumFqcns, $this->nestedResources,
-            $this->modelFqcns, $this->multiEnumResourceFqcns, $this->enumResourceArmShapes, $this->wrappedEnums,
+            $name, $result, $this->directEnumFqcns, $this->nestedResources, $this->modelFqcns, $this->wrappedEnums,
         );
 
         foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {

@@ -79,11 +79,6 @@ final class ObjectMembers
     {
         $value = ValueResult::unsplit($value);
 
-        // A wrap on the enum's or the per-arm channel names no token, so its member could not keep its value import.
-        if (isset($value['enumFqcn']) || isset($value['multiEnumResourceFqcns'])) {
-            return null;
-        }
-
         $printed = VisibleGaps::members(VisibleGaps::aside($value['type'])[0])[0] ?? null;
 
         // InlineObjectResult::of() prints an analysis with no keys as a Record, so `{}` has no analysis to read back.

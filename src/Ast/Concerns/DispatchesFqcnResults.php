@@ -15,8 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ClassMapType from MethodAnalysis
- * @phpstan-import-type MultiEnumFqcnsMap from MethodAnalysis
- * @phpstan-import-type EnumResourceArmShapeMap from MethodAnalysis
  * @phpstan-import-type WrappedEnumsMap from MethodAnalysis
  *
  * @internal
@@ -27,44 +25,21 @@ trait DispatchesFqcnResults
      * Dispatch FQCN results from a value expression into the tracking maps.
      *
      * @param  ValueExpressionResult  $result
-     * @param  ClassMapType  $enumResources
      * @param  ClassMapType  $directEnumFqcns
      * @param  ClassMapType  $nestedResources
      * @param  ClassMapType  $modelFqcns
-     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns
-     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes
      * @param  WrappedEnumsMap  $wrappedEnums
      */
     protected function dispatchFqcnResults(
         string $keyName,
         array $result,
-        array &$enumResources,
         array &$directEnumFqcns,
         array &$nestedResources,
         array &$modelFqcns,
-        array &$multiEnumResourceFqcns = [],
-        array &$enumResourceArmShapes = [],
-        array &$wrappedEnums = [],
+        array &$wrappedEnums,
     ): void {
-        if (isset($result['enumFqcn'])) {
-            $enumResources[$keyName] = $result['enumFqcn'];
-        }
-
         if (isset($result['directEnumFqcn'])) {
             $directEnumFqcns[$keyName] = $result['directEnumFqcn'];
-        }
-
-        // Only a mixed enum union records these (ValueResult::withEnumArmShapes(): a ternary, an Elvis or a match);
-        // the merged union's own 'type' string already deduped away which arm was the collection.
-        if (isset($result['wrapIsCollection'], $result['directIsArray'])) {
-            $enumResourceArmShapes[$keyName] = [
-                'wrapIsCollection' => $result['wrapIsCollection'],
-                'directIsArray' => $result['directIsArray'],
-            ];
-        }
-
-        if (isset($result['multiEnumResourceFqcns'])) {
-            $multiEnumResourceFqcns[$keyName] = $result['multiEnumResourceFqcns'];
         }
 
         if (isset($result['resourceFqcn'])) {

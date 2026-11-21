@@ -226,17 +226,14 @@ it('forgets every channel keyed by a property another value took over, and nothi
     $channels = [
         'type' => 'UserResource | UserResource',
         'optional' => false,
-        'enumFqcn' => 'Workbench\App\Enums\Status',
         'directEnumFqcn' => 'Workbench\App\Enums\Status',
         'resourceFqcn' => 'Workbench\App\Http\Resources\PostResource',
         'modelFqcn' => 'Workbench\App\Models\Post',
-        'multiEnumResourceFqcns' => ['Workbench\App\Enums\Status', 'Workbench\App\Enums\Role'],
-        'wrapIsCollection' => true,
-        'directIsArray' => false,
         'embeddedEnumFqcns' => ['Workbench\App\Enums\Role'],
         'embeddedModelFqcns' => ['Workbench\App\Models\User'],
         'embeddedEnumResourceFqcns' => ['Workbench\App\Enums\Season'],
         'embeddedResourceFqcns' => ['Workbench\App\Http\Resources\TagResource'],
+        'wrappedEnumFqcns' => ['Workbench\App\Enums\Season'],
     ];
 
     $analysis->addProperty('taken_over', $channels);
@@ -545,24 +542,20 @@ describe('MethodAnalysis::addProperty()', function () {
         $analysis->addProperty('status', [
             'type' => 'StatusType | null',
             'optional' => false,
-            'enumFqcn' => 'Workbench\App\Enums\Status',
             'directEnumFqcn' => 'Workbench\App\Enums\Status',
             'resourceFqcn' => 'Workbench\App\Http\Resources\PostResource',
             'modelFqcn' => 'Workbench\App\Models\Post',
-            'multiEnumResourceFqcns' => ['Workbench\App\Enums\Status', 'Workbench\App\Enums\Role'],
-            'wrapIsCollection' => true,
-            'directIsArray' => false,
             'embeddedEnumFqcns' => ['Workbench\App\Enums\Role', 'Workbench\App\Enums\Role'],
             'embeddedModelFqcns' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User', 'Workbench\App\Models\User'],
             'embeddedEnumResourceFqcns' => ['Workbench\App\Enums\Season'],
             'embeddedResourceFqcns' => ['Workbench\App\Http\Resources\TagResource'],
+            'wrappedEnumFqcns' => ['Workbench\App\Enums\Season'],
             'customImports' => ['@/types/x' => ['XType']],
         ], optional: true, description: 'doc');
 
         expect($analysis->properties)->toBe([[
             'name' => 'status', 'type' => 'StatusType | null', 'optional' => true, 'description' => 'doc', 'absent' => true,
         ]])
-            ->and($analysis->enumResources)->toBe(['status' => 'Workbench\App\Enums\Status'])
             ->and($analysis->directEnumFqcns)->toBe([
                 'status' => 'Workbench\App\Enums\Status',
                 'Workbench\App\Enums\Role' => 'Workbench\App\Enums\Role',
@@ -576,8 +569,7 @@ describe('MethodAnalysis::addProperty()', function () {
                 'Workbench\App\Models\User' => 'Workbench\App\Models\User',
                 'Workbench\Crm\Models\User' => 'Workbench\Crm\Models\User',
             ])
-            ->and($analysis->multiEnumResourceFqcns)->toBe(['status' => ['Workbench\App\Enums\Status', 'Workbench\App\Enums\Role']])
-            ->and($analysis->enumResourceArmShapes)->toBe(['status' => ['wrapIsCollection' => true, 'directIsArray' => false]])
+            ->and($analysis->wrappedEnums)->toBe(['status' => ['Workbench\App\Enums\Season']])
             // The four inline queues keep repeats: aliasPropertyType() consumes them positionally.
             ->and($analysis->inlineEnumFqcns)->toBe(['status' => ['Workbench\App\Enums\Role', 'Workbench\App\Enums\Role']])
             ->and($analysis->inlineModelFqcns)->toBe(['status' => ['Workbench\App\Models\User', 'Workbench\Crm\Models\User', 'Workbench\App\Models\User']])

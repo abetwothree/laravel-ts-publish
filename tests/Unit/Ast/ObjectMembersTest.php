@@ -152,19 +152,6 @@ it('declines an object with no key or a key it cannot read back', function (stri
     expect(ObjectMembers::analysis(['type' => $type, 'optional' => false]))->toBeNull();
 })->with(['{}', '{ a }', '{ -1: number }', '{ "\\x41": number }', '{ [key: `${string}_tag`]: string | undefined }']);
 
-it('declines a value carrying an EnumResource wrap', function () {
-    expect(ObjectMembers::analysis(['type' => '{ s: AsEnum<typeof Status> }', 'optional' => false, 'enumFqcn' => Status::class]))
-        ->toBeNull();
-});
-
-it('declines a value carrying a wrap on a per-arm channel', function () {
-    expect(ObjectMembers::analysis([
-        'type' => '{ s: AsEnum<typeof Status> }',
-        'optional' => false,
-        'multiEnumResourceFqcns' => [Status::class, CrmStatus::class],
-    ]))->toBeNull();
-});
-
 // A wrap spells its enum's const after `typeof`, so its member keeps the const behind the token and the enum it wraps.
 it('hands a member that wraps an enum out with the const behind its token', function () {
     $value = ['type' => '{ status: AsEnum<typeof Status> }', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]];
