@@ -303,31 +303,7 @@ class MethodAnalysis
             unset($this->closedToDottedKeys[$name]);
         }
 
-        $this->dispatchFqcnResults(
-            $name, $result, $this->directEnumFqcns, $this->nestedResources, $this->modelFqcns, $this->wrappedEnums,
-        );
-
-        if (($result['alikeClassFqcns'] ?? []) === []) {
-            unset($this->alikeClassFqcns[$name]);
-        } else {
-            $this->alikeClassFqcns[$name] = $result['alikeClassFqcns'];
-        }
-
-        foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
-            $this->inlineEnumFqcns[$name][] = $fqcn;
-        }
-
-        foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
-            $this->inlineModelFqcns[$name][] = $fqcn;
-        }
-
-        foreach ($result['embeddedResourceFqcns'] ?? [] as $fqcn) {
-            $this->inlineResourceFqcns[$name][] = $fqcn;
-        }
-
-        foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
-            $this->inlineEnumResourceFqcns[$name][] = $fqcn;
-        }
+        $this->queueChannels($name, $result);
 
         foreach ($result['customImports'] ?? [] as $path => $types) {
             $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
@@ -565,6 +541,21 @@ class MethodAnalysis
             $this->alikeClassFqcns[$name],
         );
         $this->queueEmbeddedClasses($name, $inline);
+    }
+
+    /**
+     * Replace a key's import channels with the ones a value of it carries, as addProperty() routes them, its cast kept.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    public function requeueChannels(string $name, array $result): void
+    {
+        unset(
+            $this->nestedResources[$name], $this->directEnumFqcns[$name], $this->modelFqcns[$name],
+            $this->inlineEnumFqcns[$name], $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name],
+            $this->inlineEnumResourceFqcns[$name], $this->wrappedEnums[$name],
+        );
+        $this->queueChannels($name, $result);
     }
 
     /**
@@ -1164,6 +1155,40 @@ class MethodAnalysis
     private function channelClasses(string $name, array $single, array $listed): array
     {
         return [...(isset($single[$name]) ? [$single[$name]] : []), ...$listed[$name] ?? []];
+    }
+
+    /**
+     * Route every import channel a key's value carries onto the key, beside the record of its alike tokens.
+     *
+     * @param  ValueExpressionResult  $result
+     */
+    private function queueChannels(string $name, array $result): void
+    {
+        $this->dispatchFqcnResults(
+            $name, $result, $this->directEnumFqcns, $this->nestedResources, $this->modelFqcns, $this->wrappedEnums,
+        );
+
+        if (($result['alikeClassFqcns'] ?? []) === []) {
+            unset($this->alikeClassFqcns[$name]);
+        } else {
+            $this->alikeClassFqcns[$name] = $result['alikeClassFqcns'];
+        }
+
+        foreach ($result['embeddedEnumFqcns'] ?? [] as $fqcn) {
+            $this->inlineEnumFqcns[$name][] = $fqcn;
+        }
+
+        foreach ($result['embeddedModelFqcns'] ?? [] as $fqcn) {
+            $this->inlineModelFqcns[$name][] = $fqcn;
+        }
+
+        foreach ($result['embeddedResourceFqcns'] ?? [] as $fqcn) {
+            $this->inlineResourceFqcns[$name][] = $fqcn;
+        }
+
+        foreach ($result['embeddedEnumResourceFqcns'] ?? [] as $fqcn) {
+            $this->inlineEnumResourceFqcns[$name][] = $fqcn;
+        }
     }
 
     /**

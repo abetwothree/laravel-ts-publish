@@ -15044,6 +15044,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\BranchedSameNamedWrapsResource": {
+            "name": "BranchedSameNamedWrapsResource",
+            "properties": [
+                {
+                    "name": "written",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "read",
+                    "type": "WorkbenchStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ w: AsEnum<typeof WorkbenchStatus> } | { w: AsEnum<typeof CrmStatus> }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EnumWraps\\DeclaredWrapRowsResource": {
             "name": "DeclaredWrapRowsResource",
             "properties": [

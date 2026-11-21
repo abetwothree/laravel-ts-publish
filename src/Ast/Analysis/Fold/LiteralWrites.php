@@ -620,7 +620,7 @@ final class LiteralWrites
         }
 
         $joined = new MethodAnalysis;
-        BranchJoin::joinInto($joined, $slices, dropsUntypedBranches: true, keepsFirstUntyped: true, keepsClassesApart: true);
+        BranchJoin::joinInto($joined, $slices, dropsUntypedBranches: true, keepsFirstUntyped: true);
 
         return $this->withDroppedGap($joined, $slices);
     }

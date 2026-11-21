@@ -205,6 +205,7 @@
     "app\/Http\/Resources\/EmptyWithMixinResource.php",
     "app\/Http\/Resources\/EnumCollectionResource.php",
     "app\/Http\/Resources\/EnumNullFirstResource.php",
+    "app\/Http\/Resources\/EnumWraps\/BranchedSameNamedWrapsResource.php",
     "app\/Http\/Resources\/EnumWraps\/DeclaredWrapRowsResource.php",
     "app\/Http\/Resources\/EnumWraps\/NestedWrapsResource.php",
     "app\/Http\/Resources\/EnumWraps\/RowsBesideWrapsResource.php",

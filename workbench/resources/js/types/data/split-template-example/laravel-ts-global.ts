@@ -6513,6 +6513,15 @@ declare global {
         }
     }
     export namespace app.http.resources.enumWraps {
+        /**
+         * Branches writing a wrap or a read of the app's or the CRM's `Status` into one key (GH-160, GH-76). Each branch sends
+         * its own enum, so the key keeps an arm for each, under its own alias.
+         */
+        export interface BranchedSameNamedWrapsResource {
+            written: app.enums.StatusType | crm.enums.StatusType;
+            read: app.enums.StatusType | crm.enums.StatusType;
+            nested: { w: app.enums.StatusType } | { w: crm.enums.StatusType };
+        }
         /** A wrap, a bare read of the same enum and rows the `@return` fills (GH-160). The read sends the enum's value. */
         export interface DeclaredWrapRowsResource {
             subject: app.enums.StatusType | { s: app.enums.StatusType }[];

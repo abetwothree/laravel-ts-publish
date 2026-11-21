@@ -69,6 +69,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReceiverOnlySprea
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RedeclaredKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RepeatedArmWrapsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamedWrapReturnsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ShortCircuitedCategoryResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextConstantKeyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SignatureTextKeyResource;
@@ -181,6 +182,7 @@ use Workbench\App\Http\Resources\EmptyResource;
 use Workbench\App\Http\Resources\EmptyWithMixinResource;
 use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
+use Workbench\App\Http\Resources\EnumWraps\BranchedSameNamedWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\DeclaredWrapRowsResource;
 use Workbench\App\Http\Resources\EnumWraps\NestedWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\RowsBesideWrapsResource;
@@ -8212,6 +8214,15 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'literals_nested_crm' => '{ s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: WorkbenchStatusType; x: null }',
             'app_or_crm_wrap_or_read' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | WorkbenchStatusType',
         ]],
+        'branches writing wraps or reads of the app\'s or the CRM\'s Status' => [BranchedSameNamedWrapsResource::class, [
+            'written' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
+            'read' => 'WorkbenchStatusType | CrmStatusType',
+            'nested' => '{ w: AsEnum<typeof WorkbenchStatus> } | { w: AsEnum<typeof CrmStatus> }',
+        ]],
+        'returns of wraps or reads of the app\'s or the CRM\'s Status, the app\'s twice' => [SameNamedWrapReturnsResource::class, [
+            'wrap' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
+            'read' => 'WorkbenchStatusType | CrmStatusType',
+        ]],
         'rows, or null, before wraps' => [RowsBesideWrapsResource::class, [
             'rows_then_two_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
             'rows_then_three_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>',
@@ -8297,6 +8308,15 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'app_or_crm_wrap_when' => 'WorkbenchStatusType | CrmStatusType',
             'app_or_crm_wrap_under_key' => '{ subject: WorkbenchStatusType | CrmStatusType }',
             'wrap_or_two_reads' => 'WorkbenchStatusType | CrmStatusType',
+        ]],
+        'branches writing wraps or reads of the app\'s or the CRM\'s Status' => [BranchedSameNamedWrapsResource::class, [
+            'written' => 'WorkbenchStatusType | CrmStatusType',
+            'read' => 'WorkbenchStatusType | CrmStatusType',
+            'nested' => '{ w: WorkbenchStatusType } | { w: CrmStatusType }',
+        ]],
+        'returns of wraps or reads of the app\'s or the CRM\'s Status, the app\'s twice' => [SameNamedWrapReturnsResource::class, [
+            'wrap' => 'WorkbenchStatusType | CrmStatusType',
+            'read' => 'WorkbenchStatusType | CrmStatusType',
         ]],
     ]);
 });
