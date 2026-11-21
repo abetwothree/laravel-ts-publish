@@ -43,7 +43,7 @@ These are the classes a change to the engine usually touches:
 | [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
-| [`ClassIdentity`], [`TokenKind`] | Which class stands behind each token of a value's type, read per token kind: a model, a resource, an enum read and a wrap's const. A union holding two classes that print one name keeps each arm's own (`membersByClass()`) |
+| [`ClassIdentity`], [`TokenKind`] | Which class stands behind each token of a value's type, read per token kind: a model, a resource, an enum read and a wrap's const. A union holding two classes that print one name keeps each arm's own (`membersByClass()`), and a rewrite of its text keeps each token's (`retyped()`) |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
 | [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, with a call argument's docblock moved onto the closure it holds, and find one method's AST node, under a trait alias too |
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |

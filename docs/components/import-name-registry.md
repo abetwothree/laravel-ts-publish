@@ -83,7 +83,10 @@ queues each member of an inline array through `ClassTokenQueue::perToken()`, as 
 decorated arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a
 resource do not both queue, so `User[] | Record<string, User>` queues its class twice. A keyed list spells its list
 arm's tokens again in its `Record` arm, so `ValueResult::keyedList()` and `spelledTwice()` read each queue twice and
-the `Record` arm names the classes the list arm names.
+the `Record` arm names the classes the list arm names. A later rewrite that merges those arms, such as a resource's
+re-index, `array_values()`, `values()` or an `(array)` cast, goes through `ValueResult::retypedByClass()`: each token
+carries its class through the text (`ClassIdentity::retyped()`), so arms merge only where their classes match and
+each queue keeps the classes of the tokens left.
 
 A model and a resource can print one name, as `Address` and `AddressResource` do. Each kind's channel keeps its own
 tokens' order only, so a union or an inline object holding both records which of those tokens is whose
