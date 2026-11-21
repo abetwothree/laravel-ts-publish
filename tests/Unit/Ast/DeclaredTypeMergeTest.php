@@ -383,7 +383,7 @@ test('a filled position keeps the declared class beside each class the body read
 
 // R7 rule 7.
 test('a literal is within its scalar, null only within null, and a wrapped enum is never its enum', function () {
-    $wraps = new DeclaredTypeMerge(['StatusType'], [Status::class]);
+    $wraps = new DeclaredTypeMerge(['StatusType'], consts: ['Status']);
     $plain = new DeclaredTypeMerge(['StatusType']);
 
     expect(DeclaredTypeMerge::armWithin("'a'", 'string'))->toBeTrue()
@@ -398,7 +398,8 @@ test('a literal is within its scalar, null only within null, and a wrapped enum 
         ->and(mergedType('null', 'string'))->toBe('null')
         ->and(mergedType('string', 'null'))->toBe('string')
         ->and($plain->merge(['StatusType | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))->toBe(['StatusType | \'a\'', [Status::class]])
-        ->and($wraps->merge(['StatusType | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))->toBe(['StatusType | string', [Status::class]]);
+        ->and($wraps->merge(['AsEnum<typeof Status> | string', [Status::class]], ['StatusType | \'a\'', [Status::class]]))
+        ->toBe(['AsEnum<typeof Status> | string', [Status::class]]);
 });
 
 // B4: the const after `typeof` takes a slot as a class's token does, so wraps of two enums one name spells stay apart.
@@ -417,12 +418,12 @@ test('a wrap\'s const compares by the enum behind it, never by its spelling', fu
 });
 
 test('a wrapped enum beside a list keeps the body\'s arm and merges the list', function () {
-    $merge = new DeclaredTypeMerge(['StatusType', 'User'], [Status::class]);
-    $body = ['StatusType | { by: User; other: unknown }[]', [Status::class, CrmUser::class]];
+    $merge = new DeclaredTypeMerge(['StatusType', 'User'], consts: ['Status']);
+    $body = ['AsEnum<typeof Status> | { by: User; other: unknown }[]', [Status::class, CrmUser::class]];
     $declared = ['StatusType | { other: User | null; by: User }[]', [Status::class, User::class, CrmUser::class]];
 
     expect($merge->merge($body, $declared))
-        ->toBe(['StatusType | { by: User; other: User | null }[]', [Status::class, CrmUser::class, User::class]]);
+        ->toBe(['AsEnum<typeof Status> | { by: User; other: User | null }[]', [Status::class, CrmUser::class, User::class]]);
 });
 
 /**
