@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgT
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\SplitsOnCondition;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
@@ -616,7 +617,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return ValueResult::withAttributeChannels($result, $info);
         }
 
-        return $this->spelledWrap([
+        return resolve(EnumWrapPayload::class)->spelledWrap([
             ...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]),
             'enumFqcn' => $info['enumFqcn'],
         ]);

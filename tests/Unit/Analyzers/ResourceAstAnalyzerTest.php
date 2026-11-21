@@ -6093,7 +6093,7 @@ test('SomeClass::CONSTANT resolves the constant value without regressing Foo::cl
         // directly, without going through analyzeValueExpression() — so this is new behaviour, not a guard.
         ->and($props['resource_marker']['type'])->toBe('string')
         // Unaffected: an enum case reached through EnumResource::make() — a separate,
-        // pre-existing path (resolveEnumFromPropertyArg()) this feature does not touch.
+        // pre-existing path (EnumWrapPayload::fromArgument()) this feature does not touch.
         ->and($props['status_marker']['type'])->toBe('AsEnum<typeof Status>')
         ->and($analysis->wrapConstFqcns('status_marker'))->toBe([Status::class]);
 });

@@ -11,9 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\ResolvesAuthHelperCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ReadsNullablePayloads;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
@@ -59,7 +59,6 @@ final class StaticCallHandler implements ExpressionHandler
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
     use ResolvesAuthHelperCalls;
-    use ResolvesEnumPropertyArgTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -541,7 +540,7 @@ final class StaticCallHandler implements ExpressionHandler
             return ValueResult::unknown();
         }
 
-        return $this->enumWrapValue($payload, $scope, $engine) ?? ValueResult::unknown();
+        return resolve(EnumWrapPayload::class)->value($payload, $scope, $engine) ?? ValueResult::unknown();
     }
 
     /**
@@ -559,7 +558,7 @@ final class StaticCallHandler implements ExpressionHandler
 
         return $payload === null
             ? ValueResult::unknown()
-            : $this->enumCollectionValue($payload, $scope, $engine) ?? ValueResult::unknown();
+            : resolve(EnumWrapPayload::class)->collectionValue($payload, $scope, $engine) ?? ValueResult::unknown();
     }
 
     /**

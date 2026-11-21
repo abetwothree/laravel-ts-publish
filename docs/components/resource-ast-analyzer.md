@@ -1129,8 +1129,8 @@ never spells. A union arm spelling no `…Type` rides the embedded queue (`EnumN
 wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
 `EnumNames::typeName()`, which its wrap spells as `AsEnum<typeof C>` with the tolki package on. The enum comes from the
 class a case or `from()` names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an
-attribute, and the receiver class for a value of a declared type (`ResolvesEnumPropertyArgTypes::heldEnum()`). `->value`
-and `->name` keep the enum's names through `EnumValueTypes`, except a case's own, which publish its literal.
+attribute, and the receiver class for a value of a declared type (`EnumWrapPayload::heldEnum()`). `->value` and `->name`
+keep the enum's names through `EnumValueTypes`, except a case's own, which publish its literal.
 `LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the type it publishes as. An
 `AsEnumCollection` cast's `EnumResource::collection()` and a model's `{Model}Resource` column still miss the wrap
 ([known gaps](../known-gaps.md#two-reads-of-a-column-cast-to-an-overridden-enum-miss-its-asenumtypeof-x)).
@@ -1190,15 +1190,15 @@ stands for two different things, so it stays two references.
 
 ### An enum reached through a local or a helper
 
-`ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
-parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
-to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
-list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. A static call such as
-`Status::tryFrom()` whose declared return admits null keeps that null. The payload's own `| null` stays where
-`filter()` reaches the wrap, since an enum branch returns before `resourceWrapType()`; anywhere else, `enumWrapValue()`
-spells the `[]` the wrap sends as `never[]`. A `map()` reaches `filter()` through `->all()`, `->toArray()` or
-`->jsonSerialize()` (`CollectionSteps::mappedSerializer()`, `BindsMapCallbacks::serializedMapResult()`), inside a
-relation closure or not; `->jsonSerialize()` resolves a wrap its callback returns bare as a kept map does.
+`EnumWrapPayload::fromArgument()` follows a local assigned once as it follows a `when()` parameter, so
+`$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes to
+`fromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a list of it for
+`::collection()`. Two enums, even two that share a name, stay `unknown`. A static call such as `Status::tryFrom()` whose
+declared return admits null keeps that null. The payload's own `| null` stays where `filter()` reaches the wrap, since
+an enum branch returns before `resourceWrapType()`; anywhere else, `value()` spells the `[]` the wrap sends as
+`never[]`. A `map()` reaches `filter()` through `->all()`, `->toArray()` or `->jsonSerialize()`
+(`CollectionSteps::mappedSerializer()`, `BindsMapCallbacks::serializedMapResult()`), inside a relation closure or not;
+`->jsonSerialize()` resolves a wrap its callback returns bare as a kept map does.
 
 [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
 declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
