@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard;
 
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use LogicException;
 
 /**
  * Where a guard body puts its arms: a top-level ternary, the same under a key or in a list, through `when()` or through
- * `match`. Each shape writes the value and reads its union's members back out of the published type.
+ * `match`, a return of its own each, or a returned variable each arm overwrites on its flag. Each shape writes the
+ * value and reads its union's members back out of the published type.
  */
 enum BodyShape: string
 {
@@ -17,26 +19,34 @@ enum BodyShape: string
     case InList = 'in a list';
     case When = 'when()';
     case Match = 'match';
+    case Returns = 'returns';
+    case Writes = 'branch writes';
 
     private const array FLAGS = ['a', 'b', 'c'];
 
     /**
-     * The value the generated resource's key holds, its arms in order.
+     * The statements of the generated resource's toArray(), its key `v` holding the arms in order.
      *
      * @param  non-empty-list<string>  $arms  PHP expressions.
      */
-    public function value(array $arms): string
+    public function body(array $arms): string
     {
         [$first, $rest] = [$arms[0], array_slice($arms, 1)];
+        $flagged = static fn (string $statement, int $at): string => '        if ($this->resource->'.self::FLAGS[$at]
+            .") {\n            {$statement}\n        }\n\n";
 
         return match ($this) {
-            self::Ternary => self::ternary($first, $rest),
-            self::UnderKey => "['k' => ".self::ternary($first, $rest).']',
-            self::InList => '['.self::ternary($first, $rest).']',
-            self::When => $rest === []
-                ? "\$this->when(\$this->resource->a, {$first})"
-                : "\$this->when(\$this->resource->a, {$first}, ".self::ternary($rest[0], array_slice($rest, 1), 1).')',
-            self::Match => self::match($arms),
+            self::Returns => implode('', array_map(
+                static fn (int $at, string $arm): string => $flagged("return ['v' => {$arm}];", $at),
+                array_keys(array_slice($arms, 0, -1)),
+                array_slice($arms, 0, -1),
+            )).'        return [\'v\' => '.$arms[array_key_last($arms)].'];',
+            self::Writes => "        \$data = ['v' => {$first}];\n\n".implode('', array_map(
+                static fn (int $at, string $arm): string => $flagged("\$data['v'] = {$arm};", $at),
+                array_keys($rest),
+                $rest,
+            )).'        return $data;',
+            default => "        return ['v' => {$this->value($arms)}];",
         };
     }
 
@@ -109,5 +119,26 @@ enum BodyShape: string
 
         return str_starts_with($element, '(') && TsTypeShape::splitTopLevel($element, ['|']) === [$element]
             && str_ends_with($element, ')') ? substr($element, 1, -1) : $element;
+    }
+
+    /**
+     * The value the generated resource's key holds, its arms in order, for a shape that writes one expression.
+     *
+     * @param  non-empty-list<string>  $arms  PHP expressions.
+     */
+    private function value(array $arms): string
+    {
+        [$first, $rest] = [$arms[0], array_slice($arms, 1)];
+
+        return match ($this) {
+            self::Ternary => self::ternary($first, $rest),
+            self::UnderKey => "['k' => ".self::ternary($first, $rest).']',
+            self::InList => '['.self::ternary($first, $rest).']',
+            self::When => $rest === []
+                ? "\$this->when(\$this->resource->a, {$first})"
+                : "\$this->when(\$this->resource->a, {$first}, ".self::ternary($rest[0], array_slice($rest, 1), 1).')',
+            self::Match => self::match($arms),
+            self::Returns, self::Writes => throw new LogicException("A {$this->value} body writes no one value."),
+        };
     }
 }

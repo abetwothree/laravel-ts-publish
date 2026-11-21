@@ -101,11 +101,11 @@ function classQueueGuardMismatch(GuardCase $case, GuardClassFiles $files): ?stri
     try {
         $result = resolve(AstEngine::class)->analyze($files->load($case), 'toArray', null, PublishedClasses::FROM);
     } catch (Throwable $thrown) {
-        return implode("\n", ["  {$case->label()}", "  body:      'v' => {$case->value()}", '  threw:     '.$thrown::class.': '.$thrown->getMessage()]);
+        return implode("\n", ["  {$case->label()}", '  body:      '.(string) preg_replace('/\\s+/', ' ', $case->body()), '  threw:     '.$thrown::class.': '.$thrown->getMessage()]);
     }
 
     if (! isset($result->properties[0])) {
-        return implode("\n", ["  {$case->label()}", "  body:      'v' => {$case->value()}", '  published: no key']);
+        return implode("\n", ["  {$case->label()}", '  body:      '.(string) preg_replace('/\\s+/', ' ', $case->body()), '  published: no key']);
     }
 
     $type = $result->properties[0]['type'];
@@ -119,7 +119,7 @@ function classQueueGuardMismatch(GuardCase $case, GuardClassFiles $files): ?stri
 
     return implode("\n", [
         "  {$case->label()}",
-        "  body:      'v' => {$case->value()}",
+        '  body:      '.(string) preg_replace('/\\s+/', ' ', $case->body()),
         "  published: {$type}",
         '  imports:   '.classQueueGuardImports($result),
         '  read:      '.json_encode($published, JSON_UNESCAPED_SLASHES),

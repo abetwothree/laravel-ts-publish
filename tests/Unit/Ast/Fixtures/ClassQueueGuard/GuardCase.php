@@ -20,11 +20,11 @@ final readonly class GuardCase
     ) {}
 
     /**
-     * The value expression the body writes under its key.
+     * The statements of the body's toArray().
      */
-    public function value(): string
+    public function body(): string
     {
-        return $this->shape->value(array_map(static fn (ArmKind $arm): string => $arm->expression(), $this->arms));
+        return $this->shape->body(array_map(static fn (ArmKind $arm): string => $arm->expression(), $this->arms));
     }
 
     /**
@@ -37,7 +37,7 @@ final readonly class GuardCase
         $source = strtr((string) file_get_contents(__DIR__.'/GuardResource.php.stub'), [
             '{{ namespace }}' => self::NAMESPACE,
             '{{ class }}' => $class,
-            '{{ value }}' => $this->value(),
+            '{{ body }}' => $this->body(),
         ]);
 
         /** @var class-string $fqcn */
