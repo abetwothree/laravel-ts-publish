@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish as LaravelTsPublishFacade;
 use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 use Workbench\App\Enums\Priority;
@@ -30,6 +31,41 @@ test('declaredTokens() gives each own name\'s token the next slot, an unread one
 test('declaredTokens() reads no token where the slots hold no class and no other name is asked for', function () {
     expect(TokenSlots::declaredTokens('User | Post', []))->toBe([]);
 });
+
+test('retyped() keeps each slot on its token through a rewrite that merges, drops or repeats arms', function (string $type, array $slots, string $retyped, array $kept) {
+    expect(TokenSlots::retyped($type, $slots, ResourceReindexing::reindexedType(...)))->toBe([$retyped, $kept]);
+})->with([
+    'a filtered list re-indexed beside a later token and an override' => [
+        '{ list: (StatusType | StatusType)[] | Record<number, StatusType | StatusType>; one: StatusType; a: User | null; b: User }',
+        [CrmStatus::class, Status::class, CrmStatus::class, Status::class, Status::class, User::class, null],
+        '{ list: (StatusType | StatusType)[]; one: StatusType; a: User | null; b: User }',
+        [CrmStatus::class, Status::class, Status::class, User::class, null],
+    ],
+    'arms of one text whose slots name other classes stay two' => [
+        'User[] | Record<number, User>',
+        [CrmUser::class, User::class],
+        'User[] | User[]',
+        [CrmUser::class, User::class],
+    ],
+    'a literal\'s token keeps its slot' => [
+        "{ kind: 'User'; r: Record<number, User> }",
+        [null, User::class],
+        "{ kind: 'User'; r: User[] }",
+        [null, User::class],
+    ],
+    'an override\'s slots alone, which no token reads, stay' => [
+        '{ r: Record<number, User> }',
+        [null],
+        '{ r: User[] }',
+        [null],
+    ],
+    'a text the rewrite leaves as it is keeps its slots' => [
+        '{ r: User[]; s: StatusType }',
+        [User::class, Status::class, CrmStatus::class],
+        '{ r: User[]; s: StatusType }',
+        [User::class, Status::class, CrmStatus::class],
+    ],
+]);
 
 test('declaredSlots() gives the slot declaredTokens() gives each token', function () {
     expect(TokenSlots::declaredSlots("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']))

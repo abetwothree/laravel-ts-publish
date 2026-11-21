@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use Closure;
 
 /**
  * Reads a declaration's `tokenFqcns`: one slot per token of the names of the classes its slots hold, in print order,
@@ -26,6 +27,11 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
  */
 final class TokenSlots
 {
+    /** The byte around the index of the slot a token carries through retyped()'s rewrite. */
+    private const string MARK = "\x1E";
+
+    private const string MARK_PATTERN = '/\x1E(\d+)\x1E/';
+
     /**
      * Each token in a type of a declaration's own names, the names of the classes its slots hold, and of `$names`, in
      * print order. An own name's token takes the next slot, an unread one's in a literal too, and any other token takes
@@ -38,6 +44,50 @@ final class TokenSlots
     public static function declaredTokens(string $type, array $slots, array $names = []): array
     {
         return self::declaredTokensOf($type, $slots, self::ownNames($slots), $names);
+    }
+
+    /**
+     * A type rewritten with its slots kept to the tokens the new text spells: each token of the declaration's own names
+     * carries its slot through the rewrite, so a token the rewrite drops, merges or repeats takes its slot along. Slots
+     * no token reads, as an override's alone are, and those of a text the rewrite leaves as it is stay as they came.
+     *
+     * @param  Slots  $slots
+     * @param  Closure(string): string  $rewrite  it must read a token and the mark after it as one opaque name
+     * @return array{string, Slots}
+     */
+    public static function retyped(string $type, array $slots, Closure $rewrite): array
+    {
+        $tokens = self::declaredTokens($type, $slots);
+
+        if ($tokens === []) {
+            return [$rewrite($type), $slots];
+        }
+
+        /** @var Slots $values the slot each mark's index names */
+        $values = [];
+        $marked = '';
+        $from = 0;
+
+        foreach ($tokens as $token) {
+            $index = array_search($token['slot'], $values, true);
+
+            if ($index === false) {
+                $index = count($values);
+                $values[] = $token['slot'];
+            }
+
+            $end = $token['offset'] + strlen($token['token']);
+            $marked .= substr($type, $from, $end - $from).self::MARK.$index.self::MARK;
+            $from = $end;
+        }
+
+        $rewritten = $rewrite($marked.substr($type, $from));
+        $retyped = (string) preg_replace(self::MARK_PATTERN, '', $rewritten);
+        preg_match_all(self::MARK_PATTERN, $rewritten, $matches);
+
+        $kept = array_map(static fn (string $index): ?string => $values[(int) $index], $matches[1]);
+
+        return [$retyped, $retyped === $type ? $slots : $kept];
     }
 
     /**

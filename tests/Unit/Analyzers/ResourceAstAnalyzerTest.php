@@ -36,6 +36,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResour
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectionOfWhenPayloadHelpersResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredOverrideFilteredStatusesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredOverrideFilteredUsersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
@@ -126,7 +128,9 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\SignatureCastSpellingRe
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UnreadableReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UserOnlyRelationResource;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use PhpParser\Node;
@@ -8421,6 +8425,43 @@ test('keeps each class of one name apart past a filtered list the resource re-in
         'addresses' => '(WorkbenchAddress | WorkbenchAddress2)[] | (WorkbenchAddress2 | null)[]',
         'mixed' => '(WorkbenchAddress | CrmStatusType | WorkbenchAddress2 | WorkbenchStatusType)[] | WorkbenchStatusType[]',
     ], []],
+]);
+
+// GH-76: a `@return` slotting an override spelled like a class keeps each slot on its token through the re-index.
+test('keeps a declared slot on its token past a filtered list the resource re-indexes', function (string $resource, bool $tolki, array $lines) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
+
+    expect(array_values(preg_grep('/^(import |    pair: )/', explode("\n", $content)) ?: []))->toBe($lines);
+})->with([
+    'two Status enums, with the tolki package' => [DeclaredOverrideFilteredStatusesResource::class, true, [
+        "import type { User } from '@js/types/ui';",
+        "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+        "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+        "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+        '    pair: { list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType; a: WorkbenchUser | null; b: User };',
+    ]],
+    'two Status enums, without the tolki package' => [DeclaredOverrideFilteredStatusesResource::class, false, [
+        "import type { User } from '@js/types/ui';",
+        "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+        "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+        "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+        '    pair: { list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType; a: WorkbenchUser | null; b: User };',
+    ]],
+    'two User models, with the tolki package' => [DeclaredOverrideFilteredUsersResource::class, true, [
+        "import type { User } from '@js/types/ui';",
+        "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+        "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
+        '    pair: { list: (CrmUser | WorkbenchUser)[]; a: WorkbenchUser | null; b: User };',
+    ]],
+    'two User models, without the tolki package' => [DeclaredOverrideFilteredUsersResource::class, false, [
+        "import type { User } from '@js/types/ui';",
+        "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
+        "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
+        '    pair: { list: (CrmUser | WorkbenchUser)[]; a: WorkbenchUser | null; b: User };',
+    ]],
 ]);
 
 // GH-76: array_values(), values() and an array cast merge a list's arms, and keep each token after them on its class.

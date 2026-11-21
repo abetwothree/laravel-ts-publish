@@ -1214,12 +1214,40 @@ class MethodAnalysis
     }
 
     /**
+     * A key's type rewritten, its queues and its declared slots kept to the tokens the new text spells.
+     *
+     * @param  Closure(string): string  $rewrite
+     */
+    private function retypedByClass(string $name, string $type, Closure $rewrite): string
+    {
+        $slots = $this->declaredTokenFqcns[$name] ?? [];
+
+        if ($slots === []) {
+            return $this->requeuedRewrite($name, $type, $rewrite);
+        }
+
+        [$retyped, $slots] = TokenSlots::retyped(
+            $type,
+            $slots,
+            fn (string $marked): string => $this->requeuedRewrite($name, $marked, $rewrite),
+        );
+
+        if ($slots === []) {
+            unset($this->declaredTokenFqcns[$name]);
+        } else {
+            $this->declaredTokenFqcns[$name] = $slots;
+        }
+
+        return $retyped;
+    }
+
+    /**
      * A key's type rewritten, its queues kept to the classes behind the tokens the new text spells
      * (ValueResult::retypedByClass()).
      *
      * @param  Closure(string): string  $rewrite
      */
-    private function retypedByClass(string $name, string $type, Closure $rewrite): string
+    private function requeuedRewrite(string $name, string $type, Closure $rewrite): string
     {
         if (! $this->hasFqcnChannel($name)) {
             return $rewrite($type);
