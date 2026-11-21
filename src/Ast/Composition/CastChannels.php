@@ -156,7 +156,7 @@ final class CastChannels
             $enums = $this->enumsOf($analysis, $name);
             $models = $this->modelsOf($analysis, $name);
             $resources = $this->resourcesOf($analysis, $name);
-            $wraps = $this->wrapsOf($analysis, $name);
+            $wraps = $analysis->wrappedEnumFqcns($name);
             $wrapped = $analysis->wrappedEnums[$name] ?? null;
 
             $cast = $analysis->casts[$name] ?? null;
@@ -248,20 +248,6 @@ final class CastChannels
             ...(isset($analysis->nestedResources[$name]) ? [$analysis->nestedResources[$name]] : []),
             ...($analysis->inlineResourceFqcns[$name] ?? []),
         ];
-    }
-
-    /**
-     * The enums a key's value wrapped in an `EnumResource`, whose const an `AsEnum<typeof …>` would spell: each its
-     * const queue holds, then each it wraps that no const spells, as a wrap printed without the tolki package is.
-     *
-     * @return list<class-string>
-     */
-    private function wrapsOf(MethodAnalysis $analysis, string $name): array
-    {
-        return array_values(array_unique([
-            ...($analysis->inlineEnumResourceFqcns[$name] ?? []),
-            ...$analysis->wrappedEnumFqcns($name),
-        ]));
     }
 
     /**
