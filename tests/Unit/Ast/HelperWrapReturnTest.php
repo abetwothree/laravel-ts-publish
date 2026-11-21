@@ -4,25 +4,18 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
-use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RequestRoleHelperEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Arg;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
-use PhpParser\Node\VariadicPlaceholder;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
@@ -34,12 +27,11 @@ use Workbench\App\Models\Team;
 use Workbench\App\Support\Opaque;
 
 /**
- * Helpers the workbench fixture leaves out, one per edge of the rule: each wraps one of the team's enums, or returns a
- * shape the rule leaves alone.
+ * Helpers the workbench fixture leaves out, each wrapping one of the team's enums in an `EnumResource`.
  *
  * @mixin Team
  */
-final class SubjectHelperReturnProbeResource extends JsonResource
+final class HelperWrapReturnProbeResource extends JsonResource
 {
     /**
      * The team's latest status as an enum resource, read off a local holding the team.
@@ -88,30 +80,6 @@ final class SubjectHelperReturnProbeResource extends JsonResource
     }
 
     /**
-     * Nothing to wrap.
-     */
-    public function noStatusResource(): ?EnumResource
-    {
-        return null;
-    }
-
-    /**
-     * The team itself when set, which a short ternary returns, else its latest status as an enum resource.
-     */
-    public function fallbackStatusResource(): mixed
-    {
-        return $this->resource ?: EnumResource::make($this->latest_status);
-    }
-
-    /**
-     * The team in a resource that wraps no enum.
-     */
-    public function teamResource(): JsonResource
-    {
-        return new JsonResource($this->resource);
-    }
-
-    /**
      * The latest status of the team the container holds, once a guard proves it is one, else null.
      */
     public function guardedStatusResource(): ?EnumResource
@@ -127,69 +95,34 @@ final class SubjectHelperReturnProbeResource extends JsonResource
 }
 
 /**
- * An engine that fails the test if the resolver reads a helper's body, proving it declined on the returns' shape alone.
- */
-function subjectHelperReturnThrowingEngine(): ExpressionEngine
-{
-    return new class implements ExpressionEngine
-    {
-        public function resolve(Expr $expr): array
-        {
-            throw new RuntimeException('resolve() must not be called in this case');
-        }
-
-        public function spreadAnalysis(string $methodName, ReflectionClass $built): ?MethodAnalysis
-        {
-            throw new RuntimeException('spreadAnalysis() must not be called in this case');
-        }
-
-        /** Reads every value as `json_encode()` sends it. */
-        public function reading(): Reading
-        {
-            return Reading::Encoded;
-        }
-
-        public function returnArrayAnalysis(Array_ $array, bool $topLevel = false): MethodAnalysis
-        {
-            throw new RuntimeException('returnArrayAnalysis() must not be called in this case');
-        }
-    };
-}
-
-/**
  * Resolve a helper call from a caller inside a relation closure whose every table binds a `status` the helper must not
  * see, with the caller's state before and after the call.
  *
  * @param  MethodCall|string  $call  a call, or the name of a method to call on `$this`
  * @param  class-string  $subject
  * @param  class-string  $model
- * @return array{0: array<string, mixed>|null, 1: AnalysisScope, 2: array{list<mixed>, list<mixed>}}
+ * @return array{0: array<string, mixed>, 1: AnalysisScope, 2: array{list<mixed>, list<mixed>}}
  */
-function subjectHelperReturn(
+function helperWrapReturn(
     MethodCall|string $call,
     string $subject = PostStatusSourcesResource::class,
     string $model = Post::class,
-    ?ExpressionEngine $engine = null,
 ): array {
     $scope = new AnalysisScope(new ReflectionClass($subject), $model);
     $scope->localVarBindings['status'] = new PropertyFetch(new Variable('this'), 'title');
     $scope->closureParamExprBindings['status'] = new PropertyFetch(new Variable('this'), 'visibility');
     $scope->resolvingLocalVars['status'] = true;
-    $engine ??= new ResourceAstAnalyzer(new ReflectionClass($subject), $model, 'toArray', null, $scope);
+    $engine = new ResourceAstAnalyzer(new ReflectionClass($subject), $model, 'toArray', null, $scope);
     $callerState = fn (): array => [$scope->nameBindings(), $scope->resolvingLocalVars, $scope->declaringFileClass];
     $before = $callerState();
 
-    $result = resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn(
-        is_string($call) ? new MethodCall(new Variable('this'), $call) : $call,
-        $scope,
-        $engine,
-    );
+    $result = $engine->resolve(is_string($call) ? new MethodCall(new Variable('this'), $call) : $call);
 
     return [$result, $scope, [$before, $callerState()]];
 }
 
 it('reads a helper whose every return wraps an enum or is null', function (string $method, array $expected) {
-    [$result, $scope, [$before, $after]] = subjectHelperReturn($method);
+    [$result, $scope, [$before, $after]] = helperWrapReturn($method);
 
     expect($result)->toBe($expected)
         ->and(array_keys($scope->localVarBindings))->toBe(['status'])
@@ -202,7 +135,7 @@ it('reads a helper whose every return wraps an enum or is null', function (strin
 
 // G7: the helper's ternary of two wraps keeps each wrap as its own member, read off the set of enums it wraps.
 it('reads a helper returning a ternary of two wraps as each wrap', function () {
-    expect(subjectHelperReturn('pick', WrapHelpersResource::class)[0])->toBe([
+    expect(helperWrapReturn('pick', WrapHelpersResource::class)[0])->toBe([
         'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
         'optional' => false,
         'embeddedEnumResourceFqcns' => [Status::class, Visibility::class],
@@ -210,22 +143,10 @@ it('reads a helper returning a ternary of two wraps as each wrap', function () {
     ]);
 });
 
-it('declines a helper with a return that wraps no enum', function (string $method) {
-    [$result, , [$before, $after]] = subjectHelperReturn($method, engine: subjectHelperReturnThrowingEngine());
-
-    expect($result)->toBeNull()
-        ->and($after)->toBe($before);
-})->with([
-    'an enum read' => ['currentStatus'],
-    'an array' => ['toArray'],
-    'a JsonResource helper' => ['whenLoaded'],
-    'an undeclared method' => ['noSuchMethod'],
-]);
-
 // The helper's body reads the subject, so a variable's property is read on the subject's model, not the caller's
 // relation.
 it('reads a helper on the subject\'s own model, and the collection it wraps', function (string $method, array $expected) {
-    expect(subjectHelperReturn($method, SubjectHelperReturnProbeResource::class, Team::class)[0])->toBe($expected);
+    expect(helperWrapReturn($method, HelperWrapReturnProbeResource::class, Team::class)[0])->toBe($expected);
 })->with([
     'a property of its own local, under the caller\'s relation' => ['localStatusResource', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
     'a collection' => ['statusHistoryResource', ['type' => 'AsEnum<typeof Status>[]', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
@@ -234,11 +155,11 @@ it('reads a helper on the subject\'s own model, and the collection it wraps', fu
 
 // The helper's body is seeded as any method body is: its guards narrow, and a Request parameter binds as a request.
 it('reads a helper\'s body with its guards, and with its request parameter outside an API resource', function (MethodCall|string $call, string $subject, array $expected) {
-    expect(subjectHelperReturn($call, $subject, Team::class)[0])->toBe($expected);
+    expect(helperWrapReturn($call, $subject, Team::class)[0])->toBe($expected);
 })->with([
     'an early-exit instanceof guard' => [
         'guardedStatusResource',
-        SubjectHelperReturnProbeResource::class,
+        HelperWrapReturnProbeResource::class,
         ['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]],
     ],
     'a broadcast event\'s Request parameter' => [
@@ -254,20 +175,9 @@ it('publishes a broadcast event\'s helper that wraps what its request reads', fu
         ->toBe([['name' => 'role', 'type' => 'AsEnum<typeof Role> | never[]', 'optional' => false, 'description' => '']]);
 });
 
-it('never reads a call or a body the rule leaves alone', function (MethodCall|string $call) {
-    expect(subjectHelperReturn($call, SubjectHelperReturnProbeResource::class, Team::class, subjectHelperReturnThrowingEngine())[0])
-        ->toBeNull();
-})->with([
-    'a helper that returns only null' => ['noStatusResource'],
-    'a short ternary, which returns its condition' => ['fallbackStatusResource'],
-    'a resource that wraps no enum' => ['teamResource'],
-    'a receiver other than $this' => [new MethodCall(new Variable('team'), 'localStatusResource')],
-    'a first-class callable' => [new MethodCall(new Variable('this'), 'localStatusResource', [new VariadicPlaceholder])],
-]);
-
 // Once the engine drops the wrap it cannot type, only a `null` that says nothing about the wrap could be left.
-it('declines a helper whose every wrap the engine leaves untyped', function (string $method) {
-    expect(subjectHelperReturn($method, SubjectHelperReturnProbeResource::class, Team::class)[0])->toBeNull();
+it('reads a helper whose every wrap the engine leaves untyped as unknown', function (string $method) {
+    expect(helperWrapReturn($method, HelperWrapReturnProbeResource::class, Team::class)[0]['type'])->toBe('unknown');
 })->with([
     'beside a null' => ['attributeStatusResource'],
     'around its own call' => ['selfWrappedResource'],
@@ -276,7 +186,7 @@ it('declines a helper whose every wrap the engine leaves untyped', function (str
 // No value return shows the null an untyped helper returns when its body ends without a value; a declared return type
 // throws there instead.
 it('gives an untyped helper its null when its body can end without a value', function (string $method, array $expected) {
-    expect(subjectHelperReturn($method, EnumResourceUntypedHelperResource::class)[0])->toBe($expected);
+    expect(helperWrapReturn($method, EnumResourceUntypedHelperResource::class)[0])->toBe($expected);
 })->with([
     'running off its end' => ['pinnedStatus', ['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
     'a bare return' => ['pinnedStatusOrNothing', ['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
@@ -288,16 +198,6 @@ it('gives an untyped helper its null when its body can end without a value', fun
 
 // Only the last statement is read, not whether each branch returns, so the arm is a sound superset here.
 it('gives an untyped helper ending in an if/else that returns on both arms a null it never returns', function () {
-    expect(subjectHelperReturn('statusOrDraft', EnumResourceUntypedHelperResource::class)[0])
+    expect(helperWrapReturn('statusOrDraft', EnumResourceUntypedHelperResource::class)[0])
         ->toBe(['type' => 'AsEnum<typeof Status> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]);
-});
-
-// The helper wraps `$this->visibility`, a read that keeps imports, so only the resolver's own check leaves it unknown.
-it('declines in a scope that carries no import', function () {
-    $scope = new AnalysisScope(new ReflectionClass(PostStatusSourcesResource::class), Post::class);
-    $scope->carriesImports = false;
-    $engine = new ResourceAstAnalyzer(new ReflectionClass(PostStatusSourcesResource::class), Post::class, 'toArray', null, $scope);
-
-    expect(resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn(new MethodCall(new Variable('this'), 'visibilityResource'), $scope, $engine))
-        ->toBeNull();
 });

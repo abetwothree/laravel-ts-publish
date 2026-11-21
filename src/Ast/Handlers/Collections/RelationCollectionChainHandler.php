@@ -17,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceSubject;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
-use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectHelperReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\SubjectMethodTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
@@ -103,8 +102,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
                 ?? $this->subjectPropertyMethodReturn($expr, $property, $expr->name->toString(), $scope, $engine);
         }
 
-        // Generic `$this->method()` — reflect the declared return type, else read a helper that wraps an enum; the
-        // helper guards above ran first.
+        // Generic `$this->method()`; the helper guards above ran first.
         if ($expr instanceof MethodCall
             && $expr->var instanceof Variable
             && $expr->var->name === 'this'
@@ -112,8 +110,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
         ) {
             $site = new CallSite($expr, $scope, $engine);
 
-            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site)
-                ?? resolve(SubjectHelperReturnResolver::class)->resolveEnumResourceReturn($expr, $scope, $engine);
+            return resolve(SubjectMethodTypeResolver::class)->resolve($scope, $expr->name->toString(), $site);
         }
 
         return null;
