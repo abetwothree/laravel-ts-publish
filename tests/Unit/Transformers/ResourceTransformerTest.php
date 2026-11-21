@@ -97,6 +97,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingShelfReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixinPostHeldStatsChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedWrapOrNullableReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullablePostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
@@ -2966,6 +2967,13 @@ describe('ResourceTransformer with TeamStatusAuditResource', function () {
         expect($data->properties['audit']['type'])->toBe('{ status: AsEnum<typeof Status>[] | StatusType[] }')
             ->and(implode(' ', array_merge(...array_values($transformer->typeImports))))->toContain('StatusType')
             ->and(implode(' ', array_merge(...array_values($transformer->valueImports))))->toContain('Status');
+    });
+
+    test('a nested mixed EnumResource ternary keeps the null its direct arm may send', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(NestedWrapOrNullableReadResource::class))->data()->properties;
+
+        expect($properties['audit']['type'])->toBe('{ status: AsEnum<typeof Status>[] | StatusType[] | null }');
     });
 });
 

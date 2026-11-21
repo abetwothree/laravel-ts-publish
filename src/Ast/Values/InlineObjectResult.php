@@ -27,7 +27,6 @@ use Closure;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type ObjectPrint from ExpressionHandler
- * @phpstan-import-type EnumResourceArmShape from MethodAnalysis
  * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ClassMapType from MethodAnalysis
  * @phpstan-import-type InlineModelFqcnsMap from MethodAnalysis
@@ -77,9 +76,7 @@ final class InlineObjectResult
     {
         $held = [
             ...array_values($object->directEnumFqcns),
-            ...array_values($object->enumResources),
             ...array_merge(...array_values($object->inlineEnumFqcns)),
-            ...array_merge(...array_values($object->multiEnumResourceFqcns)),
             ...array_merge(...array_values($object->inlineEnumResourceFqcns)),
             ...array_merge(...array_values($object->wrappedEnums)),
         ];
@@ -162,37 +159,6 @@ final class InlineObjectResult
 
         $useTolki = EnumWrapSpelling::enabled();
 
-        // Tolki on: EnumResource-wrapped properties render as `AsEnum<typeof X>`, matching the
-        // top-level enum resource transformer. Substituting the bare token in place keeps every
-        // other union arm — a keyed `Record<...>` arm, an extra default arm — intact.
-        if ($useTolki) {
-            foreach ($analysis->properties as &$prop) {
-                if (! isset($analysis->enumResources[$prop['name']])) {
-                    continue;
-                }
-
-                $fqcn = $analysis->enumResources[$prop['name']];
-                $constName = ValueResult::enumConstName($fqcn);
-                $bareTypeName = ValueResult::enumTypeName($fqcn);
-
-                // A mixed wrap/direct ternary needs both arms named, whether or not the merged union
-                // still shows them apart; blanket substitution would rewrite the direct arm too.
-                $isMixed = ($analysis->directEnumFqcns[$prop['name']] ?? null) === $fqcn;
-                $members = TsTypeString::splitTopLevelUnion($prop['type']);
-
-                $prop['type'] = $isMixed
-                    ? $this->expandMixedEnumType(
-                        $members,
-                        $bareTypeName,
-                        $constName,
-                        $analysis->enumResourceArmShapes[$prop['name']] ?? null,
-                    )
-                    : TsTypeString::substituteEnumType($prop['type'], $bareTypeName, EnumWrapSpelling::of($constName));
-            }
-
-            unset($prop);
-        }
-
         // Each spread resource intersects with the remaining explicit keys, minus whichever of its
         // own keys a later spread arm or an explicit key also sets — PHP's `[...a, ...b, 'k' => v]`
         // lets the later assignment win, `&` does not, so the earlier arm needs Omit<>'d.
@@ -228,17 +194,8 @@ final class InlineObjectResult
             // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
             // occurrences of each bare enum name in the rendered type, so a real repeat must survive.
             $embeddedEnumFqcns = $this->memberEnumFqcns($analysis, false);
-
-            $enumResourceFqcns = array_values($analysis->enumResources);
-            // Propagate any deeply-nested enum resource FQCNs from sub-inline-arrays.
-            foreach ($analysis->inlineEnumResourceFqcns as $nestedFqcns) {
-                foreach ($nestedFqcns as $fqcn) {
-                    $enumResourceFqcns[] = $fqcn;
-                }
-            }
-            // Never deduped: same positional reasoning as $embeddedEnumFqcns above, for the
-            // EnumResource-wrapped (value-import) channel.
-            $embeddedEnumResourceFqcns = $enumResourceFqcns;
+            // Never deduped either, for the same reason, on the wraps' const channel.
+            $embeddedEnumResourceFqcns = array_merge([], ...array_values($analysis->inlineEnumResourceFqcns));
         } else {
             // Tolki OFF: all enum FQCNs (both direct and EnumResource) need type imports. Never
             // deduped, same positional reasoning as the Tolki-on branch above.
@@ -268,8 +225,8 @@ final class InlineObjectResult
             ),
         ];
 
-        // An enum none of whose names occurs in the final type (its arm was substituted by a wrapped
-        // one) must not claim an import the transformer would then emit unused; a `…Kind` is one of them.
+        // An enum none of whose names occurs in the final type must not claim an import the transformer would then emit
+        // unused; a `…Kind` is one of them.
         $embeddedEnumFqcns = array_values(array_filter(
             $embeddedEnumFqcns,
             fn (string $fqcn): bool => array_any(
@@ -384,9 +341,8 @@ final class InlineObjectResult
      * spells them, then each enum keyed by its own FQCN, which no member owns.
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
-     * order. A member's `EnumResource` enums join its own for type imports: its one wrap with `$withWraps`, and its
-     * several wraps always, since nothing spells them `AsEnum`. A wrap's enum rides its member's queue alone, as one
-     * printed without the tolki package is a token of that member.
+     * order. With `$withWraps`, a member's `EnumResource` consts join its own enums for type imports. A wrap's enum
+     * rides its member's queue alone, as one printed without the tolki package is a token of that member.
      *
      * @return list<class-string>
      */
@@ -397,13 +353,10 @@ final class InlineObjectResult
 
         foreach ($memberNames as $memberName) {
             $direct = $analysis->directEnumFqcns[$memberName] ?? null;
-            $wrapped = $withWraps ? ($analysis->enumResources[$memberName] ?? null) : null;
 
             array_push(
                 $fqcns,
                 ...($direct !== null ? [$direct] : []),
-                ...($wrapped !== null ? [$wrapped] : []),
-                ...($analysis->multiEnumResourceFqcns[$memberName] ?? []),
                 ...($analysis->inlineEnumFqcns[$memberName] ?? []),
                 ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
             );
@@ -568,41 +521,5 @@ final class InlineObjectResult
     private function spreadArmName(array $arm): string
     {
         return isset($arm['type']) ? $arm['type'] : TsNaming::resourceTypeName($arm['fqcn']);
-    }
-
-    /**
-     * Rejoin a mixed wrap/direct enum union's split members, naming the wrapped arm without
-     * losing the direct one.
-     *
-     * With each arm's own shape recorded, the union is synthesised from those flags — the merged
-     * members alone cannot tell two arms that rendered the same string apart. Without it, an
-     * array-shaped member is taken as the arm EnumResource::collection() forced.
-     *
-     * @param  list<string>  $members
-     * @param  EnumResourceArmShape|null  $armShape
-     */
-    private function expandMixedEnumType(array $members, string $bareTypeName, string $constName, ?array $armShape): string
-    {
-        if ($armShape !== null) {
-            $wrapped = EnumWrapSpelling::of($constName, $armShape['wrapIsCollection']);
-            $direct = $bareTypeName.($armShape['directIsArray'] ? '[]' : '');
-            $others = array_values(array_filter(
-                $members,
-                fn (string $member): bool => $member !== $bareTypeName && $member !== $bareTypeName.'[]',
-            ));
-
-            return implode(' | ', [$wrapped, $direct, ...$others]);
-        }
-
-        $collectionType = $bareTypeName.'[]';
-        $hasCollectionArm = in_array($collectionType, $members, true);
-
-        $expanded = array_map(fn (string $member): string => match (true) {
-            $member === $collectionType => EnumWrapSpelling::of($constName, list: true),
-            ! $hasCollectionArm && $member === $bareTypeName => EnumWrapSpelling::of($constName).' | '.$bareTypeName,
-            default => $member,
-        }, $members);
-
-        return implode(' | ', $expanded);
     }
 }
