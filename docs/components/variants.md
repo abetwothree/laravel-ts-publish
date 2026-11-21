@@ -92,8 +92,8 @@ fill, a method `#[TsCasts]`, `MethodAnalysis::stripGaps()` or a rename voids it.
 a grouped key declines the group at the top level, through `VariantUnions::apply()`'s `$declinedKeys`. A nested
 literal also fingerprints its casts, since its replayed objects never carry one laid after the fold.
 
-Objects that hold two same-named enums, one nested in a member, print flat (`InlineObjectResult::queuesEnumsApart()`),
-since a union of them reads one object's queued enum for the next one's token.
+Objects that hold two same-named enums, one nested in a member, split like any others: a nested enum rides its member's
+queue once.
 
 ### What may change a discriminant
 

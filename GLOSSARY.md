@@ -55,6 +55,10 @@ _Avoid_: document
 A parallel model interface, such as `{Model}Resource`, that types each enum column as a resolved `AsEnum<>` instance instead of a raw value.
 _Avoid_: resource, model resource
 
+**Enum wrap**:
+An enum value sent through `EnumResource`, which sends the enum's object instead of its value. It publishes as `AsEnum<typeof X>` where it is read, or as the enum's alias with the tolki package off.
+_Avoid_: AsEnum rewrite, enum resource property
+
 **Accessor**:
 A model attribute computed by a getter instead of stored in a column. `{Model}Mutators` is only the name of the interface that holds them.
 _Avoid_: mutator
@@ -106,6 +110,14 @@ An import named inside an override, so a hand-written TypeScript type can be use
 **Import channel**:
 One kind of class name a published type carries so its file can import it, such as model, enum, or custom-import names.
 _Avoid_: channel, FQCN channel
+
+**Const queue**:
+The enum behind each `typeof` token a key's enum wraps print, in print order, so each token takes its own enum's alias where two enums share a name.
+_Avoid_: wrap queue, enum-resource queue
+
+**Alike record**:
+The model or API resource behind each token of a name that both a model and an API resource print, in print order, so each token takes its own class's alias.
+_Avoid_: alike queue, kind order
 
 **Index signature**:
 A published key pattern, such as ``[key: `${string}_tag`]``, that types every runtime key it matches.
