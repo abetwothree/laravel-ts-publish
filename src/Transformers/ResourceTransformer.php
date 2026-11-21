@@ -157,7 +157,12 @@ class ResourceTransformer extends CoreTransformer
      */
     protected array $propertyInlineResourceFqcns = [];
 
-    /** @var array<array-key, list<class-string>> property name => enum FQCNs embedded via EnumResource in inline object type strings (used for value imports when tolki is enabled) */
+    /**
+     * Property name => the enum behind each `typeof` const the key's wraps write, one per token in type order, at any
+     * depth: the queue aliasTypeofConst() walks and the consts imported as values.
+     *
+     * @var array<array-key, list<class-string>>
+     */
     protected array $propertyInlineEnumResourceFqcns = [];
 
     /** @var array<array-key, class-string> property name => resource FQCN (from nested resources) */

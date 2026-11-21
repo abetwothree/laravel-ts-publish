@@ -2743,9 +2743,8 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
             ->and($data->properties['member_role_resources']['optional'])->toBeFalse();
     });
 
-    // filter() clears sequential keys, so the map body's keyed Record arm can't be rebuilt by the
-    // old AsEnum rewrite. The substitution-based rewrite reproduces it losslessly instead, AsEnum-
-    // wrapping both the array arm and the keyed Record arm rather than collapsing to bare RoleType.
+    // filter() clears sequential keys, so the map body publishes a list beside a keyed Record arm, and the wrap spells
+    // itself in both.
     test('member_role_resources_filtered AsEnum-wraps both its array and keyed Record arms', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
@@ -2754,9 +2753,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
             ->toBe('(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>');
     });
 
-    // Same keyed-Record shape nested inside an inline array: analyzeInlineArray() substitutes the
-    // bare RoleType token in place too, so the nested union AsEnum-wraps both arms end-to-end,
-    // exactly like member_role_resources_filtered above.
+    // The same keyed-Record shape nested inside an inline array keeps the wrap in both arms.
     test('wrapped_filtered AsEnum-wraps both arms of its union inside the inline array', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
@@ -2792,9 +2789,8 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() declines to type from an EnumResource-wrapped value, so the wrapped first-class-
-    // callable value still gets the AsEnum rewrite — this is the real reported bug pattern:
-    // $this->whenHas('kinds', EnumResource::collection(...)).
+    // The reported bug pattern, $this->whenHas('kinds', EnumResource::collection(...)): a wrap passed as the value, a
+    // first-class callable included, spells the attribute's type as the wrap.
     test('first-class callable inside whenHas() rewrites to AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();

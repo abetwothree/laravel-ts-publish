@@ -5280,9 +5280,8 @@ describe('ResourceAstAnalyzer with ResourceWrappedEnumResource — issue #43 $th
             ->and($prop['optional'])->toBeFalse();
     });
 
-    // A same-shaped mixed ternary (EnumResource::make() vs a direct read, both scalar StatusType)
-    // dedupes to one merged token, so expandMixedEnumType() spells the wrapped arm out beside the
-    // bare one — rewriting the single token in place would drop the direct-read arm.
+    // A mixed ternary (EnumResource::make() beside a direct read of the same enum) keeps both arms: the wrap spells
+    // itself, so the two never print alike.
     test('mixed ternary nested in an inline array: same-shaped arms both stay named in the union', function () {
         $prop = collect($this->analysis->properties)->firstWhere('name', 'ternary_enums_array');
 

@@ -140,7 +140,7 @@ describe('AstEngine::analyze()', function () {
     test('drops the value import of an enum whose wrap no longer survives in the type', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
 
-        // A method-level #[TsCasts] retypes a key that wrapped an enum, so the const it would have bound goes unspelled.
+        // A method-level #[TsCasts] retypes a key that wrapped an enum, so the const it would bind goes unspelled.
         $analysis = new MethodAnalysis(
             properties: [['name' => 'role', 'type' => 'string', 'optional' => false, 'description' => '']],
             inlineEnumResourceFqcns: ['role' => [Role::class]],

@@ -36,8 +36,7 @@ trait SpellsKeyedCollections
         $list = ValueResult::arrayWrapType($body['type']);
         $type = $keyed ? ArrayArms::keyedList($list) : $list;
 
-        // The body's channels ride along: the transformer rewrites a live `enumFqcn` from an `EnumResource::make()`
-        // body in whatever shape results, the keyed Record arm included.
+        // The body's channels ride along: a wrap in it already spells its own type, the Record arm's copy included.
         return [...$body, 'type' => $shortCircuits ? TsTypeString::withNullArm($type) : $type, 'optional' => false];
     }
 }
