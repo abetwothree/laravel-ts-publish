@@ -530,8 +530,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
   for `whenAppended()`, to nothing. The attribute answers `whenHas()` and `whenAppended()` only for a value-less call or
-  an `EnumResource` wrap, which only moves the enum onto `enumFqcn`. A value the engine cannot type publishes `unknown`:
-  the attribute's type is wrong for a value that transforms it. `whenExistsLoaded()` keeps its flag for such a value.
+  an `EnumResource` wrap, whose payload is the attribute's own enum, spelled as the wrap (`EnumWrapPayload`). A value
+  the engine cannot type publishes `unknown`: the attribute's type is wrong for a value that transforms it.
+  `whenExistsLoaded()` keeps its flag for such a value.
 - **A skipped or literal `null` value publishes `null`**: none of those three swaps in an identity closure as
   `whenLoaded()` does, so `whenExistsLoaded('user', null, 'absent')` is `string | null`.
 - **`whenExistsLoaded()` publishes `boolean`**: the type `ModelAttributeResolver` gives a model's own `*_exists`
