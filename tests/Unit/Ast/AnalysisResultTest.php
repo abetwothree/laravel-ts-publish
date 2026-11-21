@@ -305,7 +305,10 @@ describe('AstEngine::analyze()', function () {
                 'layout' => '{ manager: User | null; settings: MenuSettingsType | null }',
             ])
             ->and($result->typeImports)->toBe(['@js/types/settings' => ['MenuSettingsType'], '../../models' => ['User']]);
-    })->with([StockroomOnlyResource::class, StockroomExceptResource::class]);
+    })->with([
+        'only()' => [StockroomOnlyResource::class],
+        'except()' => [StockroomExceptResource::class],
+    ]);
 
     // A key except() leaves out takes its classes with it, so the CRM `Status` left alone keeps its bare name, as
     // ts:publish prints it.
