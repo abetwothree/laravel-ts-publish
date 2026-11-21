@@ -290,8 +290,13 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             }
 
             unset($result['keepsKeys']);
+            $filtered = [...$result, 'optional' => false];
+            $type = implode(' | ', array_values(array_unique($arms)));
 
-            return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+            // A list filtered alone spells its element twice, in the list arm and the Record arm.
+            return ArrayArms::listElement($result['type']) === null
+                ? [...$filtered, 'type' => $type]
+                : ValueResult::spelledTwice($filtered, $type);
         });
     }
 

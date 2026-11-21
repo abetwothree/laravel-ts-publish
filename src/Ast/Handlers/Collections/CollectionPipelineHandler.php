@@ -121,7 +121,7 @@ final class CollectionPipelineHandler implements ExpressionHandler
         $result = $serializer === null ? $mapped($arrayed) : $this->serializedMapResult($serializer, $mapped);
 
         if ($result === null || $listed) {
-            return $result !== null && $walk['keyed'] ? [...$result, 'type' => ArrayArms::keyedList($result['type'])] : $result;
+            return $result !== null && $walk['keyed'] ? ValueResult::keyedList($result) : $result;
         }
 
         // A kept Collection's keys reach json_encode() as they are, since a resource's filter never enters one; the

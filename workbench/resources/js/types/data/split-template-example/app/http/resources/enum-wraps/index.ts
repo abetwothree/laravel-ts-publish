@@ -1,5 +1,6 @@
 export * from './branched-same-named-wraps-resource';
 export * from './declared-wrap-rows-resource';
+export * from './keyed-same-named-maps-resource';
 export * from './nested-wraps-resource';
 export * from './rows-beside-wraps-resource';
 export * from './same-named-wraps-resource';

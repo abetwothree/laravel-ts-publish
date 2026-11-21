@@ -281,6 +281,30 @@ describe('ValueResult::arrayWrapType()', function () {
     ]);
 });
 
+// GH-76: a keyed list spells its element twice, so each per-token queue reads twice and the Record arm keeps its classes.
+describe('ValueResult::keyedList()', function () {
+    test('reads each per-token queue twice, a single channel leading each copy, and leaves a single class as it is', function () {
+        $pair = ValueResult::keyedList([
+            'type' => '{ u: User; v: User; s: StatusType; t: StatusType }[]',
+            'optional' => false,
+            'embeddedModelFqcns' => [User::class, CrmUser::class],
+            'directEnumFqcn' => Status::class,
+            'embeddedEnumFqcns' => [CrmStatus::class],
+            'embeddedEnumResourceFqcns' => [Status::class],
+            'wrappedEnumFqcns' => [Status::class],
+        ]);
+        $single = ValueResult::keyedList(['type' => 'StatusType[]', 'optional' => false, 'directEnumFqcn' => Status::class]);
+
+        expect($pair['type'])->toBe('{ u: User; v: User; s: StatusType; t: StatusType }[] | Record<string, { u: User; v: User; s: StatusType; t: StatusType }>')
+            ->and($pair['embeddedModelFqcns'])->toBe([User::class, CrmUser::class, User::class, CrmUser::class])
+            ->and($pair['directEnumFqcn'])->toBe(Status::class)
+            ->and($pair['embeddedEnumFqcns'])->toBe([CrmStatus::class, Status::class, CrmStatus::class])
+            ->and($pair['embeddedEnumResourceFqcns'])->toBe([Status::class, Status::class])
+            ->and($pair['wrappedEnumFqcns'])->toBe([Status::class])
+            ->and($single)->toBe(['type' => 'StatusType[] | Record<string, StatusType>', 'optional' => false, 'directEnumFqcn' => Status::class]);
+    });
+});
+
 describe('ValueResult::unionResults() over an arm that can be a MissingValue', function () {
     test('an optional typed arm beside a required null arm makes the union optional', function () {
         expect(ValueResult::unionResults([

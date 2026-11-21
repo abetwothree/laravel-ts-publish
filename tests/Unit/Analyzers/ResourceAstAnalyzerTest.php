@@ -90,6 +90,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\DriverOverrideModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\GapModeMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\FilteredSameNamedRows;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\GapModeHeldValue;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\AppendedCustomImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\BranchedSpreadPostResource;
@@ -184,6 +185,7 @@ use Workbench\App\Http\Resources\EnumCollectionResource;
 use Workbench\App\Http\Resources\EnumNullFirstResource;
 use Workbench\App\Http\Resources\EnumWraps\BranchedSameNamedWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\DeclaredWrapRowsResource;
+use Workbench\App\Http\Resources\EnumWraps\KeyedSameNamedMapsResource;
 use Workbench\App\Http\Resources\EnumWraps\NestedWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\RowsBesideWrapsResource;
 use Workbench\App\Http\Resources\EnumWraps\SameNamedWrapsResource;
@@ -877,11 +879,12 @@ describe('ResourceAstAnalyzer with RelationChainResource (relation-rooted collec
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('member_role_resources');
     });
 
-    // filter() clears sequential keys, so the map body ends up keyedObjectArm()-wrapped, the wrap in both arms.
+    // filter() clears sequential keys, so the map body ends up keyedObjectArm()-wrapped, the wrap in both arms, each
+    // its own `typeof` token on the const queue.
     test('filter() before an EnumResource::make() map body spells the wrap in both arms', function () {
         expect($this->props['member_role_resources_filtered']['type'])
             ->toBe('(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>')
-            ->and($this->analysis->wrapConstFqcns('member_role_resources_filtered'))->toBe([Role::class])
+            ->and($this->analysis->wrapConstFqcns('member_role_resources_filtered'))->toBe([Role::class, Role::class])
             ->and($this->analysis->directEnumFqcns)->not->toHaveKey('member_role_resources_filtered');
     });
 
@@ -8223,6 +8226,11 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'wrap' => 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>',
             'read' => 'WorkbenchStatusType | CrmStatusType',
         ]],
+        'keyed map() bodies of the app\'s and the CRM\'s Status' => [KeyedSameNamedMapsResource::class, [
+            'wraps' => '(AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>)[] | Record<string, (AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>)>',
+            'reads' => '(WorkbenchStatusType | CrmStatusType)[] | Record<string, (WorkbenchStatusType | CrmStatusType)>',
+            'objects' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<string, { app: WorkbenchStatusType; crm: CrmStatusType }>',
+        ]],
         'rows, or null, before wraps' => [RowsBesideWrapsResource::class, [
             'rows_then_two_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
             'rows_then_three_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>',
@@ -8321,6 +8329,19 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'wrap' => 'WorkbenchStatusType | CrmStatusType',
             'read' => 'WorkbenchStatusType | CrmStatusType',
         ]],
+        'keyed map() bodies of the app\'s and the CRM\'s Status' => [KeyedSameNamedMapsResource::class, [
+            'wraps' => '(WorkbenchStatusType | CrmStatusType)[] | Record<string, (WorkbenchStatusType | CrmStatusType)>',
+            'reads' => '(WorkbenchStatusType | CrmStatusType)[] | Record<string, (WorkbenchStatusType | CrmStatusType)>',
+            'objects' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<string, { app: WorkbenchStatusType; crm: CrmStatusType }>',
+        ]],
+    ]);
+});
+
+// GH-76: array_filter() and a keyed collection's all() spell each row twice, so the object arm keeps each row's classes.
+test('keeps two same-named enums apart in the object arm a filtered list or a keyed all() adds', function () {
+    expect(analyzedKeyTypes(FilteredSameNamedRows::class, 'payload'))->toBe([
+        'filtered' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<number, { app: WorkbenchStatusType; crm: CrmStatusType }>',
+        'keyed' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<string, { app: WorkbenchStatusType; crm: CrmStatusType }>',
     ]);
 });
 

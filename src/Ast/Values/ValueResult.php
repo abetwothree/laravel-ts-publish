@@ -152,6 +152,51 @@ final class ValueResult
     }
 
     /**
+     * A list result as json_encode() writes it once a step left its keys out of 0..n-1: ArrayArms::keyedList()'s type.
+     *
+     * @param  ValueExpressionResult  $list
+     * @return ValueExpressionResult
+     */
+    public static function keyedList(array $list): array
+    {
+        return self::spelledTwice($list, ArrayArms::keyedList($list['type']));
+    }
+
+    /**
+     * A result retyped by a text spelling its type's tokens twice over, as `X[] | Record<string, X>` spells `X[]`'s: each
+     * queue of the classes behind its tokens reads twice, or the second copy would take the last class of each name.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function spelledTwice(array $result, string $type): array
+    {
+        $twice = [...$result, 'type' => $type];
+
+        if (($result['embeddedModelFqcns'] ?? []) !== []) {
+            $twice['embeddedModelFqcns'] = [...$result['embeddedModelFqcns'], ...TokenKind::Model->channelFqcns($result)];
+        }
+
+        if (($result['embeddedResourceFqcns'] ?? []) !== []) {
+            $twice['embeddedResourceFqcns'] = [...$result['embeddedResourceFqcns'], ...TokenKind::Resource->channelFqcns($result)];
+        }
+
+        if (($result['embeddedEnumFqcns'] ?? []) !== []) {
+            $twice['embeddedEnumFqcns'] = [...$result['embeddedEnumFqcns'], ...TokenKind::Enum->channelFqcns($result)];
+        }
+
+        if (($result['embeddedEnumResourceFqcns'] ?? []) !== []) {
+            $twice['embeddedEnumResourceFqcns'] = [...$result['embeddedEnumResourceFqcns'], ...$result['embeddedEnumResourceFqcns']];
+        }
+
+        if (($result['alikeClassFqcns'] ?? []) !== []) {
+            $twice['alikeClassFqcns'] = [...$result['alikeClassFqcns'], ...$result['alikeClassFqcns']];
+        }
+
+        return $twice;
+    }
+
+    /**
      * Whether a generated file exports every class a result names on its model channels, as far as this run knows.
      *
      * A token with no file behind it would be emitted without an import, so MethodAnalysis::addProperty() declines it.

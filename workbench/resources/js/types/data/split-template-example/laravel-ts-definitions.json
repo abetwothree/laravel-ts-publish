@@ -15074,6 +15074,26 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\KeyedSameNamedMapsResource": {
+            "name": "KeyedSameNamedMapsResource",
+            "properties": [
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>)[] | Record<string, (AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>)>",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(EnumsStatusType | CrmStatusType)[] | Record<string, (EnumsStatusType | CrmStatusType)>",
+                    "optional": false
+                },
+                {
+                    "name": "objects",
+                    "type": "{ app: EnumsStatusType; crm: CrmStatusType }[] | Record<string, { app: EnumsStatusType; crm: CrmStatusType }>",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EnumWraps\\NestedWrapsResource": {
             "name": "NestedWrapsResource",
             "properties": [

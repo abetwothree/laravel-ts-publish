@@ -6527,6 +6527,15 @@ declare global {
             subject: app.enums.StatusType | { s: app.enums.StatusType }[];
         }
         /**
+         * Rows keyed by name and mapped to the app's and the CRM's `Status` (GH-160, GH-76): wrapped, read, and in an object.
+         * The list arm and the Record arm name each enum alike.
+         */
+        export interface KeyedSameNamedMapsResource {
+            wraps: (app.enums.StatusType | crm.enums.StatusType)[] | Record<string, (app.enums.StatusType | crm.enums.StatusType)>;
+            reads: (app.enums.StatusType | crm.enums.StatusType)[] | Record<string, (app.enums.StatusType | crm.enums.StatusType)>;
+            objects: { app: app.enums.StatusType; crm: crm.enums.StatusType }[] | Record<string, { app: app.enums.StatusType; crm: crm.enums.StatusType }>;
+        }
+        /**
          * Two or more enum wraps below a top-level key, in a list, beside an object arm holding a wrap, and through `when()`
          * (GH-160, GH-108). Each wrap sends its enum resource's object.
          */

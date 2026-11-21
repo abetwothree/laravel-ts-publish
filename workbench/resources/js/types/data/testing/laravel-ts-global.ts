@@ -6527,6 +6527,15 @@ declare global {
             subject: workbench.app.enums.StatusType | { s: workbench.app.enums.StatusType }[];
         }
         /**
+         * Rows keyed by name and mapped to the app's and the CRM's `Status` (GH-160, GH-76): wrapped, read, and in an object.
+         * The list arm and the Record arm name each enum alike.
+         */
+        export interface KeyedSameNamedMapsResource {
+            wraps: (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)[] | Record<string, (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)>;
+            reads: (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)[] | Record<string, (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)>;
+            objects: { app: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType }[] | Record<string, { app: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType }>;
+        }
+        /**
          * Two or more enum wraps below a top-level key, in a list, beside an object arm holding a wrap, and through `when()`
          * (GH-160, GH-108). Each wrap sends its enum resource's object.
          */

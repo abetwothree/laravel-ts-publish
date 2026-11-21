@@ -7,7 +7,6 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
-use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 
 /**
  * Spell the list a `map()` body makes, with the object arm `json_encode()` emits for a collection whose keys are no
@@ -33,10 +32,9 @@ trait SpellsKeyedCollections
         }
 
         // A union body, such as a mixed AsEnum/direct-enum ternary, is parenthesized before the array suffix binds.
-        $list = ValueResult::arrayWrapType($body['type']);
-        $type = $keyed ? ArrayArms::keyedList($list) : $list;
+        $list = [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
+        $mapped = $keyed ? ValueResult::keyedList($list) : $list;
 
-        // The body's channels ride along: a wrap in it already spells its own type, the Record arm's copy included.
-        return [...$body, 'type' => $shortCircuits ? TsTypeString::withNullArm($type) : $type, 'optional' => false];
+        return $shortCircuits ? [...$mapped, 'type' => TsTypeString::withNullArm($mapped['type'])] : $mapped;
     }
 }
