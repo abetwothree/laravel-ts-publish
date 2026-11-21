@@ -678,6 +678,16 @@ class MethodAnalysis
     }
 
     /**
+     * Every enum any key's value wraps in an `EnumResource`, once each: the keys' wrappedEnumFqcns() together.
+     *
+     * @return list<class-string>
+     */
+    public function allWrappedEnumFqcns(): array
+    {
+        return $this->fqcnsOnChannels([], [$this->wrappedEnums]);
+    }
+
+    /**
      * Every enum whose const any key's `AsEnum<typeof …>` spells, once each.
      *
      * @return list<class-string>

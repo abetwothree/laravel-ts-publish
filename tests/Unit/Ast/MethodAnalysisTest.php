@@ -613,6 +613,8 @@ it('lists a key\'s classes outside its inline queues, the enums it reads, and th
         'Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status', 'Workbench\App\Enums\UiTone',
     ])
         ->and($analysis->wrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status'])
+        ->and($analysis->allWrappedEnumFqcns())->toBe(['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status'])
+        ->and($analysis->allWrapConstFqcns())->toBe(['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status'])
         ->and($analysis->readEnumFqcns('k'))->toBe(['Workbench\App\Enums\Role', 'Workbench\App\Enums\Season'])
         ->and($analysis->readEnumFqcns('none'))->toBe([])
         ->and($analysis->singleChannelFqcns('none'))->toBe([]);

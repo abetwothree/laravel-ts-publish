@@ -77,10 +77,10 @@ final class InlineObjectResult
         $held = [
             ...array_values($object->directEnumFqcns),
             ...array_merge(...array_values($object->inlineEnumFqcns)),
-            ...array_merge(...array_values($object->inlineEnumResourceFqcns)),
-            ...array_merge(...array_values($object->wrappedEnums)),
+            ...$object->allWrapConstFqcns(),
+            ...$object->allWrappedEnumFqcns(),
         ];
-        $nested = array_diff(self::selfKeyedEnums($object), array_merge([], ...array_values($object->wrappedEnums)));
+        $nested = array_diff(self::selfKeyedEnums($object), $object->allWrappedEnumFqcns());
 
         return ! array_any($nested, static fn (string $enum): bool => array_any(
             $held,
@@ -251,7 +251,7 @@ final class InlineObjectResult
                 static fn (array $arm): array => isset($arm['result']) ? $arm['result']['wrappedEnumFqcns'] ?? [] : [],
                 $spreadArms,
             )),
-            ...array_merge([], ...array_values($analysis->wrappedEnums)),
+            ...$analysis->allWrappedEnumFqcns(),
         ]));
 
         if ($wrapped !== []) {
@@ -362,7 +362,7 @@ final class InlineObjectResult
             );
         }
 
-        $wrapped = array_merge([], ...array_values($analysis->wrappedEnums));
+        $wrapped = $analysis->allWrappedEnumFqcns();
 
         foreach (self::selfKeyedEnums($analysis) as $fqcn) {
             if (! in_array($fqcn, $wrapped, true)) {
