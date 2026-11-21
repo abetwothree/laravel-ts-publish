@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDisplacedOwnN
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDroppedEnumBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastKeyofTypeofImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOneOfSameNamedWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOneOfTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverAttributeImportOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverAttributeImportResource;
@@ -121,6 +122,15 @@ describe('a cast that spells an enum resource\'s own type', function () {
         'the cast spells one of the two enums its ternary wraps' => [
             CastOneOfTwoWrapsResource::class,
             ["import type { StatusType } from '../../../../../../workbench/app/enums';", '    k: StatusType | null;'],
+        ],
+        'the cast spells one name over wraps of two same-named enums' => [
+            CastOneOfSameNamedWrapsResource::class,
+            [
+                "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+                "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+                '    crm_first: CrmStatusType | null;',
+                '    app_first: WorkbenchStatusType | null;',
+            ],
         ],
         'the cast writes the const after `typeof` without the wrap' => [
             CastTypeofWithoutWrapResource::class,

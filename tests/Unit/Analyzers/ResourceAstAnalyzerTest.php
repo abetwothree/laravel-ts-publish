@@ -33,6 +33,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCast
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CollectionOfWhenPayloadHelpersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
@@ -82,6 +83,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollec
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariadicWalkResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WarehouseWrapOrObjectWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GapModeReadsPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NamesakeInvoice;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ReceiverAttributeBaseModel;
@@ -8256,6 +8258,27 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
                 '../../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
             ])
             ->and($data->typeImports)->toBe([]);
+    });
+
+    // G3: the inner wrap of an object arm names its own const beside a same-named one an outer arm wraps.
+    test('names the CRM const a wrap inside an object arm holds, beside the app wrap of the other arm', function () {
+        $data = new ResourceTransformer(WarehouseWrapOrObjectWrapResource::class)->data();
+        $either = 'AsEnum<typeof WorkbenchStatus> | { inner: AsEnum<typeof CrmStatus> | null } | null';
+
+        expect(array_map(fn (array $property): string => $property['type'], $data->properties))
+            ->toBe(['ternary' => $either, 'when' => $either])
+            ->and($data->valueImports)->toBe([
+                '../../../../../../workbench/app/enums' => ['Status as WorkbenchStatus'],
+                '../../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+            ]);
+    });
+
+    // G8: Laravel drops the key with a collection over a missing payload, so a helper returning one publishes it optional.
+    test('publishes optional a helper\'s collection of wraps over a when*() payload', function () {
+        expect(resourceProps(CollectionOfWhenPayloadHelpersResource::class))->toBe([
+            'week_days?' => 'AsEnum<typeof WeekDays>[] | null',
+            'active_days?' => 'AsEnum<typeof WeekDays>[] | null',
+        ]);
     });
 
     // R2: without the tolki package a wrap prints its enum's value type, read by class like any token of that type.
