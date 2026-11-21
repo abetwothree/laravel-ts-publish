@@ -15161,6 +15161,11 @@
                     "name": "literals_nested_crm",
                     "type": "{ s: EnumsStatusType; x: { c: CrmStatusType } } | { s: EnumsStatusType; x: null }",
                     "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_or_read",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus> | EnumsStatusType",
+                    "optional": false
                 }
             ]
         },

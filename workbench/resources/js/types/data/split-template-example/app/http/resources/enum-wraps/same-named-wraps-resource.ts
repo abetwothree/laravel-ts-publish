@@ -19,4 +19,5 @@ export interface SameNamedWrapsResource
     wrap_or_two_reads: AsEnum<typeof EnumsStatus> | EnumsStatusType | CrmStatusType;
     crm_spread_over_wrap: { c: AsEnum<typeof EnumsStatus> | CrmStatusType };
     literals_nested_crm: { s: EnumsStatusType; x: { c: CrmStatusType } } | { s: EnumsStatusType; x: null };
+    app_or_crm_wrap_or_read: AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus> | EnumsStatusType;
 }

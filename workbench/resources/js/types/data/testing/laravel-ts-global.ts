@@ -6553,6 +6553,7 @@ declare global {
             wrap_or_two_reads: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
             crm_spread_over_wrap: { c: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
             literals_nested_crm: { s: workbench.app.enums.StatusType; x: { c: workbench.crm.enums.StatusType } } | { s: workbench.app.enums.StatusType; x: null };
+            app_or_crm_wrap_or_read: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
         }
         /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
         export interface WalkedWrapResource {

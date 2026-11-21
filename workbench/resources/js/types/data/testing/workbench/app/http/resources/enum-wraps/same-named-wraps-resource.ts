@@ -19,4 +19,5 @@ export interface SameNamedWrapsResource
     wrap_or_two_reads: AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType;
     crm_spread_over_wrap: { c: AsEnum<typeof WorkbenchStatus> | CrmStatusType };
     literals_nested_crm: { s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: WorkbenchStatusType; x: null };
+    app_or_crm_wrap_or_read: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | WorkbenchStatusType;
 }

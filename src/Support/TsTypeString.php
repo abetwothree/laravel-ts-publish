@@ -482,8 +482,8 @@ class TsTypeString
      * union, at every depth, that name one class once the fold is done.
      *
      * The globals file has no `AsEnum` import, so a wrap and a read of its enum print alike there. A bare name reads as
-     * the class `$references` gives it, else, when the type folded a wrap whose value type has that name, as that enum.
-     * Whole arms are compared, so `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` stay apart.
+     * the class `$references` gives it, else, when the type folded wraps of one enum whose value type has that name, as
+     * that enum. Whole arms are compared, so `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` stay apart.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
@@ -492,8 +492,12 @@ class TsTypeString
     public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap, array $references = []): string
     {
         $folded = $typeStr;
-        /** @var array<string, string|null> $foldedTo the value type's bare name => its qualified name, null for two */
+        /** @var array<string, true> $targets each folded enum's qualified value type */
+        $targets = [];
+        /** @var array<string, string> $foldedTo the value type's bare name => the first qualified name folded to it */
         $foldedTo = [];
+        /** @var array<string, true> $shared each bare name two folded enums print */
+        $shared = [];
 
         foreach ($constToTypeMap as $constAlias => $qualifiedTypeName) {
             $next = preg_replace('/'.AsEnumSpelling::pattern($constAlias).'/', $qualifiedTypeName, $folded) ?? $folded;
@@ -503,20 +507,21 @@ class TsTypeString
             }
 
             $folded = $next;
+            $targets[$qualifiedTypeName] = true;
             $bareTypeName = Str::afterLast($qualifiedTypeName, '.');
-            $foldedTo[$bareTypeName] = ($foldedTo[$bareTypeName] ?? $qualifiedTypeName) === $qualifiedTypeName
-                ? $qualifiedTypeName
-                : null;
+
+            if (($foldedTo[$bareTypeName] ??= $qualifiedTypeName) !== $qualifiedTypeName) {
+                $shared[$bareTypeName] = true;
+            }
         }
 
-        if ($foldedTo === []) {
+        if ($targets === []) {
             return $typeStr;
         }
 
-        $targets = array_flip(array_filter($foldedTo));
         $readAs = [
             ...array_filter($references, static fn (string $qualified): bool => isset($targets[$qualified])),
-            ...array_filter(array_diff_key($foldedTo, $references)),
+            ...array_diff_key($foldedTo, $references, $shared),
         ];
 
         $pattern = $readAs === [] ? null : $this->queuedTokenPattern(array_keys($readAs));

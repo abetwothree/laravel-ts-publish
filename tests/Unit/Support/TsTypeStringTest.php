@@ -1132,6 +1132,37 @@ describe('rewriteAsEnumToType', function () {
         'an alias of the folded enum\'s type' => ['AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType', 'app.enums.StatusType'],
         'another enum\'s type of the same name' => ['AsEnum<typeof WorkbenchStatus> | StatusType', 'app.enums.StatusType | StatusType'],
     ]);
+
+    // K2: a type folding two same-named enums still reads a bare name through the file's names, and without one it
+    // names neither, however many of that name it folds.
+    test('reads a bare name beside two or more folded enums of its name only through the file\'s names', function (array $consts, array $references, string $type, string $folded) {
+        expect($this->service->rewriteAsEnumToType($type, $consts, $references))->toBe($folded);
+    })->with([
+        'two folded, the bare name the app\'s' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType'],
+            ['StatusType' => 'app.enums.StatusType', 'CrmStatusType' => 'crm.enums.StatusType'],
+            'AsEnum<typeof Status> | StatusType | AsEnum<typeof CrmStatus>',
+            'app.enums.StatusType | crm.enums.StatusType',
+        ],
+        'two folded, the aliased name the CRM\'s' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType'],
+            ['StatusType' => 'app.enums.StatusType', 'CrmStatusType' => 'crm.enums.StatusType'],
+            'AsEnum<typeof Status> | CrmStatusType | AsEnum<typeof CrmStatus>',
+            'app.enums.StatusType | crm.enums.StatusType',
+        ],
+        'two folded, no name for the bare one' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType'],
+            [],
+            'AsEnum<typeof Status> | StatusType | AsEnum<typeof CrmStatus>',
+            'app.enums.StatusType | StatusType | crm.enums.StatusType',
+        ],
+        'three folded, no name for the bare one' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType', 'ShipStatus' => 'ship.enums.StatusType'],
+            [],
+            'AsEnum<typeof Status> | AsEnum<typeof CrmStatus> | AsEnum<typeof ShipStatus> | StatusType',
+            'app.enums.StatusType | crm.enums.StatusType | ship.enums.StatusType | StatusType',
+        ],
+    ]);
 });
 
 describe('splitTopLevelUnion', function () {
