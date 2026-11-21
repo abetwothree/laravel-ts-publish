@@ -37,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoClassAcces
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumAccessorOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTypeofWithoutWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCastSameNamedWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCarriedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCarriedModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastCarriedEnumResource;
@@ -644,6 +645,30 @@ describe('CastChannels', function () {
         'one of the two names' => ['StatusType | null', [Status::class], [Visibility::class]],
         'the other name' => ['VisibilityType | null', [Visibility::class], [Status::class]],
         'both names' => ['StatusType | VisibilityType | null', [Status::class, Visibility::class], []],
+    ]);
+
+    // A helper's cast keeps its wraps on the const queue in both modes, so every enum token after them reads its own.
+    it('reads each enum token by class past a helper\'s cast over wraps of two same-named enums', function (bool $tolki, array $lines) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        expect(castInForceLines(HelperCastSameNamedWrapsResource::class))->toBe($lines);
+    })->with([
+        'with the tolki package' => [true, [
+            "import { type AsEnum } from '@tolki/ts';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+            "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+            "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+            '    k: { a: { w: WorkbenchStatusType; v: CrmStatusType | null; x: CrmStatusType | null }; '
+                .'b: AsEnum<typeof CrmStatus> | null; c: WorkbenchStatusType | null };',
+            '    m: { a: { w: string; y: AsEnum<typeof CrmStatus> | null }; c: CrmStatusType | null };',
+        ]],
+        'without the tolki package' => [false, [
+            "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+            "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+            '    k: { a: { w: WorkbenchStatusType; v: CrmStatusType | null; x: CrmStatusType | null }; '
+                .'b: CrmStatusType | null; c: WorkbenchStatusType | null };',
+            '    m: { a: { w: string; y: CrmStatusType | null }; c: CrmStatusType | null };',
+        ]],
     ]);
 
     it('drops a class whose name the cast\'s import brings, unless another key reads it', function () {
