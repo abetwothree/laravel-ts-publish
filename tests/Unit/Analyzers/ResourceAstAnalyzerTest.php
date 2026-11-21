@@ -40,6 +40,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSameNamed
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ExceptTwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\FirstClassMapChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillBranchesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapFillParentResource;
@@ -51,6 +52,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperOffsetReads
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HostCastOverHelperCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\JsonSerializableEnumCaseHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptDeclaredTupleHelperResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeWhenSameNamedUsersResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastAliasedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MethodCastMorphUnionResource;
@@ -8392,26 +8394,61 @@ test('reads a helper\'s declared shape alternating two same-named enums token by
     ]);
 });
 
-// A key the resource's own only() keeps names each class behind its tokens, two same-named enums' too.
-test('publishes each class of an attribute the resource\'s own only() keeps, token by token', function () {
-    $twoClasses = new ResourceTransformer(OnlyTwoClassAccessorsResource::class)->data();
-    $sameNamed = new ResourceTransformer(OnlyTwoStatusPostResource::class)->data();
+// A key the resource's own only() or except() keeps names each class behind its tokens, two same-named enums' too.
+test('publishes each class of an attribute the resource\'s own only() or except() keeps, token by token', function (string $resource, array $types, array $imports) {
+    $data = new ResourceTransformer($resource)->data();
 
-    expect(array_map(fn (array $property): string => $property['type'], $twoClasses->properties))->toBe([
-        'id' => 'number',
-        'last_user_activity_by_typed' => 'CrmUser | WorkbenchUser | null',
-        'review_priority' => 'StatusType | PriorityType | null',
-    ])
-        ->and(array_merge(...array_values($twoClasses->typeImports)))->toEqualCanonicalizing([
-            'PriorityType', 'StatusType', 'User as CrmUser', 'User as WorkbenchUser',
-        ])
-        ->and(array_map(fn (array $property): string => $property['type'], $sameNamed->properties))->toBe([
+    expect(array_intersect_key(array_map(fn (array $property): string => $property['type'], $data->properties), $types))
+        ->toBe($types)
+        ->and($data->typeImports)->toBe($imports);
+})->with([
+    'two enums, and two models that share a name' => [
+        OnlyTwoClassAccessorsResource::class,
+        [
+            'id' => 'number',
+            'last_user_activity_by_typed' => 'CrmUser | WorkbenchUser | null',
+            'review_priority' => 'StatusType | PriorityType | null',
+        ],
+        [
+            '../../../../../../workbench/app/enums' => ['PriorityType', 'StatusType'],
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+        ],
+    ],
+    'two enums that share a name' => [
+        OnlyTwoStatusPostResource::class,
+        [
             'either_status' => 'WorkbenchStatusType | CrmStatusType',
             'alternating_statuses' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }',
-        ])
-        ->and($sameNamed->typeImports)->toBe([
+        ],
+        [
             '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
             '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+        ],
+    ],
+    'two enums that share a name, through except()' => [
+        ExceptTwoStatusPostResource::class,
+        [
+            'status_or_lead' => 'WorkbenchStatusType | CrmStatusType | null',
+            'either_status' => 'WorkbenchStatusType | CrmStatusType',
+            'alternating_statuses' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }',
+        ],
+        [
+            '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+            '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+            '../../../../../../workbench/crm/models' => ['User'],
+        ],
+    ],
+]);
+
+// A merge call's value and default join by class, so a key either sends keeps both same-named models.
+test('publishes both same-named models a mergeWhen() writes under one key, each under its own alias', function () {
+    $data = new ResourceTransformer(MergeWhenSameNamedUsersResource::class)->data();
+
+    expect($data->properties['party']['type'])->toBe('CrmUser | WorkbenchUser')
+        ->and($data->typeImports)->toBe([
+            '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+            '../../../../../../workbench/crm/models' => ['User as CrmUser'],
         ]);
 });
 
