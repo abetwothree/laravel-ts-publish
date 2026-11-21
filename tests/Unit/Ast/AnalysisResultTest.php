@@ -123,10 +123,11 @@ describe('AstEngine::analyze()', function () {
         $analysis = new MethodAnalysis(
             properties: [
                 ['name' => 'label', 'type' => 'Clearance', 'optional' => false, 'description' => ''],
-                ['name' => 'clearance', 'type' => 'ClearanceType', 'optional' => false, 'description' => ''],
+                ['name' => 'clearance', 'type' => 'AsEnum<typeof Clearance>', 'optional' => false, 'description' => ''],
             ],
-            enumResources: ['clearance' => Clearance::class],
             customImports: ['@js/types/clearance' => ['Clearance']],
+            inlineEnumResourceFqcns: ['clearance' => [Clearance::class]],
+            wrappedEnums: ['clearance' => [Clearance::class]],
         );
 
         $result = new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources');
@@ -139,25 +140,15 @@ describe('AstEngine::analyze()', function () {
     test('drops the value import of an enum whose wrap no longer survives in the type', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
 
-        // A method-level #[TsCasts] retypes the key the analyzer recorded as an EnumResource wrap, so
-        // the substitution finds no bare token and the const it would have bound goes unspelled.
+        // A method-level #[TsCasts] retypes a key that wrapped an enum, so the const it would have bound goes unspelled.
         $analysis = new MethodAnalysis(
             properties: [['name' => 'role', 'type' => 'string', 'optional' => false, 'description' => '']],
-            enumResources: ['role' => Role::class],
+            inlineEnumResourceFqcns: ['role' => [Role::class]],
+            wrappedEnums: ['role' => [Role::class]],
         );
 
         expect(new AnalysisComposer()->compose($analysis, 'workbench/app/http/resources')->valueImports)->toBe([]);
     });
-
-    test('reads a wrapped enum as nullable only through a top-level null arm', function (string $type, bool $nullable) {
-        $analysis = new MethodAnalysis(enumResources: ['role' => Role::class]);
-
-        expect(AnalysisComposer::enumResourceArms($analysis, ['role' => $type])['role']['nullable'])->toBe($nullable);
-    })->with([
-        'a null arm' => ['RoleType | null', true],
-        'a list whose members may be null' => ['(RoleType | null)[]', false],
-        'a type name holding null' => ['AnnulledType', false],
-    ]);
 
     test('reads each property type on its own, so a template literal one never closes hides no later name', function () {
         $analysis = new MethodAnalysis(
