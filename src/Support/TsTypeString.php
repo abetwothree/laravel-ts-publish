@@ -519,7 +519,9 @@ class TsTypeString
             ...array_filter(array_diff_key($foldedTo, $references)),
         ];
 
-        return TypeRewriter::rewrite($folded, union: fn (array $arms): array => $this->withoutRepeatedArms($arms, $readAs));
+        $pattern = $readAs === [] ? null : $this->queuedTokenPattern(array_keys($readAs));
+
+        return TypeRewriter::rewrite($folded, union: fn (array $arms): array => $this->withoutRepeatedArms($arms, $readAs, $pattern));
     }
 
     /**
@@ -792,11 +794,11 @@ class TsTypeString
      *
      * @param  list<string>  $arms
      * @param  array<string, string>  $readAs  name => 'namespace.TypeName'
+     * @param  string|null  $pattern  the token pattern of $readAs's names; null when it has none
      * @return list<string>
      */
-    private function withoutRepeatedArms(array $arms, array $readAs): array
+    private function withoutRepeatedArms(array $arms, array $readAs, ?string $pattern): array
     {
-        $pattern = $readAs === [] ? null : $this->queuedTokenPattern(array_keys($readAs));
         $kept = [];
         /** @var array<string, int> $at each kept arm's reading => its place */
         $at = [];
