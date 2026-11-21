@@ -187,19 +187,20 @@ it('keeps arms that bind two same-named resources in swapped order apart, at the
     ]);
 });
 
-// An enum nested in a value is queued again after the object's members, which a union of objects reads as the next
-// object's token wherever two enums print one name.
-it('publishes flat each literal whose objects hold two same-named enums, one of them nested', function () {
+// GH-76: an enum nested in a value rides its member's queue once, so a union of such objects reads each token by class.
+it('splits each literal whose objects hold two same-named enums, one of them nested, each token naming its own', function () {
     $data = variantsData(SwappedEnumsResource::class);
-    $swapped = '{ primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType }';
+    $low = '{ primary: WorkbenchStatusType; secondary: CrmStatusType }';
+    $medium = '{ primary: CrmStatusType; secondary: WorkbenchStatusType }';
 
     expect(variantsProps($data))->toBe([
-        'priority' => 'PriorityType | null',
-        'stages' => "{$swapped} | null",
-        'meta' => '{ priority: PriorityType | null; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType }'
-            .' | { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } | null }',
-        'shared' => '{ status: WorkbenchStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }',
-    ])->and($data->variants)->toBe([]);
+        'meta' => "{ priority: 0; stages: {$low} } | { priority: 1; stages: { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } }"
+            .' | { priority: 2 | 3 | null; stages: null }',
+        'shared' => '{ status: WorkbenchStatusType; is_pinned: true; lead: { stage: CrmStatusType } }'
+            .' | { status: WorkbenchStatusType; is_pinned: false; lead: null }',
+    ])->and($data->variants)->toBe([
+        "{ priority: 0; stages: {$low} } | { priority: 1; stages: {$medium} } | { priority: 2 | 3 | null; stages: null }",
+    ]);
 });
 
 // PHP tests the object a guard reads, while the override types what json_encode() writes, so no such read decides arms.

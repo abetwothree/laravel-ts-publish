@@ -10,7 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr\Variable;
+use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\User;
+use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\User as CrmUser;
 
 test('slottedBranchUnion() joins a declared text\'s arms whole, an override\'s and a model\'s token kept apart', function () {
@@ -89,15 +93,108 @@ test('joinInto() keeps a key the first branch leaves untyped untyped only where 
         ->and(array_column($later->properties, 'type'))->toBe(['string']);
 });
 
-test('joinInto() keeps two models one name spells as two arms, each queued, only where told to', function () {
+test('joinInto() keeps two models one name spells as two arms, each queued', function () {
     $apart = new MethodAnalysis;
-    BranchJoin::joinInto($apart, [joinBranch('User', User::class), joinBranch('User', CrmUser::class)], keepsClassesApart: true);
-    $folded = new MethodAnalysis;
-    BranchJoin::joinInto($folded, [joinBranch('User', User::class), joinBranch('User', CrmUser::class)]);
+    BranchJoin::joinInto($apart, [joinBranch('User', User::class), joinBranch('User', CrmUser::class)]);
 
     expect(array_column($apart->properties, 'type'))->toBe(['User | User'])
-        ->and($apart->inlineModelFqcns)->toBe(['k' => [User::class, CrmUser::class]])
-        ->and(array_column($folded->properties, 'type'))->toBe(['User']);
+        ->and($apart->inlineModelFqcns)->toBe(['k' => [User::class, CrmUser::class]]);
+});
+
+test('joinInto() keeps a model and a resource one name spells as two arms, each token read as its own class', function () {
+    $resource = new MethodAnalysis;
+    $resource->addProperty('k', ['type' => 'Address', 'optional' => false, 'resourceFqcn' => AddressResource::class]);
+    $apart = new MethodAnalysis;
+    BranchJoin::joinInto($apart, [$resource, joinBranch('Address', Address::class)]);
+
+    expect(array_column($apart->properties, 'type'))->toBe(['Address | Address'])
+        ->and($apart->classFqcns('k'))->toBe([AddressResource::class, Address::class]);
+});
+
+/**
+ * One branch holding `k` as a read of the enum, or as its wrap.
+ *
+ * @param  class-string  $enum
+ */
+function enumJoinBranch(string $enum, bool $wraps): MethodAnalysis
+{
+    $branch = new MethodAnalysis;
+    $branch->addProperty('k', $wraps
+        ? ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [$enum], 'wrappedEnumFqcns' => [$enum]]
+        : ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => $enum]);
+
+    return $branch;
+}
+
+// GH-76: two branches reading or wrapping two same-named enums print one text, so the key is read by class.
+test('joinInto() keeps two same-named enums as two arms, read or wrapped, each token queued once in arm order', function (bool $wraps, string $type, string $channel) {
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [enumJoinBranch(Status::class, $wraps), enumJoinBranch(Status::class, $wraps), enumJoinBranch(CrmStatus::class, $wraps)]);
+
+    expect(array_column($joined->properties, 'type'))->toBe([$type.' | '.$type])
+        ->and($joined->{$channel}['k'])->toBe([Status::class, CrmStatus::class]);
+})->with([
+    'read' => [false, 'StatusType', 'inlineEnumFqcns'],
+    'wrapped' => [true, 'AsEnum<typeof Status>', 'inlineEnumResourceFqcns'],
+]);
+
+// A strict join's `unknown` stands for the branch it cannot type, so reading the key by class must not drop that
+// branch.
+test('joinInto() keeps a strict join\'s unknown beside two models of one name, and a dropping join reads them by class', function () {
+    $branches = fn (): array => [joinBranch('User', User::class), joinBranch('unknown'), joinBranch('User', CrmUser::class)];
+    $strict = new MethodAnalysis;
+    BranchJoin::joinInto($strict, $branches());
+    $dropping = new MethodAnalysis;
+    BranchJoin::joinInto($dropping, $branches(), dropsUntypedBranches: true);
+
+    expect(array_column($strict->properties, 'type'))->toBe(['unknown'])
+        ->and(array_column($dropping->properties, 'type'))->toBe(['User | User'])
+        ->and($dropping->inlineModelFqcns)->toBe(['k' => [User::class, CrmUser::class]]);
+});
+
+/**
+ * One branch holding a signature key filled as given, beside its model class.
+ *
+ * @param  class-string  $model
+ */
+function filledSignatureBranch(string $type, string $fill, string $model): MethodAnalysis
+{
+    $branch = new MethodAnalysis;
+    $branch->addProperty('[key: string]', ['type' => $type, 'optional' => false, 'modelFqcn' => $model]);
+    $branch->properties[0]['fillType'] = $fill;
+
+    return $branch;
+}
+
+// Read by class, the key's fill is the union it publishes, so a later reconcile finds no other fill to put back.
+test('joinInto() reads a filled key by class only where each fill is its branch\'s value, the fill then its union', function () {
+    $agreeing = new MethodAnalysis;
+    BranchJoin::joinInto($agreeing, [
+        filledSignatureBranch('User | undefined', 'User | undefined', User::class),
+        filledSignatureBranch('User | undefined', 'User | undefined', CrmUser::class),
+    ]);
+    $apart = new MethodAnalysis;
+    BranchJoin::joinInto($apart, [
+        filledSignatureBranch('User | undefined', 'string | undefined', User::class),
+        filledSignatureBranch('User | undefined', 'User | undefined', CrmUser::class),
+    ]);
+
+    expect($agreeing->properties[0]['type'])->toBe('User | undefined | User')
+        ->and($agreeing->properties[0]['fillType'] ?? null)->toBe('User | undefined | User')
+        ->and($apart->properties[0]['type'])->toBe('User | undefined')
+        ->and($apart->properties[0]['fillType'] ?? null)->toBe('string | undefined | User');
+});
+
+// Declared slots say whose each token is themselves, an override's null too, so the slotted join stands beside two
+// models of another name: read by class, the override's token and the model's would print as one.
+test('joinInto() leaves a key whose branches declare slots to the slotted join, its slots lined up with its tokens', function () {
+    $declared = joinBranch('Address | Address', Address::class);
+    $declared->declaredTokenFqcns['k'] = [null, Address::class];
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [$declared, joinBranch('User', User::class), joinBranch('User', CrmUser::class)]);
+
+    expect($joined->properties[0]['type'])->toStartWith('Address | Address | ')
+        ->and($joined->declaredTokenFqcns['k'])->toBe([null, Address::class]);
 });
 
 test('a join decides which branches count on their gap-free text, the lone `null` included, and keeps each gap', function () {

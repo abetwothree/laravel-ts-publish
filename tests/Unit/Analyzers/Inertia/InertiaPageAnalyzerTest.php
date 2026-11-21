@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Analyzers\Inertia\InertiaPageAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
@@ -42,6 +43,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardCon
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResourceExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\RouteBoundReadsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedEnumPairController;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SameNamedUntypedPropsController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\SignedInUserController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TopLevelKeysController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\TypedActionParametersController;
@@ -49,6 +51,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\UnpublishedFind
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ViewerBadgeController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\WrappedEnumBesideModelController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastCardResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeptMapWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NoteSignatureCastResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostCardResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostVisibilitiesResource;
@@ -59,6 +62,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Providers\QueryMacroServiceProvi
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\CardPropsBuilder;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\PostPages;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Services\QueriedIdStats;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AlikeWithExtrasController;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithCastKeyEdges;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ControllerWithDelegatedProps;
@@ -1353,8 +1357,8 @@ it('keeps the empty list of an EnumResource over a null enum beside a bare read 
     $names = fn (array $props): array => array_map(fn (mixed $value): mixed => $value['name'] ?? $value, $props);
 
     expect(pageData(NullableEnumResourceController::class.'@ternaries')['pageType'])
-        ->toBe('Inertia.SharedData & { mixed: AsEnum<typeof Priority> | PriorityType | never[] | null, '
-            .'nested: AsEnum<typeof Priority> | PriorityType | never[] | null, '
+        ->toBe('Inertia.SharedData & { mixed: AsEnum<typeof Priority> | never[] | PriorityType | null, '
+            .'nested: AsEnum<typeof Priority> | never[] | PriorityType | null, '
             .'either: AsEnum<typeof Visibility> | never[] | AsEnum<typeof Status> }')
         ->and(pageData(NullableEnumResourceController::class.'@branches')['pageType'])
         ->toBe('Inertia.SharedData & { either: AsEnum<typeof Visibility> | never[] | AsEnum<typeof Status> }')
@@ -1517,6 +1521,33 @@ it('spells a wrapped enum\'s const after typeof beside the same-named model, whe
     ])->and([$sent->grade->subject, $sent->badge->name, $sent->badge->value])->toBe(['Math', 'Pass', 'pass']);
 });
 
+// GH-76: render branches holding the app's and the CRM's User keep both, each aliased, but an untyped render keeps the
+// prop unknown, as a strict join stands for the branch it cannot type.
+it('keeps two same-named models apart across render branches, and an untyped render\'s prop unknown', function () {
+    app(Router::class)->get('/same-named/returns', [SameNamedUntypedPropsController::class, 'returns']);
+    app(Router::class)->get('/same-named/literals', [SameNamedUntypedPropsController::class, 'literals']);
+    $transformer = new RouteTransformer(SameNamedUntypedPropsController::class);
+
+    expect(array_column($transformer->actions, 'pageType'))->toBe([
+        'Inertia.SharedData & { user: unknown }',
+        'Inertia.SharedData & { user: WorkbenchUser | CrmUser | null }',
+    ])->and($transformer->typeImports)->toBe([
+        '../../../../../../workbench/app/models' => ['User as WorkbenchUser'],
+        '../../../../../../workbench/crm/models' => ['User as CrmUser'],
+    ]);
+});
+
+// GH-76: a resource's `with()` keys join its response with the record of which `Address` token is the model's.
+it('keeps a model and a resource of one name apart in the keys a resource\'s with() sends', function () {
+    app(Router::class)->get('/extras/alike', [AlikeWithExtrasController::class, 'show']);
+    $transformer = new RouteTransformer(AlikeWithExtrasController::class);
+
+    expect($transformer->actions[0]['pageType'] ?? null)->toBe(
+        'Inertia.SharedData & { item: { data: AlikeWithExtrasResource; meta: { a: WorkbenchAddress2 | null; '
+            .'both: (WorkbenchAddress | WorkbenchAddress2 | null)[] } } }',
+    );
+});
+
 it('binds each same-named enum token to its own class on either side of a key the printer renumbers or marks optional', function () {
     app(Router::class)->get('/pair/around', [SameNamedEnumPairController::class, 'aroundPrintedKeys']);
     $transformer = new RouteTransformer(SameNamedEnumPairController::class);
@@ -1549,7 +1580,7 @@ it('types each arm of an enum-resource ternary as Inertia sends it', function ()
         ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
 
-// No arm record tells a collection wrap from one beside a make(), so `mixed` keeps the wrapped case either may send.
+// Each arm publishes as it does alone, so `mixed` is the collection's wrap key beside the case it may send instead.
 it('keeps the wrap key of each enum-resource collection arm of a ternary', function () {
     [$picked, $other] = array_map(function (int $c): stdClass {
         $request = Request::create('/', 'GET', ['c' => $c]);
@@ -1559,7 +1590,7 @@ it('keeps the wrap key of each enum-resource collection arm of a ternary', funct
 
     expect(pageData(EnumUnionPropsController::class.'@collections')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
         .'either: { data: AsEnum<typeof Role>[] } | { data: AsEnum<typeof Status>[] }, '
-        .'mixed: AsEnum<typeof Status> | { data: AsEnum<typeof Status>[] } | StatusType }')
+        .'mixed: { data: AsEnum<typeof Status>[] } | StatusType }')
         ->and([$picked->either->data[0]->name, $picked->mixed->data[0]->name, $other->either->data[0]->name, $other->mixed])
         ->toBe([Role::Admin->name, Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
@@ -1572,7 +1603,7 @@ it('keeps a wrapped case beside an enum-resource collection and a bare case of i
     }, [1, 2, 3]);
 
     expect(pageData(EnumUnionPropsController::class.'@threeArms')['pageType'] ?? null)
-        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | StatusType | { data: AsEnum<typeof Status>[] } }')
+        ->toBe('Inertia.SharedData & { status: AsEnum<typeof Status> | { data: AsEnum<typeof Status>[] } | StatusType }')
         ->and([$made->status->name, $collected->status->data[0]->name, $bare->status])
         ->toBe([Status::Draft->name, Status::Draft->name, Status::Published->value]);
 });
@@ -2850,4 +2881,27 @@ it('publishes once a prop\'s arm a case value\'s absorbing made alike another', 
 it('publishes no case value beside its enum\'s alias and no empty list beside a list on a page', function () {
     expect(pageData(InertiaRedundantArmsController::class.'@show')['pageType'] ?? null)->toBe('Inertia.SharedData & { '
         .'priorities: (PriorityType | null)[], status: StatusType, status_or_draft?: StatusType }');
+});
+
+// GH-160: each arm of a page prop publishes as it does alone, a wrap as its own `AsEnum`, two same-named wraps apart.
+it('spells each wrap of a page prop where it is read, beside a case, another wrap or a collection', function () {
+    expect(pageData(InertiaEnumResourceController::class.'@mixes')['pageType'])->toBe('Inertia.SharedData & { '
+        .'wrap_or_other_case: AsEnum<typeof Role> | StatusType, '
+        .'wrap_or_nested_nullable_case: AsEnum<typeof Status> | StatusType | null, '
+        .'three_wraps: AsEnum<typeof Role> | AsEnum<typeof Status> | AsEnum<typeof Visibility>, '
+        .'same_named_wraps: AsEnum<typeof Status> | AsEnum<typeof Status>, '
+        .'collection_or_case: { data: AsEnum<typeof Status>[] } | StatusType, '
+        .'nested_two_wraps: { x: AsEnum<typeof Visibility> | never[] | AsEnum<typeof Status> } }');
+});
+
+// GH-108: a resource's body resolve() returns for a page keeps its map()s as Collections, which no filter() enters, so
+// each wrap in a row prints its own `AsEnum`, beside the `[]` a wrap of a null enum sends.
+it('spells each wrap in a kept map of a resource a page resolves', function () {
+    $analysis = resolve(AstEngine::class)->analyzeMethod(KeptMapWrapsResource::class, reading: Reading::InertiaFiltered);
+
+    expect(array_column($analysis->properties, 'type', 'name'))->toBe([
+        'mixed' => '(AsEnum<typeof Role> | never[] | StatusType)[]',
+        'pair' => '(AsEnum<typeof Role> | never[] | AsEnum<typeof Status>)[][]',
+    ])
+        ->and($analysis->wrapConstFqcns('pair'))->toBe([Role::class, Status::class]);
 });

@@ -107,10 +107,7 @@ final class TernaryHandler implements ExpressionHandler, KeepsHeldObjects, Split
         }
 
         if ($narrowed === [] && $this->nonNullReads($expr->cond, true) === [] && $this->nonNullReads($expr->cond, false) === []) {
-            return ValueResult::withEnumArmShapes(
-                ValueResult::analyzeClosureUnion($arms, $engine, $scope, firstIsChecked: $expr->if === null),
-                static fn (): array => array_map($engine->resolve(...), $arms),
-            );
+            return ValueResult::analyzeClosureUnion($arms, $engine, $scope, firstIsChecked: $expr->if === null);
         }
 
         $results = [$this->armResult($expr, 0, $narrowed, $scope, $engine), $this->armResult($expr, 1, $narrowed, $scope, $engine)];
@@ -130,9 +127,7 @@ final class TernaryHandler implements ExpressionHandler, KeepsHeldObjects, Split
 
         // The narrowed results, not a second resolution of the arms: that would drop the narrowing and let two
         // resolutions of the same arm disagree by construction.
-        $union = DroppedUnionArms::leftOut(ValueResult::unionResults($results), $left, $scope);
-
-        return ValueResult::withEnumArmShapes($union, $results);
+        return DroppedUnionArms::leftOut(ValueResult::unionResults($results), $left, $scope);
     }
 
     /**

@@ -1303,16 +1303,16 @@ it('unions a value and a default of two different names as a merge by text does'
     'whenNotNull(), which keeps its value\'s class and strips its null' => ['whenNotNull', 'User | Post'],
 ]);
 
-// A default's union counts its members, so a `null` beside two enum resources keeps it from being read as a union of
-// enum resources: the enums are embedded, and publish as their own types.
-it('does not read two enum resources and a null as a union of enum resources', function () {
-    $value = ['type' => 'StatusType', 'optional' => false, 'enumFqcn' => Status::class];
-    $default = ['type' => 'VisibilityType | null', 'optional' => false, 'enumFqcn' => Visibility::class];
+// Each arm publishes as it does alone, so a `null` beside two enum resources leaves each wrap spelled as its own.
+it('unions two enum resources and a null as each wrap beside the null', function () {
+    $value = ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]];
+    $default = ['type' => 'AsEnum<typeof Visibility> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Visibility::class], 'wrappedEnumFqcns' => [Visibility::class]];
 
     expect(conditionalMethodHandlerResolveArms('when', $value, $default))->toBe([
-        'type' => 'StatusType | VisibilityType | null',
+        'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',
         'optional' => false,
-        'embeddedEnumFqcns' => [Status::class, Visibility::class],
+        'embeddedEnumResourceFqcns' => [Status::class, Visibility::class],
+        'wrappedEnumFqcns' => [Status::class, Visibility::class],
     ]);
 });
 

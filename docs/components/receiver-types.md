@@ -540,7 +540,7 @@ and `UrlService::mixedReturn(): mixed`, which returns `null`, publishes `null`.
   and a parameter is never bound to a callable its call passes ([AST engine § A called method's parameters][params]).
 - **Skips a dependency's method**: built in, under a vendor directory Composer registered, or in this package's own
   `src/` (`DependencyFiles`).
-- **An untyped body that can end without a value** adds `| null`, as `SubjectHelperReturnResolver` does.
+- **An untyped body that can end without a value** adds `| null`.
 - **It carries import channels, as the shape does**, so a helper that returns an enum or a model imports it.
 
 It shares the `method-body:` cycle guard with the shape, so a recursion through either reader stops at its first repeat.
@@ -619,7 +619,7 @@ These pages cover the neighbors of receiver resolution:
 
 [`CollectionSteps`]: ../../src/Ast/Receivers/CollectionSteps.php
 [`DeclaredClasses`]: ../../src/Ast/Receivers/DeclaredClasses.php
-[`EnumValueTypes`]: ../../src/Ast/Values/EnumValueTypes.php
+[`EnumValueTypes`]: ../../src/Ast/Enums/EnumValueTypes.php
 [`InstanceofNarrowing`]: ../../src/Ast/Receivers/InstanceofNarrowing.php
 [`LoadedRelations`]: ../../src/Ast/Receivers/LoadedRelations.php
 [`MacroCallResolver`]: ../../src/Ast/Calls/MacroCallResolver.php

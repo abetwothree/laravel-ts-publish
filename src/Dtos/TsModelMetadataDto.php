@@ -20,6 +20,7 @@ use JsonSerializable;
  *     properties: MetadataProperties,
  *     propertyTypes: MetadataPropertyTypes,
  *     typeImports: TypesImportMap,
+ *     valueImports: TypesImportMap,
  * }
  *
  * @implements Arrayable<string, string|MetadataProperties|MetadataPropertyTypes|TypesImportMap>
@@ -32,6 +33,7 @@ final readonly class TsModelMetadataDto implements Arrayable, Datable, Jsonable,
      * @param  MetadataProperties  $properties
      * @param  MetadataPropertyTypes  $propertyTypes
      * @param  TypesImportMap  $typeImports
+     * @param  TypesImportMap  $valueImports  the enum consts the types spell after `typeof`
      */
     public function __construct(
         public string $modelName,
@@ -39,6 +41,7 @@ final readonly class TsModelMetadataDto implements Arrayable, Datable, Jsonable,
         public array $properties,
         public array $propertyTypes,
         public array $typeImports,
+        public array $valueImports = [],
     ) {}
 
     /**
@@ -54,6 +57,7 @@ final readonly class TsModelMetadataDto implements Arrayable, Datable, Jsonable,
             'properties' => $this->properties,
             'propertyTypes' => $this->propertyTypes,
             'typeImports' => $this->typeImports,
+            'valueImports' => $this->valueImports,
         ];
     }
 

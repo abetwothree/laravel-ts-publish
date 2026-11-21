@@ -3701,7 +3701,7 @@ declare global {
             wrapped_status_fallback: { status: app.enums.StatusType[] | app.enums.StatusType };
             latest_status_or_history: app.enums.StatusType | app.enums.StatusType[];
             wrapped_history_or_scalar: app.enums.StatusType[] | app.enums.StatusType;
-            wrapped_history_or_array: app.enums.StatusType[] | app.enums.StatusType[];
+            wrapped_history_or_array: app.enums.StatusType[];
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
@@ -5831,7 +5831,7 @@ declare global {
          */
         export interface TeamStatusAuditResource {
             id: number;
-            audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };
+            audit: { status: app.enums.StatusType[] };
         }
         /**
          * A local assigned from an `instanceof` ternary whose proven arm reads a relation only the subclass declares keeps the
@@ -6442,16 +6442,18 @@ declare global {
             nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
         }
         /**
-         * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
-         * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
-         * another text, and a shared key beside a dependent's nested enum (GH-157).
+         * Objects holding two same-named enums, one of them inside a nested value: each literal splits, every token naming its
+         * own enum. Swapped at the top level, swapped nested with another text, and a shared key beside a dependent's nested
+         * enum (GH-157, GH-76).
          */
-        export interface SwappedEnumsResource {
-            priority: app.enums.PriorityType | null;
-            stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } | { primary: crm.enums.StatusType; secondary: app.enums.StatusType } | null;
-            meta: { priority: app.enums.PriorityType | null; stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } | { primary: crm.enums.StatusType; secondary: app.enums.StatusType; extra: boolean } | null };
-            shared: { status: app.enums.StatusType; is_pinned: boolean; lead: { stage: crm.enums.StatusType } | null };
-        }
+        export type SwappedEnumsResource = {
+            meta: { priority: 0; stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } } | { priority: 1; stages: { primary: crm.enums.StatusType; secondary: app.enums.StatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null };
+            shared: { status: app.enums.StatusType; is_pinned: true; lead: { stage: crm.enums.StatusType } } | { status: app.enums.StatusType; is_pinned: false; lead: null };
+        } & (
+            | { priority: 0; stages: { primary: app.enums.StatusType; secondary: crm.enums.StatusType } }
+            | { priority: 1; stages: { primary: crm.enums.StatusType; secondary: app.enums.StatusType } }
+            | { priority: 2 | 3 | null; stages: null }
+        );
         /**
          * Arms that spell one text, each binding the two same-named resources in the other order: Low and Medium stay apart,
          * at the top level and nested (GH-157).
@@ -6511,9 +6513,43 @@ declare global {
         }
     }
     export namespace app.http.resources.enumWraps {
+        /**
+         * Branches writing a wrap or a read of the app's or the CRM's `Status` into one key (GH-160, GH-76). Each branch sends
+         * its own enum, so the key keeps an arm for each, under its own alias.
+         */
+        export interface BranchedSameNamedWrapsResource {
+            written: app.enums.StatusType | crm.enums.StatusType;
+            read: app.enums.StatusType | crm.enums.StatusType;
+            nested: { w: app.enums.StatusType } | { w: crm.enums.StatusType };
+        }
         /** A wrap, a bare read of the same enum and rows the `@return` fills (GH-160). The read sends the enum's value. */
         export interface DeclaredWrapRowsResource {
             subject: app.enums.StatusType | { s: app.enums.StatusType }[];
+        }
+        /**
+         * Lists array_filter() keeps of the app's and the CRM's `Status`, or of the `Address` model and its resource, each
+         * beside a later token of that name (GH-76, GH-160). The resource re-indexes each filtered list, so every token after
+         * one still names its own class.
+         */
+        export interface FilteredSameNamedListsResource {
+            either: (crm.enums.StatusType | app.enums.StatusType)[] | app.enums.StatusType[];
+            app_after: { list: (crm.enums.StatusType | app.enums.StatusType)[]; one: app.enums.StatusType };
+            crm_after: { list: (app.enums.StatusType | crm.enums.StatusType)[]; one: crm.enums.StatusType };
+            model_after: { list: (app.http.resources.Address | app.models.Address)[]; one: app.models.Address | null };
+            wrap_after: { list: (crm.enums.StatusType | app.enums.StatusType)[]; one: app.enums.StatusType };
+            reads: (crm.enums.StatusType | app.enums.StatusType)[] | app.enums.StatusType[];
+            wraps: (crm.enums.StatusType | app.enums.StatusType)[] | app.enums.StatusType[];
+            addresses: (app.http.resources.Address | app.models.Address)[] | (app.models.Address | null)[];
+            mixed: (app.http.resources.Address | crm.enums.StatusType | app.models.Address | app.enums.StatusType)[] | app.enums.StatusType[];
+        }
+        /**
+         * Rows keyed by name and mapped to the app's and the CRM's `Status` (GH-160, GH-76): wrapped, read, and in an object.
+         * The list arm and the Record arm name each enum alike.
+         */
+        export interface KeyedSameNamedMapsResource {
+            wraps: (app.enums.StatusType | crm.enums.StatusType)[] | Record<string, (app.enums.StatusType | crm.enums.StatusType)>;
+            reads: (app.enums.StatusType | crm.enums.StatusType)[] | Record<string, (app.enums.StatusType | crm.enums.StatusType)>;
+            objects: { app: app.enums.StatusType; crm: crm.enums.StatusType }[] | Record<string, { app: app.enums.StatusType; crm: crm.enums.StatusType }>;
         }
         /**
          * Two or more enum wraps below a top-level key, in a list, beside an object arm holding a wrap, and through `when()`
@@ -6536,7 +6572,7 @@ declare global {
          */
         export interface RowsBesideWrapsResource {
             rows_then_two_wraps: { c: crm.enums.StatusType; s: app.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType;
-            rows_then_three_wraps: { c: app.enums.StatusType; s: crm.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType | app.enums.VisibilityType;
+            rows_then_three_wraps: { c: crm.enums.StatusType; s: app.enums.StatusType }[] | app.enums.StatusType | app.enums.RoleType | app.enums.VisibilityType;
             named_rows_then_two_wraps: { n: string }[] | app.enums.StatusType | app.enums.RoleType;
             null_then_two_wraps: app.enums.StatusType | app.enums.RoleType | null;
         }
@@ -6545,17 +6581,18 @@ declare global {
          * enum, so each keeps its own alias.
          */
         export interface SameNamedWrapsResource {
-            app_or_crm_wrap: app.enums.StatusType;
-            app_or_crm_wrap_when: app.enums.StatusType;
-            app_or_crm_wrap_under_key: { subject: app.enums.StatusType };
-            wrap_or_two_reads: app.enums.StatusType;
-            crm_spread_over_wrap: { c: app.enums.StatusType };
-            literals_nested_crm: { s: app.enums.StatusType; x: { c: crm.enums.StatusType } } | { s: crm.enums.StatusType; x: null };
+            app_or_crm_wrap: app.enums.StatusType | crm.enums.StatusType;
+            app_or_crm_wrap_when: app.enums.StatusType | crm.enums.StatusType;
+            app_or_crm_wrap_under_key: { subject: app.enums.StatusType | crm.enums.StatusType };
+            wrap_or_two_reads: app.enums.StatusType | crm.enums.StatusType;
+            crm_spread_over_wrap: { c: app.enums.StatusType | crm.enums.StatusType };
+            literals_nested_crm: { s: app.enums.StatusType; x: { c: crm.enums.StatusType } } | { s: app.enums.StatusType; x: null };
+            app_or_crm_wrap_or_read: app.enums.StatusType | crm.enums.StatusType;
         }
         /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
         export interface WalkedWrapResource {
             id: number;
-            state: app.enums.StatusType | null;
+            state: app.enums.StatusType | app.enums.VisibilityType | null;
         }
         /**
          * An enum wrap beside a bare read, a case, a `->value` or `->name` read, a literal or an object holding a read of the
@@ -6565,10 +6602,10 @@ declare global {
             wrap_or_helper_offset: app.enums.MediaTypeType;
             wrap_or_nested_value: app.enums.MediaTypeType | string;
             wrap_or_nested_nullable_value: app.enums.MediaTypeType | null;
-            match_wrap_read_literal: app.enums.StatusType;
-            match_wrap_value_name: app.enums.StatusType;
-            match_wrap_value_other: app.enums.StatusType;
-            nested_make_or_collection_or_read: app.enums.StatusType[] | app.enums.StatusType;
+            match_wrap_read_literal: app.enums.StatusType | string;
+            match_wrap_value_name: app.enums.StatusType | app.enums.StatusKind;
+            match_wrap_value_other: app.enums.StatusType | string;
+            nested_make_or_collection_or_read: app.enums.StatusType | app.enums.StatusType[];
             collection_or_plain_list: app.enums.StatusType[];
             wrap_or_other_enum_case: app.enums.RoleType | app.enums.StatusType;
             wrap_or_nested_nullable_case: app.enums.StatusType | null;
@@ -6581,7 +6618,7 @@ declare global {
         export interface WrapHelpersResource {
             picked: app.enums.StatusType | app.enums.VisibilityType | null;
             status_wrap?: app.enums.StatusType;
-            card: { stamped: boolean; [key: string]: unknown };
+            card: { status: app.enums.StatusType; stamped: boolean };
         }
     }
     export namespace app.http.resources.jsonApi {
@@ -6728,8 +6765,15 @@ declare global {
          * as the two arms of a ternary. Each value keeps its own class's alias.
          */
         export interface AddressKindsResource {
-            data: { address: app.models.Address | null; raw: app.http.resources.Address | null };
-            either: app.models.Address | null;
+            data: { address: app.http.resources.Address | null; raw: app.models.Address | null };
+            either: app.models.Address | app.http.resources.Address | null;
+        }
+        /**
+         * A helper's declared shape alternating the app's and the CRM's `Status` over an untyped read (GH-81). Each token names
+         * the enum its member declares.
+         */
+        export interface DeclaredStatusesResource {
+            statuses: { a: app.enums.StatusType; b: crm.enums.StatusType; c: app.enums.StatusType | null };
         }
     }
     export namespace blog.http.resources {

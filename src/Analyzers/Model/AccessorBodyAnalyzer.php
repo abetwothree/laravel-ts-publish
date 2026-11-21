@@ -11,9 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -162,7 +162,7 @@ final class AccessorBodyAnalyzer
 
         foreach ($info['enumFqcns'] as $i => $fqcn) {
             $name = $info['enumTypes'][$i];
-            $spellings[$name] = [...($spellings[$name] ?? []), ...ValueResult::enumNames($fqcn)];
+            $spellings[$name] = [...($spellings[$name] ?? []), ...EnumNames::names($fqcn)];
         }
 
         foreach ([[$info['enumTypes'], $spellings], [$info['classes'], []]] as [$names, $spelledAs]) {

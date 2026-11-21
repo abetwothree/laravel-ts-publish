@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 
 /**
  * Carry a ValueExpressionResult into a TypeScriptTypeInfo, the inverse of `ReflectedTypeAcceptor::accept()`: it imports
- * only through the five channels the acceptor writes, never a resource, and copies the wrap channels and
+ * only through the channels the acceptor writes, never a resource, the wrap channels among them, and copies
  * `sendsEnumScalar`, which only the model reads. See docs/components/resource-ast-analyzer.md.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
@@ -45,26 +46,31 @@ final class ResultTypeInfoBridge
         $info['type'] = $result['type'];
         unset($info['classTokenFqcns']);
 
-        // The merged info lists each class once. Where two models share a name, `ValueResult::modelQueueByToken()`
+        // The merged info lists each class once. Where two models share a name, `ClassIdentity::modelQueueByToken()`
         // hands on the engine's own queue unless it outruns the type's tokens, as a merge by text can.
-        $models = ValueResult::modelQueueByToken($result);
+        $models = ClassIdentity::modelQueueByToken($result);
 
         if ($models !== null) {
             $info['classTokenFqcns'] = $models;
+        }
+
+        // The engine queues the enum behind each token, which the merged info's list of each enum once cannot say.
+        $enums = array_values(array_filter([$result['directEnumFqcn'] ?? null, ...($result['embeddedEnumFqcns'] ?? [])]));
+
+        if (EnumNames::shareAName($enums)) {
+            $info['enumTokenFqcns'] = $enums;
         }
 
         if ($result['sendsEnumScalar'] ?? false) {
             $info['sendsEnumScalar'] = true;
         }
 
-        $wrapped = array_values(array_unique([
-            ...(isset($result['enumFqcn']) ? [$result['enumFqcn']] : []),
-            ...($result['multiEnumResourceFqcns'] ?? []),
-            ...($result['embeddedEnumResourceFqcns'] ?? []),
-        ]));
+        if (($result['wrappedEnumFqcns'] ?? []) !== []) {
+            $info['wrappedEnumFqcns'] = $result['wrappedEnumFqcns'];
+        }
 
-        if ($wrapped !== []) {
-            $info['wrappedEnumFqcns'] = $wrapped;
+        if (($result['embeddedEnumResourceFqcns'] ?? []) !== []) {
+            $info['wrapConstFqcns'] = $result['embeddedEnumResourceFqcns'];
         }
 
         // Union, not replace: the merged copy carries a #[TsType] channel's own import, the engine result

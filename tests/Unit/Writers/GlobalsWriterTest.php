@@ -200,11 +200,26 @@ test('globals content does not contain AsEnum<typeof ...> (typeof namespace memb
     $writer = new GlobalsWriter(new Filesystem);
     $content = $writer->write($runner);
 
-    // AsEnum<typeof namespace.Member> is illegal in declare global {} — must be absent
-    expect($content)->not->toContain('AsEnum<typeof');
+    // AsEnum<typeof namespace.Member> is illegal in declare global {} — must be absent, and so its import, which an
+    // event's own file holds for its wraps.
+    expect($content)->not->toContain('AsEnum<typeof')
+        ->not->toContain("import type { AsEnum } from '@tolki/ts';");
 
     // Enum resource types should appear as qualified type aliases instead
     expect($content)->toContain('enums.StatusType');
+});
+
+// The globals file spells a wrap by its enum's value type, so a wrap list beside a list of that type is one arm.
+test('globals content prints one arm where a folded wrap list meets a list of its enum\'s type', function () {
+    config()->set('ts-publish.globals.enabled', true);
+    config()->set('ts-publish.output_to_files', false);
+
+    $runner = resolve(Runner::class);
+    $runner->run();
+
+    expect((new GlobalsWriter(new Filesystem))->write($runner))
+        ->toContain('wrapped_history_or_array: workbench.app.enums.StatusType[];')
+        ->toContain('audit: { status: workbench.app.enums.StatusType[] };');
 });
 
 test('globals content does not contain AsEnum<typeof ...> with namespace_strip_prefix', function () {
@@ -497,6 +512,11 @@ test('the globals template qualifies each name through its own transformer\'s ma
                 'RelationName' => 'own.elsewhere.RelationName',
             ];
         }
+
+        public function globalEnumConstMap(): array
+        {
+            return [];
+        }
     };
 
     $collection = new class
@@ -551,6 +571,11 @@ test('the globals template qualifies each name through its own transformer\'s ma
         public function globalTypeReferenceMap(): array
         {
             return ['EventName' => 'own.elsewhere.EventName'];
+        }
+
+        public function globalEnumConstMap(): array
+        {
+            return [];
         }
     };
 

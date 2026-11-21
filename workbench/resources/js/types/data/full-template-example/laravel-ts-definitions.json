@@ -92,12 +92,12 @@
             "properties": [
                 {
                     "name": "status",
-                    "type": "StatusType",
+                    "type": "AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
                     "name": "visibility",
-                    "type": "VisibilityType | never[]",
+                    "type": "AsEnum<typeof Visibility> | never[]",
                     "optional": false
                 }
             ]
@@ -14654,25 +14654,18 @@
             "name": "SwappedEnumsResource",
             "properties": [
                 {
-                    "name": "priority",
-                    "type": "PriorityType | null",
-                    "optional": false
-                },
-                {
-                    "name": "stages",
-                    "type": "{ primary: EnumsStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: EnumsStatusType } | null",
-                    "optional": false
-                },
-                {
                     "name": "meta",
-                    "type": "{ priority: PriorityType | null; stages: { primary: EnumsStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: EnumsStatusType; extra: boolean } | null }",
+                    "type": "{ priority: 0; stages: { primary: EnumsStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: EnumsStatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null }",
                     "optional": false
                 },
                 {
                     "name": "shared",
-                    "type": "{ status: EnumsStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }",
+                    "type": "{ status: EnumsStatusType; is_pinned: true; lead: { stage: CrmStatusType } } | { status: EnumsStatusType; is_pinned: false; lead: null }",
                     "optional": false
                 }
+            ],
+            "variants": [
+                "{ priority: 0; stages: { primary: EnumsStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: EnumsStatusType } } | { priority: 2 | 3 | null; stages: null }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedResourcesResource": {
@@ -15051,12 +15044,102 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\BranchedSameNamedWrapsResource": {
+            "name": "BranchedSameNamedWrapsResource",
+            "properties": [
+                {
+                    "name": "written",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "read",
+                    "type": "EnumsStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ w: AsEnum<typeof EnumsStatus> } | { w: AsEnum<typeof CrmStatus> }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\EnumWraps\\DeclaredWrapRowsResource": {
             "name": "DeclaredWrapRowsResource",
             "properties": [
                 {
                     "name": "subject",
-                    "type": "AsEnum<typeof Status> | { s: StatusType }[]",
+                    "type": "AsEnum<typeof Status> | StatusType | { s: StatusType }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\FilteredSameNamedListsResource": {
+            "name": "FilteredSameNamedListsResource",
+            "properties": [
+                {
+                    "name": "either",
+                    "type": "(CrmStatusType | EnumsStatusType)[] | EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "app_after",
+                    "type": "{ list: (CrmStatusType | EnumsStatusType)[]; one: EnumsStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "crm_after",
+                    "type": "{ list: (EnumsStatusType | CrmStatusType)[]; one: CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "model_after",
+                    "type": "{ list: (ResourcesAddress | ModelsAddress)[]; one: ModelsAddress | null }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_after",
+                    "type": "{ list: (AsEnum<typeof CrmStatus> | AsEnum<typeof EnumsStatus>)[]; one: AsEnum<typeof EnumsStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(CrmStatusType | EnumsStatusType)[] | EnumsStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof CrmStatus> | AsEnum<typeof EnumsStatus>)[] | AsEnum<typeof EnumsStatus>[]",
+                    "optional": false
+                },
+                {
+                    "name": "addresses",
+                    "type": "(ResourcesAddress | ModelsAddress)[] | (ModelsAddress | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "(ResourcesAddress | AsEnum<typeof CrmStatus> | ModelsAddress | AsEnum<typeof EnumsStatus>)[] | AsEnum<typeof EnumsStatus>[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\KeyedSameNamedMapsResource": {
+            "name": "KeyedSameNamedMapsResource",
+            "properties": [
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>)[] | Record<string, (AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>)>",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(EnumsStatusType | CrmStatusType)[] | Record<string, (EnumsStatusType | CrmStatusType)>",
+                    "optional": false
+                },
+                {
+                    "name": "objects",
+                    "type": "{ app: EnumsStatusType; crm: CrmStatusType }[] | Record<string, { app: EnumsStatusType; crm: CrmStatusType }>",
                     "optional": false
                 }
             ]
@@ -15066,32 +15149,32 @@
             "properties": [
                 {
                     "name": "under_key",
-                    "type": "{ subject: StatusType | RoleType }",
+                    "type": "{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> }",
                     "optional": false
                 },
                 {
                     "name": "in_list",
-                    "type": "(StatusType | RoleType)[]",
+                    "type": "(AsEnum<typeof Status> | AsEnum<typeof Role>)[]",
                     "optional": false
                 },
                 {
                     "name": "two_levels",
-                    "type": "{ outer: { inner: StatusType | RoleType } }",
+                    "type": "{ outer: { inner: AsEnum<typeof Status> | AsEnum<typeof Role> } }",
                     "optional": false
                 },
                 {
                     "name": "three_under_key",
-                    "type": "{ subject: AsEnum<typeof Status> | RoleType | VisibilityType }",
+                    "type": "{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> | AsEnum<typeof Visibility> }",
                     "optional": false
                 },
                 {
                     "name": "three_top",
-                    "type": "AsEnum<typeof Role> | StatusType | VisibilityType",
+                    "type": "AsEnum<typeof Role> | AsEnum<typeof Status> | AsEnum<typeof Visibility>",
                     "optional": false
                 },
                 {
                     "name": "three_wraps_two_enums",
-                    "type": "AsEnum<typeof Status> | PriorityType | null",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Priority> | null",
                     "optional": false
                 },
                 {
@@ -15106,7 +15189,7 @@
                 },
                 {
                     "name": "when_two_wraps_one_nullable",
-                    "type": "StatusType | MediaTypeType | null",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof MediaType> | null",
                     "optional": false
                 }
             ]
@@ -15116,22 +15199,22 @@
             "properties": [
                 {
                     "name": "rows_then_two_wraps",
-                    "type": "{ c: CrmStatusType; s: EnumsStatusType }[] | EnumsStatusType | RoleType",
+                    "type": "{ c: CrmStatusType; s: EnumsStatusType }[] | AsEnum<typeof EnumsStatus> | AsEnum<typeof Role>",
                     "optional": false
                 },
                 {
                     "name": "rows_then_three_wraps",
-                    "type": "{ c: AsEnum<typeof EnumsStatus>; s: CrmStatusType }[] | AsEnum<typeof EnumsStatus> | RoleType | VisibilityType",
+                    "type": "{ c: CrmStatusType; s: EnumsStatusType }[] | AsEnum<typeof EnumsStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>",
                     "optional": false
                 },
                 {
                     "name": "named_rows_then_two_wraps",
-                    "type": "{ n: string }[] | EnumsStatusType | RoleType",
+                    "type": "{ n: string }[] | AsEnum<typeof EnumsStatus> | AsEnum<typeof Role>",
                     "optional": false
                 },
                 {
                     "name": "null_then_two_wraps",
-                    "type": "EnumsStatusType | RoleType | null",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof Role> | null",
                     "optional": false
                 }
             ]
@@ -15141,32 +15224,37 @@
             "properties": [
                 {
                     "name": "app_or_crm_wrap",
-                    "type": "EnumsStatusType",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>",
                     "optional": false
                 },
                 {
                     "name": "app_or_crm_wrap_when",
-                    "type": "EnumsStatusType",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus>",
                     "optional": false
                 },
                 {
                     "name": "app_or_crm_wrap_under_key",
-                    "type": "{ subject: EnumsStatusType }",
+                    "type": "{ subject: AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus> }",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_two_reads",
-                    "type": "AsEnum<typeof EnumsStatus>",
+                    "type": "AsEnum<typeof EnumsStatus> | EnumsStatusType | CrmStatusType",
                     "optional": false
                 },
                 {
                     "name": "crm_spread_over_wrap",
-                    "type": "{ c: AsEnum<typeof EnumsStatus> }",
+                    "type": "{ c: AsEnum<typeof EnumsStatus> | CrmStatusType }",
                     "optional": false
                 },
                 {
                     "name": "literals_nested_crm",
-                    "type": "{ s: EnumsStatusType; x: { c: CrmStatusType } } | { s: CrmStatusType; x: null }",
+                    "type": "{ s: EnumsStatusType; x: { c: CrmStatusType } } | { s: EnumsStatusType; x: null }",
+                    "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_or_read",
+                    "type": "AsEnum<typeof EnumsStatus> | AsEnum<typeof CrmStatus> | EnumsStatusType",
                     "optional": false
                 }
             ]
@@ -15181,7 +15269,7 @@
                 },
                 {
                     "name": "state",
-                    "type": "AsEnum<typeof Status> | StatusType | null",
+                    "type": "AsEnum<typeof Status> | VisibilityType | null",
                     "optional": false
                 }
             ]
@@ -15191,57 +15279,57 @@
             "properties": [
                 {
                     "name": "wrap_or_helper_offset",
-                    "type": "AsEnum<typeof MediaType>",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_nested_value",
-                    "type": "AsEnum<typeof MediaType> | string",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType | string",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_nested_nullable_value",
-                    "type": "AsEnum<typeof MediaType> | null",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType | null",
                     "optional": false
                 },
                 {
                     "name": "match_wrap_read_literal",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "AsEnum<typeof Status> | StatusType | string",
                     "optional": false
                 },
                 {
                     "name": "match_wrap_value_name",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "AsEnum<typeof Status> | StatusType | StatusKind",
                     "optional": false
                 },
                 {
                     "name": "match_wrap_value_other",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "AsEnum<typeof Status> | StatusType | string",
                     "optional": false
                 },
                 {
                     "name": "nested_make_or_collection_or_read",
-                    "type": "AsEnum<typeof Status>[] | StatusType",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Status>[] | StatusType",
                     "optional": false
                 },
                 {
                     "name": "collection_or_plain_list",
-                    "type": "AsEnum<typeof Status>[]",
+                    "type": "AsEnum<typeof Status>[] | StatusType[]",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_other_enum_case",
-                    "type": "RoleType | StatusType",
+                    "type": "AsEnum<typeof Role> | StatusType",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_nested_nullable_case",
-                    "type": "AsEnum<typeof Status> | null",
+                    "type": "AsEnum<typeof Status> | StatusType | null",
                     "optional": false
                 },
                 {
                     "name": "wrap_or_object_value",
-                    "type": "AsEnum<typeof MediaType> | { v: AsEnum<typeof MediaType> }",
+                    "type": "AsEnum<typeof MediaType> | { v: MediaTypeType }",
                     "optional": false
                 }
             ]
@@ -15251,7 +15339,7 @@
             "properties": [
                 {
                     "name": "picked",
-                    "type": "StatusType | VisibilityType | null",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
                     "optional": false
                 },
                 {
@@ -15261,7 +15349,7 @@
                 },
                 {
                     "name": "card",
-                    "type": "{ stamped: boolean; [key: string]: unknown }",
+                    "type": "{ status: AsEnum<typeof Status>; stamped: boolean }",
                     "optional": false
                 }
             ]
@@ -20625,17 +20713,17 @@
                 },
                 {
                     "name": "priority_when_not_null_make",
-                    "type": "AsEnum<typeof Priority> | PriorityType | null",
+                    "type": "PriorityType | AsEnum<typeof Priority> | null",
                     "optional": false
                 },
                 {
                     "name": "status_when_not_null_arrow",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "StatusType | AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
                     "name": "visibility_when_not_null_full",
-                    "type": "AsEnum<typeof Visibility> | VisibilityType | null",
+                    "type": "VisibilityType | AsEnum<typeof Visibility> | null",
                     "optional": false
                 },
                 {
@@ -20889,12 +20977,22 @@
             "properties": [
                 {
                     "name": "data",
-                    "type": "{ address: ModelsAddress | null; raw: ResourcesAddress | null }",
+                    "type": "{ address: ResourcesAddress | null; raw: ModelsAddress | null }",
                     "optional": false
                 },
                 {
                     "name": "either",
-                    "type": "ModelsAddress | null",
+                    "type": "ModelsAddress | ResourcesAddress | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\SameNamed\\DeclaredStatusesResource": {
+            "name": "DeclaredStatusesResource",
+            "properties": [
+                {
+                    "name": "statuses",
+                    "type": "{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType | null }",
                     "optional": false
                 }
             ]
@@ -22387,7 +22485,7 @@
                 },
                 {
                     "name": "status_type_or_resource",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "StatusType | AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
@@ -23850,7 +23948,7 @@
                 },
                 {
                     "name": "status",
-                    "type": "EnumsStatusType",
+                    "type": "StatusType",
                     "optional": false
                 },
                 {

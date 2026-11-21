@@ -3,8 +3,8 @@
 `ResourceAstAnalyzer` reads a method body as PHP AST, not reflection, and returns a `ResourceAnalysis`: each returned
 key with its TypeScript type, optional flag and import channels.
 [`ResourceTransformer`](../../src/Transformers/ResourceTransformer.php) runs it on a resource's `toArray()`, then
-aliases the imports and applies the `AsEnum` rewrite. `AstEngine`, `InertiaPageAnalyzer` and `ModelMetadataAnalyzer`
-run it on other method bodies, as [AST engine](ast-engine.md) describes. Start at
+aliases the imports, the const each `AsEnum<typeof C>` wrap spells among them. `AstEngine`, `InertiaPageAnalyzer` and
+`ModelMetadataAnalyzer` run it on other method bodies, as [AST engine](ast-engine.md) describes. Start at
 [`ResourceAstAnalyzer::analyze()`](../../src/Analyzers/ResourceAstAnalyzer.php), and read what users see in the
 [API resources docs](https://tolki.abe.dev/ts/api-resources.html).
 
@@ -29,7 +29,7 @@ These are the classes a change to resource analysis usually touches:
 | [`ConditionableCallHandler`](../../src/Ast/Handlers/Calls/ConditionableCallHandler.php) | `Conditionable::when()` and `unless()` on any object but an API resource, a model or a query, in every profile |
 | [`ToResourceHandler`](../../src/Ast/Handlers/Resources/ToResourceHandler.php) | `toResource()`, `?->toResource()` and `toResourceCollection()`, adding `\| null` after a `?->` in the chain |
 | [`StaticCallHandler`](../../src/Ast/Handlers/Calls/StaticCallHandler.php) | `X::make()`, `X::collection()` and a method chained on a new resource |
-| [`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) | A `$this->helper()` whose returns wrap an enum in an `EnumResource`, read in the helper's own bindings |
+| [`EnumWrapPayload`](../../src/Ast/Enums/EnumWrapPayload.php) | The enum an `EnumResource::make()`, `new` or `::collection()` payload holds, and the wrap spelled where it is read |
 | [`InlineArrayHandler`](../../src/Ast/Handlers/Values/InlineArrayHandler.php) | A nested array literal, its spread arms and its `AsEnum` wraps, and a keyless list |
 | [`ReturnShapeRefiner`](../../src/Ast/Composition/ReturnShape/ReturnShapeRefiner.php) | Each key merged with the method's own `@return` member: a vague key takes it whole |
 | [`DeclaredTypeMerge`](../../src/Ast/Composition/ReturnShape/DeclaredTypeMerge.php) | One typed key's reading merged with its `@return` member, position by position |
@@ -191,10 +191,8 @@ it (`InlineObjectResult::of()`), which every reader carries with the object.
 
 Classes compare by the class behind each token, never by spelling: the body's as the publisher reads the key's channels
 or declared slots (`ReturnShapeRefiner::readSlots()`), the member's from its slots, and an enum the body wraps in an
-`EnumResource` never equals the bare enum. With the tolki package on, a key's one top-level wrap reads as the
-`AsEnum<typeof …>` the publisher writes, and a key the merge changes keeps it written so, on its inline wrap channel,
-since the publisher's rewrite would wrap a bare token of that enum the member fills too
-(`ReturnShapeRefiner::writtenWrap()`). The merged classes are queued on the key's channels in print order, as a
+`EnumResource` never equals the bare enum, since the wrap spells its const after `typeof` where the bare enum spells its
+type. The merged classes are queued on the key's channels in print order, as a
 body spelling them is (`ReturnShapeRefiner::requeued()`), so the key keeps its enum wraps and declares no slots; only an
 override spelled like a class beside it declares them, through `CastChannels::fit()`. The analyzed `share()` or
 `provide()` itself merges no typed key, since its analyzer lays that docblock over every key it types
@@ -532,8 +530,9 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
 - **`whenHas()`, `whenAppended()` and `whenExistsLoaded()` type from their value argument**: each returns
   `value($value, …)`. A closure's first parameter binds to `$this->{attribute}`, to the `{relation}_exists` flag or,
   for `whenAppended()`, to nothing. The attribute answers `whenHas()` and `whenAppended()` only for a value-less call or
-  an `EnumResource` wrap, which only moves the enum onto `enumFqcn`. A value the engine cannot type publishes `unknown`:
-  the attribute's type is wrong for a value that transforms it. `whenExistsLoaded()` keeps its flag for such a value.
+  an `EnumResource` wrap, whose payload is the attribute's own enum, spelled as the wrap (`EnumWrapPayload`). A value
+  the engine cannot type publishes `unknown`: the attribute's type is wrong for a value that transforms it.
+  `whenExistsLoaded()` keeps its flag for such a value.
 - **A skipped or literal `null` value publishes `null`**: none of those three swaps in an identity closure as
   `whenLoaded()` does, so `whenExistsLoaded('user', null, 'absent')` is `string | null`.
 - **`whenExistsLoaded()` publishes `boolean`**: the type `ModelAttributeResolver` gives a model's own `*_exists`
@@ -822,9 +821,9 @@ unless the guessed one's response is the plain list under the same wrap key.
 lazy prop wrapper, as its `toResponse()` data, which [`ResourceResponseType`](../../src/Ast/Resources/ResourceResponseType.php)
 builds. A single resource and a body without the live wrap key sit inside that
 key, such as `{ data: R }`, unless [`ResourceResponseBody`](../../src/Ast/Resources/ResourceResponseBody.php) finds the body
-already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare, and `RewritesEnumResourceProps`
-publishes a top-level one as `AsEnum<typeof X>` on a page as in shared data, with `| never[]` for the `[]` a null enum
-sends where no `filter()` runs; the route file imports the const with `import type`.
+already holds it; `EnumResource` declares `$wrap = ''`, so its `make()` stays bare and publishes `AsEnum<typeof X>`
+on a page as in shared data, with `| never[]` for the `[]` a null enum sends where no `filter()` runs; the route file
+imports the const with `import type`.
 `toResourceCollection(EnumResource::class)` is `EnumResource::collection()` over the receiver's items, the argument of
 a `collect()` receiver included. Over items naming no enum it publishes `{ data: unknown[] }`, since
 its nested value, `EnumResource[]`, names a type no run publishes. A payload's paginator kind is read from the classes
@@ -876,6 +875,8 @@ A numeric key goes through two layers:
 - **Re-index**: an API resource sends an array whose keys all pass `is_numeric()` as a list, at any depth, and keeps
   every key beside a named one. `reindexNumericKeyedArrays()` rewrites the property types once, at the publisher, with
   the publishing class's preserve-keys flag, since an inherited `toArray()` runs under the subclass's `$preserveKeys`.
+  Each key's queues and declared slots keep to the tokens its new text spells (`MethodAnalysis::rewritePropertyTypes()`,
+  `TokenSlots::retyped()`).
   `ResourceTransformer::runAstAnalysis()` calls it, as do `AstEngine::analyze()` for a `toArray()` and a spread
   `R::make()->resolve()` arm, which runs `R`'s own filter. A key a method cast types keeps the cast, and a key whose
   result carries `keepsKeys` keeps its keys, since the filter never enters an object. `collect()` sets it, as does
@@ -995,6 +996,7 @@ value degrades to `unknown`.
 | Models and enums together (`Order\|Status`) | yes | `embeddedEnumFqcns` and `embeddedModelFqcns`, never the single-entry channels |
 | A `#[TsType(import: ...)]` class | yes | `customImports` |
 | A composed class, whose override joins two or more | yes | `customImports`, keyed by `ComposedClassTypes::marker()` |
+| An `EnumResource` wrap an accessor returns (`AsEnum<typeof C>`) | yes | `embeddedEnumResourceFqcns` from `wrapConstFqcns`, one per `typeof` token; `wrappedEnumFqcns` |
 | A non-`Model` class token, one `toTsType()` did not turn into a shape | **no**, `unknown` | none: no published file to import |
 | `void`, `never`, `unknown`, `unknown \| null` or an empty type | **no**, `unknown` | none: no TypeScript shape |
 
@@ -1011,12 +1013,14 @@ the event, metadata and shared-data code that calls it resolves it there.
 
 [`ResultTypeInfoBridge::toTypeInfo()`](../../src/Ast/Values/ResultTypeInfoBridge.php) is the inverse, for a consumer such as
 `AccessorBodyAnalyzer` that needs an engine result in the model layer's `TypeScriptTypeInfo`. It imports only through
-the five channels the acceptor writes: `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`, `embeddedModelFqcns` and
-`customImports`. It unions `customImports` rather than replacing them. It also copies two facts only the model reads,
-neither of which imports anything: the three wrap channels, `enumFqcn`, `multiEnumResourceFqcns` and
-`embeddedEnumResourceFqcns`, go into `wrappedEnumFqcns` for its absorbing, and `sendsEnumScalar` keeps the alias in its
-`…Resource` interfaces ([AST engine § Redundant arms](ast-engine.md#redundant-arms)). Reading any other channel, such as
-a resource channel, changes behavior and needs its own audit.
+the five channels the acceptor writes, `directEnumFqcn`, `modelFqcn`, `embeddedEnumFqcns`, `embeddedModelFqcns` and
+`customImports`, and through the const queue, `embeddedEnumResourceFqcns`, which it hands on as `wrapConstFqcns` for the
+consts a wrap's type spells. It unions `customImports` rather than replacing them. It also copies `wrappedEnumFqcns`;
+the acceptor and the model-attribute readers carry both wrap channels back, so a resource reading the accessor imports
+its consts. It copies facts only the model reads: `enumTokenFqcns`, the enum behind each enum token where two of its
+enums share a name, and `sendsEnumScalar`, which keeps the alias in its `…Resource` interfaces
+([AST engine § Redundant arms](ast-engine.md#redundant-arms)). Reading any other channel, such as a resource channel,
+changes behavior and needs its own audit.
 
 The bridge merges the classes the result names, replaces the merged type with the result's, and drops the merge's
 `classTokenFqcns`, which queued the old type. Where the result spells one name for two classes, it sets the result's own
@@ -1030,8 +1034,6 @@ one that delegates.
 `MethodAnalysis::addProperty()` keys `directEnumFqcns` by property name for a value's own `directEnumFqcn`. It also
 self-keys each FQCN of the value's `embeddedEnumFqcns`, through `DispatchesFqcnResults`. `modelFqcns` and
 `nestedResources` mix the same two kinds. A consumer that tests a key must treat only property names as properties.
-`ResourceTransformer::rewriteEnumResourceTypes()`'s mixed check is key-sensitive, so it looks up property names only.
-Its import clean-up compares values, so it is right for both kinds.
 
 ### A resource's imports follow its published types
 
@@ -1039,20 +1041,21 @@ Its import clean-up compares values, so it is right for both kinds.
 `TsTypeString::typeNameOccursIn()`, because an unused import fails `tsc` with TS6196 under `noUnusedLocals`. Two
 steps depend on it:
 
-- **After a `#[TsCasts]` override**: `dropOverriddenEnumResources()` drops a key's enum-resource records when its type
-  holds none of the enums' type names, as a later spread's key leaves them, and runs before
-  `pruneOverriddenEnumImports()`, which removes the names it reads. `pruneOverriddenAnalysisImports()` and
-  `pruneOverriddenEnumImports()` drop each model, resource, `#[TsType]` and enum type import that no property type or
-  extends clause still spells. Before aliasing, `keepSpelled()` keeps a class for a key whose type spells it only if
+- **After a `#[TsCasts]` override**: `pruneOverriddenAnalysisImports()` and `pruneOverriddenEnumImports()` drop each
+  model, resource, `#[TsType]` and enum type import that no property type or extends clause still spells, and
+  `keepWrittenInlineWraps()` keeps only the wrap consts a key's type still spells after `typeof`, so a cast that
+  displaces a wrap imports no const. Before aliasing, `keepSpelled()` keeps a class for a key whose type spells it only if
   that key's import channels carry it or no other class of its name, so a class no key reads forces an alias only
   where a type or an extends clause spells its name with no class of that name behind it.
-  After the `AsEnum` rewrite, `pruneUnspelledImports()` drops each import whose local, aliased name no type spells.
+  After aliasing, `pruneUnspelledImports()` drops each import whose local, aliased name no type spells.
 - **After the resource's own `only()` or `except()`**: `FiltersModelAttributes::filterAnalysisByKeys()` rebuilds the
-  analysis from its properties, `directEnumFqcns` and `modelFqcns` alone. That loses a multi-class attribute's FQCNs,
-  every enum after the first and every `#[TsType]` import. `resolveMultiClassAccessorFqcns()` and
-  `resolveMultiEnumAccessorFqcns()` import them back by the key's name, which is the attribute's own. A class or a
-  `#[TsType]` import comes back only while the key's type spells it, and for a cast key only what its text spells and
-  its import does not bring. The `Stockroom` and `Bulletin` resources pin these reads.
+  analysis from the kept keys alone: their properties, their enum and model channels with the per-key queues, and the
+  `#[TsType]` imports their types spell. A key naming two enums or two models imports and aliases each, through
+  `analyze()` too, and a left-out key's classes force no alias (`OnlyTwoClassAccessorsResource`,
+  `ExceptAppStatusesResource`). `resolveMultiClassAccessorFqcns()` and `resolveMultiEnumAccessorFqcns()` import back,
+  by the key's name, which is the attribute's own, what no per-key queue covers. A class or a `#[TsType]` import comes
+  back only while the key's type spells it, and for a cast key only what its text spells and its import does not
+  bring. The `Stockroom` and `Bulletin` resources pin these reads.
 
 The token test matches a name wherever it stands, inside a string or a comment too, so it can keep an import that ends
 up unused; see
@@ -1078,14 +1081,17 @@ that model on first sight, in loop position beside the branch's own embedded FQC
 swap same-basename models silently. `SameBasenameModelTrioResource`'s `collapsed_arms`, `reversed_arms` and
 `control_arms` pin both halves.
 
-`ValueResult::spellsTwoClassesAlike()` decides when `unionResults()` hands a union to `withMembersByClass()`: one name
-spells two models, two resources or two enums read directly. `withMembersByClass()` reads it by class through
+[`ClassIdentity::spellsTwoClassesAlike()`](../../src/Ast/Values/ClassIdentity.php) decides when `unionResults()` hands
+a union to `ClassIdentity::membersByClass()`: one name spells two classes of one
+[`TokenKind`](../../src/Ast/Values/TokenKind.php), two wraps' consts among them, or a model and a resource. Both read
+each kind through its own
 [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
-[Import name registry](import-name-registry.md#rewriting-aliased-type-references). A union holding an `EnumResource`
-arm merges its enums by text, since the `AsEnum` rewrite spells that arm's token by its own import channel.
+[Import name registry](import-name-registry.md#rewriting-aliased-type-references).
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
-`unionResults()`. `mergeReturnBranches()` still merges by text, for return branches and a merge call's value and
-default alike; a literal's fold keeps two same-named models or resources apart (`joinInto()`'s `keepsClassesApart`).
+`unionResults()`. `BranchJoin::joinInto()` reads a key's branches by class the same way, over all four kinds, wherever
+the join kept a type with no declared slots (`keepsClassesApart()`): a method's returns, a merge call's value and
+default, a returned variable's branches and a literal's fold alike. A queue a branch only repeats of an earlier one is
+dropped inside the join, so repeats do not pile up.
 `HandoverResource` pins the `??`, ternary, to-many and inline-array shapes, and `HandoverNoticeResource` the `when()`
 and `whenNull()` ones.
 
@@ -1106,16 +1112,15 @@ rule.
 
 ## Enum resources
 
-### The tolki `AsEnum` wrap substitutes a token; it never rebuilds the type
+### A wrap substitutes its token; it never rebuilds the type
 
-With `enums.use_tolki_package` on, an `EnumResource::make()` or `::collection()` wrap publishes `AsEnum<typeof Role>`
-where the analyzer wrote the bare `RoleType`. Both rewrite paths substitute that token in place with
-`TsTypeString::substituteEnumType()`: `ResourceTransformer::rewriteEnumResourceTypes()` for a top-level key, and
-`InlineObjectResult` for a key inside an inline array. Substitution keeps a richer shape, such as
-`RoleType[] | Record<string, RoleType>` or a default's extra `string` arm. Rebuilding from the FQCN could express only
-`X`, `X[]` and their nullable forms. The token pattern skips a namespace-qualified `foo.RoleType` and a longer
-`RoleTypeExtra`. `RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin the two paths on
-the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEnum` only for a type that spells it.
+[AST engine § Enum wraps](ast-engine.md#enum-wraps) gives a wrap's spelling and its two channels.
+`EnumWrapPayload::spelledWrap()` substitutes the payload's `…Type` token in place with
+`TsTypeString::substituteEnumType()`, so a richer shape survives, such as `RoleType[] | Record<string, RoleType>` or a
+default's extra `string` arm, where rebuilding from the FQCN could express only `X`, `X[]` and their nullable forms. The
+token pattern skips a namespace-qualified `foo.RoleType` and a longer `RoleTypeExtra`.
+`RelationChainResource::$member_role_resources_filtered` and `$wrapped_filtered` pin a top-level key and a nested one
+on the same PHP shape. `ResourceWriter` imports `AsEnum` only for a type that spells it.
 
 ### An enum `toTsType()` names no enum for publishes that type as a value, and its own names in a wrap
 
@@ -1123,23 +1128,21 @@ the same PHP shape, and they must never disagree. `ResourceWriter` imports `AsEn
 mapping, naming no enum. So a case, a constant holding one, a declared type, a cast or an accessor publishes that type,
 an override with its `customImports`. A case keeps its enum channel (`ValueResolver::resolveConstantValue()`), so a
 receiver, a wrap and every carrier that moves a channel still know the enum, and each sink drops the `…Type` the text
-never spells. A union arm spelling no `…Type` rides the embedded queue (`ValueResult::readsEnumType()`), so a ternary of
-a wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
-`ValueResult::enumTypeName()`, which the `AsEnum` rewrite replaces. The enum comes from the class a case or `from()`
-names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an attribute, and the receiver class
-for a value of a declared type (`ResolvesEnumPropertyArgTypes::heldEnum()`). `->value` and `->name` keep the enum's
-names through `EnumValueTypes`, except a case's own, which publish its literal. `LaravelTsPublish::retypedEnumType()` is
-the one test for such an enum, and the type it publishes as. An `AsEnumCollection` cast's `EnumResource::collection()`
-and a model's `{Model}Resource` column still miss the wrap
+never spells. A union arm spelling no `…Type` rides the embedded queue (`EnumNames::readsType()`), so a ternary of a
+wrap and a case keeps the case's override. An `EnumResource` sends the enum itself, so its payload takes
+`EnumNames::typeName()`, which its wrap spells as `AsEnum<typeof C>` with the tolki package on. The enum comes from the
+class a case or `from()` names, the payload's channel, `ModelAttributeResolver::resolveAttributeClass()` for an
+attribute, and the receiver class for a value of a declared type (`EnumWrapPayload::heldEnum()`). `->value` and `->name`
+keep the enum's names through `EnumValueTypes`, except a case's own, which publish its literal.
+`LaravelTsPublish::retypedEnumType()` is the one test for such an enum, and the type it publishes as. An
+`AsEnumCollection` cast's `EnumResource::collection()` and a model's `{Model}Resource` column still miss the wrap
 ([known gaps](../known-gaps.md#two-reads-of-a-column-cast-to-an-overridden-enum-miss-its-asenumtypeof-x)).
 
-### The inline wrap's own const token is aliased by the transformer, not here
+### A wrap's const token is aliased by the transformer
 
-`InlineObjectResult` writes the enum's bare const name into `AsEnum<typeof Role>` during analysis, before
-`resolveImportConflicts()` has assigned any alias. A top-level key never shows that bare name, because
-`rewriteEnumResourceTypes()` builds its string from `constImportAliases` itself. For a nested wrap,
-`ResourceTransformer` and `AnalysisComposer` alias the bare name after `resolveImportConflicts()`. They call
-`TsTypeString::aliasTypeofConst()` over `inlineEnumResourceFqcns`, in the order `InlineObjectResult` built it.
+A wrap writes its enum's bare const name into `AsEnum<typeof Role>` before `resolveImportConflicts()` has assigned any
+alias. `ResourceTransformer::rewriteEnumResourceTypes()` and `AnalysisComposer` then alias each key's const tokens with
+`TsTypeString::aliasTypeofConst()` over the key's const queue, `inlineEnumResourceFqcns`, in print order.
 `aliasTypeofConst()` changes only the name after `typeof`. The same name bare is another enum's type.
 
 The order matters because two members can wrap different enums that share one const name. `DealResource::$status_pair`
@@ -1148,64 +1151,42 @@ pins two `Status` enums, each keeping its own alias:
 since its name map holds type names and never `enumConstMap`. See
 [import name registry § `ResourceTransformer`](import-name-registry.md#resourcetransformer) for the registration side.
 
-### A mixed ternary inside an inline array
+### A wrap beside other arms
 
-A mixed ternary wraps the enum in one arm and reads it directly in the other, as in
-`$flag ? EnumResource::make($this->status) : $this->status`. `ValueResult::mergeUnion()` marks it by setting both
-`enumFqcn` and `directEnumFqcn`, but the merged type string can collapse both arms into one token. So
-`ValueResult::withEnumArmShapes()`, which [`TernaryHandler`](../../src/Ast/Handlers/Operators/TernaryHandler.php) and
-[`MatchHandler`](../../src/Ast/Handlers/Operators/MatchHandler.php) call, reads each arm's own result and records the
-shape, `wrapIsCollection` and `directIsArray`, in `MethodAnalysis::$enumResourceArmShapes`. It declines when an arm is
-itself mixed, or when the wrap arms, or the direct arms, disagree on their shape. A short `?:` whose checked operand
-builds a resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches its other arm, since an object is
-always true, so `TernaryHandler` types it as that operand alone where the operand types and the engine reads under
-`Reading::Inertia`: a page's props, the shared data or a body they read, which no `JsonResource::filter()` reaches.
-Anywhere else, an API resource, a helper it reads, or a resource body Inertia reads through `resolve()`, both arms stay,
-since filter() sends a resource around null as null; they stay too beside an operand the engine cannot type.
+A ternary, a `match` or a `when()` that wraps an enum in one arm publishes each arm as it publishes alone
+([AST engine § Enum wraps](ast-engine.md#enum-wraps)): `$flag ? EnumResource::make($this->status) : $this->status`
+publishes `AsEnum<typeof Status> | StatusType`, and each arm keeps its own `[]`, as
+`TeamStatusAuditResource::$audit` pins with two array-shaped arms. On an Inertia page and in shared data a wrapped
+collection publishes its response, `{ data: AsEnum<typeof Status>[] }`, beside the other arms.
 
-Both rewrites build `AsEnum<typeof Status> | StatusType` from those flags, each arm with its own `[]`.
-`rewriteEnumResourceTypes()` does it for a top-level key, and `InlineObjectResult::expandMixedEnumType()` for a nested
-one. The nested key cannot defer to the transformer, because only flat property lists leave the handler's
-method-local analysis. `TeamStatusAuditResource::$audit` pins the nested case with two array-shaped arms.
+A short `?:` whose checked operand builds a resource, as `new X(…)`, `X::make(…)` or `X::collection(…)`, never reaches
+its other arm, since an object is always true, so `TernaryHandler` types it as that operand alone where the operand
+types and the engine reads under `Reading::Inertia`: a page's props, the shared data or a body they read, which no
+`JsonResource::filter()` reaches. Anywhere else, an API resource, a helper it reads, or a resource body Inertia reads
+through `resolve()`, both arms stay, since filter() sends a resource around null as null; they stay too beside an
+operand the engine cannot type.
 
-On an Inertia page and in shared data, `RewritesEnumResourceProps` substitutes instead, because a wrapped collection
-there publishes its response, `{ data: AsEnum<typeof Status>[] }`. It respells every top-level member but the bare
-read's, and puts the wrap's own spelling from `AnalysisComposer::enumResourceArms()` in front whenever the bare read's
-member is there and no member holds it, since a `make()` wrap always merges into that member. No arm record tells a
-collection wrap alone from one beside a `make()`, so the lone collection keeps that member too. A ternary over two
-enums' wraps has each member's own enum substituted, in branch order, where the resource rewrite replaces the whole
-member.
-
-Where no arm shape was recorded, as for `??` or a nested mixed ternary, `expandMixedEnumType()` reads the merged
-members. A lone `StatusType` becomes `AsEnum<typeof Status> | StatusType`, and a `StatusType[]` member, which
-`EnumResource::collection()` forced, becomes `AsEnum<typeof Status>[]`. That fallback can substitute the bare token
-away, so `InlineObjectResult` drops any enum import whose name no longer occurs in the type. This repo's
-`tsconfig.json` sets `noUnusedLocals`, and `tsc` rejects an unused import under it.
-
-In `laravel-ts-global.ts`, `TsTypeString::rewriteAsEnumToType()` folds an exact `AsEnum<typeof Status> | StatusType`
-pair into one qualified reference, since both arms qualify to the same name there. A pair with `[]` on either side
-stands for two different things, so it stays two references.
+In `laravel-ts-global.ts`, `TsTypeString::rewriteAsEnumToType()` folds each wrap to its enum's qualified value type,
+then keeps one of two arms the fold leaves alike, at every depth. `AsEnum<typeof X> | XType[]` and
+`AsEnum<typeof X>[] | XType` stay two arms
+([known gaps](../known-gaps.md#in-laravel-ts-globalts-an-enumresource-wrap-publishes-its-enums-value-type)).
 
 ### An enum reached through a local or a helper
 
-`ResolvesEnumPropertyArgTypes::resolveEnumFromPropertyArg()` follows a local assigned once as it follows a `when()`
-parameter, so `$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes
-to `resolveEnumFromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a
-list of it for `::collection()`. Two enums, even two that share a name, stay `unknown`. A static call such as
-`Status::tryFrom()` whose declared return admits null keeps that null. The payload's own `| null` stays where
-`filter()` reaches the wrap, since an enum branch returns before `resourceWrapType()`; anywhere else, `enumWrapValue()`
-spells the `[]` the wrap sends as `never[]`. A `map()` reaches `filter()` through `->all()`, `->toArray()` or
-`->jsonSerialize()` (`CollectionSteps::mappedSerializer()`, `BindsMapCallbacks::serializedMapResult()`), inside a
-relation closure or not; `->jsonSerialize()` resolves a wrap its callback returns bare as a kept map does.
+`EnumWrapPayload::fromArgument()` follows a local assigned once as it follows a `when()` parameter, so
+`$case = Status::Draft` wraps that case. Any other payload, such as a coalesce or a method's return, goes to
+`fromResolvedPayload()`. It wraps the resolved type only when that holds one enum and nothing else, or a list of it for
+`::collection()`. Two enums, even two that share a name, stay `unknown`. A static call such as `Status::tryFrom()` whose
+declared return admits null keeps that null. The payload's own `| null` stays where `filter()` reaches the wrap, since
+an enum branch returns before `resourceWrapType()`; anywhere else, `value()` spells the `[]` the wrap sends as
+`never[]`. A `map()` reaches `filter()` through `->all()`, `->toArray()` or `->jsonSerialize()`
+(`CollectionSteps::mappedSerializer()`, `BindsMapCallbacks::serializedMapResult()`), inside a relation closure or not;
+`->jsonSerialize()` resolves a wrap its callback returns bare as a kept map does.
 
-[`SubjectHelperReturnResolver`](../../src/Ast/Members/SubjectHelperReturnResolver.php) reads a `$this->helper()`, since no
-declared return names the enum a wrap holds. It reads one only when every return is `null`, an `EnumResource` wrap or a
-ternary of those, and one wraps. It seeds the body as a spread's is: the caller's name tables are set aside, but for its
-proofs of `$this` reads, its parameters bind by what they declare and what the call passes, and its guards narrow. A union that types no wrap declines. An untyped helper that can end without a value takes `| null`.
-`PostStatusSourcesResource` pins a local, a helper and a method's return. Any other helper types from its declaration
-or, when that is vague or missing, is
+A `$this->helper()` whose returns wrap an enum types from its declaration or, when that is vague or missing, is
 [read as a value](receiver-types.md#a-method-read-as-a-value-carries-import-channels) in a fresh scope that carries none
-of the caller's proofs.
+of the caller's proofs; each wrap spells itself inside the helper. `PostStatusSourcesResource` pins a local, a helper
+and a method's return.
 
 ## Related
 
@@ -1225,11 +1206,10 @@ These pages own the rules this page links to:
 These [known gaps](../known-gaps.md) come from the rules on this page:
 
 - [A union arm the engine cannot type is left out](../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm)
-- [A merge whose two sides name same-basename classes publishes only one of them](../known-gaps.md#a-merge-whose-two-sides-name-same-basename-classes-publishes-only-one-of-them)
 - [A helper that returns an empty `[]` on one path publishes an object shape](../known-gaps.md#a-helper-that-returns-an-empty--on-one-path-publishes-an-object-shape-though--encodes-as-an-array)
 - [`#[TsCasts]` and the top-level spread flatten disagree by scope](../known-gaps.md#tscasts-and-the-top-level-spread-flatten-disagree-by-scope-in-three-separate-ways)
 - [A variable the package cannot name, holding a non-collection with its own `map()`, publishes a list](../known-gaps.md#a-variable-the-package-cannot-name-holding-a-non-collection-with-its-own-map-publishes-a-list)
 - [`Model::toArray()` on a receiver publishes `Record<string, unknown>`, deliberately](../known-gaps.md#modeltoarray-on-a-receiver-publishes-recordstring-unknown-deliberately)
 - [On Laravel 12, `#[Collects]` cannot be resolved](../known-gaps.md#on-laravel-12-collects-cannot-be-resolved-so-use-the-collects-property)
 - [An index signature its body types can fail to compile beside a key it cannot take in](../known-gaps.md#an-index-signature-its-body-types-can-fail-to-compile-beside-a-key-it-cannot-take-in)
-- [A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals](../known-gaps.md#a-mixed-enum-ternary-whose-arms-are-both-array-shaped-ships-a-duplicated-union-member-in-the-globals)
+- [In `laravel-ts-global.ts`, an `EnumResource` wrap publishes its enum's value type](../known-gaps.md#in-laravel-ts-globalts-an-enumresource-wrap-publishes-its-enums-value-type)

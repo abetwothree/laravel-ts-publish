@@ -10,9 +10,11 @@ use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\Discriminated\PinnedPostResource;
 use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
 use Workbench\App\Http\Resources\Discriminated\PostPriorityResource;
+use Workbench\App\Http\Resources\Discriminated\SwappedEnumsResource;
 use Workbench\App\Http\Resources\Discriminated\SwappedResourcesResource;
 use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
 use Workbench\App\Http\Resources\Discriminated\WrappedFlagResource;
@@ -218,6 +220,41 @@ it('compiles what PHP sends for each priority against arms binding same-named re
         const high: SwappedResourcesResource = {$sent(Priority::High)};
         // @ts-expect-error Low's arm binds the workbench resource first
         const mislabelled: SwappedResourcesResource = {$mislabelled};
+
+        TS;
+
+    expect(compileStrict($tsc, $snippet))->toBe([0, '']);
+});
+
+// GH-76: arms holding two same-named enums, one of them nested, each name their own enum, so what PHP sends for each
+// priority compiles, and Medium's stages under Low's literal do not.
+it('compiles what PHP sends for each priority against arms holding two same-named enums, one of them nested', function () {
+    $tsc = dirname(__DIR__, 2).'/node_modules/.bin/tsc';
+
+    if (! is_executable($tsc)) {
+        $this->markTestSkipped('tsc is not installed');
+    }
+
+    $sent = static function (Priority $priority, bool $pinned): string {
+        $post = new Post(['title' => 'T']);
+        $post->priority = $priority;
+        $post->status = Status::Published;
+        $post->is_pinned = $pinned;
+
+        return sentJson(new SwappedEnumsResource($post));
+    };
+    $medium = $sent(Priority::Medium, false);
+    $mislabelled = str_replace('"priority":1', '"priority":0', $medium);
+    $declaration = renderedDeclaration(SwappedEnumsResource::class);
+    $snippet = <<<TS
+        type WorkbenchStatusType = 0 | 1;
+        type CrmStatusType = 'lead' | 'prospect' | 'active' | 'churned';
+        {$declaration}
+        const low: SwappedEnumsResource = {$sent(Priority::Low, true)};
+        const medium: SwappedEnumsResource = {$medium};
+        const high: SwappedEnumsResource = {$sent(Priority::High, false)};
+        // @ts-expect-error Low's arm holds the workbench status first
+        const mislabelled: SwappedEnumsResource = {$mislabelled};
 
         TS;
 

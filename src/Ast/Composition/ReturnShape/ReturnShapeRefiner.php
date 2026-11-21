@@ -10,14 +10,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
-use Illuminate\Support\Facades\Config;
 use ReflectionMethod;
 
 /**
@@ -116,26 +114,6 @@ final class ReturnShapeRefiner
     }
 
     /**
-     * The classes with one entry of each of $taken left out, the first where several match.
-     *
-     * @param  list<class-string>  $classes
-     * @param  list<class-string>  $taken
-     * @return list<class-string>
-     */
-    private static function withoutOneOfEach(array $classes, array $taken): array
-    {
-        foreach ($taken as $class) {
-            $at = array_search($class, $classes, true);
-
-            if ($at !== false) {
-                unset($classes[$at]);
-            }
-        }
-
-        return array_values($classes);
-    }
-
-    /**
      * A key the body typed, merged with the member $doc gives it position by position (DeclaredTypeMerge), the body's
      * classes read as the publisher reads the key and the member's from its slots.
      *
@@ -161,30 +139,21 @@ final class ReturnShapeRefiner
             ...$analysis->declaredTokenFqcns[$name] ?? [],
             ...$declaredSlots,
         ]))));
-        $wraps = $analysis->topWrappedEnumFqcns($name);
-        $written = $this->writtenWrap($analysis, $name);
-        $read = $written === null ? $type : TsTypeString::substituteEnumType(
-            $type,
-            ValueResult::enumTypeName($written),
-            'AsEnum<typeof '.ValueResult::enumConstName($written).'>',
-        );
-        [$merged, $slots] = new DeclaredTypeMerge($names, $wraps, $relists)->merge(
-            [$read, $this->readSlots($analysis, $name, $read, $names)],
-            [$member['type'], TokenSlots::declaredSlots($member['type'], $declaredSlots, $names)],
+        $consts = TokenSlots::namesOf('consts', $analysis->wrapConstFqcns($name));
+        $declared = TokenSlots::declaredSlots($member['type'], $declaredSlots, $names);
+        [$merged, $slots] = new DeclaredTypeMerge($names, relists: $relists, consts: $consts)->merge(
+            [$type, $this->readSlots($analysis, $name, $type, $names, $consts)],
+            [$member['type'], TokenSlots::withConstSlots($member['type'], $declared, [], $names, $consts)],
         );
 
-        if ($merged === $read) {
+        if ($merged === $type) {
             return [$type, [], null];
         }
 
-        DroppedUnionArms::filled(array_values(array_diff(VisibleGaps::ids($read), VisibleGaps::ids($merged))));
+        DroppedUnionArms::filled(array_values(array_diff(VisibleGaps::ids($type), VisibleGaps::ids($merged))));
 
-        // The publisher's rewrite would wrap every bare token of the enum, a bare one the member fills included.
-        if ($written !== null) {
-            unset($analysis->enumResources[$name], $analysis->enumResourceArmShapes[$name]);
-            $analysis->inlineEnumResourceFqcns[$name] = [$written, ...$analysis->inlineEnumResourceFqcns[$name] ?? []];
-        }
-
+        // A merge keeps every wrap the body sends, in its order, so the const queue already reads the merged text.
+        $slots = TokenSlots::withoutConstSlots($merged, $slots, $names, $consts);
         $imports = $this->importsSpelled($member['customImports'], $merged);
 
         if ($this->requeued($analysis, $name, $merged, $slots, $names)) {
@@ -199,35 +168,23 @@ final class ReturnShapeRefiner
     }
 
     /**
-     * The one enum a key wraps in an `EnumResource` and spells bare at its top, which the publisher rewrites as
-     * `AsEnum<typeof …>` with the tolki package on; null for a key wrapping none, several, or one it reads bare too.
-     *
-     * @return class-string|null
-     */
-    private function writtenWrap(MethodAnalysis $analysis, string $name): ?string
-    {
-        $wrapped = $analysis->enumResources[$name] ?? null;
-
-        return $wrapped === null || ($analysis->directEnumFqcns[$name] ?? null) === $wrapped
-            || isset($analysis->multiEnumResourceFqcns[$name]) || ! Config::boolean('ts-publish.enums.use_tolki_package')
-            ? null
-            : $wrapped;
-    }
-
-    /**
      * The class behind each token of $names a key's text spells, as the publisher reads the key: by the slots a
      * docblock declared for it, else by its channels' queue in print order; null where no class answers to the name.
+     * Each const of $consts after `typeof` takes the enum its wrap queue gives it, in print order among them.
      *
      * @param  list<string>  $names
+     * @param  list<string>  $consts
      * @return Slots
      */
-    private function readSlots(MethodAnalysis $analysis, string $name, string $text, array $names): array
+    private function readSlots(MethodAnalysis $analysis, string $name, string $text, array $names, array $consts): array
     {
         $declared = $analysis->declaredTokenFqcns[$name] ?? null;
-
-        return $declared === null
+        $classes = $declared === null
             ? TokenSlots::queueRead($analysis->channelFqcns($name), $text, $names)
             : TokenSlots::declaredSlots($text, $declared, $names);
+        $wraps = TokenSlots::constRead($analysis->wrapConstFqcns($name), $text, $consts);
+
+        return TokenSlots::withConstSlots($text, $classes, $wraps, $names, $consts);
     }
 
     /**
@@ -249,15 +206,7 @@ final class ReturnShapeRefiner
         );
         $classes = array_values(array_filter($expected));
         $held = $analysis->channelFqcns($name);
-        // Several wraps the tolki rewrite spells as `AsEnum`, one top arm each, bring only their enums' consts, so a
-        // bare token of an enum past its own arm still needs a channel that imports its type.
-        $wraps = Config::boolean('ts-publish.enums.use_tolki_package')
-            ? ($analysis->multiEnumResourceFqcns[$name] ?? [])
-            : [];
-        $added = array_values(array_unique(array_diff(
-            self::withoutOneOfEach($classes, $wraps),
-            self::withoutOneOfEach($held, $wraps),
-        )));
+        $added = array_values(array_unique(array_diff($classes, $held)));
 
         if (TokenSlots::queueRead([...$held, ...$added], $text, $names) === $expected) {
             $analysis->queueEmbeddedClasses($name, $added);

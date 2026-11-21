@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapDelegatedResource;
@@ -10,6 +11,11 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapMerge
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapParentResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AppendedWrapSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCaseGetterResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamedWrapAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SameNamedWrapAccessorReadsResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapAccessorDelegatedResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapAccessorOnlyResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrapAccessorReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\WrappedPriorityPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppendedPriorityWrapPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
@@ -19,11 +25,15 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumShapePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\EnumValueAccessorPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\IdiomPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrapAccessorGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrappedPriorityPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\FilteringAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ReadOrderAccessorModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
 use AbeTwoThree\LaravelTsPublish\Transformers\ModelTransformer;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
+use AbeTwoThree\LaravelTsPublish\Writers\ResourceWriter;
+use Illuminate\Filesystem\Filesystem;
 use Workbench\Accounting\Models\Payment;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\BulletinArchive;
@@ -352,14 +362,14 @@ test('an accessor\'s EnumResource wrap publishes what its reader sends for a nul
     $post = (new WrappedPriorityPost)->forceFill(['id' => 2, 'priority' => null]);
 
     expect(publishedResourceKeyTypes(WrappedPriorityPostResource::class, WrappedPriorityPost::class))->toBe([
-        'accessor' => 'PriorityType | null',
-        'accessor_kept' => '(PriorityType | never[])[]',
-        'accessor_all' => '(PriorityType | null)[]',
+        'accessor' => 'AsEnum<typeof Priority> | null',
+        'accessor_kept' => '(AsEnum<typeof Priority> | never[])[]',
+        'accessor_all' => '(AsEnum<typeof Priority> | null)[]',
     ])
         ->and((string) new WrappedPriorityPostResource($post)->response(request())->getContent())
         ->toBe('{"data":{"accessor":null,"accessor_kept":[[]],"accessor_all":[null]}}')
         ->and(new ModelTransformer(WrappedPriorityPost::class)->data()->mutators['priority_wrap']['type'])
-        ->toBe('PriorityType | never[]')
+        ->toBe('AsEnum<typeof Priority> | never[]')
         ->and(json_encode($post->append('priority_wrap')->only('priority_wrap')))->toBe('{"priority_wrap":[]}');
 });
 
@@ -368,7 +378,7 @@ test('an accessor\'s EnumResource wrap publishes what its reader sends for a nul
 test('an appended accessor\'s EnumResource wrap publishes the null filter() sends through the model\'s own array', function (string $resource) {
     $post = (new AppendedPriorityWrapPost)->forceFill(['id' => 2, 'priority' => null]);
 
-    expect(publishedResourceKeyTypes($resource, AppendedPriorityWrapPost::class)['priority_wrap'])->toBe('PriorityType | null')
+    expect(publishedResourceKeyTypes($resource, AppendedPriorityWrapPost::class)['priority_wrap'])->toBe('AsEnum<typeof Priority> | null')
         ->and((string) new $resource($post)->response(request())->getContent())->toContain('"priority_wrap":null')
         ->and(json_encode($post))->toBe('{"id":2,"priority":null,"priority_wrap":[]}');
 })->with([
@@ -376,4 +386,77 @@ test('an appended accessor\'s EnumResource wrap publishes the null filter() send
     'parent::toArray() spread' => [AppendedWrapSpreadResource::class],
     'the model merged' => [AppendedWrapMergeResource::class],
     'no toArray() of its own' => [AppendedWrapDelegatedResource::class],
+]);
+
+// The model file imports what these spell: the const after `typeof`, and no enum type, which neither spells (GH-96).
+test('an accessor\'s wrap publishes as AsEnum, alone or in its shape', function () {
+    $data = (new ModelTransformer(WrapAccessorGrade::class))->data();
+
+    expect($data->appends['shape']['type'])->toBe('{ a: AsEnum<typeof Priority>; b: number }')
+        ->and($data->appends['wrap']['type'])->toBe('AsEnum<typeof Priority>')
+        ->and($data->valueImports)->toBe(['../../../../../workbench/app/enums' => ['Priority']])
+        ->and($data->typeImports)->toBe([]);
+});
+
+// A resource reading an accessor's wrap imports what it spells: the const after each `typeof`, and `AsEnum` (GH-160).
+test('a resource imports the consts its model\'s accessor wraps spell, however it reads them', function (string $resource, bool $tolki, array $lines, array $values) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+    config()->set('ts-publish.output_to_files', false);
+
+    $content = new ResourceWriter(new Filesystem)->write(new ResourceTransformer($resource));
+
+    expect(array_values(preg_grep('/^(import |    (shape|wrap|appended|nested|statuses)\??: )/', explode("\n", $content)) ?: []))
+        ->toBe($lines)
+        ->and(resolve(AstEngine::class)->analyze($resource)->valueImports)->toBe($values);
+})->with([
+    'read directly, appended and nested' => [WrapAccessorReadsResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+        '    appended?: AsEnum<typeof Priority>;',
+        '    nested: { s: { a: AsEnum<typeof Priority>; b: number } };',
+    ], ['./workbench/app/enums' => ['Priority']]],
+    'kept by only()' => [WrapAccessorOnlyResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+    ], ['./workbench/app/enums' => ['Priority']]],
+    'sent by the model\'s own array' => [WrapAccessorDelegatedResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+    ], ['./workbench/app/enums' => ['Priority']]],
+    'the app\'s and the CRM\'s Status, read directly' => [SameNamedWrapAccessorReadsResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status as WorkbenchStatus } from '../../../../../../workbench/app/enums';",
+        "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+        '    statuses: { a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof WorkbenchStatus>; c: AsEnum<typeof CrmStatus> };',
+    ], [
+        './workbench/app/enums' => ['Status as WorkbenchStatus'],
+        './workbench/crm/enums' => ['Status as CrmStatus'],
+    ]],
+    'the app\'s and the CRM\'s Status, kept by only()' => [SameNamedWrapAccessorOnlyResource::class, true, [
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Status as WorkbenchStatus } from '../../../../../../workbench/app/enums';",
+        "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+        '    statuses: { a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof WorkbenchStatus>; c: AsEnum<typeof CrmStatus> };',
+    ], [
+        './workbench/app/enums' => ['Status as WorkbenchStatus'],
+        './workbench/crm/enums' => ['Status as CrmStatus'],
+    ]],
+    'read directly, without the tolki package' => [WrapAccessorReadsResource::class, false, [
+        "import type { PriorityType } from '../../../../../../workbench/app/enums';",
+        '    shape: { a: PriorityType; b: number };',
+        '    wrap: PriorityType;',
+        '    appended?: PriorityType;',
+        '    nested: { s: { a: PriorityType; b: number } };',
+    ], []],
+    'the app\'s and the CRM\'s Status, without the tolki package' => [SameNamedWrapAccessorOnlyResource::class, false, [
+        "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+        "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+        '    statuses: { a: WorkbenchStatusType; b: WorkbenchStatusType; c: CrmStatusType };',
+    ], []],
 ]);

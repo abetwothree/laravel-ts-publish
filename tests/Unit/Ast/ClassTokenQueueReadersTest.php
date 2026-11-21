@@ -70,8 +70,8 @@ describe('a union of resources that share a name, under one key of an inline arr
     ]);
 });
 
-// A member that spells a name for a model and for a resource queues one class on each channel. The queues are merged,
-// models first, so filling both to the token count would read the model on every token of the name.
+// A member that spells a name for a model and for a resource queues one class on each channel, and its record says
+// whose each token is, whichever kind prints first; filling both channels to the token count would lose that.
 describe('a member that spells one name for a model and for a resource', function () {
     test('keeps each token on its own class', function (string $property, string $type) {
         expect(publishedTypes(SameNameAddressResource::class)[$property])->toBe($type);
@@ -95,6 +95,30 @@ describe('a member that spells one name for a model and for a resource', functio
         'a model or its list in one member, the resource in the next' => [
             'model_or_list_then_resource',
             '{ m: WorkbenchAddress2 | WorkbenchAddress2[] | null; r: WorkbenchAddress | null }',
+        ],
+        'a pair, the resource first' => [
+            'data_pair_resource_first',
+            '{ data: { address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null } }',
+        ],
+        'a union of the resource and the model\'s list' => [
+            'resource_or_models',
+            '{ x: WorkbenchAddress | WorkbenchAddress2[] | null }',
+        ],
+        'each member of a pair read back by its key' => [
+            'pair_read_back',
+            '{ p: WorkbenchAddress | null; q: WorkbenchAddress2 | null }',
+        ],
+        'a pair spread into another array' => [
+            'pair_spread',
+            '{ address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null; n: number }',
+        ],
+        'an array holding a pair, spread into another array' => [
+            'nested_spread',
+            '{ pair: { address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null }; n: number }',
+        ],
+        'a pair read back from the array holding it' => [
+            'nested_read',
+            '{ p: { address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null } }',
         ],
     ]);
 });

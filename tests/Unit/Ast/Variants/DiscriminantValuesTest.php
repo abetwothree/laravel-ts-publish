@@ -77,10 +77,21 @@ it('lists nothing for a row with an arm that is not finite', function (string $t
     'a resource' => ['UserResource', []],
     'a literal beside a string' => ["'a' | string", []],
     'a number spelled other than PHP prints it' => ['1.0e2', []],
-    'a wrapped enum' => ['AsEnum<typeof Status>', ['enumResources' => ['k' => Status::class]]],
+    'a wrapped enum' => ['AsEnum<typeof Status>', [
+        'inlineEnumResourceFqcns' => ['k' => [Status::class]],
+        'wrappedEnums' => ['k' => [Status::class]],
+    ]],
+    'a wrapped enum printed as its value type, without the tolki package' => ['StatusType', [
+        'inlineEnumFqcns' => ['k' => [Status::class]],
+        'wrappedEnums' => ['k' => [Status::class]],
+    ]],
     'an enum the key also wraps' => ['StatusType', [
         'directEnumFqcns' => ['k' => Status::class],
-        'enumResources' => ['k' => Status::class],
+        'wrappedEnums' => ['k' => [Status::class]],
+    ]],
+    'a wrap beside a same-named enum read, both printed as their value type without the tolki package' => ['StatusType | StatusType', [
+        'inlineEnumFqcns' => ['k' => [Status::class, CrmStatus::class]],
+        'wrappedEnums' => ['k' => [Status::class]],
     ]],
     'an alias no enum on the key spells' => ['StatusType', []],
     'an alias two enums on the key spell' => ['StatusType', [

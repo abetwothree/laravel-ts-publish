@@ -58,6 +58,9 @@ class ModelMetadataTransformer extends CoreTransformer
     /** @var TypesImportMap */
     public protected(set) array $typeImports = [];
 
+    /** @var TypesImportMap the enum consts the types spell after `typeof` */
+    public protected(set) array $valueImports = [];
+
     protected Model $modelInstance;
 
     protected ModelMetadataProvider $provider;
@@ -117,6 +120,7 @@ class ModelMetadataTransformer extends CoreTransformer
             properties: $this->properties,
             propertyTypes: $this->propertyTypes,
             typeImports: $typeImports,
+            valueImports: $this->valueImports,
         );
     }
 
@@ -260,7 +264,7 @@ class ModelMetadataTransformer extends CoreTransformer
 
         $seen = [];
 
-        foreach ($typeImports as $path => $names) {
+        foreach (ImportMaps::merge($typeImports, $this->analysis->valueImports) as $path => $names) {
             // The stored map keeps a composed class's marker; the companion imports from the path it names.
             $from = ComposedClassTypes::importPath($path, $this->namespacePath);
 
@@ -280,6 +284,7 @@ class ModelMetadataTransformer extends CoreTransformer
         }
 
         $this->typeImports = $typeImports;
+        $this->valueImports = $this->analysis->valueImports;
 
         return $this;
     }

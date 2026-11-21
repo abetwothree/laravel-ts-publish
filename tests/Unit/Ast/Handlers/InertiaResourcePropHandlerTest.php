@@ -222,8 +222,8 @@ it('types EnumResource::collection() as the enum list inside the anonymous colle
 
     JsonResource::withoutWrapping();
 
-    expect($wrapped)->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
-        ->and(inertiaResourcePropResult($cases)['type'] ?? null)->toBe('RoleType[]');
+    expect($wrapped)->toBe(['type' => '{ data: AsEnum<typeof Role>[] }', 'optional' => false, 'embeddedEnumResourceFqcns' => [Role::class], 'wrappedEnumFqcns' => [Role::class]])
+        ->and(inertiaResourcePropResult($cases)['type'] ?? null)->toBe('AsEnum<typeof Role>[]');
 });
 
 // Laravel's toResourceCollection(EnumResource::class) is EnumResource::collection() over the receiver's items.
@@ -232,7 +232,7 @@ it('types toResourceCollection(EnumResource::class) over enum cases as EnumResou
     $listed = new MethodCall($cases(), 'toResourceCollection', [new Arg(new ClassConstFetch(new Name(EnumResource::class), 'class'))]);
     $collected = new StaticCall(new Name(EnumResource::class), 'collection', [new Arg($cases())]);
 
-    expect(inertiaResourcePropResult($listed))->toBe(['type' => '{ data: RoleType[] }', 'optional' => false, 'enumFqcn' => Role::class])
+    expect(inertiaResourcePropResult($listed))->toBe(['type' => '{ data: AsEnum<typeof Role>[] }', 'optional' => false, 'embeddedEnumResourceFqcns' => [Role::class], 'wrappedEnumFqcns' => [Role::class]])
         ->and(inertiaResourcePropResult($listed))->toBe(inertiaResourcePropResult($collected));
 });
 

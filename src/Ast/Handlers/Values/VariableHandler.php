@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\KeepsHeldObjects;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ResolvesReturnedValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\CollectionSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
@@ -251,28 +252,35 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
-        $type = match (true) {
-            $method === 'values' => ArrayArms::valuesList($receiverResult['type']),
-            $receiver?->keyed === true && ! $receiver->stringKeyed => $this->keyedAll($receiverResult['type']),
-            default => $receiverResult['type'],
-        };
+        if ($method !== 'values' && $receiver?->keyed === true && ! $receiver->stringKeyed) {
+            return $receiverResult['type'] === 'unknown' ? null : $this->keyedAll($receiverResult);
+        }
 
-        return $type === null || $type === 'unknown' ? null : [...$receiverResult, 'type' => $type];
+        $listed = $method === 'values'
+            ? ValueResult::retypedByClass($receiverResult, ArrayArms::valuesList(...))
+            : $receiverResult;
+
+        return $listed === null || $listed['type'] === 'unknown' ? null : $listed;
     }
 
     /**
      * What all() on a collection whose keys a step broke sends, where its read names only the object: that object, or
      * the `[]` json_encode() writes while it holds nothing, as a `@var Collection<string, X>` local reads.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
      */
-    private function keyedAll(string $type): string
+    private function keyedAll(array $result): array
     {
-        return VisibleGaps::carried($type, static function (string $type): string {
+        $type = VisibleGaps::carried($result['type'], static function (string $type): string {
             $list = count(TsTypeString::splitTopLevelUnion($type)) === 1 && str_starts_with($type, 'Record<')
                 ? ArrayArms::valuesList($type)
                 : null;
 
             return $list === null ? $type : ArrayArms::keyedList($list);
-        }) ?? $type;
+        }) ?? $result['type'];
+
+        return $type === $result['type'] ? $result : ValueResult::spelledTwice($result, $type);
     }
 
     /**
@@ -485,14 +493,14 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     {
         $value = $this->declaredReadingOrTag($name, $span, $scope, $engine);
 
-        if ($value === null || $this->keyedAll($value['type']) === $value['type']) {
+        if ($value === null || $this->keyedAll($value) === $value) {
             return $value;
         }
 
         $receiver = resolve(ReceiverClassResolver::class)->resolveDeclared($name, $span, $scope);
 
         return $receiver !== null && $receiver->keyed && ! $receiver->stringKeyed && $receiver->within([Enumerable::class])
-            ? [...$value, 'type' => $this->keyedAll($value['type'])]
+            ? $this->keyedAll($value)
             : $value;
     }
 
@@ -693,7 +701,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             [...(isset($declared['directEnumFqcn']) ? [$declared['directEnumFqcn']] : []), ...$declared['embeddedEnumFqcns'] ?? []],
             [...(isset($filled['directEnumFqcn']) ? [$filled['directEnumFqcn']] : []), ...$filled['embeddedEnumFqcns'] ?? []],
             $spelled,
-            ValueResult::enumNames(...),
+            EnumNames::names(...),
         );
         $custom = ImportMaps::spelledIn($declared['customImports'] ?? [], $spelled);
 

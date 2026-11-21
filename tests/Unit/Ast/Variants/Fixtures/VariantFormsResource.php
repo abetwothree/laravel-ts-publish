@@ -358,6 +358,16 @@ final class VariantFormsResource extends JsonResource
     }
 
     /**
+     * A test whose arm nests one of two same-named enums beside a read of the other.
+     *
+     * @return array<string, mixed>
+     */
+    public function sameNameNestedArm(): array
+    {
+        return ['pinned' => $this->is_pinned, 's' => $this->status, 'v' => $this->is_pinned ? ['c' => CrmStatus::Lead] : null];
+    }
+
+    /**
      * A test with an arm no rule types.
      *
      * @return array<string, mixed>

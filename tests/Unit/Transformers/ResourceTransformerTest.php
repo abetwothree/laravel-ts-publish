@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Controllers\ResolvedCardController;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AlikeArmsOfSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AlikeArmsResource;
@@ -53,6 +55,8 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersection
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EntryIntersectionVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceArmsWarehouseResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceBodyFallbackResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastSingleResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceCastWritesOneOfTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceRelationChainResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceUntypedHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumResourceWrapTrioResource;
@@ -78,6 +82,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsExtendsR
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsMixinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsPropertyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HeldStatsVarResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCastWrapBesideCrmWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InvoiceViewResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemBuildingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ItemReadingPostCollection;
@@ -93,6 +98,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LedgerResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ListingShelfReadsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixinPostHeldStatsChildResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NestedWrapOrNullableReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullablePostExtendsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthandWrappedResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NumericCastKeyResource;
@@ -260,6 +266,7 @@ use Workbench\App\Http\Resources\RedundantArmsResource;
 use Workbench\App\Http\Resources\RelationChainResource;
 use Workbench\App\Http\Resources\ResourceWrappedEnumResource;
 use Workbench\App\Http\Resources\SameBasenameModelTrioResource;
+use Workbench\App\Http\Resources\SameNamed\AddressKindsResource;
 use Workbench\App\Http\Resources\ServiceDeskResource;
 use Workbench\App\Http\Resources\StatsSummaryResource;
 use Workbench\App\Http\Resources\StockroomExceptResource;
@@ -1673,6 +1680,22 @@ describe('ResourceTransformer import collision deconfliction', function () {
         expect($data->properties['admin_resource']['type'])->toBe('ResourcesUserResource');
     });
 
+    // GH-76: AddressResource publishes as `Address`, so each token must name the class its value holds.
+    test('gives a model and a resource published under one name each its own alias, token by token', function () {
+        $data = new ResourceTransformer(AddressKindsResource::class)->data();
+        $local = static function (string $path) use ($data): string {
+            expect($data->typeImports[$path] ?? [])->toHaveCount(1);
+
+            return ImportMaps::localName($data->typeImports[$path][0]);
+        };
+        $resource = $local('..');
+        $model = $local('../../../models');
+
+        expect($resource)->not->toBe($model)
+            ->and($data->properties['data']['type'])->toBe("{ address: {$resource} | null; raw: {$model} | null }")
+            ->and($data->properties['either']['type'])->toBe("{$model} | {$resource} | null");
+    });
+
     test('aliases both same-named consts wrapped again inside one inline object', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
         config()->set('ts-publish.enums.use_tolki_package', true);
@@ -1956,14 +1979,17 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
         ],
     ]);
 
-    test('the publisher queues the wraps first, as the analysis does', function () {
+    // A wrap's const rides its own queue, so the type queue holds the rows' enums alone.
+    test('the publisher queues the type classes as the analysis does, the wraps\' consts apart', function () {
         $transformer = new ResourceTransformer(WrapsBesideAliasedRowsResource::class);
         $analysis = new ResourceAstAnalyzer(new ReflectionClass(WrapsBesideAliasedRowsResource::class), $transformer->modelClass)->analyze();
 
         $merged = (fn () => $this->mergePropertyFqcnMaps())->call($transformer);
 
-        expect($merged['subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('subject'))
-            ->and($merged['crm_subject'])->toHaveCount(4)->toBe($analysis->channelFqcns('crm_subject'));
+        expect($merged['subject'])->toHaveCount(2)->toBe($analysis->channelFqcns('subject'))
+            ->and($merged['crm_subject'])->toHaveCount(2)->toBe($analysis->channelFqcns('crm_subject'))
+            ->and($analysis->wrapConstFqcns('subject'))->toBe([Status::class, Role::class])
+            ->and($analysis->wrapConstFqcns('crm_subject'))->toBe([CrmStatus::class, Role::class]);
     });
 
     test('two wraps with no @return spell each top arm by its own enum', function (bool $tolki, array $types, array $expected) {
@@ -2008,24 +2034,25 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
         ])->and($data->valueImports)->toBe([]);
     })->with(['tolki on' => [true], 'tolki off' => [false]]);
 
-    // The publisher spells two wraps `AsEnum` only where they lead a key's type; elsewhere each reads its bare type.
-    test('wraps the publisher cannot place print their own enums\' bare types, imported', function (string $resource, bool $tolki, string $key, string $type) {
+    // Each wrap spells its own `AsEnum`, wherever it sits; without the tolki package each reads its bare type.
+    test('two wraps beside rows each print their own enum, imported', function (string $resource, bool $tolki, string $key, string $type) {
         config()->set('ts-publish.enums.use_tolki_package', $tolki);
 
         $data = new ResourceTransformer($resource)->data();
+        $app = '../../../../../../workbench/app/enums';
 
         expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([$key => $type])
             ->and($data->typeImports)->toBe([
-                '../../../../../../workbench/app/enums' => ['RoleType', 'StatusType as WorkbenchStatusType'],
+                $app => $tolki ? ['StatusType as WorkbenchStatusType'] : ['RoleType', 'StatusType as WorkbenchStatusType'],
                 '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
             ])
-            ->and($data->valueImports)->toBe([]);
+            ->and($data->valueImports)->toBe($tolki ? [$app => ['Role', 'Status as WorkbenchStatus']] : []);
     })->with([
         'rows first, tolki on' => [
             RowsBeforeTwoWrapsResource::class,
             true,
             'subject',
-            '{ c: CrmStatusType; s: WorkbenchStatusType }[] | WorkbenchStatusType | RoleType',
+            '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',
         ],
         'rows first, tolki off' => [
             RowsBeforeTwoWrapsResource::class,
@@ -2037,7 +2064,7 @@ describe('ResourceTransformer two enum wraps beside bare enums that share a name
             TwoWrapsUnderObjectKeyResource::class,
             true,
             'row',
-            '{ first: CrmStatusType; subject: WorkbenchStatusType | RoleType | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
+            '{ first: CrmStatusType; subject: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | { c: CrmStatusType; s: WorkbenchStatusType }[] }',
         ],
         'under an object key, tolki off' => [
             TwoWrapsUnderObjectKeyResource::class,
@@ -2693,21 +2720,18 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
 
     // whenNotNull($this->resource->priority, EnumResource::make($this->resource->priority)) — the value arm
     // (direct property access) and the default arm (EnumResource-wrapped) reach the same enum through two
-    // genuinely different runtime shapes: a raw backing value (PriorityType) vs. the AsEnum wrapper. Pinned
-    // at the transformer layer since ResourceAstAnalyzerTest only ever sees the analyzer's own alias-name
-    // string ('PriorityType | null'), never the AsEnum<...> expansion rewriteEnumResourceTypes() applies.
+    // genuinely different runtime shapes: a raw backing value (PriorityType) vs. the AsEnum wrapper, in arm order.
     test('whenNotNull() default-arm union keeps both the AsEnum wrapper and the plain alias, required', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
 
         expect($data->properties['priority_when_not_null_make']['type'])
-            ->toBe('AsEnum<typeof Priority> | PriorityType | null')
+            ->toBe('PriorityType | AsEnum<typeof Priority> | null')
             ->and($data->properties['priority_when_not_null_make']['optional'])->toBeFalse();
     });
 
-    // Full-pipeline pin: rewriteEnumResourceTypes() only iterates top-level properties, so it never
-    // touches this nested key — analyzeInlineArray()'s own mixed-arm expansion is what reaches the
-    // emitted file, and the transformer must leave both arms standing.
+    // Full-pipeline pin: the nested key's wrap and bare read each spell their own arm, and the transformer must leave
+    // both standing.
     test('ternary_enums_array keeps both mixed arms through the full transformer pipeline', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(ResourceWrappedEnumResource::class))->data();
@@ -2718,10 +2742,9 @@ describe('ResourceTransformer with ResourceWrappedEnumResource — inline array 
 });
 
 describe('ResourceTransformer with RelationChainResource — EnumResource::make() array-wrapped by a map() chain', function () {
-    // Regression pin for change #2: EnumResource::make() wraps each element, so the JSON is an
-    // array of flattened enum objects, not raw enum values — AsEnum<typeof Role>[] is correct;
-    // the old RoleType[] (a plain, un-rewritten type import) was wrong. A null role sends `[]`.
-    test('member_role_resources rewrites to (AsEnum<typeof Role> | never[])[] with tolki enabled', function () {
+    // EnumResource::make() wraps each element, so the JSON is a list of enum objects, not raw values; a null role
+    // sends `[]`.
+    test('member_role_resources spells each mapped wrap as (AsEnum<typeof Role> | never[])[] with tolki enabled', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
 
@@ -2737,9 +2760,8 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
             ->and($data->properties['member_role_resources']['optional'])->toBeFalse();
     });
 
-    // filter() clears sequential keys, so the map body's keyed Record arm can't be rebuilt by the
-    // old AsEnum rewrite. The substitution-based rewrite reproduces it losslessly instead, AsEnum-
-    // wrapping both the array arm and the keyed Record arm rather than collapsing to bare RoleType.
+    // filter() clears sequential keys, so the map body publishes a list beside a keyed Record arm, and the wrap spells
+    // itself in both.
     test('member_role_resources_filtered AsEnum-wraps both its array and keyed Record arms', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
@@ -2748,9 +2770,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
             ->toBe('(AsEnum<typeof Role> | never[])[] | Record<string, (AsEnum<typeof Role> | never[])>');
     });
 
-    // Same keyed-Record shape nested inside an inline array: analyzeInlineArray() substitutes the
-    // bare RoleType token in place too, so the nested union AsEnum-wraps both arms end-to-end,
-    // exactly like member_role_resources_filtered above.
+    // The same keyed-Record shape nested inside an inline array keeps the wrap in both arms.
     test('wrapped_filtered AsEnum-wraps both arms of its union inside the inline array', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(RelationChainResource::class))->data();
@@ -2761,7 +2781,7 @@ describe('ResourceTransformer with RelationChainResource — EnumResource::make(
 });
 
 describe('ResourceTransformer with EnumCollectionResource — EnumResource::collection() shapes', function () {
-    test('accessor-backed list<Enum> rewrites to AsEnum<typeof Status>[]', function () {
+    test('a collection wrap of an accessor-backed list<Enum> spells AsEnum<typeof Status>[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2770,7 +2790,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 
     // Matches the model precedent at workbench team.ts: week_days: AsEnum<typeof WeekDays>[] | null.
-    test('AsEnumCollection cast rewrites to AsEnum<typeof WeekDays>[] | null', function () {
+    test('a collection wrap of an AsEnumCollection cast spells AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2786,10 +2806,9 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->toBe('{ week_days: AsEnum<typeof WeekDays>[] | null }');
     });
 
-    // whenHas() declines to type from an EnumResource-wrapped value, so the wrapped first-class-
-    // callable value still gets the AsEnum rewrite — this is the real reported bug pattern:
-    // $this->whenHas('kinds', EnumResource::collection(...)).
-    test('first-class callable inside whenHas() rewrites to AsEnum<typeof WeekDays>[] | null', function () {
+    // The reported bug pattern, $this->whenHas('kinds', EnumResource::collection(...)): a wrap passed as the value, a
+    // first-class callable included, spells the attribute's type as the wrap.
+    test('a first-class callable inside whenHas() spells its wrap as AsEnum<typeof WeekDays>[] | null', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2797,7 +2816,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['week_days_when_has']['optional'])->toBeTrue();
     });
 
-    test('EnumResource::collection() value inside whenAppended() rewrites to AsEnum<typeof Status>[]', function () {
+    test('an EnumResource::collection() value inside whenAppended() spells AsEnum<typeof Status>[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2805,9 +2824,8 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['status_history_when_appended']['optional'])->toBeTrue();
     });
 
-    // An explicit default arm's 'string' type can't fold into the old AsEnum rebuild. The
-    // substitution-based rewrite reproduces the full union losslessly instead: the reported bug
-    // was this property emitting the raw StatusType[] instead of the AsEnum-wrapped element type.
+    // The wrap substitutes its element token, so the default's `string` arm stays: the reported bug was this property
+    // emitting the raw StatusType[] instead of the wrapped element type.
     test('whenHas() with an explicit default keeps the full union, AsEnum-wrapped', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
@@ -2817,7 +2835,7 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
             ->and($data->properties['week_days_when_has_default']['optional'])->toBeFalse();
     });
 
-    test('local variable ->map() with an EnumResource::make() body rewrites to (AsEnum<typeof Role> | never[])[]', function () {
+    test('a local variable ->map() with an EnumResource::make() body spells (AsEnum<typeof Role> | never[])[]', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
         $data = (new ResourceTransformer(EnumCollectionResource::class))->data();
 
@@ -2896,9 +2914,8 @@ describe('ResourceTransformer with EnumCollectionResource — EnumResource::coll
     });
 });
 
-// Regression: the mixed-ternary arm shape (Task 28) is recorded once, by ValueResult::withEnumArmShapes(), but is
-// only useful if every ResourceAnalysis-building collector threads it through to the transformer —
-// not only ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
+// Regression: every ResourceAnalysis-building collector publishes which arm of a mixed ternary is the list, not only
+// ResourceAstAnalyzer::analyzeReturnArray(), the single path the first fix wired up.
 describe('ResourceTransformer with mixed-ternary collector regressions', function () {
     test('mergeReturnBranches() carries the arm shape across multiple return branches', function () {
         config()->set('ts-publish.enums.use_tolki_package', true);
@@ -2962,6 +2979,13 @@ describe('ResourceTransformer with TeamStatusAuditResource', function () {
         expect($data->properties['audit']['type'])->toBe('{ status: AsEnum<typeof Status>[] | StatusType[] }')
             ->and(implode(' ', array_merge(...array_values($transformer->typeImports))))->toContain('StatusType')
             ->and(implode(' ', array_merge(...array_values($transformer->valueImports))))->toContain('Status');
+    });
+
+    test('a nested mixed EnumResource ternary keeps the null its direct arm may send', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+        $properties = (new ResourceTransformer(NestedWrapOrNullableReadResource::class))->data()->properties;
+
+        expect($properties['audit']['type'])->toBe('{ status: AsEnum<typeof Status>[] | StatusType[] | null }');
     });
 });
 
@@ -3956,15 +3980,14 @@ describe('a union whose every arm is an enum resource', function () {
             ->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null');
     });
 
-    // Two enums that share a name still fold into one token, so each line below is missing its other enum. These pin
-    // the wrap, not the fold.
-    test('wraps the one token that two enums sharing a name fold into', function (string $key, string $type) {
+    // Two enums that share a name are two classes, so each wrap keeps its own member and const, in arm order (#76).
+    test('wraps each of two enums sharing a name as its own member', function (string $key, string $type) {
         config()->set('ts-publish.enums.use_tolki_package', true);
 
         expect((new ResourceTransformer(EnumResourceArmsWarehouseResource::class))->properties[$key]['type'])->toBe($type);
     })->with([
-        'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | null'],
-        'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | null'],
+        'a `when()` and its default' => ['status_or_crm_status', 'AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | null'],
+        'a `when()` and its default, the CRM enum first' => ['crm_status_or_status', 'AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus> | null'],
     ]);
 });
 
@@ -3985,6 +4008,18 @@ test('publishes each cast over an enum resource as written, importing only the e
     ])
         ->and($transformer->typeImports)->toBe([])
         ->and($transformer->valueImports)->toBe(['../../enums' => ['Status', 'Visibility']])
+        ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
+        ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
+});
+
+// Without the tolki package a wrap carries no const, so the enums the key wraps are what `declare global` folds the
+// cast's written wraps by: `typeof` a namespace member is illegal there.
+test('folds a cast\'s written wraps in the globals file by the enums the key wraps, with the tolki package off', function () {
+    config()->set('ts-publish.enums.use_tolki_package', false);
+
+    $transformer = new ResourceTransformer(PostStateCastResource::class);
+
+    expect($transformer->properties['wrapped']['type'])->toBe('AsEnum<typeof Status> | AsEnum<typeof Visibility> | null')
         ->and(TsTypeString::rewriteAsEnumToType($transformer->properties['wrapped']['type'], $transformer->globalEnumConstMap()))
         ->toBe('workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null');
 });
@@ -5179,4 +5214,41 @@ it('publishes the empty tuple a `list{}` method sends alone beside the empty lis
         'default' => '[]',
         'ternary' => '[]',
     ]);
+});
+
+// A file imports, as values, only the consts its types spell after `typeof` (GH-76).
+describe('the enum consts a resource imports', function () {
+    test('a resource whose #[TsCasts] displaces its only wrap imports no const', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(EnumResourceCastSingleResource::class);
+
+        expect($transformer->properties['k']['type'])->toBe('string | null')
+            ->and($transformer->valueImports)->toBe([]);
+    });
+
+    // The cast's one `typeof Status` names the first of the key's two wraps of same-named enums; the other's const
+    // would be imported for nothing (TS6133).
+    test('a cast that writes one of two same-named wraps imports that one\'s const alone', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(EnumResourceCastWritesOneOfTwoWrapsResource::class);
+
+        expect($transformer->properties['k']['type'])->toBe('{ a: AsEnum<typeof WorkbenchStatus> }')
+            ->and($transformer->valueImports)->toBe(['../../../../../../workbench/app/enums' => ['Status as WorkbenchStatus']]);
+    });
+
+    // A member's helper cast drops the wrap of the app `Status` from the text, so only the CRM `Status` is left to
+    // name.
+    test('a wrap a member\'s cast displaced reaches no outer const', function () {
+        config()->set('ts-publish.enums.use_tolki_package', true);
+
+        $transformer = new ResourceTransformer(InlineCastWrapBesideCrmWrapResource::class);
+        $analyzed = resolve(AstEngine::class)->analyze(InlineCastWrapBesideCrmWrapResource::class, 'toArray', Warehouse::class);
+
+        expect($transformer->properties['k']['type'])->toBe('{ a: { w: string }; b: AsEnum<typeof Status> | null }')
+            ->and($transformer->valueImports)->toBe(['../../../../../../workbench/crm/enums' => ['Status']])
+            ->and($analyzed->properties[0]['type'])->toBe('{ a: { w: string }; b: AsEnum<typeof Status> | null }')
+            ->and($analyzed->valueImports)->toBe(['./workbench/crm/enums' => ['Status']]);
+    });
 });

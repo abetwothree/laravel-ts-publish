@@ -569,12 +569,12 @@ it('narrows the arm an instanceof condition proves: the false arm of a negated t
 
 // The narrowed path resolves both arms itself and hands those results on: resolving them again would drop the
 // narrowing.
-it('records the arm shapes of a mixed enum ternary whose proven arm is narrowed, as the unnarrowed one does', function () {
+it('spells each arm of a mixed enum ternary whose proven arm is narrowed, as the unnarrowed one does', function () {
     $narrowed = '$this->resource instanceof \Workbench\App\Models\Team ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->latest_status';
     $plain = '$this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->latest_status';
 
     expect(variableHandlersResolveOn($narrowed, Team::class))
-        ->toMatchArray(['wrapIsCollection' => true, 'directIsArray' => false])
+        ->toMatchArray(['type' => 'AsEnum<typeof Status>[] | StatusType'])
         ->toBe(variableHandlersResolveOn($plain, Team::class));
 });
 

@@ -27,10 +27,14 @@ use ReflectionClass;
  * @phpstan-type ModelAttributeTypeResult = array{
  *      type: string,
  *      enumFqcn: class-string|null,
+ *      enumFqcns: list<class-string>,
+ *      enumTokenFqcns?: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports: array<string, list<string>>,
- *      keepsKeys?: bool
+ *      keepsKeys?: bool,
+ *      wrappedEnumFqcns?: list<class-string>,
+ *      wrapConstFqcns?: list<class-string>
  * }
  * @phpstan-type ModelRelationTypeResult = array{type: string, modelFqcn: class-string<\Illuminate\Database\Eloquent\Model>|null, morphFqcns: list<class-string>}
  */
@@ -72,7 +76,13 @@ trait ResolvesModelTypes
     protected function resolveModelAttributeTypeInfo(string $attributeName, bool $serialized = false): array
     {
         if ($this->scope->modelClass === null || $this->modelAttributes === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null, 'classFqcns' => [], 'customImports' => []];
+            return [
+                'type' => 'unknown',
+                'enumFqcn' => null,
+                'enumFqcns' => [],
+                'classFqcns' => [],
+                'customImports' => [],
+            ];
         }
 
         $resolver = resolve(ModelAttributeResolver::class);
@@ -86,12 +96,16 @@ trait ResolvesModelTypes
         return [
             'type' => $tsInfo['type'],
             'enumFqcn' => $enumFqcn,
+            'enumFqcns' => $tsInfo['enumFqcns'],
+            ...(isset($tsInfo['enumTokenFqcns']) ? ['enumTokenFqcns' => $tsInfo['enumTokenFqcns']] : []),
             'classFqcns' => $tsInfo['classFqcns'],
             // Present only where the type spells one name for two classes or an override spells a class's name; see
             // TypeScriptTypeInfo.
             ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
             'customImports' => $tsInfo['customImports'],
             ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
+            ...(isset($tsInfo['wrappedEnumFqcns']) ? ['wrappedEnumFqcns' => $tsInfo['wrappedEnumFqcns']] : []),
+            ...(isset($tsInfo['wrapConstFqcns']) ? ['wrapConstFqcns' => $tsInfo['wrapConstFqcns']] : []),
         ];
     }
 
@@ -219,16 +233,19 @@ trait ResolvesModelTypes
         // same way ThisPropertyHandler carries them — without this the delegated shape names a token
         // no import supplies, and only ResourceTransformer's own model lookup made it resolve.
         $classFqcns = $info['classFqcns'];
+        $enumFqcns = $info['enumFqcns'];
 
-        return [
+        return ValueResult::withWrapChannels([
             'type' => $info['type'],
             'optional' => false,
-            ...($info['enumFqcn'] !== null ? ['directEnumFqcn' => $info['enumFqcn']] : []),
+            // Two enums queue per token, as a `$this->attribute` read does, so the file imports each one it spells.
+            ...(count($enumFqcns) > 1 ? ['embeddedEnumFqcns' => $info['enumTokenFqcns'] ?? $enumFqcns] : []),
+            ...(count($enumFqcns) === 1 ? ['directEnumFqcn' => $enumFqcns[0]] : []),
             ...(count($classFqcns) > 1 ? ['embeddedModelFqcns' => ClassTokenQueue::fqcnsOf($info)] : []),
             ...(count($classFqcns) === 1 ? ['modelFqcn' => $classFqcns[0]] : []),
             ...($info['customImports'] !== [] ? ['customImports' => $info['customImports']] : []),
             ...(($info['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-        ];
+        ], $info);
     }
 
     /**

@@ -1,0 +1,28 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use AbeTwoThree\LaravelTsPublish\EnumResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard\GuardBox;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard\GuardRow;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\UserResource;
+use Workbench\Crm\Http\Resources\UserResource as CrmUserResource;
+
+/**
+ * @property-read GuardBox $resource
+ */
+final class {{ class }} extends JsonResource
+{
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+{{ body }}
+    }
+}

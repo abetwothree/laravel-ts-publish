@@ -64,6 +64,4 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 59, 'expression' => '$this->opaqueValue()', 'site' => 'walk-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 67, 'expression' => '$this->opaqueValue()', 'site' => 'merge-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\Discriminated\\DiscriminantFormsResource', 'line' => 102, 'expression' => 'json_decode($this->title)', 'site' => 'ternary-narrowed'],
-    // A real gap, pinned until GH-160 types it: the helper's offset is the kind's value, which a wrap beside it drops.
-    ['subject' => 'Workbench\\App\\Http\\Resources\\EnumWraps\\WrapBesideReadResource', 'line' => 33, 'expression' => '$this->untypedHelper()[\'k\']', 'site' => 'ternary-narrowed'],
 ];

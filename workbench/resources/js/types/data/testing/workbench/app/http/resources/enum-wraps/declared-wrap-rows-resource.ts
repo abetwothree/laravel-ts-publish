@@ -10,5 +10,5 @@ import type { StatusType } from '../../../enums';
  */
 export interface DeclaredWrapRowsResource
 {
-    subject: AsEnum<typeof Status> | { s: StatusType }[];
+    subject: AsEnum<typeof Status> | StatusType | { s: StatusType }[];
 }

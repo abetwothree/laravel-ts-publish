@@ -15,7 +15,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
-use Illuminate\Support\Facades\Config;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -330,11 +329,9 @@ final class VariantReader
             return null;
         }
 
-        $wraps = [
-            $result['enumFqcn'] ?? null,
-            ...$result['embeddedEnumResourceFqcns'] ?? [],
-            ...$result['multiEnumResourceFqcns'] ?? [],
-        ];
+        // A wrap's const binds each of its tokens; without the tolki package a wrap prints its enum's value type, whose
+        // token the type queue binds as it binds a read's, so a wrap and a read of one enum print as one there.
+        $wraps = $result['embeddedEnumResourceFqcns'] ?? [];
         $reads = [
             $result['directEnumFqcn'] ?? null,
             $result['resourceFqcn'] ?? null,
@@ -343,11 +340,6 @@ final class VariantReader
             ...$result['embeddedModelFqcns'] ?? [],
             ...$result['embeddedResourceFqcns'] ?? [],
         ];
-
-        // Only the tolki package prints an enum resource apart from a read of its enum, as `AsEnum<typeof X>`.
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
-            [$wraps, $reads] = [[], [...$reads, ...$wraps]];
-        }
 
         return [
             'type' => $result['type'],

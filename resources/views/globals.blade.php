@@ -28,6 +28,7 @@ $mutators = $transformer->combinedMutators();
 $appends = $transformer->combinedAppends();
 $countKeys = $transformer->relationCountKeys();
 $existsKeys = $transformer->relationExistsKeys();
+$enumConsts = $transformer->globalEnumConstMap();
 @endphp
 @if($transformer->description)
 {!! JsEmitter::formatJsDoc($transformer->description, 8) !!}
@@ -39,7 +40,7 @@ $existsKeys = $transformer->relationExistsKeys();
 @if($column['description'])
 {!! JsEmitter::formatJsDoc($column['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($column['type'], $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $column['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($column['type'], $enumConsts, $references), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
 @endif
 @if (count($mutators) > 0 || count($appends) > 0)
@@ -48,13 +49,13 @@ $existsKeys = $transformer->relationExistsKeys();
 @if($mutator['description'])
 {!! JsEmitter::formatJsDoc($mutator['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($mutator['type'], $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $mutator['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($mutator['type'], $enumConsts, $references), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
 @foreach($appends as $name => $append)
 @if($append['description'])
 {!! JsEmitter::formatJsDoc($append['description'], 12) !!}
 @endif
-            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType($append['type'], $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name) !!}{{ $append['optional'] ? '?' : '' }}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($append['type'], $enumConsts, $references), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
 @endif
 @if (count($transformer->relations) > 0)
@@ -118,7 +119,7 @@ $references = $transformer->globalTypeReferenceMap();
         export type {{ $transformer->resourceName }} = {!! TsTypeString::qualifyGlobalType($transformer->typeAlias, $globalTypesByNamespace, $namespace, $references) !!};
 @else
 @php
-$qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap()), $globalTypesByNamespace, $namespace, $references);
+$qualified = fn (string $type): string => TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($type, $transformer->globalEnumConstMap(), $references), $globalTypesByNamespace, $namespace, $references);
 $declaration = ResourceDeclaration::of($transformer->tsExtends, $transformer->properties, $transformer->variants, $transformer->intersections);
 @endphp
 @if($declaration->armsAlone)
@@ -185,13 +186,14 @@ $optional = ! $field['isRequired'] ? '?' : '';
 @foreach ($transformers as $transformer)
 @php
 $references = $transformer->globalTypeReferenceMap();
+$enumConsts = $transformer->globalEnumConstMap();
 @endphp
         export interface {{ $transformer->eventName }}{!! count($transformer->tsExtends) > 0 ? ' extends '.implode(', ', $transformer->tsExtends) : '' !!} {
 @foreach ($transformer->properties as $name => $prop)
 @php
 $optional = $prop['optional'] && ! JsEmitter::isIndexSignatureKey($name) ? '?' : '';
 @endphp
-            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType($prop['type'], $globalTypesByNamespace, $namespace, $references) !!};
+            {!! JsEmitter::validJsObjectKey($name, allowIndexSignature: true) !!}{{ $optional }}: {!! TsTypeString::qualifyGlobalType(TsTypeString::rewriteAsEnumToType($prop['type'], $enumConsts, $references), $globalTypesByNamespace, $namespace, $references) !!};
 @endforeach
         }
 @endforeach

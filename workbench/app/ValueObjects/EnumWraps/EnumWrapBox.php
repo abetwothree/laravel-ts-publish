@@ -9,10 +9,11 @@ use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 use Workbench\App\Enums\Visibility;
+use Workbench\App\Models\Address;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
- * The enums, flags and rows the enum-wrap probe resources read (GH-160).
+ * The enums, the address, flags and rows the enum-wrap probe resources read (GH-160).
  */
 final class EnumWrapBox
 {
@@ -24,6 +25,7 @@ final class EnumWrapBox
         public Priority $priority = Priority::Low,
         public MediaType $kind = MediaType::Image,
         public ?MediaType $maybeKind = null,
+        public ?Address $address = null,
         public bool $c = false,
         public bool $d = false,
         public bool $e = false,

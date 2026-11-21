@@ -6,9 +6,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Http\Resources\EnumWraps\WrapHelpersResource;
 use Workbench\App\Http\Resources\UserResource;
+use Workbench\App\Models\Address;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
@@ -95,6 +99,28 @@ it('hands two same-named classes out member by member, a nested object\'s on its
         ->and($analysis->nestedResources)->toBe(['d' => CrmUserResource::class, 'e' => UserResource::class]);
 });
 
+it('hands a model and a resource that print one name out by its record, a member holding both keeping its own', function () {
+    $members = ObjectMembers::members([
+        'type' => '{ pair: { address: Address; raw: Address }; raw: Address; address: Address }',
+        'optional' => false,
+        'embeddedModelFqcns' => [Address::class, Address::class],
+        'embeddedResourceFqcns' => [AddressResource::class, AddressResource::class],
+        'alikeClassFqcns' => [AddressResource::class, Address::class, Address::class, AddressResource::class],
+    ]);
+
+    expect($members)->toBe([
+        ['pair', [
+            'type' => '{ address: Address; raw: Address }',
+            'optional' => false,
+            'embeddedModelFqcns' => [Address::class],
+            'embeddedResourceFqcns' => [AddressResource::class],
+            'alikeClassFqcns' => [AddressResource::class, Address::class],
+        ]],
+        ['raw', ['type' => 'Address', 'optional' => false, 'modelFqcn' => Address::class]],
+        ['address', ['type' => 'Address', 'optional' => false, 'resourceFqcn' => AddressResource::class]],
+    ]);
+});
+
 it('reads an enum behind its Kind token from the queue its Type token reads', function () {
     $analysis = ObjectMembers::analysis([
         'type' => '{ value: StatusType; name: StatusKind | null }',
@@ -150,18 +176,34 @@ it('declines an object with no key or a key it cannot read back', function (stri
     expect(ObjectMembers::analysis(['type' => $type, 'optional' => false]))->toBeNull();
 })->with(['{}', '{ a }', '{ -1: number }', '{ "\\x41": number }', '{ [key: `${string}_tag`]: string | undefined }']);
 
-it('declines a value carrying an EnumResource wrap', function () {
-    expect(ObjectMembers::analysis(['type' => '{ s: AsEnum<typeof Status> }', 'optional' => false, 'enumFqcn' => Status::class]))
-        ->toBeNull();
+// A wrap spells its enum's const after `typeof`, so its member keeps the const behind the token and the enum it wraps.
+it('hands a member that wraps an enum out with the const behind its token', function () {
+    $value = ['type' => '{ status: AsEnum<typeof Status> }', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]];
+
+    expect(ObjectMembers::members($value))->toBe([
+        ['status', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+    ]);
 });
 
-it('declines a value carrying any EnumResource channel', function (array $channel) {
-    expect(ObjectMembers::analysis(['type' => '{ s: AsEnum<typeof Status> }', 'optional' => false, ...$channel]))
-        ->toBeNull();
-})->with([
-    'embedded' => [['embeddedEnumResourceFqcns' => [Status::class]]],
-    'per arm' => [['multiEnumResourceFqcns' => [Status::class, CrmStatus::class]]],
-]);
+it('hands two wraps of enums one const name spells out member by member, each with its own const', function () {
+    $value = new InlineObjectResult()->of(analysisOf([
+        'app' => ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]],
+        'crm' => ['type' => 'AsEnum<typeof Status>[]', 'optional' => false, 'embeddedEnumResourceFqcns' => [CrmStatus::class], 'wrappedEnumFqcns' => [CrmStatus::class]],
+    ]));
+
+    expect(ObjectMembers::members($value))->toBe([
+        ['app', ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]]],
+        ['crm', ['type' => 'AsEnum<typeof Status>[]', 'optional' => false, 'embeddedEnumResourceFqcns' => [CrmStatus::class], 'wrappedEnumFqcns' => [CrmStatus::class]]],
+    ])->and(new InlineObjectResult()->of(ObjectMembers::analysis($value)))->toEqual($value);
+});
+
+// A helper writes a key into the card it is passed, so the card keeps the wrap the caller wrote into it.
+it('publishes a seed holding a wrap with the key a helper writes into it', function () {
+    $data = new ResourceTransformer(WrapHelpersResource::class)->data();
+
+    expect($data->properties['card']['type'])->toBe('{ status: AsEnum<typeof Status>; stamped: boolean }')
+        ->and($data->valueImports)->toBe(['../../../enums' => ['Status', 'Visibility']]);
+});
 
 it('declines a value whose queue holds two same-named classes for fewer tokens', function () {
     expect(ObjectMembers::analysis([

@@ -48,8 +48,10 @@ a closure.
   for `$this->title ?? null`, and a getter that only ever returns `null` drops nothing and publishes `null`.
 - **A token the model file cannot name**: the aliasing pass aliases same-named classes and enums one occurrence at a
   time, so the type must spell each token once per FQCN. Two `User` models do: `$this->author ?? $this->crmAuthor`
-  publishes `User | User`, a member per class, and both aliases. Two same-named enums in one union still fold into one
-  token and decline. A resource token declines too, because `ResultTypeInfoBridge` has no resource channel.
+  publishes `User | User`, a member per class, and both aliases. So do two same-named enums:
+  `$this->status ?? $this->crmAuthor?->status` publishes `StatusType | StatusType | null`, which the model file aliases
+  `WorkbenchStatusType | CrmStatusType | null` (`TwoStatusPost`). A resource token declines, because
+  `ResultTypeInfoBridge` has no resource channel.
 
 ## Redundant arms wait for the model
 

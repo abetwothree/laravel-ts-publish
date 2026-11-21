@@ -1,8 +1,9 @@
 import { defineRoute, annotatePageProps, type AsEnum } from '@tolki/ts';
 
-import type { Role, RoleType, Status, StatusType, Visibility, VisibilityType } from '../../enums';
+import type { Status as CrmStatus } from '../../../crm/enums';
+import type { Role, Status as WorkbenchStatus, StatusType, Visibility } from '../../enums';
 
-export type IndexPageProps = Inertia.SharedData & { statuses: { data: AsEnum<typeof Status>[] } };
+export type IndexPageProps = Inertia.SharedData & { statuses: { data: AsEnum<typeof WorkbenchStatus>[] } };
 
 /**
  * Every status case inside the enum resource collection's wrap key.
@@ -16,7 +17,7 @@ export const index = /* @__PURE__ */ annotatePageProps<IndexPageProps>()(/* @__P
     component: 'Enums/Statuses',
 }));
 
-export type UnionsPageProps = Inertia.SharedData & { either: AsEnum<typeof Role> | AsEnum<typeof Status>, mixed: AsEnum<typeof Status> | StatusType };
+export type UnionsPageProps = Inertia.SharedData & { either: AsEnum<typeof Role> | AsEnum<typeof WorkbenchStatus>, mixed: AsEnum<typeof WorkbenchStatus> | StatusType };
 
 /**
  * A ternary over two enums' resources, and one of a resource and a bare case of its enum.
@@ -46,7 +47,7 @@ export const visibility = /* @__PURE__ */ annotatePageProps<VisibilityPageProps>
     component: 'Enums/Visibility',
 }));
 
-export type MixesPageProps = Inertia.SharedData & { wrap_or_other_case: RoleType | StatusType, wrap_or_nested_nullable_case: AsEnum<typeof Status> | null, three_wraps: AsEnum<typeof Role> | StatusType | VisibilityType, same_named_wraps: StatusType, collection_or_case: AsEnum<typeof Status> | { data: AsEnum<typeof Status>[] } | StatusType, nested_two_wraps: { x: VisibilityType | never[] | StatusType } };
+export type MixesPageProps = Inertia.SharedData & { wrap_or_other_case: AsEnum<typeof Role> | StatusType, wrap_or_nested_nullable_case: AsEnum<typeof WorkbenchStatus> | StatusType | null, three_wraps: AsEnum<typeof Role> | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Visibility>, same_named_wraps: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>, collection_or_case: { data: AsEnum<typeof WorkbenchStatus>[] } | StatusType, nested_two_wraps: { x: AsEnum<typeof Visibility> | never[] | AsEnum<typeof WorkbenchStatus> } };
 
 /**
  * Unions of EnumResource props with a bare case, a nested ternary, a third wrap, a same-named enum and a collection

@@ -9,6 +9,6 @@ import type { Address as ResourcesAddress } from '..';
  */
 export interface AddressKindsResource
 {
-    data: { address: ModelsAddress | null; raw: ResourcesAddress | null };
-    either: ModelsAddress | null;
+    data: { address: ResourcesAddress | null; raw: ModelsAddress | null };
+    either: ModelsAddress | ResourcesAddress | null;
 }

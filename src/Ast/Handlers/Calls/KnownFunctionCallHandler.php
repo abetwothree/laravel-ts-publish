@@ -290,8 +290,13 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             }
 
             unset($result['keepsKeys']);
+            $filtered = [...$result, 'optional' => false];
+            $type = implode(' | ', array_values(array_unique($arms)));
 
-            return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+            // A list filtered alone spells its element twice, in the list arm and the Record arm.
+            return ArrayArms::listElement($result['type']) === null
+                ? [...$filtered, 'type' => $type]
+                : ValueResult::spelledTwice($filtered, $type);
         });
     }
 
@@ -313,15 +318,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $this->warnOfCollection('array_values', $array, $scope);
 
         return ValueResult::gapTransparent($engine->resolve($array), static function (array $result): ?array {
-            $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
-
-            if ($arms === null || $arms === []) {
-                return null;
-            }
-
             unset($result['keepsKeys'], $result['unnamedKeys']);
+            $listed = ValueResult::retypedByClass($result, static function (string $type): ?string {
+                $arms = ArrayArms::arms($type, ArrayArms::valuesOf(...));
 
-            return [...$result, 'type' => RedundantArms::joined($arms), 'optional' => false, 'listKeys' => true];
+                return $arms === null || $arms === [] ? null : RedundantArms::joined($arms);
+            });
+
+            return $listed === null ? null : [...$listed, 'optional' => false, 'listKeys' => true];
         });
     }
 

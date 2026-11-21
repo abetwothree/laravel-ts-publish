@@ -6,9 +6,9 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceSubject;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
@@ -37,7 +37,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 {
     use InspectsAstNodes;
     use InspectsResourceSubject;
-    use ResolvesEnumPropertyArgTypes;
+    use ResolvesModelAttributeTypes;
     use ResolvesModelRelationTypes;
 
     /** @return list<class-string<Expr>> */

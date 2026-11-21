@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Concerns;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
@@ -16,6 +18,8 @@ use ReflectionMethod;
 /**
  * Handles $this->only([...]), $this->except([...]) and other attribute filter
  * patterns in JsonResource toArray() methods.
+ *
+ * @phpstan-import-type FqcnQueueMap from MethodAnalysis
  */
 trait FiltersModelAttributes
 {
@@ -109,6 +113,10 @@ trait FiltersModelAttributes
     /**
      * Filter a ResourceAnalysis to include or exclude properties by key list.
      *
+     * A kept key keeps its enum, model and wrap const queues, each class on them keyed by itself as addProperty() keys
+     * it, the enums it wraps, and the custom imports its type spells, so it imports and aliases every class it names; a
+     * left-out key's classes go.
+     *
      * @param  list<string>  $keys
      */
     protected function filterAnalysisByKeys(ResourceAnalysis $analysis, array $keys, bool $include): ResourceAnalysis
@@ -120,26 +128,38 @@ trait FiltersModelAttributes
                 : ! in_array($prop['name'], $keys, true),
         ));
 
-        $filteredEnumFqcns = array_filter(
-            $analysis->directEnumFqcns,
-            fn (string $key): bool => $include
-                ? in_array($key, $keys, true)
-                : ! in_array($key, $keys, true),
-            ARRAY_FILTER_USE_KEY,
-        );
-
-        $filteredModelFqcns = array_filter(
-            $analysis->modelFqcns,
-            fn (string $key): bool => $include
-                ? in_array($key, $keys, true)
-                : ! in_array($key, $keys, true),
-            ARRAY_FILTER_USE_KEY,
-        );
+        $kept = array_flip(array_column($filteredProperties, 'name'));
+        $inlineEnumFqcns = array_intersect_key($analysis->inlineEnumFqcns, $kept);
+        $inlineModelFqcns = array_intersect_key($analysis->inlineModelFqcns, $kept);
 
         return new ResourceAnalysis(
             properties: $filteredProperties,
-            directEnumFqcns: $filteredEnumFqcns,
-            modelFqcns: $filteredModelFqcns,
+            customImports: ImportMaps::spelledIn(
+                $analysis->customImports,
+                implode(' | ', array_column($filteredProperties, 'type')),
+            ),
+            directEnumFqcns: [
+                ...array_intersect_key($analysis->directEnumFqcns, $kept),
+                ...self::selfKeyed($inlineEnumFqcns),
+            ],
+            modelFqcns: [...array_intersect_key($analysis->modelFqcns, $kept), ...self::selfKeyed($inlineModelFqcns)],
+            inlineEnumFqcns: $inlineEnumFqcns,
+            inlineModelFqcns: $inlineModelFqcns,
+            inlineEnumResourceFqcns: array_intersect_key($analysis->inlineEnumResourceFqcns, $kept),
+            wrappedEnums: array_intersect_key($analysis->wrappedEnums, $kept),
         );
+    }
+
+    /**
+     * Each class on the queues keyed by itself, as addProperty() self-keys an embedded class for its import.
+     *
+     * @param  FqcnQueueMap  $queues
+     * @return array<class-string, class-string>
+     */
+    private static function selfKeyed(array $queues): array
+    {
+        $fqcns = array_values(array_unique(array_merge([], ...array_values($queues))));
+
+        return array_combine($fqcns, $fqcns);
     }
 }

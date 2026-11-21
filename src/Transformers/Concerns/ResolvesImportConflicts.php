@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
@@ -115,6 +115,28 @@ trait ResolvesImportConflicts
     }
 
     /**
+     * Map each enum's const, under the name this file gives it, to the enum's globally-qualified value type: the
+     * globals file has no `AsEnum` import, so it spells a wrap of the enum by that type.
+     *
+     * @param  list<class-string>  $fqcns
+     * @return array<string, string> constName|alias => 'dot.separated.namespace.NameType'
+     */
+    protected function qualifiedConstTypes(array $fqcns): array
+    {
+        $map = [];
+
+        foreach ($fqcns as $fqcn) {
+            $constName = $this->enumConstMap[$fqcn] ?? null;
+
+            if ($constName !== null) {
+                $map[$this->constImportAliases[$fqcn] ?? $constName] = TsNaming::globalNamespace($fqcn).'.'.$constName.'Type';
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * Map each sibling name the file aliased to its globally-qualified name, as a globalAliasMap() maps type aliases.
      *
      * @return array<string, string> alias => 'dot.separated.namespace.Name'
@@ -150,7 +172,7 @@ trait ResolvesImportConflicts
                     continue;
                 }
 
-                foreach (ValueResult::enumSiblingNames($fqcn) as $name) {
+                foreach (EnumNames::siblingNames($fqcn) as $name) {
                     if (TsTypeString::typeNameOccursIn($name, $entries[$key]['type'])) {
                         $registry->registerSibling($fqcn, $name);
                     }

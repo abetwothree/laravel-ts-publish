@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\DeclaredProps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\EdgeCaseDocblocks;
 use Illuminate\Http\Request;
 use Workbench\App\Enums\Role;
+use Workbench\App\Enums\Status;
 use Workbench\App\Events\OrderShipped;
 use Workbench\App\Events\UserNotification;
 use Workbench\App\Http\Controllers\InertiaUserShapesController;
@@ -91,7 +92,8 @@ it('analyzes a resource through the public entry with model resolution', functio
     $analysis = resolve(AstEngine::class)->analyzeMethod(UserResource::class);
 
     expect(collect($analysis->properties)->firstWhere('name', 'id')['type'])->toBe('number')
-        ->and($analysis->enumResources)->toBe(['role' => Role::class])
+        ->and(collect($analysis->properties)->firstWhere('name', 'role')['type'])->toBe('AsEnum<typeof Role> | null')
+        ->and($analysis->wrapConstFqcns('role'))->toBe([Role::class])
         ->and($analysis->nestedResources)->toBe(['posts' => PostResource::class]);
 });
 
@@ -142,15 +144,26 @@ it('builds import maps from an analysis', function () {
 });
 
 it('drops the type import of an enum the AsEnum wrap leaves with no bare token', function () {
-    $wrappedOnly = new MethodAnalysis(enumResources: ['role' => Role::class]);
+    $wrappedOnly = new MethodAnalysis(inlineEnumResourceFqcns: ['role' => [Role::class]], wrappedEnums: ['role' => [Role::class]]);
     $alsoReadDirectly = new MethodAnalysis(
-        enumResources: ['role' => Role::class],
         directEnumFqcns: ['raw_role' => Role::class],
+        inlineEnumResourceFqcns: ['role' => [Role::class]],
+        wrappedEnums: ['role' => [Role::class]],
     );
 
     expect(new AnalysisImports()->build($wrappedOnly, 'workbench/app/events')['typeImports'])->toBe([])
         ->and(new AnalysisImports()->build($alsoReadDirectly, 'workbench/app/events')['typeImports'])
         ->toBe(['../enums' => ['RoleType']]);
+});
+
+// A cast can displace an inline object's wrap from its text, so the queue names a const nothing spells (GH-76).
+it('imports the const of only the inline wraps a type writes', function () {
+    $analysis = new MethodAnalysis(
+        properties: [['name' => 'k', 'type' => '{ w: string; r: AsEnum<typeof Role> }', 'optional' => false, 'description' => '']],
+        inlineEnumResourceFqcns: ['k' => [Status::class, Role::class]],
+    );
+
+    expect(new AnalysisImports()->build($analysis, 'workbench/app/events')['valueImports'])->toBe(['../enums' => ['Role']]);
 });
 
 it('merges rather than overwrites when two FQCN channels resolve to one import path', function () {

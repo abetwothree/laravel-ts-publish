@@ -512,7 +512,7 @@ final class ModelFinderHandler implements ExpressionHandler
     {
         return $read === null || ! $keyed
             ? $read
-            : [...$read, 'result' => [...$read['result'], 'type' => ArrayArms::keyedList($read['result']['type'])], 'keyed' => true];
+            : [...$read, 'result' => ValueResult::keyedList($read['result']), 'keyed' => true];
     }
 
     /**

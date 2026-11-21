@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
@@ -23,8 +23,8 @@ use UnitEnum;
 final class DiscriminantValues
 {
     /**
-     * The values a row sends, in arm order and once each by `===`; null for a key the analysis does not hold, or a row
-     * with any arm that is not finite.
+     * The values a row sends, in arm order and once each by `===`; null for a key the analysis does not hold, a row
+     * with any arm that is not finite, or a key that wraps an enum, whose wrap sends an object however it prints.
      *
      * With `$scalarsMayBeCases`, as under AnalysisScope::$casesAsLiterals, a row's scalar literal may stand for an enum
      * case its read holds, so only `null` and the booleans answer, as they do for a key reading an enum directly.
@@ -35,12 +35,12 @@ final class DiscriminantValues
     {
         $row = array_find($analysis->writtenProperties(), static fn (array $property): bool => $property['name'] === $name);
 
-        if ($row === null) {
+        if ($row === null || $analysis->wrappedEnumFqcns($name) !== []) {
             return null;
         }
 
         $read = $analysis->readEnumFqcns($name);
-        $enums = array_values(array_unique(array_diff($read, $analysis->wrappedEnumFqcns($name))));
+        $enums = array_values(array_unique($read));
         $values = [];
 
         foreach (TsTypeString::splitTopLevelUnion($row['type']) as $arm) {
@@ -59,7 +59,7 @@ final class DiscriminantValues
     /**
      * The values one arm sends, or null for an arm that is not finite.
      *
-     * @param  list<class-string>  $enums  the enums the key reads and does not wrap
+     * @param  list<class-string>  $enums  the enums the key reads
      * @param  bool  $scalarsMayBeCases  whether a scalar literal may stand for a case the read holds
      * @return DiscriminantValueList|null
      */
@@ -108,7 +108,7 @@ final class DiscriminantValues
     {
         $named = array_values(array_filter(
             $enums,
-            static fn (string $enum): bool => in_array($arm, ValueResult::enumNames($enum), true),
+            static fn (string $enum): bool => in_array($arm, EnumNames::names($enum), true),
         ));
         $enum = count($named) === 1 ? $named[0] : null;
         $literals = $enum === null ? null : EnumValueTypes::caseLiterals($enum, $arm);

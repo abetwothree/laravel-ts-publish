@@ -118,6 +118,11 @@ class GlobalsWriter
                     }
 
                     foreach ($types as $type) {
+                        // The file folds each wrap to its enum's value type, so an event's `AsEnum` import goes unused.
+                        if ($path === '@tolki/ts' && $type === 'AsEnum') {
+                            continue;
+                        }
+
                         if (! in_array($type, $externalTypeImports[$path] ?? [], true)) {
                             $externalTypeImports[$path][] = $type;
                         }

@@ -268,9 +268,10 @@ arm's imports bring (`borrowsImport()`). So `Person|User`, `Person`'s override s
 
 A resolved type's readers carry only a model's or an enum's class and no slot's null, so a docblock shape that names any
 other class, or holds a null, a literal's or a key's spelled like a class's name included, is read there with no class
-(`shapeChannels()`). Its enum channel lists each enum once, so a value object's shape whose two same-named enums
-alternate, as `AlternatingStatuses` does, is read with no class too (`TokenSlots::enumsTakeTurns()`). Shared data, a
-metadata companion and an API resource's `@return` fill read `tokenFqcns` from `docblockReturnShapeInfos()`
+(`shapeChannels()`). A docblock shape whose two same-named enums alternate keeps each, since the resolved type carries
+the enum behind each enum token (`enumTokenFqcns`); a value object's shape, as `AlternatingStatuses`, is still read with
+no class (`TokenSlots::enumsTakeTurns()`). Shared data, a metadata companion and an API resource's `@return` fill
+read `tokenFqcns` from `docblockReturnShapeInfos()`
 ([`#[TsCasts]` overrides](ts-casts.md#a-cast-is-final-for-its-key)).
 
 `resolveDocblockTypePart()` alone reads an intersection of sealed keyed shapes with no key in common, such as

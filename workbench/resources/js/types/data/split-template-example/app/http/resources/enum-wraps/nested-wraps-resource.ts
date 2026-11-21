@@ -1,7 +1,6 @@
 import { type AsEnum } from '@tolki/ts';
 
-import { Role, Status, Visibility } from '../../../enums';
-import type { MediaTypeType, PriorityType, RoleType, StatusType, VisibilityType } from '../../../enums';
+import { MediaType, Priority, Role, Status, Visibility } from '../../../enums';
 
 /**
  * Two or more enum wraps below a top-level key, in a list, beside an object arm holding a wrap, and through `when()`
@@ -11,13 +10,13 @@ import type { MediaTypeType, PriorityType, RoleType, StatusType, VisibilityType 
  */
 export interface NestedWrapsResource
 {
-    under_key: { subject: StatusType | RoleType };
-    in_list: (StatusType | RoleType)[];
-    two_levels: { outer: { inner: StatusType | RoleType } };
-    three_under_key: { subject: AsEnum<typeof Status> | RoleType | VisibilityType };
-    three_top: AsEnum<typeof Role> | StatusType | VisibilityType;
-    three_wraps_two_enums: AsEnum<typeof Status> | PriorityType | null;
+    under_key: { subject: AsEnum<typeof Status> | AsEnum<typeof Role> };
+    in_list: (AsEnum<typeof Status> | AsEnum<typeof Role>)[];
+    two_levels: { outer: { inner: AsEnum<typeof Status> | AsEnum<typeof Role> } };
+    three_under_key: { subject: AsEnum<typeof Status> | AsEnum<typeof Role> | AsEnum<typeof Visibility> };
+    three_top: AsEnum<typeof Role> | AsEnum<typeof Status> | AsEnum<typeof Visibility>;
+    three_wraps_two_enums: AsEnum<typeof Status> | AsEnum<typeof Priority> | null;
     wrap_or_object_wrap: AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> };
     when_wrap_or_object_wrap: AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> };
-    when_two_wraps_one_nullable: StatusType | MediaTypeType | null;
+    when_two_wraps_one_nullable: AsEnum<typeof Status> | AsEnum<typeof MediaType> | null;
 }

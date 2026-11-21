@@ -34,12 +34,17 @@ use ReflectionMethod;
  */
 final readonly class ResponseExtras
 {
-    /** Each import queue a join carries on, with the single-class channel whose class leads the queue it replaces. */
+    /**
+     * Each class channel a join carries on in print order, with the single-class channel whose class leads the queue
+     * it replaces: the import queues, the record of which alike token is whose, and the enums the keys wrap.
+     */
     private const array QUEUES = [
         'embeddedResourceFqcns' => 'resourceFqcn',
         'embeddedModelFqcns' => null,
         'embeddedEnumFqcns' => null,
         'embeddedEnumResourceFqcns' => null,
+        'alikeClassFqcns' => null,
+        'wrappedEnumFqcns' => null,
     ];
 
     /**

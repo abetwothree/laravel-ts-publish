@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -880,11 +881,11 @@ final class ParameterBinder
      */
     private static function enumArmFits(string $arm, string $enum, array $scalars): bool
     {
-        if ($arm === ValueResult::enumKindName($enum)) {
+        if ($arm === EnumNames::kindName($enum)) {
             return isset($scalars['string']);
         }
 
-        $backing = $arm === ValueResult::enumTypeName($enum) && enum_exists($enum)
+        $backing = $arm === EnumNames::typeName($enum) && enum_exists($enum)
             ? new ReflectionEnum($enum)->getBackingType()?->getName()
             : null;
 

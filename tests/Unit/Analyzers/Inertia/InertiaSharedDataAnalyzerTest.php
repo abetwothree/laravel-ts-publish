@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\OverrideUnionShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Middleware\RenamedResourceShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\AliasedShareMiddleware;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCast
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastOverInheritedShareMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\ClassCastUnreadChildMiddleware;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\InheritedShareMiddleware;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAddressKinds;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAllErrors;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithAmbiguousCastSpelling;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Analyzers\Inertia\Fixtures\MiddlewareWithCallableHelperArguments;
@@ -434,7 +436,7 @@ test('an override drops the type import the displaced type kept alive', function
 
 // ─── EnumResource props ──────────────────────────────────────────
 
-test('an EnumResource shared prop is rewritten to AsEnum and imports the enum const', function () {
+test('an EnumResource shared prop spells AsEnum where it is read and imports the enum const', function () {
     $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
 
     // The type import is gone on purpose: no prop spells the bare RoleType/StatusType any more, so
@@ -537,6 +539,24 @@ test('a shared resource value publishes what Inertia sends', function () {
         ]);
 });
 
+// GH-76: AddressResource publishes as `Address`, so each token must name the class its value holds.
+test('shared data gives a model and a resource published under one name each its own alias, token by token', function () {
+    $result = analyzeSharedDataFor(MiddlewareWithAddressKinds::class);
+    $imports = $result['typeImports'] ?? [];
+    $local = static function (string $path) use ($imports): string {
+        expect($imports[$path] ?? [])->toHaveCount(1);
+
+        return ImportMaps::localName($imports[$path][0]);
+    };
+    $resource = $local('./workbench/app/http/resources');
+    $model = $local('./workbench/app/models');
+
+    expect($resource)->not->toBe($model)
+        ->and($result['sharedPageProps'] ?? null)->toBe(
+            "{ pair: { address: { data: {$resource} }; raw: {$model} }, either: { data: {$resource} } | {$model} }"
+        );
+});
+
 test('a shared resource value publishes bare after JsonResource::withoutWrapping()', function () {
     JsonResource::withoutWrapping();
 
@@ -580,7 +600,7 @@ test('a bare enum case shared prop publishes its enum and imports its type', fun
         ->and($result['valueImports'])->toBe(['./workbench/app/enums' => ['Role']]);
 });
 
-test('the EnumResource rewrite is inert when the tolki package is disabled', function () {
+test('an EnumResource shared prop spells its enum type when the tolki package is disabled', function () {
     config()->set('ts-publish.enums.use_tolki_package', false);
 
     $result = analyzeSharedDataFor(MiddlewareWithEnumResource::class);
@@ -630,8 +650,8 @@ test('an enum-resource ternary publishes each bare enum type when the tolki pack
 });
 
 test('an EnumResource on a framework-owned key is skipped rather than fataling', function () {
-    // collectProps() drops `errors` for @inertiajs/core, but the key keeps its enumResources entry —
-    // the rewrite has to tolerate a channel with no surviving prop to index.
+    // collectProps() drops `errors` for @inertiajs/core, but the key keeps its wrap's const queue, which no surviving
+    // prop indexes.
     $result = analyzeSharedDataFor(MiddlewareWithEnumResourceErrors::class);
 
     expect($result)->not->toBeNull()

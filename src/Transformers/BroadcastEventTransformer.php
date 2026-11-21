@@ -10,8 +10,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\AnalysisImports;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
@@ -19,8 +21,10 @@ use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
+use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ParsesTsExtends;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\SnapshotsTransformerState;
@@ -32,6 +36,7 @@ use ReflectionClass;
  * Transforms a broadcast event class into a TsBroadcastEventDto.
  *
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ValuesImportMap from Datable
  * @phpstan-import-type PropertyInfo from TsBroadcastEventDto
  * @phpstan-import-type PropertiesList from TsBroadcastEventDto
  * @phpstan-import-type CastMap from MethodAnalysis
@@ -40,6 +45,7 @@ use ReflectionClass;
  */
 class BroadcastEventTransformer extends CoreTransformer
 {
+    use BuildsImportMaps;
     use ParsesTsCasts;
     use ParsesTsExtends;
     use ResolvesImportConflicts;
@@ -67,6 +73,13 @@ class BroadcastEventTransformer extends CoreTransformer
      * @var TypesImportMap
      */
     public protected(set) array $typeImports = [];
+
+    /**
+     * The enum consts the payload types spell after `typeof`: import path => const names.
+     *
+     * @var ValuesImportMap
+     */
+    public protected(set) array $valueImports = [];
 
     /**
      * TypeScript extends clauses parsed from #[TsExtends] attributes and config.
@@ -112,11 +125,18 @@ class BroadcastEventTransformer extends CoreTransformer
     protected array $propertyFqcns = [];
 
     /**
-     * Always empty — only present because ResolvesImportConflicts::formatConstImportName() reads it.
+     * Enum FQCNs whose const a payload type spells after `typeof` (FQCN => const name).
      *
      * @var array<class-string, string>
      */
     protected array $enumConstMap = [];
+
+    /**
+     * Property name => the enum behind each const its type spells after `typeof`, in print order.
+     *
+     * @var array<array-key, list<class-string>>
+     */
+    protected array $propertyConstFqcns = [];
 
     /**
      * TsCasts attribute overrides: property name => TypeScript type string.
@@ -159,6 +179,7 @@ class BroadcastEventTransformer extends CoreTransformer
             ->transformProperties()
             ->resolveImportConflicts()
             ->buildTypeImports()
+            ->buildValueImports()
             ->renumberTopLevelKeys();
 
         return $this;
@@ -194,6 +215,7 @@ class BroadcastEventTransformer extends CoreTransformer
             properties: $this->properties,
             typeImports: $this->typeImports,
             tsExtends: $this->tsExtends,
+            valueImports: $this->valueImports,
         );
     }
 
@@ -231,6 +253,17 @@ class BroadcastEventTransformer extends CoreTransformer
     {
         return $this->qualifiedImportNames($this->enumFqcnMap, $this->modelFqcnMap)
             + ComposedClassTypes::globalReferences($this->composedClassTypes());
+    }
+
+    /**
+     * Map each enum const the payload types spell after `typeof`, as the file names it, to its enum's qualified value
+     * type, which the globals file spells the wrap as.
+     *
+     * @return array<string, string> constName|alias => 'dot.separated.namespace.NameType'
+     */
+    public function globalEnumConstMap(): array
+    {
+        return $this->qualifiedConstTypes(array_keys($this->enumConstMap));
     }
 
     /**
@@ -392,20 +425,36 @@ class BroadcastEventTransformer extends CoreTransformer
                     $this->tsTypeOverrides[$name],
                     $this->optionalOverrides[$name] ?? $property['optional'],
                 );
-                $this->propertyFqcns[$name] = $this->collectPropertyFqcns($name, $analysis);
-
-                continue;
+            } else {
+                $result[$name] = [
+                    'type' => $this->convertClassType($name, $property['type'], $analysis),
+                    'optional' => $property['optional'],
+                ];
             }
 
-            $result[$name] = [
-                'type' => $this->convertClassType($name, $property['type'], $analysis),
-                'optional' => $property['optional'],
-            ];
-
             $this->propertyFqcns[$name] = $this->collectPropertyFqcns($name, $analysis);
+            $this->registerWrittenConsts($name, $result[$name]['type'], $analysis);
         }
 
         return $result;
+    }
+
+    /**
+     * Track the enum behind each const a property's type spells after `typeof`, as a wrap the payload holds prints it.
+     */
+    protected function registerWrittenConsts(int|string $name, string $type, MethodAnalysis $analysis): void
+    {
+        $fqcns = EnumWrapImports::written($type, $analysis->wrapConstFqcns((string) $name));
+
+        if ($fqcns === []) {
+            return;
+        }
+
+        $this->propertyConstFqcns[$name] = $fqcns;
+
+        foreach ($fqcns as $fqcn) {
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
+        }
     }
 
     /**
@@ -413,8 +462,8 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     protected function registerAnalysisFqcns(MethodAnalysis $analysis): void
     {
-        foreach ($this->enumFqcns($analysis) as $fqcn) {
-            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
+        foreach (AnalysisImports::enumTypeFqcns($analysis) as $fqcn) {
+            $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
         }
 
         foreach ($analysis->modelFqcns as $fqcn) {
@@ -450,7 +499,7 @@ class BroadcastEventTransformer extends CoreTransformer
     {
         $fqcns = [];
 
-        foreach ([$analysis->directEnumFqcns, $analysis->enumResources, $analysis->modelFqcns] as $map) {
+        foreach ([$analysis->directEnumFqcns, $analysis->modelFqcns] as $map) {
             if (isset($map[$name])) {
                 $fqcns[] = $map[$name];
             }
@@ -458,7 +507,6 @@ class BroadcastEventTransformer extends CoreTransformer
 
         return [
             ...$fqcns,
-            ...($analysis->multiEnumResourceFqcns[$name] ?? []),
             ...($analysis->inlineEnumFqcns[$name] ?? []),
             ...($analysis->inlineModelFqcns[$name] ?? []),
         ];
@@ -493,7 +541,7 @@ class BroadcastEventTransformer extends CoreTransformer
         $modelNames = $this->ownNames($this->modelFqcnMap);
 
         foreach ($analysis->carried['enums'] ?? [] as $fqcn) {
-            $typeName = ValueResult::enumTypeName($fqcn);
+            $typeName = EnumNames::typeName($fqcn);
 
             if (CastChannels::spelledUnclaimed($typeName, $types, $enumNames, $this->tsExtends)) {
                 $this->enumFqcnMap[$fqcn] ??= $typeName;
@@ -545,8 +593,8 @@ class BroadcastEventTransformer extends CoreTransformer
     protected function resolveImportConflicts(): self
     {
         $registry = new ImportNameRegistry(['Events', 'Enums', 'Models']);
-        $this->reserveDeclaredNames($this->declaredNames(), $registry);
-        $registry->reserveMany(...$this->customImportNames());
+        $constRegistry = new ImportNameRegistry(['Events', 'Enums', 'Models']);
+        $this->reserveDeclaredNames([...$this->declaredNames(), ...$this->customImportNames()], $registry, $constRegistry);
 
         foreach ($this->enumFqcnMap as $fqcn => $typeName) {
             $registry->register($fqcn, $typeName);
@@ -556,14 +604,23 @@ class BroadcastEventTransformer extends CoreTransformer
             $registry->register($fqcn, $typeName);
         }
 
-        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->propertyFqcns);
-        $resolved = $registry->resolve();
+        foreach ($this->enumConstMap as $fqcn => $constName) {
+            $constRegistry->register($fqcn, $constName);
+        }
 
-        $this->applyResolvedImportNames(
-            $resolved,
-            $this->enumFqcnMap + $this->modelFqcnMap,
-            siblings: $registry->resolveSiblings($resolved),
-        );
+        $this->registerEnumKinds($registry, $this->enumFqcnMap, $this->properties, $this->propertyFqcns);
+        $this->applyImportNameRegistries($registry, $constRegistry, $this->enumFqcnMap + $this->modelFqcnMap);
+
+        if ($this->constImportAliases !== []) {
+            foreach ($this->propertyConstFqcns as $key => $fqcns) {
+                $this->properties[$key]['type'] = TsTypeString::aliasTypeofConst(
+                    $this->properties[$key]['type'],
+                    $fqcns,
+                    $this->enumConstMap,
+                    $this->constImportAliases,
+                );
+            }
+        }
 
         return $this;
     }
@@ -671,6 +728,12 @@ class BroadcastEventTransformer extends CoreTransformer
             }
         }
 
+        // Held in the map rather than a template flag, as a route file holds it, so a template looping over it has it.
+        if (EnumWrapSpelling::enabled() && EnumWrapImports::needsAsEnum(...$types)
+            && ! in_array('AsEnum', ImportMaps::localNames($imports), true)) {
+            $imports['@tolki/ts'][] = 'AsEnum';
+        }
+
         foreach ($imports as $path => $types) {
             $unique = array_values(array_unique($types));
             sort($unique);
@@ -678,6 +741,19 @@ class BroadcastEventTransformer extends CoreTransformer
         }
 
         $this->typeImports = TsNaming::sortImportPaths($imports);
+
+        return $this;
+    }
+
+    /**
+     * Build the value import map: each wrapped enum's const a payload type or extends clause spells after `typeof`.
+     */
+    protected function buildValueImports(): self
+    {
+        $fqcns = array_values(array_unique(array_merge([], ...array_values($this->propertyConstFqcns))));
+        $types = [...array_column($this->properties, 'type'), ...$this->tsExtends];
+
+        $this->valueImports = $this->deduplicateAndSortImports($this->collectModularValueImports($fqcns, $types));
 
         return $this;
     }
@@ -694,21 +770,5 @@ class BroadcastEventTransformer extends CoreTransformer
         $this->properties = TopLevelRenumbering::rekey($this->properties, $renumbered);
 
         return $this;
-    }
-
-    /**
-     * Every enum FQCN the analysis reached, across all three enum channels.
-     *
-     * @return list<class-string>
-     */
-    private function enumFqcns(MethodAnalysis $analysis): array
-    {
-        $fqcns = [...array_values($analysis->directEnumFqcns), ...array_values($analysis->enumResources)];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
     }
 }

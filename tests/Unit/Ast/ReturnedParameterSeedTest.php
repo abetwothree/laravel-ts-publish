@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InPlaceSpreadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\DecoratingChild;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\InPlaceRewrittenParameter;
@@ -243,9 +244,11 @@ it('keeps two same-named enums apart through a seed', function () {
         ->and(json_encode(new SeededEnumMembers()->pair()))->toBe('{"a":0,"b":"lead","stamped":true}');
 });
 
-// ObjectMembers cannot hand a same-named pair out member by member once one sits a level down.
-it('keeps only the written keys where the seed cannot place a same-named pair', function () {
-    expect(analyzedKeyTypes(SeededEnumMembers::class, 'nestedPair'))->toBe(['stamped' => 'boolean'])
+it('keeps two same-named enums apart through a seed, one of them a level down', function () {
+    expect(analyzedKeyTypes(SeededEnumMembers::class, 'nestedPair'))->toBe([
+        'a' => 'WorkbenchStatusType', 'inner' => '{ b: CrmStatusType }', 'stamped' => 'boolean',
+    ])->and(analyzedImportNames(SeededEnumMembers::class, 'nestedPair'))
+        ->toBe(['StatusType as CrmStatusType', 'StatusType as WorkbenchStatusType'])
         ->and(json_encode(new SeededEnumMembers()->nestedPair()))->toBe('{"a":0,"inner":{"b":"lead"},"stamped":true}');
 });
 
@@ -257,8 +260,14 @@ it('seeds a helper read as a value with an argument naming two same-named enums,
         ->and(json_encode(new SeededEnumMembers()->values()))->toBe('{"pair":{"a":0,"b":"lead","stamped":true}}');
 });
 
-it('keeps only the written keys where the argument holds an EnumResource wrap', function () {
-    expect(analyzedKeyTypes(SeededEnumMembers::class, 'seededWrapped'))->toBe(['stamped' => 'boolean']);
+// A wrap spells its enum's const, which the seed's member keeps, so the helper returns the wrap beside its key.
+it('seeds an argument holding an EnumResource wrap with the wrap and the const it spells', function () {
+    $seeded = resolve(AstEngine::class)->analyze(SeededEnumMembers::class, 'seededWrapped');
+
+    expect(analyzedKeyTypes(SeededEnumMembers::class, 'seededWrapped'))
+        ->toBe(['status' => 'AsEnum<typeof Status>', 'stamped' => 'boolean'])
+        ->and($seeded->valueImports)->toBe(resolve(AstEngine::class)->analyze(SeededEnumMembers::class, 'wrapped')->valueImports)
+        ->and($seeded->valueImports)->not->toBe([]);
 });
 
 it('seeds a wrapped enum with Tolki off as the argument prints alone', function () {

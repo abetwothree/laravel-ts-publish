@@ -157,7 +157,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     {
         return $value !== null && (VisibleGaps::aside($value['type'])[0] === 'null'
             || isset($value['modelFqcn'])
-            || isset($value['enumFqcn'])
+            || ($value['wrappedEnumFqcns'] ?? []) !== []
             || isset($value['directEnumFqcn'])
             || isset($value['resourceFqcn']));
     }

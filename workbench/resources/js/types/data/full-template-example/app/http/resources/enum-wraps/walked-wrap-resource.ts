@@ -1,7 +1,7 @@
 import { type AsEnum } from '@tolki/ts';
 
 import { Status } from '../../../enums';
-import type { StatusType } from '../../../enums';
+import type { VisibilityType } from '../../../enums';
 
 /**
  * A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134).
@@ -11,5 +11,5 @@ import type { StatusType } from '../../../enums';
 export interface WalkedWrapResource
 {
     id: number;
-    state: AsEnum<typeof Status> | StatusType | null;
+    state: AsEnum<typeof Status> | VisibilityType | null;
 }

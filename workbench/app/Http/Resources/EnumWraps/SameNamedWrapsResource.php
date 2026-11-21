@@ -45,6 +45,9 @@ class SameNamedWrapsResource extends JsonResource
             'literals_nested_crm' => $this->resource->c
                 ? ['s' => $this->resource->status, 'x' => ['c' => CrmStatus::Lead]]
                 : ['s' => $this->resource->status, 'x' => null],
+            'app_or_crm_wrap_or_read' => $this->resource->c
+                ? EnumResource::make($this->resource->status)
+                : ($this->resource->d ? EnumResource::make($this->resource->crmStatus) : $this->resource->status),
         ];
     }
 }

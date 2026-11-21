@@ -2,18 +2,21 @@
 
 declare(strict_types=1);
 
-namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources;
+namespace AbeTwoThree\LaravelTsPublish\Ast\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -23,41 +26,138 @@ use PhpParser\Node\Identifier;
 use ReflectionMethod;
 
 /**
- * Resolve an enum type — or the model-attribute type backing one — from a property-fetch argument, a local, or the one
- * enum a resolved payload holds, for both resource-construction shapes: `EnumResource::make()`/`::collection()` and
- * `new EnumResource(...)`. A scope that carries no import reads neither a local nor a resolved payload: the body
- * fallback would drop its whole shape for the enum either names.
+ * The enum an `EnumResource` payload holds, as `EnumResource::make()`/`::collection()` and `new EnumResource(...)` wrap
+ * it: from a property-fetch argument, a local, or the one enum a resolved payload holds. A scope that carries no import
+ * reads neither a local nor a resolved payload: the body fallback would drop its whole shape for the enum either names.
  *
- * A wrap sends the enum itself, so it takes the enum's own type name, which the `AsEnum` rewrite replaces, even where
- * `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the enum
- * channel, while a cast, an accessor or a declared type is read from its class.
- *
- * Requires the host to also `use Ast\Concerns\InspectsAstNodes` (for `isThisPropertyFetch()` and `soleSpelledWrite()`).
+ * A wrap sends the enum itself, so it takes the enum's own type name, which spelledWrap() spells as the wrap, even
+ * where `toTsType()` names no enum for it (an override or a `custom_ts_mappings` entry): its case still carries the
+ * enum channel, while a cast, an accessor or a declared type is read from its class.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
- * @phpstan-import-type TypesImportMap from Datable
- *
- * @phpstan-type AttributeTypeInfo = array{
- *      type: string,
- *      enumFqcn: class-string|null,
- *      enumFqcns: list<class-string>,
- *      classFqcns: list<class-string>,
- *      classTokenFqcns?: list<class-string|null>,
- *      customImports: TypesImportMap,
- *      keepsKeys?: bool,
- *      typedByClass?: true
- * }
  *
  * @internal
  */
-trait ResolvesEnumPropertyArgTypes
+final class EnumWrapPayload
 {
+    use InspectsAstNodes;
+    use ResolvesModelAttributeTypes;
+
     /**
-     * Resolve an enum type from a property-fetch expression (shared by EnumResource::make and new EnumResource).
+     * What an `EnumResource::make()` or `new EnumResource()` payload publishes as its wrap.
+     *
+     * A null payload no filter() reaches, in a page, an event or a map() kept as a Collection, is sent as the `[]`
+     * resolve() returns, spelled `never[]`.
      *
      * @return ValueExpressionResult|null
      */
-    protected function resolveEnumFromPropertyArg(Expr $argExpr, AnalysisScope $scope): ?array
+    public function value(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $result = $this->fromArgument($payload, $scope)
+            ?? $this->fromResolvedPayload($payload, $scope, $engine);
+
+        if ($result === null) {
+            return null;
+        }
+
+        if (! TsTypeString::hasNullArm($result['type']) || $engine->reading()->filterReaches($scope)) {
+            return $this->spelledWrap($result);
+        }
+
+        return $this->spelledWrap([...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]']);
+    }
+
+    /**
+     * The list an `EnumResource::collection()` payload publishes: the one enum it holds, wrapped in a list unless the
+     * payload already is one; null when no single enum resolves.
+     *
+     * The collection resolves each element itself, which no filter() reaches, so a null element is the `[]` resolve()
+     * returns for it.
+     *
+     * @return ValueExpressionResult|null
+     */
+    public function collectionValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
+    {
+        $enumResult = $this->fromArgument($payload, $scope)
+            ?? $this->fromResolvedPayload($payload, $scope, $engine, allowsList: true);
+
+        if ($enumResult === null) {
+            return null;
+        }
+
+        // The resolved property may already be a collection type (an AsEnumCollection cast or a
+        // list<Enum> accessor both resolve their own '[]' already) — only wrap when it isn't.
+        $type = $enumResult['type'];
+        $alreadyCollection = ValueResult::isListShaped($type);
+
+        return $this->spelledWrap([
+            ...$enumResult,
+            'type' => $alreadyCollection ? self::nullElementsResolved($type) : ValueResult::arrayWrapType($type),
+        ]);
+    }
+
+    /**
+     * A payload's enum as its wrap publishes it: `AsEnum<typeof C>` with the tolki package on, else its value type.
+     *
+     * Each token rides the queue its spelling is read by, and the enum `wrappedEnumFqcns`; no read's channel holds it,
+     * so no reader takes the wrap for a direct read of its enum.
+     *
+     * @param  ValueExpressionResult  $payload  a payload reader's result, the enum on `enumFqcn`
+     * @return ValueExpressionResult
+     */
+    public function spelledWrap(array $payload): array
+    {
+        $enum = $payload['enumFqcn'] ?? null;
+        unset($payload['enumFqcn']);
+
+        if ($enum === null) {
+            return $payload; // @codeCoverageIgnore
+        }
+
+        $spelled = EnumWrapSpelling::enabled();
+        $kind = $spelled ? TokenKind::WrapConst : TokenKind::Enum;
+        $type = $spelled
+            ? TsTypeString::substituteEnumType(
+                $payload['type'],
+                EnumNames::typeName($enum),
+                EnumWrapSpelling::ofEnum($enum),
+            )
+            : $payload['type'];
+        $pattern = TsTypeString::queuedTokenPattern([$kind->nameOf($enum)], $kind->anchor());
+        $tokens = (int) preg_match_all($pattern, $type);
+        $channel = $spelled ? 'embeddedEnumResourceFqcns' : 'embeddedEnumFqcns';
+
+        return [
+            ...$payload,
+            'type' => $type,
+            ...($tokens > 0 ? [$channel => array_fill(0, $tokens, $enum)] : []),
+            'wrappedEnumFqcns' => [$enum],
+        ];
+    }
+
+    /**
+     * A list of an enum with a null its element may hold spelled as the `[]` the element's own resolve() returns.
+     */
+    private static function nullElementsResolved(string $list): string
+    {
+        $element = TsTypeShape::elementType(TsTypeString::withoutNullArm($list));
+
+        if ($element === null || ! TsTypeString::hasNullArm($element)) {
+            return $list;
+        }
+
+        $resolved = ValueResult::arrayWrapType(TsTypeString::withoutNullArm($element).' | never[]');
+
+        return TsTypeString::withNullArmOf($list, $resolved);
+    }
+
+    /**
+     * The enum a payload argument spells: a model attribute read through `$this`, a bound or local variable, a case or
+     * a static call returning the enum.
+     *
+     * @return ValueExpressionResult|null
+     */
+    private function fromArgument(Expr $argExpr, AnalysisScope $scope): ?array
     {
         $result = ValueResult::unknown();
 
@@ -69,13 +169,13 @@ trait ResolvesEnumPropertyArgTypes
                 $name = $argExpr->name;
 
                 if (isset($scope->closureParamExprBindings[$name]) && $scope->holdsBinding($argExpr)) {
-                    return $this->resolveEnumFromPropertyArg($scope->closureParamExprBindings[$name], $scope);
+                    return $this->fromArgument($scope->closureParamExprBindings[$name], $scope);
                 }
 
                 $local = $this->soleSpelledWrite($argExpr, $scope);
 
                 if ($scope->carriesImports && $local !== null && ! $scope->resolvesBinding($name, $local)) {
-                    return $scope->resolvingBinding($name, $local, fn (): ?array => $this->resolveEnumFromPropertyArg($local, $scope));
+                    return $scope->resolvingBinding($name, $local, fn (): ?array => $this->fromArgument($local, $scope));
                 }
             }
 
@@ -86,7 +186,7 @@ trait ResolvesEnumPropertyArgTypes
                 && $this->isProxyFetch($argExpr->var, $scope)
                 && $argExpr->name instanceof Identifier
             ) {
-                return $this->resolveEnumFromAttribute($argExpr->name->toString(), $scope);
+                return $this->fromAttribute($argExpr->name->toString(), $scope);
             }
 
             // `Enum::Case`, or a static call such as `Enum::from(...)` that returns the enum.
@@ -98,7 +198,7 @@ trait ResolvesEnumPropertyArgTypes
                 return null;
             }
 
-            $type = ValueResult::enumTypeName($enum);
+            $type = EnumNames::typeName($enum);
 
             return [
                 ...$result,
@@ -114,53 +214,7 @@ trait ResolvesEnumPropertyArgTypes
             return null; // @codeCoverageIgnore
         }
 
-        return $this->resolveEnumFromAttribute($propName, $scope);
-    }
-
-    /**
-     * The enum an `EnumResource::make()` or `new EnumResource()` payload wraps.
-     *
-     * A null payload no filter() reaches, in a page, an event or a map() kept as a Collection, is sent as the `[]`
-     * resolve() returns, spelled `never[]`.
-     *
-     * @return ValueExpressionResult|null
-     */
-    protected function enumWrapValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
-        $result = $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine);
-
-        if ($result === null || ! TsTypeString::hasNullArm($result['type']) || $engine->reading()->filterReaches($scope)) {
-            return $result;
-        }
-
-        return [...$result, 'type' => TsTypeString::withoutNullArm($result['type']).' | never[]'];
-    }
-
-    /**
-     * The list an `EnumResource::collection()` payload publishes: the one enum it holds, wrapped in a list unless the
-     * payload already is one; null when no single enum resolves.
-     *
-     * @return ValueExpressionResult|null
-     */
-    protected function enumCollectionValue(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
-    {
-        $enumResult = $this->resolveEnumFromPropertyArg($payload, $scope)
-            ?? $this->resolveEnumFromResolvedPayload($payload, $scope, $engine, allowsList: true);
-
-        if ($enumResult === null) {
-            return null;
-        }
-
-        // The resolved property may already be a collection type (an AsEnumCollection cast or a
-        // list<Enum> accessor both resolve their own '[]' already) — only wrap when it isn't.
-        $type = $enumResult['type'];
-        $alreadyCollection = ValueResult::isListShaped($type);
-
-        return [
-            ...$enumResult,
-            'type' => $alreadyCollection ? $type : ValueResult::arrayWrapType($type),
-        ];
+        return $this->fromAttribute($propName, $scope);
     }
 
     /**
@@ -170,7 +224,7 @@ trait ResolvesEnumPropertyArgTypes
      *
      * @return ValueExpressionResult|null null without imports, for several enums, or a type holding more than the enum
      */
-    protected function resolveEnumFromResolvedPayload(
+    private function fromResolvedPayload(
         Expr $payload,
         AnalysisScope $scope,
         ExpressionEngine $engine,
@@ -200,16 +254,24 @@ trait ResolvesEnumPropertyArgTypes
         }
 
         $retyped = LaravelTsPublish::retypedEnumType($enum);
-        $enumType = $retyped ?? ValueResult::enumTypeName($enum);
+        $enumType = $retyped ?? EnumNames::typeName($enum);
         $held = TsTypeString::withoutNullArm($resolved['type']);
+        // A map over a nullable attribute holds the enum or null in each element; a list with another arm beside it is
+        // not one list of the enum.
+        $element = $allowsList && count(TsTypeString::splitTopLevelUnion($held)) === 1
+            ? TsTypeShape::elementType($held)
+            : null;
 
-        if ($held !== $enumType && (! $allowsList || $held !== $enumType.'[]')) {
+        if ($held !== $enumType && ! in_array($element, [$enumType, TsTypeString::withNullArm($enumType)], true)) {
             return null;
         }
 
-        $type = $retyped === null
-            ? $resolved['type']
-            : ValueResult::enumTypeName($enum).($held === $enumType ? '' : '[]');
+        $name = EnumNames::typeName($enum);
+        $type = match (true) {
+            $retyped === null => $resolved['type'],
+            $held === $enumType => $name,
+            default => ValueResult::arrayWrapType(TsTypeString::withNullArmOf((string) $element, $name)),
+        };
 
         // removeMissingValues() drops a wrap over a missing value too, so a `when*()` payload leaves the key optional.
         return [
@@ -220,51 +282,12 @@ trait ResolvesEnumPropertyArgTypes
     }
 
     /**
-     * Resolve the TypeScript type, optional enum FQCN, class FQCNs and `#[TsType]` imports for a model attribute.
-     *
-     * Bypasses ResolvesModelTypes's cached-property gate, which this per-call handler never
-     * populates — calls the ModelAttributeResolver singleton directly instead; it caches per FQCN.
-     *
-     * @param  bool  $casesAsLiterals  the scope's own flag where the attribute is read as a value; an `EnumResource`
-     *                                 payload or a `->value` base needs the enum, so it reads cases as their enum
-     * @return AttributeTypeInfo
-     */
-    protected function resolveModelAttributeTypeInfo(
-        string $attributeName,
-        AnalysisScope $scope,
-        bool $casesAsLiterals = false,
-    ): array {
-        if ($scope->modelClass === null) {
-            return ['type' => 'unknown', 'enumFqcn' => null, 'enumFqcns' => [], 'classFqcns' => [], 'customImports' => []];
-        }
-
-        $tsInfo = resolve(ModelAttributeResolver::class)
-            ->resolveAttributeValue($scope->modelClass, $attributeName, $scope->carriesImports, $casesAsLiterals);
-
-        /** @var class-string|null $enumFqcn */
-        $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
-
-        return [
-            'type' => $tsInfo['type'],
-            'enumFqcn' => $enumFqcn,
-            'enumFqcns' => $tsInfo['enumFqcns'],
-            'classFqcns' => $tsInfo['classFqcns'],
-            // Present only where the type spells one name for two classes or an override spells a class's name; see
-            // TypeScriptTypeInfo.
-            ...(isset($tsInfo['classTokenFqcns']) ? ['classTokenFqcns' => $tsInfo['classTokenFqcns']] : []),
-            'customImports' => $tsInfo['customImports'],
-            ...(($tsInfo['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-            ...(($tsInfo['typedByClass'] ?? false) ? ['typedByClass' => true] : []),
-        ];
-    }
-
-    /**
      * Resolve the enum a model attribute holds, as an EnumResource wrap reads it: by its attribute type, or for an enum
      * `toTsType()` names no enum for, by the class the attribute holds and the attribute's null arm.
      *
      * @return ValueExpressionResult|null
      */
-    private function resolveEnumFromAttribute(string $attributeName, AnalysisScope $scope): ?array
+    private function fromAttribute(string $attributeName, AnalysisScope $scope): ?array
     {
         $info = $this->resolveModelAttributeTypeInfo($attributeName, $scope);
 
@@ -280,7 +303,7 @@ trait ResolvesEnumPropertyArgTypes
             return null;
         }
 
-        $type = ValueResult::enumTypeName($enum);
+        $type = EnumNames::typeName($enum);
 
         return [
             ...ValueResult::unknown(),

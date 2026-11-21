@@ -2,7 +2,7 @@ import { type AsEnum } from '@tolki/ts';
 
 import { Status as WorkbenchStatus } from '../../../app/enums';
 import { Status as CrmStatus } from '../../enums';
-import type { StatusType as WorkbenchStatusType } from '../../../app/enums';
+import type { StatusType } from '../../../app/enums';
 import type { UserResource as WorkbenchUserResource } from '../../../app/http/resources';
 import type { User as WorkbenchUser } from '../../../app/models';
 import type { User as CrmUser } from '../../models';
@@ -21,7 +21,7 @@ export type DealResource = {
     id: number;
     title: string;
     value: string;
-    status: WorkbenchStatusType;
+    status: StatusType;
     status_enum: AsEnum<typeof WorkbenchStatus>;
     crm_enum: AsEnum<typeof CrmStatus>;
     status_pair: { app: AsEnum<typeof WorkbenchStatus>; crm: AsEnum<typeof CrmStatus> };

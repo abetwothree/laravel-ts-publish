@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\AsEnumSpelling;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeTokens;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use Illuminate\Support\Str;
 
 /**
  * Ask structural questions about a TypeScript type string, and rewrite one: importable tokens,
@@ -34,6 +37,12 @@ class TsTypeString
     /** The keyword types besides TS_PRIMITIVES that an identifier pattern would read as a name. */
     public const array KEYWORD_TYPES = ['true', 'false', 'this'];
 
+    /** The anchor queuedTokenPattern() reads a const's token with: the name a `typeof` reads. */
+    public const string TYPEOF_ANCHOR = 'typeof\s+\K';
+
+    /** The name a `typeof` reads, undelimited. */
+    public const string TYPEOF_OPERAND = '[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*';
+
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
@@ -49,6 +58,9 @@ class TsTypeString
 
     /** The union arms that say nothing of a value, as an untyped read or an `'array'` cast publishes it. */
     protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
+
+    /** A `typeof` and the const it reads, which a type token's pattern matches only to skip past it. */
+    protected const string SKIPPED_TYPEOF_OPERAND = 'typeof\s+'.self::TYPEOF_OPERAND.'(*SKIP)(*FAIL)|';
 
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;
@@ -114,7 +126,8 @@ class TsTypeString
                 continue;
             }
 
-            if (in_array($token, ['Record', 'Date', 'true', 'false'], true)) {
+            // A `typeof` reads the name after it, which the check reads as its own token.
+            if (in_array($token, ['Record', 'Date', 'true', 'false', 'typeof'], true)) {
                 continue;
             }
 
@@ -220,12 +233,13 @@ class TsTypeString
      */
     public function aliasTypeofConst(string $type, array $itemFqcns, array $constNames, array $aliases): string
     {
-        return $this->aliasInQueueOrder($type, $itemFqcns, $constNames, $aliases, 'typeof\s+\K');
+        return $this->aliasInQueueOrder($type, $itemFqcns, $constNames, $aliases, self::TYPEOF_ANCHOR);
     }
 
     /**
      * The pattern that reads a name as a whole token of a type string: not inside a longer name, not after a dot.
-     * $anchor is a pattern each token must follow; a `\K` in it keeps the anchor out of the match.
+     * $anchor is a pattern each token must follow; a `\K` in it keeps the anchor out of the match. With none, a name
+     * a `typeof` reads is a const's and never a type token.
      *
      * Longer names come first: the lookahead stops at ASCII, so a name that a longer one continues with a non-ASCII
      * letter is read whole only that way.
@@ -236,8 +250,9 @@ class TsTypeString
     {
         usort($names, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
         $names = array_map(static fn (string $name): string => preg_quote($name, '/'), $names);
+        $lead = $anchor === '' ? self::SKIPPED_TYPEOF_OPERAND : $anchor;
 
-        return '/(?<![A-Za-z0-9_$.])'.$anchor.'(?:'.implode('|', $names).')(?![A-Za-z0-9_$])/';
+        return '/(?<![A-Za-z0-9_$.])(?:'.$lead.'(?:'.implode('|', $names).'))(?![A-Za-z0-9_$])/';
     }
 
     /**
@@ -463,37 +478,55 @@ class TsTypeString
     }
 
     /**
-     * Replace `AsEnum<typeof ConstAlias>` patterns with the pre-computed type alias.
+     * Replace each `AsEnum<typeof ConstAlias>` with its enum's qualified value type, then collapse the arms of each
+     * union, at every depth, that name one class once the fold is done.
      *
-     * In the globals file there is no `AsEnum` import, so `AsEnum<typeof X>` and `XType` collapse to
-     * the same qualified name — the pair must be folded first to avoid emitting a literal duplicate.
+     * The globals file has no `AsEnum` import, so a wrap and a read of its enum print alike there. A bare name reads as
+     * the class `$references` gives it, else, when the type folded wraps of one enum whose value type has that name, as
+     * that enum. Whole arms are compared, so `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` stay apart.
      *
      * @param  string  $typeStr  The TypeScript type string to rewrite.
      * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
+     * @param  array<string, string>  $references  name the file spells => 'namespace.TypeName' it names
      */
-    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap): string
+    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap, array $references = []): string
     {
+        $folded = $typeStr;
+        /** @var array<string, true> $targets each folded enum's qualified value type */
+        $targets = [];
+        /** @var array<string, string> $foldedTo the value type's bare name => the first qualified name folded to it */
+        $foldedTo = [];
+        /** @var array<string, true> $shared each bare name two folded enums print */
+        $shared = [];
+
         foreach ($constToTypeMap as $constAlias => $qualifiedTypeName) {
-            $lastDot = strrpos($qualifiedTypeName, '.');
-            $bareTypeName = $lastDot === false ? $qualifiedTypeName : substr($qualifiedTypeName, $lastDot + 1);
+            $next = preg_replace('/'.AsEnumSpelling::pattern($constAlias).'/', $qualifiedTypeName, $folded) ?? $folded;
 
-            // A trailing `[` means the bare arm is array-shaped and the AsEnum arm is not (or vice
-            // versa) — a genuinely different pair, not the redundant same-shaped one this folds.
-            $pairPattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>\s*\|\s*'
-                .preg_quote($bareTypeName, '/').'(?![A-Za-z0-9_$\[])/';
-            $typeStr = preg_replace($pairPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
+            if ($next === $folded) {
+                continue;
+            }
 
-            // Same pair reversed: the bare alias would be re-qualified afterwards, recreating the duplicate.
-            // Only ResourceTransformer::rewriteEnumResourceTypes() emits this pair shape, always forward-ordered.
-            $reversedPattern = '/(?<![A-Za-z0-9_$.])'.preg_quote($bareTypeName, '/').'\s*\|\s*AsEnum<typeof\s+'
-                .preg_quote($constAlias, '/').'\s*>/';
-            $typeStr = preg_replace($reversedPattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
+            $folded = $next;
+            $targets[$qualifiedTypeName] = true;
+            $bareTypeName = Str::afterLast($qualifiedTypeName, '.');
 
-            $singlePattern = '/AsEnum<typeof\s+'.preg_quote($constAlias, '/').'\s*>/';
-            $typeStr = preg_replace($singlePattern, $qualifiedTypeName, $typeStr) ?? $typeStr;
+            if (($foldedTo[$bareTypeName] ??= $qualifiedTypeName) !== $qualifiedTypeName) {
+                $shared[$bareTypeName] = true;
+            }
         }
 
-        return $typeStr;
+        if ($targets === []) {
+            return $typeStr;
+        }
+
+        $readAs = [
+            ...array_filter($references, static fn (string $qualified): bool => isset($targets[$qualified])),
+            ...array_diff_key($foldedTo, $references, $shared),
+        ];
+
+        $pattern = $readAs === [] ? null : $this->queuedTokenPattern(array_keys($readAs));
+
+        return TypeRewriter::rewrite($folded, union: fn (array $arms): array => $this->withoutRepeatedArms($arms, $readAs, $pattern));
     }
 
     /**
@@ -758,6 +791,39 @@ class TsTypeString
         }
 
         return $type;
+    }
+
+    /**
+     * A union's arms with each arm that names the same classes as an earlier one left out, read with each name in
+     * `$readAs` as the class it maps to. A collapsed pair keeps the earlier arm's place and the fold's spelling.
+     *
+     * @param  list<string>  $arms
+     * @param  array<string, string>  $readAs  name => 'namespace.TypeName'
+     * @param  string|null  $pattern  the token pattern of $readAs's names; null when it has none
+     * @return list<string>
+     */
+    private function withoutRepeatedArms(array $arms, array $readAs, ?string $pattern): array
+    {
+        $kept = [];
+        /** @var array<string, int> $at each kept arm's reading => its place */
+        $at = [];
+
+        foreach ($arms as $arm) {
+            $read = $pattern === null ? $arm : (preg_replace_callback(
+                $pattern,
+                static fn (array $match): string => $readAs[$match[0]],
+                $arm,
+            ) ?? $arm);
+
+            if (! isset($at[$read])) {
+                $at[$read] = count($kept);
+                $kept[] = $arm;
+            } elseif ($arm === $read) {
+                $kept[$at[$read]] = $arm;
+            }
+        }
+
+        return array_values($kept);
     }
 
     /**

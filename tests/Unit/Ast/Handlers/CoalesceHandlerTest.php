@@ -21,6 +21,7 @@ use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
+use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 
 /**
@@ -205,23 +206,18 @@ it('falls through entirely to the right arm when the left is unknown, propagatin
     ]);
 });
 
-it('falls through entirely to the left arm when the right is unknown, propagating a solo enumFqcn', function () {
+it('falls through entirely to the left arm when the right is unknown, propagating its wrap', function () {
     $handler = new CoalesceHandler;
     $left = new Variable('a');
     $right = new Variable('b');
     $expr = new BinaryOp\Coalesce($left, $right);
+    $wrap = ['type' => 'AsEnum<typeof Status>', 'optional' => false, 'embeddedEnumResourceFqcns' => [Status::class], 'wrappedEnumFqcns' => [Status::class]];
     $engine = new CoalesceArmStubEngine([
-        [$left, ['type' => 'Status', 'optional' => false, 'enumFqcn' => stdClass::class]],
+        [$left, $wrap],
         [$right, ['type' => 'unknown', 'optional' => false]],
     ]);
 
-    $result = $handler->resolve($expr, coalesceHandlerTestScope(), $engine);
-
-    expect($result)->toBe([
-        'type' => 'Status',
-        'optional' => false,
-        'enumFqcn' => stdClass::class,
-    ]);
+    expect($handler->resolve($expr, coalesceHandlerTestScope(), $engine))->toBe($wrap);
 });
 
 it('falls through to the left arm with its null stripped and its model queued when the right is unknown', function () {

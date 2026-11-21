@@ -550,8 +550,7 @@ it('publishes a key written again on every path as the later value alone, import
 });
 
 // D2: a later write that may leave the key unset joins the value before it, which PHP still sends where it does;
-// every class either side names is kept and imported. An EnumResource wrap beside a same-named enum still folds into
-// the wrap (`row_status`), as a ternary of the two does: a follow-up, not the join.
+// every class either side names is kept and imported, an EnumResource wrap beside a same-named enum too (`row_status`).
 it('joins a key with a later write that may leave it unset, keeping both classes', function () {
     config()->set('ts-publish.enums.use_tolki_package', true);
 
@@ -564,9 +563,10 @@ it('joins a key with a later write that may leave it unset, keeping both classes
             'u' => 'WorkbenchUser | CrmUser',
             'by' => 'WorkbenchUser | string',
             'row_user' => '{ u: CrmUser | WorkbenchUser }',
-            'row_status' => '{ c: AsEnum<typeof Status> }',
+            'row_status' => '{ c: AsEnum<typeof WorkbenchStatus> | StatusType }',
             'm?' => 'WorkbenchUser | string',
-        ]);
+        ])
+        ->and(foldImportNames(SpreadFoldMaybeResource::class))->toContain('Status as WorkbenchStatus', 'StatusType');
 });
 
 // D3: a later when() value always sets the key, so the value before it is never sent; the key is optional.
