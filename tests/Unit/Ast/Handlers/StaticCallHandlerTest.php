@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls\StaticCallHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\NewResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources\ToResourceHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
@@ -681,6 +682,16 @@ it('spells EnumResource::collection() over a map of a nullable enum as a list of
         'closedToDottedKeys' => '{ data: (AsEnum<typeof Role> | never[])[] }',
     ]],
 ]);
+
+// As at the base, only a payload that is one list of the enum is read as its elements: another arm beside it declines.
+it('reads no element of an EnumResource::collection() payload whose list has another arm beside it', function () {
+    $expr = new AstParser()->parseSource(
+        '<?php \\'.EnumResource::class.'::collection($this->id > 1 ? $this->members->map(fn ($u) => $u->role) : \'none\');',
+    )[0]->expr;
+
+    expect(new ResourceAstAnalyzer(new ReflectionClass(TeamResource::class), Team::class)->resolve($expr))
+        ->toBe(ValueResult::unknown());
+});
 
 it('sends a null element of an EnumResource collection as an empty list', function () {
     expect(json_encode(EnumResource::collection(collect([null, Role::Admin]))->resolve(request())))

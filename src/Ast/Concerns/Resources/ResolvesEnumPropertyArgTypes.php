@@ -251,8 +251,11 @@ trait ResolvesEnumPropertyArgTypes
         $retyped = LaravelTsPublish::retypedEnumType($enum);
         $enumType = $retyped ?? ValueResult::enumTypeName($enum);
         $held = TsTypeString::withoutNullArm($resolved['type']);
-        // A map over a nullable attribute holds the enum or null in each element.
-        $element = $allowsList ? TsTypeShape::elementType($held) : null;
+        // A map over a nullable attribute holds the enum or null in each element; a list with another arm beside it is
+        // not one list of the enum.
+        $element = $allowsList && count(TsTypeString::splitTopLevelUnion($held)) === 1
+            ? TsTypeShape::elementType($held)
+            : null;
 
         if ($held !== $enumType && ! in_array($element, [$enumType, TsTypeString::withNullArm($enumType)], true)) {
             return null;
