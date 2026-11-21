@@ -15,9 +15,6 @@ use Illuminate\Support\Facades\Config;
  */
 final class EnumWrapSpelling
 {
-    /** A wrap of any const, unanchored and undelimited, capturing its name as `const`. */
-    public const string PATTERN = AsEnumSpelling::PATTERN;
-
     /**
      * Whether a wrap publishes as `AsEnum`, which only the tolki package's types spell.
      */

@@ -10,7 +10,7 @@ it('spells a wrap of a const, and a list of them', function () {
 });
 
 it('reads back what it spells', function (string $const, bool $list) {
-    expect(preg_match('/'.AsEnumSpelling::PATTERN.'/', AsEnumSpelling::of($const, $list), $match))->toBe(1)
+    expect(preg_match('/'.AsEnumSpelling::pattern($const).'/', AsEnumSpelling::of($const, $list), $match))->toBe(1)
         ->and($match['const'])->toBe($const);
 })->with([
     'a const' => ['Status', false],
@@ -31,6 +31,5 @@ it('reads only the one const it is given', function (string $type, bool $expecte
 
 it('quotes a const for the pattern', function () {
     expect(preg_match('/'.AsEnumSpelling::pattern('app.Status').'/', 'AsEnum<typeof appXStatus>'))->toBe(0)
-        ->and(preg_match('/'.AsEnumSpelling::pattern('app.Status').'/', 'AsEnum<typeof app.Status>'))->toBe(1)
-        ->and(AsEnumSpelling::pattern())->toBe(AsEnumSpelling::PATTERN);
+        ->and(preg_match('/'.AsEnumSpelling::pattern('app.Status').'/', 'AsEnum<typeof app.Status>'))->toBe(1);
 });

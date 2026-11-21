@@ -501,7 +501,7 @@ describe('queuedTokenPattern', function () {
 
     test('puts an anchor before every name, and a \K in it keeps the anchor out of the match', function () {
         preg_match_all(
-            $this->service->queuedTokenPattern(['Status', 'Role'], 'typeof\s+\K'),
+            $this->service->queuedTokenPattern(['Status', 'Role'], TsTypeString::TYPEOF_ANCHOR),
             'typeof Status | Role | typeof  Role',
             $matches,
         );

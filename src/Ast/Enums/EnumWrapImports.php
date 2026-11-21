@@ -18,7 +18,7 @@ final class EnumWrapImports
 {
     /** A name a `typeof` reads, not inside a longer name or after a member access. */
     private const string TYPEOF_NAME = '/(?<![A-Za-z0-9_$.\x80-\xff])'.TsTypeStringService::TYPEOF_ANCHOR
-        .'[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/';
+        .TsTypeStringService::TYPEOF_OPERAND.'/';
 
     /** The `AsEnum` generic as its own name. */
     private const string AS_ENUM = '/(?<![A-Za-z0-9_$.\x80-\xff])AsEnum\s*</';

@@ -40,6 +40,9 @@ class TsTypeString
     /** The anchor queuedTokenPattern() reads a const's token with: the name a `typeof` reads. */
     public const string TYPEOF_ANCHOR = 'typeof\s+\K';
 
+    /** The name a `typeof` reads, undelimited. */
+    public const string TYPEOF_OPERAND = '[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*';
+
     /**
      * A character TypeScript reads as part of an identifier: Unicode ID_Continue, `$`, ZWNJ and ZWJ, plus U+30FB and
      * U+FF65, which joined ID_Continue in Unicode 15.1 and so are missing from an older PCRE2's tables.
@@ -57,7 +60,7 @@ class TsTypeString
     protected const array VAGUE_ARMS = ['unknown', 'unknown[]', 'never[]', 'Record<string, unknown>'];
 
     /** A `typeof` and the const it reads, which a type token's pattern matches only to skip past it. */
-    protected const string SKIPPED_TYPEOF_OPERAND = 'typeof\s+[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*(*SKIP)(*FAIL)|';
+    protected const string SKIPPED_TYPEOF_OPERAND = 'typeof\s+'.self::TYPEOF_OPERAND.'(*SKIP)(*FAIL)|';
 
     /** The identifier-character pattern this process's PCRE2 compiles, decided on first use. */
     protected static ?string $identifierCharacter = null;

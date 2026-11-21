@@ -23,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
@@ -567,7 +568,7 @@ class InertiaPageAnalyzer
         return array_values(array_filter(
             $analysis->allWrapConstFqcns(),
             fn (string $fqcn): bool => preg_match(
-                TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], 'typeof\s+\K'),
+                TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], TokenKind::WrapConst->anchor()),
                 $pageType,
             ) === 1,
         ));

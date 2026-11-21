@@ -11,12 +11,6 @@ namespace AbeTwoThree\LaravelTsPublish\Support\TypeStrings;
  */
 final class AsEnumSpelling
 {
-    /** A wrap of any const, unanchored and undelimited, capturing its name as `const`. */
-    public const string PATTERN = 'AsEnum<\s*typeof\s+(?<const>'.self::CONST_NAME.')\s*>';
-
-    /** A const's name, or the namespace-qualified one the globals file spells. */
-    private const string CONST_NAME = '[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*';
-
     /**
      * The `AsEnum` type of a const, as a list when $list.
      */
@@ -26,10 +20,10 @@ final class AsEnumSpelling
     }
 
     /**
-     * The pattern of a wrap of this one const, or PATTERN when null, undelimited for a `/` delimiter.
+     * The pattern of a wrap of this one const, capturing it as `const`, undelimited for a `/` delimiter.
      */
-    public static function pattern(?string $const = null): string
+    public static function pattern(string $const): string
     {
-        return $const === null ? self::PATTERN : 'AsEnum<\s*typeof\s+(?<const>'.preg_quote($const, '/').')\s*>';
+        return 'AsEnum<\s*typeof\s+(?<const>'.preg_quote($const, '/').')\s*>';
     }
 }

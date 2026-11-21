@@ -23,16 +23,6 @@ it('follows the tolki package flag', function (bool $flag) {
     expect(EnumWrapSpelling::enabled())->toBe($flag);
 })->with([true, false]);
 
-it('reads a wrap of any const, a qualified globals name included', function (string $type, ?string $const) {
-    $matched = preg_match('/'.EnumWrapSpelling::PATTERN.'/', $type, $match) === 1;
-
-    expect($matched ? $match['const'] : null)->toBe($const);
-})->with([
-    'a bare const' => ['AsEnum<typeof Status>', 'Status'],
-    'a spaced, qualified const' => ['AsEnum< typeof app.enums.Status >', 'app.enums.Status'],
-    'no typeof' => ['AsEnum<Status>', null],
-]);
-
 it('is the only place src spells AsEnum<typeof', function () {
     $root = dirname(__DIR__, 4);
     $owner = 'src/Support/TypeStrings/AsEnumSpelling.php';
