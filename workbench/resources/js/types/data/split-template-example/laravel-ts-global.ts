@@ -6733,6 +6733,13 @@ declare global {
             data: { address: app.http.resources.Address | null; raw: app.models.Address | null };
             either: app.models.Address | app.http.resources.Address | null;
         }
+        /**
+         * A helper's declared shape alternating the app's and the CRM's `Status` over an untyped read (GH-81). Each token names
+         * the enum its member declares.
+         */
+        export interface DeclaredStatusesResource {
+            statuses: { a: app.enums.StatusType; b: crm.enums.StatusType; c: app.enums.StatusType | null };
+        }
     }
     export namespace blog.http.resources {
         export interface ApiArticleResource {

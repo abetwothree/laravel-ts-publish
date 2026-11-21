@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 
 /**
@@ -51,6 +52,13 @@ final class ResultTypeInfoBridge
 
         if ($models !== null) {
             $info['classTokenFqcns'] = $models;
+        }
+
+        // The engine queues the enum behind each token, which the merged info's list of each enum once cannot say.
+        $enums = array_values(array_filter([$result['directEnumFqcn'] ?? null, ...($result['embeddedEnumFqcns'] ?? [])]));
+
+        if (EnumNames::shareAName($enums)) {
+            $info['enumTokenFqcns'] = $enums;
         }
 
         if ($result['sendsEnumScalar'] ?? false) {

@@ -16,6 +16,15 @@ describe('EnumNames::typeName()', function () {
     });
 });
 
+describe('EnumNames::shareAName()', function () {
+    test('tells two enums printing one type name from enums printing their own, whatever repeats', function () {
+        expect(EnumNames::shareAName([Status::class, CrmStatus::class]))->toBeTrue()
+            ->and(EnumNames::shareAName([Status::class, Status::class]))->toBeFalse()
+            ->and(EnumNames::shareAName([Status::class, ShipmentStatus::class]))->toBeFalse()
+            ->and(EnumNames::shareAName([]))->toBeFalse();
+    });
+});
+
 describe('EnumNames::readsType()', function () {
     test("tells a value spelling its enum's type from one of an overridden enum, which spells the override", function () {
         expect(EnumNames::readsType(['type' => 'StatusType | null', 'optional' => false, 'directEnumFqcn' => Status::class]))

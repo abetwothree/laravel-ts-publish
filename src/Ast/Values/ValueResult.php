@@ -35,6 +35,7 @@ use ReflectionClass;
  *
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
+ *      enumTokenFqcns?: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
@@ -219,7 +220,7 @@ final class ValueResult
     public static function withAttributeChannels(array $result, array $attribute): array
     {
         if (count($attribute['enumFqcns']) > 1) {
-            $result['embeddedEnumFqcns'] = $attribute['enumFqcns'];
+            $result['embeddedEnumFqcns'] = $attribute['enumTokenFqcns'] ?? $attribute['enumFqcns'];
         } elseif ($attribute['enumFqcns'] !== []) {
             $result['directEnumFqcn'] = $attribute['enumFqcns'][0];
         }

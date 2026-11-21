@@ -6733,6 +6733,13 @@ declare global {
             data: { address: workbench.app.http.resources.Address | null; raw: workbench.app.models.Address | null };
             either: workbench.app.models.Address | workbench.app.http.resources.Address | null;
         }
+        /**
+         * A helper's declared shape alternating the app's and the CRM's `Status` over an untyped read (GH-81). Each token names
+         * the enum its member declares.
+         */
+        export interface DeclaredStatusesResource {
+            statuses: { a: workbench.app.enums.StatusType; b: workbench.crm.enums.StatusType; c: workbench.app.enums.StatusType | null };
+        }
     }
     export namespace workbench.blog.http.resources {
         export interface ApiArticleResource {

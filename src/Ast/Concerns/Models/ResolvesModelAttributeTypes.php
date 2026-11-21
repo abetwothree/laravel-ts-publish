@@ -17,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
  *      type: string,
  *      enumFqcn: class-string|null,
  *      enumFqcns: list<class-string>,
+ *      enumTokenFqcns?: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports: TypesImportMap,
@@ -57,6 +58,7 @@ trait ResolvesModelAttributeTypes
             'type' => $tsInfo['type'],
             'enumFqcn' => $enumFqcn,
             'enumFqcns' => $tsInfo['enumFqcns'],
+            ...(isset($tsInfo['enumTokenFqcns']) ? ['enumTokenFqcns' => $tsInfo['enumTokenFqcns']] : []),
             'classFqcns' => $tsInfo['classFqcns'],
             // Present only where the type spells one name for two classes or an override spells a class's name; see
             // TypeScriptTypeInfo.

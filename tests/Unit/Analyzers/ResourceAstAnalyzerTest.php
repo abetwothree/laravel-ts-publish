@@ -33,6 +33,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverModelCast
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CheckedResourceElvisResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ClassCastOverMethodCastResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredSameNamedEnumsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredTupleHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseShapeHelperResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumWrapBesideSharedNameResource;
@@ -78,6 +79,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnnamedCol
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\StackedUnwrappedCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedChildCollection;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TraitShapedCollection;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TwoStatusPostResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\UnseenWritesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariadicWalkResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\GapModeReadsPost;
@@ -8272,5 +8274,30 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'app_or_crm_wrap_under_key' => '{ subject: WorkbenchStatusType | CrmStatusType }',
             'wrap_or_two_reads' => 'WorkbenchStatusType | CrmStatusType',
         ]],
+    ]);
+});
+
+// I2: a declared shape names the class behind each of its enum tokens, so alternating same-named enums keep theirs.
+test('reads a helper\'s declared shape alternating two same-named enums token by token', function () {
+    $data = new ResourceTransformer(DeclaredSameNamedEnumsResource::class)->data();
+
+    expect(array_map(fn (array $property): string => $property['type'], $data->properties))->toBe([
+        'shape' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType | null }',
+        'nested' => '{ x: { a: CrmStatusType; b: WorkbenchStatusType }; c: CrmStatusType }',
+        'rows' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]',
+        'nullable' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType } | null',
+        'either' => 'CrmStatusType | { a: WorkbenchStatusType; b: CrmStatusType }',
+        'listed' => '{ rows: { a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }[]; d: CrmStatusType }',
+    ])->and($data->typeImports)->toBe([
+        '../../../../../../workbench/app/enums' => ['StatusType as WorkbenchStatusType'],
+        '../../../../../../workbench/crm/enums' => ['StatusType as CrmStatusType'],
+    ]);
+});
+
+test('reads a model getter alternating two same-named enums token by token, at the top level and a level down', function () {
+    expect(array_map(fn (array $property): string => $property['type'], new ResourceTransformer(TwoStatusPostResource::class)->data()->properties))->toBe([
+        'alternating' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType }',
+        'declared' => '{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType | null }',
+        'nested' => '{ x: { a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType | null } }',
     ]);
 });

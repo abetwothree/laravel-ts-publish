@@ -20892,6 +20892,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\SameNamed\\DeclaredStatusesResource": {
+            "name": "DeclaredStatusesResource",
+            "properties": [
+                {
+                    "name": "statuses",
+                    "type": "{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType | null }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\SamePatternKeysResource": {
             "name": "SamePatternKeysResource",
             "properties": [

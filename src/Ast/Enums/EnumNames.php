@@ -72,6 +72,18 @@ final class EnumNames
     }
 
     /**
+     * Whether two of the enums print one type name, so a list naming each enum once cannot say which token is whose.
+     *
+     * @param  list<class-string>  $enums
+     */
+    public static function shareAName(array $enums): bool
+    {
+        $names = array_map(self::typeName(...), array_values(array_unique($enums)));
+
+        return count(array_unique($names)) < count($names);
+    }
+
+    /**
      * Whether a result spells its enum's `…Type`, which a read of an enum `toTsType()` retypes does not.
      *
      * @param  ValueExpressionResult  $result

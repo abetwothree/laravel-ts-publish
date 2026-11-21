@@ -459,6 +459,9 @@ class ModelTransformer extends CoreTransformer
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
                 $this->enumConstMap[$fqcn] = $typings['enums'][$i];
+            }
+
+            foreach ($typings['enumTokenFqcns'] ?? $typings['enumFqcns'] as $fqcn) {
                 $this->columnFqcns[$name][] = $fqcn;
             }
 
@@ -536,7 +539,9 @@ class ModelTransformer extends CoreTransformer
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
                 $this->enumConstMap[$fqcn] = $resolved['enums'][$i];
+            }
 
+            foreach ($resolved['enumTokenFqcns'] ?? $resolved['enumFqcns'] as $fqcn) {
                 if ($isAppended) {
                     $this->appendsFqcns[$name][] = $fqcn;
                 } else {

@@ -942,6 +942,17 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->and($data->enumMutators)->toBeEmpty();
     });
 
+    // I2: the type info names the enum behind each token, so alternating same-named enums keep their own aliases.
+    test('a getter alternating two same-named enums names each token\'s own, from its body or its declared shape', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(TwoStatusPost::class))->data();
+
+        expect($data->mutators['alternating_statuses']['type'])->toBe('{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType }')
+            ->and($data->mutators['declared_statuses']['type'])
+            ->toBe('{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType | null }');
+    });
+
     test('a cast\'s list<Dto> keeps the DTO\'s enum members with their imports', function () {
         $data = (new ModelTransformer(StatusLegsPost::class))->data();
         $post = (new StatusLegsPost)->setRawAttributes(['content' => '[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]']);

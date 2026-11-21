@@ -375,6 +375,7 @@
     "app\/Http\/Resources\/RowTagsResource.php",
     "app\/Http\/Resources\/SameBasenameModelTrioResource.php",
     "app\/Http\/Resources\/SameNamed\/AddressKindsResource.php",
+    "app\/Http\/Resources\/SameNamed\/DeclaredStatusesResource.php",
     "app\/Http\/Resources\/SamePatternKeysResource.php",
     "app\/Http\/Resources\/SelfSpreadResource.php",
     "app\/Http\/Resources\/ServiceDeskResource.php",
