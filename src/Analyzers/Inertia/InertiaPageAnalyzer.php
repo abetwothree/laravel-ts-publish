@@ -565,7 +565,7 @@ class InertiaPageAnalyzer
     protected function spelledEnumConsts(MethodAnalysis $analysis, string $pageType): array
     {
         return array_values(array_filter(
-            $analysis->allWrappedEnumFqcns(),
+            $analysis->allWrapConstFqcns(),
             fn (string $fqcn): bool => preg_match(
                 TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], 'typeof\s+\K'),
                 $pageType,

@@ -43,6 +43,16 @@ describe('written', function () {
     });
 });
 
+describe('writtenIn', function () {
+    test('reads each key\'s queue against its own type, keeping each enum once', function () {
+        expect(EnumWrapImports::writtenIn(
+            ['a' => 'AsEnum<typeof Status>', 'b' => 'string', 'c' => 'AsEnum<typeof CrmStatus> | AsEnum<typeof Status>'],
+            ['a' => [Status::class], 'b' => [Visibility::class], 'c' => [Status::class, CrmStatus::class], 'gone' => [Visibility::class]],
+            [CrmStatus::class => 'CrmStatus'],
+        ))->toBe([Status::class, CrmStatus::class]);
+    });
+});
+
 describe('consts', function () {
     test('lists every const the types spell after typeof, once each, in order', function () {
         expect(EnumWrapImports::consts('AsEnum<typeof A> | { b: AsEnum<typeof B>[] }'))->toBe(['A', 'B'])

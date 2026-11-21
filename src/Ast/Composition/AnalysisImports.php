@@ -64,7 +64,7 @@ final class AnalysisImports
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
         }
 
-        foreach ($this->constOnlyEnumFqcns($analysis) as $fqcn) {
+        foreach ($this->writtenWrapConsts($analysis) as $fqcn) {
             $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
         }
 
@@ -133,24 +133,6 @@ final class AnalysisImports
     }
 
     /**
-     * Enum FQCNs reachable only through an inline object type that writes their const, which need the const name but
-     * no type import.
-     *
-     * @return list<class-string>
-     */
-    private function constOnlyEnumFqcns(MethodAnalysis $analysis): array
-    {
-        $types = array_column($analysis->properties, 'type', 'name');
-        $fqcns = [];
-
-        foreach ($analysis->inlineEnumResourceFqcns as $name => $branchFqcns) {
-            $fqcns = [...$fqcns, ...EnumWrapImports::written($types[$name] ?? '', $branchFqcns)];
-        }
-
-        return array_values(array_unique($fqcns));
-    }
-
-    /**
      * Build the const/value import map, which only the tolki package's AsEnum wrapper consumes.
      *
      * @return TypesImportMap
@@ -161,6 +143,19 @@ final class AnalysisImports
             return [];
         }
 
-        return $this->collectModularValueImports($this->constOnlyEnumFqcns($analysis));
+        return $this->collectModularValueImports($this->writtenWrapConsts($analysis));
+    }
+
+    /**
+     * The enums whose const a property's type writes after `typeof`, which need the const name but no type import.
+     *
+     * @return list<class-string>
+     */
+    private function writtenWrapConsts(MethodAnalysis $analysis): array
+    {
+        return EnumWrapImports::writtenIn(
+            array_column($analysis->properties, 'type', 'name'),
+            $analysis->inlineEnumResourceFqcns,
+        );
     }
 }

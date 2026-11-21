@@ -68,6 +68,25 @@ final class EnumWrapImports
     }
 
     /**
+     * The enums whose const the keys' types write after `typeof`, once each, each key's queue read as written() reads.
+     *
+     * @param  array<array-key, string>  $types  key => its type
+     * @param  array<array-key, list<class-string>>  $queues  key => the enum behind each wrap, in print order
+     * @param  array<string, string>  $aliases  FQCN => the alias the file gives its const
+     * @return list<class-string>
+     */
+    public static function writtenIn(array $types, array $queues, array $aliases = []): array
+    {
+        $fqcns = [];
+
+        foreach ($queues as $key => $queue) {
+            array_push($fqcns, ...self::written($types[$key] ?? '', $queue, $aliases));
+        }
+
+        return array_values(array_unique($fqcns));
+    }
+
+    /**
      * Every const name the types spell after `typeof`, once each, in the order they first spell it.
      *
      * @return list<string>

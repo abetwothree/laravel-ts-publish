@@ -125,7 +125,7 @@ final class FileImportNames
         // A class a cast displaced is carried off every channel, but another key's text may still spell it.
         $held = array_values(array_unique([...$analysis->allChannelFqcns(), ...$analysis->allCarriedFqcns()]));
         $classes = self::soleClasses('classes', $held, $brought);
-        $consts = self::soleClasses('consts', $analysis->allWrappedEnumFqcns(), $brought);
+        $consts = self::soleClasses('consts', $analysis->allWrapConstFqcns(), $brought);
 
         return ['classes' => self::queue($pieces, 'classes', $classes), 'consts' => self::queue($pieces, 'consts', $consts)];
     }

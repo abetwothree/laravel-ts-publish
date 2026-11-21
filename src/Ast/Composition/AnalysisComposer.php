@@ -146,7 +146,7 @@ final class AnalysisComposer
             $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
         }
 
-        foreach ($this->inlineEnumResourceFqcns($analysis) as $fqcn) {
+        foreach ($analysis->allWrapConstFqcns() as $fqcn) {
             $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
         }
 
@@ -317,7 +317,11 @@ final class AnalysisComposer
             return [];
         }
 
-        $valueImports = $this->collectModularValueImports($this->inlineEnumResourceFqcns($analysis));
+        $valueImports = $this->collectModularValueImports(EnumWrapImports::writtenIn(
+            array_map(static fn (array $property): string => $property['type'], $this->properties),
+            $analysis->inlineEnumResourceFqcns,
+            $this->constImportAliases,
+        ));
 
         return $this->deduplicateAndSortImports($this->pruneUnspelledImports($valueImports));
     }
@@ -378,22 +382,6 @@ final class AnalysisComposer
         }
 
         return $queues;
-    }
-
-    /**
-     * Enum FQCNs reachable only through an inline object type, which need a const name but no type.
-     *
-     * @return list<class-string>
-     */
-    private function inlineEnumResourceFqcns(MethodAnalysis $analysis): array
-    {
-        $fqcns = [];
-
-        foreach ($analysis->inlineEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
     }
 
     /**
