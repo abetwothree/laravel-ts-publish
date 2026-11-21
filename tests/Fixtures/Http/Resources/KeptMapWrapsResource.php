@@ -12,7 +12,7 @@ use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 
 /**
- * A test-only resource whose map()s stay Collections, one row a wrap or a case, one a list of two wraps (GH-108 G18).
+ * A test-only resource whose map()s stay Collections, one row a wrap or a case, one a list of two wraps (GH-108).
  *
  * @mixin Team
  */

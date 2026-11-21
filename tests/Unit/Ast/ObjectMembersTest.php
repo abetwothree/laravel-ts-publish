@@ -197,7 +197,7 @@ it('hands two wraps of enums one const name spells out member by member, each wi
     ])->and(new InlineObjectResult()->of(ObjectMembers::analysis($value)))->toEqual($value);
 });
 
-// G13: a helper writes a key into the card it is passed, so the card keeps the wrap the caller wrote into it.
+// A helper writes a key into the card it is passed, so the card keeps the wrap the caller wrote into it.
 it('publishes a seed holding a wrap with the key a helper writes into it', function () {
     $data = new ResourceTransformer(WrapHelpersResource::class)->data();
 

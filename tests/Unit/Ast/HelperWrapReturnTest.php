@@ -133,7 +133,7 @@ it('reads a helper whose every return wraps an enum or is null', function (strin
     'a ternary with null' => ['visibilityResource', ['type' => 'AsEnum<typeof Visibility> | null', 'optional' => false, 'embeddedEnumResourceFqcns' => [Visibility::class], 'wrappedEnumFqcns' => [Visibility::class]]],
 ]);
 
-// G7: the helper's ternary of two wraps keeps each wrap as its own member, read off the set of enums it wraps.
+// The helper's ternary of two wraps keeps each wrap as its own member, read off the set of enums it wraps.
 it('reads a helper returning a ternary of two wraps as each wrap', function () {
     expect(helperWrapReturn('pick', WrapHelpersResource::class)[0])->toBe([
         'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null',

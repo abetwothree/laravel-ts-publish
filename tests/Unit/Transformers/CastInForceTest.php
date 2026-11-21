@@ -625,7 +625,7 @@ describe('two same-basename models, one of them displaced', function () {
 });
 
 describe('CastChannels', function () {
-    // G4, R9: a wrap rides its const queue, not a type queue, so the enums a key wraps are offered for its cast's text.
+    // A wrap rides its const queue, not a type queue, so the enums a key wraps are offered for its cast's text.
     it('keeps an enum the key wraps as the class behind the value type its cast spells', function (string $cast, array $kept, array $carried) {
         $analysis = new MethodAnalysis(
             properties: [['name' => 'k', 'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null', 'optional' => false, 'description' => '']],

@@ -1108,7 +1108,7 @@ describe('rewriteAsEnumToType', function () {
         expect($result)->toBe('enums.StatusType | StatusType[]');
     });
 
-    // After the fold, two arms that name one class print one arm; a wrap list and a bare list are one such pair (K2).
+    // After the fold, two arms that name one class print one arm; a wrap list and a bare list are one such pair.
     test('collapses the identical arms the fold leaves, at every depth', function (string $type, string $folded) {
         expect($this->service->rewriteAsEnumToType($type, ['Status' => 'app.enums.StatusType']))->toBe($folded);
     })->with([
@@ -1133,7 +1133,7 @@ describe('rewriteAsEnumToType', function () {
         'another enum\'s type of the same name' => ['AsEnum<typeof WorkbenchStatus> | StatusType', 'app.enums.StatusType | StatusType'],
     ]);
 
-    // K2: a type folding two same-named enums still reads a bare name through the file's names, and without one it
+    // A type folding two same-named enums still reads a bare name through the file's names, and without one it
     // names neither, however many of that name it folds.
     test('reads a bare name beside two or more folded enums of its name only through the file\'s names', function (array $consts, array $references, string $type, string $folded) {
         expect($this->service->rewriteAsEnumToType($type, $consts, $references))->toBe($folded);

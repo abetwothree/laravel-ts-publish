@@ -402,7 +402,7 @@ test('a literal is within its scalar, null only within null, and a wrapped enum 
         ->toBe(['AsEnum<typeof Status> | string', [Status::class]]);
 });
 
-// B4: the const after `typeof` takes a slot as a class's token does, so wraps of two enums one name spells stay apart.
+// The const after `typeof` takes a slot as a class's token does, so wraps of two enums one name spells stay apart.
 test('a wrap\'s const compares by the enum behind it, never by its spelling', function () {
     $merge = new DeclaredTypeMerge(['StatusType'], consts: ['Status']);
     $wraps = ['AsEnum<typeof Status> | AsEnum<typeof Status>', [Status::class, CrmStatus::class]];

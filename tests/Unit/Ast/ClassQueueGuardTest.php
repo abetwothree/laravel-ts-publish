@@ -11,13 +11,14 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard\GuardCl
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ClassQueueGuard\PublishedClasses;
 
 /*
- * The class-queue guard (GH-105's V1): seeded bodies whose union arms hold classes that print alike, each published
+ * The class-queue guard (GH-105): seeded bodies whose union arms hold classes that print alike, each published
  * token read through the result's imports to the class it names. Re-run a failure with the GUARD_SEED it prints;
  * GUARD_CASES sets how many bodies each family draws.
  */
 
 /**
- * The families today's code still fails, by the task that fixes them.
+ * The families the code still publishes wrong, each list under the issue that tracks it; empty while every family
+ * passes.
  *
  * @return array<string, list<array{ArmKind, ArmKind}>>
  */
@@ -27,8 +28,8 @@ function classQueueGuardPending(): array
 }
 
 /**
- * Every pair of two arm kinds, each a dataset row named for its kinds: the ones $pending fixes, or with null, the
- * ones no task is pending on.
+ * Every pair of two arm kinds, each a dataset row named for its kinds: the ones an issue lists under $pending, or with
+ * null, the ones no issue lists.
  *
  * @return array<string, array{ArmKind, ArmKind}>
  */
@@ -39,13 +40,13 @@ function classQueueGuardFamilies(?string $pending): array
 
     foreach ($kinds as $index => $first) {
         foreach (array_slice($kinds, $index + 1) as $second) {
-            $task = null;
+            $issue = null;
 
             foreach (classQueueGuardPending() as $name => $pairs) {
-                $task = in_array([$first, $second], $pairs, true) ? $name : $task;
+                $issue = in_array([$first, $second], $pairs, true) ? $name : $issue;
             }
 
-            if ($task === $pending) {
+            if ($issue === $pending) {
                 $families["{$first->value} × {$second->value}"] = [$first, $second];
             }
         }
@@ -55,7 +56,7 @@ function classQueueGuardFamilies(?string $pending): array
 }
 
 /**
- * Every family a task is still pending on, each a dataset row named for its kinds and its task.
+ * Every family an issue still lists, each a dataset row named for its kinds and its issue.
  *
  * @return array<string, array{ArmKind, ArmKind}>
  */
@@ -63,9 +64,9 @@ function classQueueGuardPendingFamilies(): array
 {
     $families = [];
 
-    foreach (array_keys(classQueueGuardPending()) as $task) {
-        foreach (classQueueGuardFamilies($task) as $name => $family) {
-            $families["{$name} ({$task})"] = $family;
+    foreach (array_keys(classQueueGuardPending()) as $issue) {
+        foreach (classQueueGuardFamilies($issue) as $name => $family) {
+            $families["{$name} ({$issue})"] = $family;
         }
     }
 
@@ -198,10 +199,10 @@ afterEach(function () {
 test('each token a union publishes names the class its arm holds', $guard)
     ->with(classQueueGuardFamilies(null));
 
-// A family a task fixed must leave the pending list, or its rows would stay todo while they pass.
-test('each family a task is still pending on fails one of its bodies', function (?ArmKind $first, ?ArmKind $second) {
+// A family that passes must leave the pending list, or its rows would stay out of the guard while they pass.
+test('each family an issue still lists fails one of its bodies', function (?ArmKind $first, ?ArmKind $second) {
     if ($first === null || $second === null) {
-        $this->markTestSkipped('No task is pending on a family.');
+        $this->markTestSkipped('No family is pending.');
     }
 
     $cases = GuardCases::of($first, $second, classQueueGuardSetting('GUARD_SEED', 160), classQueueGuardSetting('GUARD_CASES', 120));

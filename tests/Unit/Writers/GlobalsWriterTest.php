@@ -209,7 +209,7 @@ test('globals content does not contain AsEnum<typeof ...> (typeof namespace memb
     expect($content)->toContain('enums.StatusType');
 });
 
-// The globals file spells a wrap by its enum's value type, so a wrap list beside a list of that type is one arm (K2).
+// The globals file spells a wrap by its enum's value type, so a wrap list beside a list of that type is one arm.
 test('globals content prints one arm where a folded wrap list meets a list of its enum\'s type', function () {
     config()->set('ts-publish.globals.enabled', true);
     config()->set('ts-publish.output_to_files', false);

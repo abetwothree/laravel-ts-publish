@@ -260,7 +260,7 @@ it('seeds a helper read as a value with an argument naming two same-named enums,
         ->and(json_encode(new SeededEnumMembers()->values()))->toBe('{"pair":{"a":0,"b":"lead","stamped":true}}');
 });
 
-// G13: a wrap spells its enum's const, which the seed's member keeps, so the helper returns the wrap beside its key.
+// A wrap spells its enum's const, which the seed's member keeps, so the helper returns the wrap beside its key.
 it('seeds an argument holding an EnumResource wrap with the wrap and the const it spells', function () {
     $seeded = resolve(AstEngine::class)->analyze(SeededEnumMembers::class, 'seededWrapped');
 

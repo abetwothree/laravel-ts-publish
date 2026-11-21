@@ -278,7 +278,7 @@ test('a union of direct enums keeps both imports, which the engine keys by FQCN'
         ->and($analysis->typeImports)->toBe(['../enums' => ['RoleType', 'StatusType']]);
 });
 
-// Q5: the engine keys both enums by FQCN too, so only the key's own queue says which token is whose.
+// The engine keys both enums by FQCN too, so only the key's own queue says which token is whose.
 test('a union of two same-named enums aliases each token by its own class', function () {
     $analysis = resolve(ModelMetadataAnalyzer::class)
         ->analyze(SameNamedEnumUnionMetadataProvider::class, ['either', 'pair', 'last'], 'workbench/app/models');

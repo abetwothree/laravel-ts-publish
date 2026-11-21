@@ -663,7 +663,7 @@ it('spells a wrap over a tryFrom() that may find no case with the null a resourc
     'on a page' => [Reading::Inertia, 'AsEnum<typeof Status> | never[]'],
 ]);
 
-// E4: the collection resolves each element itself, so a null element sends the `[]` resolve() returns, as PHP sends
+// The collection resolves each element itself, so a null element sends the `[]` resolve() returns, as PHP sends
 // `[[], {…}]` in a resource and on a page alike: no filter() reaches it. A page sends the collection's response.
 it('spells EnumResource::collection() over a map of a nullable enum as a list of its wrap or what a null sends', function (Reading $reading, array $sent) {
     $expr = new AstParser()->parseSource('<?php \\'.EnumResource::class.'::collection($this->members->map(fn ($u) => $u->role));')[0]->expr;

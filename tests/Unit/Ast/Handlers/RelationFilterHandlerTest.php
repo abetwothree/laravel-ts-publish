@@ -564,7 +564,7 @@ it('publishes a typed filter override\'s own return for a map proxy or multi-mod
     ]],
 ]);
 
-// I6: each arm of a multi-model filter publishes as it does alone, so two wraps one const name spells keep their consts.
+// Each arm of a multi-model filter publishes as it does alone, so two wraps one const name spells keep their consts.
 it('keeps each override\'s wrap and its const in a multi-model filter\'s union', function () {
     $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), WrapFilterOverrideModel::class);
 

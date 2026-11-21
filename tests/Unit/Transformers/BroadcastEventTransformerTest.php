@@ -878,7 +878,7 @@ test('an event imports the const and the AsEnum type a nested enum resource spel
         ]);
 });
 
-// E1: a top-level wrap spells itself as a nested one does, so the event imports its const and `AsEnum`.
+// A top-level wrap spells itself as a nested one does, so the event imports its const and `AsEnum`.
 test('the workbench event publishes each wrap as AsEnum, importing its const', function () {
     config()->set('ts-publish.output_to_files', false);
 
@@ -895,7 +895,7 @@ test('the workbench event publishes each wrap as AsEnum, importing its const', f
         ]);
 });
 
-// P12: each `typeof` token names the const of its own wrap's enum, so two app wraps before a CRM one stay apart.
+// Each `typeof` token names the const of its own wrap's enum, so two app wraps before a CRM one stay apart.
 test('an event names each wrap\'s own const where the app\'s and the CRM\'s Status print alike, each imported once', function () {
     $transformer = app(BroadcastEventTransformer::class, ['findable' => AppAndCrmWrapsEvent::class]);
 

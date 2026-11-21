@@ -8258,7 +8258,7 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
         ]],
     ]);
 
-    // B5: an untyped helper's shape names its enum by its alias, so a key read off it keeps the class behind the token.
+    // An untyped helper's shape names its enum by its alias, so a key read off it keeps the class behind the token.
     test('reads a key off an untyped helper\'s array as its member, beside a wrap or alone', function () {
         $beside = new ResourceTransformer(WrapBesideReadResource::class)->data();
         $alone = new ResourceTransformer(HelperOffsetReadsResource::class)->data();
@@ -8276,7 +8276,7 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             ]);
     });
 
-    // Q8: the app enum's wrap in two arms is one object, its const read by class beside the CRM enum's.
+    // The app enum's wrap in two arms is one object, its const read by class beside the CRM enum's.
     test('keeps a literal repeating a wrap apart from one wrapping a same-named enum, each const imported once', function () {
         $data = new ResourceTransformer(RepeatedArmWrapsResource::class)->data();
 
@@ -8289,7 +8289,7 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             ->and($data->typeImports)->toBe([]);
     });
 
-    // G3: the inner wrap of an object arm names its own const beside a same-named one an outer arm wraps.
+    // The inner wrap of an object arm names its own const beside a same-named one an outer arm wraps.
     test('names the CRM const a wrap inside an object arm holds, beside the app wrap of the other arm', function () {
         $data = new ResourceTransformer(WarehouseWrapOrObjectWrapResource::class)->data();
         $either = 'AsEnum<typeof WorkbenchStatus> | { inner: AsEnum<typeof CrmStatus> | null } | null';
@@ -8302,7 +8302,7 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             ]);
     });
 
-    // G8: Laravel drops the key with a collection over a missing payload, so a helper returning one publishes it optional.
+    // Laravel drops the key with a collection over a missing payload, so a helper returning one publishes it optional.
     test('publishes optional a helper\'s collection of wraps over a when*() payload', function () {
         expect(resourceProps(CollectionOfWhenPayloadHelpersResource::class))->toBe([
             'week_days?' => 'AsEnum<typeof WeekDays>[] | null',
@@ -8310,7 +8310,7 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
         ]);
     });
 
-    // R2: without the tolki package a wrap prints its enum's value type, read by class like any token of that type.
+    // Without the tolki package a wrap prints its enum's value type, read by class like any token of that type.
     test('reads each wrap by class without the tolki package', function (string $resource, array $keys) {
         config()->set('ts-publish.enums.use_tolki_package', false);
 
@@ -8360,10 +8360,11 @@ test('keeps two classes of one name apart through a method\'s returns and a retu
         '../../../../../../workbench/app/models' => ['Address as WorkbenchAddress2', 'User as WorkbenchUser'],
         '../../../../../../workbench/crm/models' => ['User as CrmUser'],
     ])->and(array_map(fn (array $property): string => $property['type'], $overwrite->properties))->toBe([
-        'data' => '{ resource: WorkbenchAddress | WorkbenchAddress2 | null; model: WorkbenchAddress2 | null }',
+        'data' => '{ resource: WorkbenchAddress | WorkbenchAddress2 | null; model: WorkbenchAddress2 | null; user: WorkbenchUser | CrmUser | null }',
         'resource' => 'WorkbenchAddress | WorkbenchAddress2 | null',
         'model' => 'WorkbenchAddress2 | null',
-    ]);
+        'user' => 'WorkbenchUser | CrmUser | null',
+    ])->and($overwrite->typeImports)->toBe($returns->typeImports);
 });
 
 // A strict join's `unknown` stands for the return it cannot type, whatever two classes of one name the others hold.
@@ -8371,7 +8372,8 @@ test('keeps a key unknown where one return is untyped beside two classes of one 
     expect(resourceProps(UntypedReturnBesideSameNamedResource::class))->toBe(['status' => 'unknown', 'user' => 'unknown']);
 });
 
-// GH-76: array_filter() and a keyed collection's all() spell each row twice, so the object arm keeps each row's classes.
+// GH-76: array_filter() and a keyed collection's all() spell each row twice, so the object arm keeps each row's
+// classes.
 test('keeps two same-named enums apart in the object arm a filtered list or a keyed all() adds', function () {
     expect(analyzedKeyTypes(FilteredSameNamedRows::class, 'payload'))->toBe([
         'filtered' => '{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<number, { app: WorkbenchStatusType; crm: CrmStatusType }>',
@@ -8451,7 +8453,7 @@ test('keeps each class of one name apart past the values of a filtered or keyed 
     ]],
 ]);
 
-// I2: a declared shape names the class behind each of its enum tokens, so alternating same-named enums keep theirs.
+// A declared shape names the class behind each of its enum tokens, so alternating same-named enums keep theirs.
 test('reads a helper\'s declared shape alternating two same-named enums token by token', function () {
     $data = new ResourceTransformer(DeclaredSameNamedEnumsResource::class)->data();
 

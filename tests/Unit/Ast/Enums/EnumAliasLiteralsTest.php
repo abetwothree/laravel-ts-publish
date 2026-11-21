@@ -129,7 +129,7 @@ it('admits nothing for no enum', function () {
     expect(EnumValueTypes::aliasLiterals([]))->toBe([]);
 });
 
-// K1: a wrap's alias token, with the tolki package off, rides the read channel, so only the enums read count.
+// A wrap's alias token, with the tolki package off, rides the read channel, so only the enums read count.
 it('builds a key\'s alias literals from the enums it reads, whatever it wraps, and the names its other classes print', function (
     array $read,
     array $wrapped,
@@ -228,7 +228,7 @@ it('gives no case literals for an enum ts:publish writes no file for', function 
     expect(EnumValueTypes::caseLiterals(BackedRenamedCases::class, 'BackedRenamedCasesType'))->toBeNull();
 });
 
-// K1: the alias a read spells beside a wrap of its enum takes the case's value in, there and in the globals file's fold.
+// The alias a read spells beside a wrap of its enum takes the case's value in, there and in the globals file's fold.
 it('publishes a case\'s value beside a wrap of its enum as the enum\'s alias', function () {
     $transformer = new ResourceTransformer(WrapBesideCaseValueResource::class);
     $types = array_map(fn (array $property): string => $property['type'], $transformer->data()->properties);

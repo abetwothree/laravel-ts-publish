@@ -942,7 +942,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->and($data->enumMutators)->toBeEmpty();
     });
 
-    // I2: the type info names the enum behind each token, so alternating same-named enums keep their own aliases.
+    // The type info names the enum behind each token, so alternating same-named enums keep their own aliases.
     test('a getter alternating two same-named enums names each token\'s own, from its body or its declared shape', function () {
         config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
 
@@ -2361,7 +2361,7 @@ test('a model imports AsEnum and the const its accessors\' wraps spell', functio
     ]);
 })->with(['model-full', 'model-split']);
 
-// P12: the alias pass reads one const per `typeof` token in print order, so a CRM wrap after two app ones names it.
+// The alias pass reads one const per `typeof` token in print order, so a CRM wrap after two app ones names it.
 test('an accessor names each wrap\'s own const where the app\'s and the CRM\'s Status print alike, each imported once', function () {
     $data = (new ModelTransformer(AppAndCrmWrapsGrade::class))->data();
 

@@ -729,7 +729,7 @@ test('two wraps of enums one name spells keep their consts under a @return namin
     ]);
 });
 
-// R7: a wrap sends the object, so a declared bare arm is another arm, standing beside the wraps only where a gap does.
+// A wrap sends the object, so a declared bare arm is another arm, standing beside the wraps only where a gap does.
 test('two wraps under a @return naming their enums bare publish the wraps, and the bare arms only beside a gap', function () {
     $data = new ResourceTransformer(TwoWrapsDeclaredResource::class)->data();
 
