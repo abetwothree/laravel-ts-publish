@@ -536,14 +536,13 @@ class InertiaPageAnalyzer
     {
         /** @var list<class-string> $candidates */
         $candidates = [
-            ...array_values($analysis->enumResources),
             ...array_values($analysis->directEnumFqcns),
             ...array_values($analysis->nestedResources),
             ...array_values($analysis->modelFqcns),
             ...$analysis->allCarriedFqcns(),
         ];
 
-        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
+        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
             foreach ($map as $fqcns) {
                 $candidates = [...$candidates, ...$fqcns];
             }
@@ -565,16 +564,8 @@ class InertiaPageAnalyzer
      */
     protected function spelledEnumConsts(MethodAnalysis $analysis, string $pageType): array
     {
-        $candidates = array_values($analysis->enumResources);
-
-        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
-            foreach ($map as $fqcns) {
-                $candidates = [...$candidates, ...$fqcns];
-            }
-        }
-
         return array_values(array_filter(
-            array_unique($candidates),
+            $analysis->allWrappedEnumFqcns(),
             fn (string $fqcn): bool => preg_match(
                 TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], 'typeof\s+\K'),
                 $pageType,

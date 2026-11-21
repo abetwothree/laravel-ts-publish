@@ -499,7 +499,7 @@ class BroadcastEventTransformer extends CoreTransformer
     {
         $fqcns = [];
 
-        foreach ([$analysis->directEnumFqcns, $analysis->enumResources, $analysis->modelFqcns] as $map) {
+        foreach ([$analysis->directEnumFqcns, $analysis->modelFqcns] as $map) {
             if (isset($map[$name])) {
                 $fqcns[] = $map[$name];
             }
@@ -507,7 +507,6 @@ class BroadcastEventTransformer extends CoreTransformer
 
         return [
             ...$fqcns,
-            ...($analysis->multiEnumResourceFqcns[$name] ?? []),
             ...($analysis->inlineEnumFqcns[$name] ?? []),
             ...($analysis->inlineModelFqcns[$name] ?? []),
         ];
@@ -780,12 +779,6 @@ class BroadcastEventTransformer extends CoreTransformer
      */
     private function enumFqcns(MethodAnalysis $analysis): array
     {
-        $fqcns = [...array_values($analysis->directEnumFqcns), ...array_values($analysis->enumResources)];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
+        return array_values(array_unique($analysis->directEnumFqcns));
     }
 }

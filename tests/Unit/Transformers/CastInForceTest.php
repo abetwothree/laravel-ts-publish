@@ -615,23 +615,6 @@ describe('two same-basename models, one of them displaced', function () {
 });
 
 describe('CastChannels', function () {
-    it('keeps a class its key\'s cast spells as an embedded name, and carries one it does not', function () {
-        $analysis = new MethodAnalysis(
-            properties: [['name' => 'k', 'type' => 'StatusType', 'optional' => false, 'description' => '']],
-            enumResources: ['k' => Status::class],
-            multiEnumResourceFqcns: ['k' => [Status::class, Visibility::class]],
-        );
-
-        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => 'StatusType | null', 'import' => null]]);
-
-        expect($analysis->enumResources)->toBe([])
-            ->and($analysis->multiEnumResourceFqcns)->toBe([])
-            ->and($analysis->inlineEnumFqcns)->toBe(['k' => [Status::class]])
-            ->and($analysis->directEnumFqcns)->toBe([Status::class => Status::class])
-            ->and($analysis->carried)->toBe(['enums' => [Visibility::class]])
-            ->and($analysis->inlineEnumResourceFqcns)->toBe(['k' => [Status::class, Visibility::class]]);
-    });
-
     // G4, R9: a wrap rides its const queue, not a type queue, so the enums a key wraps are offered for its cast's text.
     it('keeps an enum the key wraps as the class behind the value type its cast spells', function (string $cast, array $kept, array $carried) {
         $analysis = new MethodAnalysis(
@@ -643,6 +626,7 @@ describe('CastChannels', function () {
         resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => $cast, 'import' => null]]);
 
         expect($analysis->inlineEnumFqcns['k'] ?? [])->toBe($kept)
+            ->and($analysis->directEnumFqcns)->toBe(array_combine($kept, $kept))
             ->and($analysis->carried['enums'] ?? [])->toBe($carried)
             ->and($analysis->wrappedEnumFqcns('k'))->toBe([Status::class, Visibility::class])
             ->and($analysis->wrapConstFqcns('k'))->toBe([Status::class, Visibility::class]);

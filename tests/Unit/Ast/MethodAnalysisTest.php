@@ -23,37 +23,21 @@ it('is the base class ResourceAnalysis now extends, as an empty subclass', funct
 
 it('array-spread-merges the single-value class maps, later source winning on key collision', function () {
     $target = new MethodAnalysis(
-        enumResources: ['a' => 'Old\\A', 'shared' => 'Old\\Shared'],
-        nestedResources: ['a' => 'Old\\A'],
+        nestedResources: ['a' => 'Old\\A', 'shared' => 'Old\\Shared'],
         directEnumFqcns: ['a' => 'Old\\A'],
         modelFqcns: ['a' => 'Old\\A'],
     );
     $source = new MethodAnalysis(
-        enumResources: ['b' => 'New\\B', 'shared' => 'New\\Shared'],
-        nestedResources: ['b' => 'New\\B'],
+        nestedResources: ['b' => 'New\\B', 'shared' => 'New\\Shared'],
         directEnumFqcns: ['b' => 'New\\B'],
         modelFqcns: ['b' => 'New\\B'],
     );
 
     $target->merge($source);
 
-    expect($target->enumResources)->toBe(['a' => 'Old\\A', 'shared' => 'New\\Shared', 'b' => 'New\\B'])
-        ->and($target->nestedResources)->toBe(['a' => 'Old\\A', 'b' => 'New\\B'])
+    expect($target->nestedResources)->toBe(['a' => 'Old\\A', 'shared' => 'New\\Shared', 'b' => 'New\\B'])
         ->and($target->directEnumFqcns)->toBe(['a' => 'Old\\A', 'b' => 'New\\B'])
         ->and($target->modelFqcns)->toBe(['a' => 'Old\\A', 'b' => 'New\\B']);
-});
-
-it('array-spread-merges multiEnumResourceFqcns, later source winning on key collision', function () {
-    $target = new MethodAnalysis(multiEnumResourceFqcns: ['a' => ['A1', 'A2'], 'shared' => ['Old']]);
-    $source = new MethodAnalysis(multiEnumResourceFqcns: ['b' => ['B1'], 'shared' => ['New']]);
-
-    $target->merge($source);
-
-    expect($target->multiEnumResourceFqcns)->toBe([
-        'a' => ['A1', 'A2'],
-        'shared' => ['New'],
-        'b' => ['B1'],
-    ]);
 });
 
 it('appends customImports per import path rather than overwriting the path', function () {
@@ -372,7 +356,6 @@ it('holds unread keys after a merge where either side holds them', function (boo
 it('takes over every field of another analysis, both flags included', function () {
     $source = new MethodAnalysis(
         properties: [['name' => 'a', 'type' => 'A', 'optional' => true, 'description' => 'd']],
-        enumResources: ['a' => 'App\\E'],
         nestedResources: ['a' => 'App\\R'],
         customImports: ['@/x' => ['X']],
         directEnumFqcns: ['a' => 'App\\E'],
@@ -380,9 +363,7 @@ it('takes over every field of another analysis, both flags included', function (
         inlineEnumFqcns: ['a' => ['App\\E']],
         inlineModelFqcns: ['a' => ['App\\M']],
         inlineResourceFqcns: ['a' => ['App\\R']],
-        multiEnumResourceFqcns: ['a' => ['App\\E']],
         inlineEnumResourceFqcns: ['a' => ['App\\E']],
-        enumResourceArmShapes: ['a' => ['wrapIsCollection' => true, 'directIsArray' => false]],
         wrappedEnums: ['a' => ['App\\E']],
         casts: ['a' => ['type' => 'A', 'import' => null]],
         carried: ['models' => ['App\\M']],
@@ -502,37 +483,13 @@ it('queues in branch order each class the branches of a merge type a key with, w
         ->and($merged->inlineModelFqcns)->toBe(['who' => ['App\\User', 'App\\Category']]);
 });
 
-it('lists the enums the branches wrap a key in only where each wraps it, none reads it bare, and each has its token', function (array $second, string $type, ?array $listed) {
-    $entry = fn (string $type): array => [['name' => 's', 'type' => $type, 'optional' => false, 'description' => '']];
-    $first = new MethodAnalysis(properties: $entry('StatusType'), enumResources: ['s' => 'App\\Status']);
-    $merged = new MethodAnalysis(properties: $entry($type), enumResources: ['s' => 'App\\Status']);
-
-    $merged->queueSplitClasses([$first, new MethodAnalysis(...['properties' => $entry('PriorityType'), ...$second])]);
-
-    expect($merged->multiEnumResourceFqcns['s'] ?? null)->toBe($listed)
-        ->and(isset($merged->enumResources['s']))->toBe($listed === null);
-})->with([
-    'another enum' => [['enumResources' => ['s' => 'App\\Priority']], 'StatusType | PriorityType | null', ['App\\Status', 'App\\Priority']],
-    'another enum beside the empty list a wrap around null sends' => [
-        ['enumResources' => ['s' => 'App\\Priority']],
-        'StatusType | never[] | PriorityType',
-        ['App\\Status', 'App\\Priority'],
-    ],
-    'another enum also read bare' => [
-        ['enumResources' => ['s' => 'App\\Priority'], 'directEnumFqcns' => ['s' => 'App\\Priority']],
-        'StatusType | PriorityType',
-        null,
-    ],
-    'a type with another arm' => [['enumResources' => ['s' => 'App\\Priority']], 'StatusType | PriorityType | string', null],
-    'the same enum' => [['enumResources' => ['s' => 'App\\Status']], 'StatusType', null],
-]);
-
 it('queues nothing for a merge of no branches', function () {
-    $analysis = new MethodAnalysis(enumResources: ['s' => 'App\\Status']);
+    $analysis = new MethodAnalysis(directEnumFqcns: ['s' => 'App\\Status'], inlineEnumFqcns: ['s' => ['App\\Role']]);
 
     $analysis->queueSplitClasses([]);
 
-    expect($analysis->enumResources)->toBe(['s' => 'App\\Status']);
+    expect($analysis->directEnumFqcns)->toBe(['s' => 'App\\Status'])
+        ->and($analysis->inlineEnumFqcns)->toBe(['s' => ['App\\Role']]);
 });
 
 describe('MethodAnalysis::addProperty()', function () {
@@ -639,27 +596,22 @@ it('names the inline channel each class is queued on, and none for a class of no
 
 it('lists a key\'s classes outside its inline queues, the enums it reads, and the enums it wraps', function () {
     $analysis = new MethodAnalysis(
-        enumResources: ['k' => 'Workbench\App\Enums\Status'],
         nestedResources: ['k' => 'Workbench\App\Http\Resources\PostResource'],
         directEnumFqcns: ['k' => 'Workbench\App\Enums\Role'],
         modelFqcns: ['k' => 'Workbench\App\Models\User'],
         inlineEnumFqcns: ['k' => ['Workbench\App\Enums\Season']],
         inlineModelFqcns: ['k' => ['Workbench\App\Models\Post']],
-        multiEnumResourceFqcns: ['k' => ['Workbench\App\Enums\Priority']],
-        inlineEnumResourceFqcns: ['k' => ['Workbench\App\Enums\UiTone']],
+        inlineEnumResourceFqcns: ['k' => ['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status', 'Workbench\App\Enums\UiTone']],
         wrappedEnums: ['k' => ['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status', 'Workbench\App\Enums\UiTone']],
     );
 
     expect($analysis->singleChannelFqcns('k'))->toBe([
-        'Workbench\App\Enums\Status',
         'Workbench\App\Enums\Role',
-        'Workbench\App\Enums\Priority',
         'Workbench\App\Models\User',
         'Workbench\App\Http\Resources\PostResource',
-    ])->and($analysis->topWrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority'])
-        ->and($analysis->wrapConstFqcns('k'))->toBe([
-            'Workbench\App\Enums\Status', 'Workbench\App\Enums\Priority', 'Workbench\App\Enums\UiTone',
-        ])
+    ])->and($analysis->wrapConstFqcns('k'))->toBe([
+        'Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status', 'Workbench\App\Enums\UiTone',
+    ])
         ->and($analysis->wrappedEnumFqcns('k'))->toBe(['Workbench\App\Enums\UiTone', 'Workbench\App\Enums\Status'])
         ->and($analysis->readEnumFqcns('k'))->toBe(['Workbench\App\Enums\Role', 'Workbench\App\Enums\Season'])
         ->and($analysis->readEnumFqcns('none'))->toBe([])
@@ -735,7 +687,7 @@ it('moves every per-key map with its key, through every method that moves, slice
     // A value's own facts outlive a cast that takes the key's channels; a merge never moves held objects.
     $keptByForget = ['heldObjectKeys', 'closedToDottedKeys'];
 
-    expect($maps)->toHaveCount(15);
+    expect($maps)->toHaveCount(12);
 
     foreach ($maps as $map) {
         expect($slice->{$map})->toBe(['k' => ['K']], $map)

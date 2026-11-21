@@ -58,10 +58,6 @@ final class AnalysisImports
             $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
         }
 
-        foreach ($this->asEnumWrappedOnlyFqcns($analysis) as $fqcn) {
-            unset($enumFqcnMap[$fqcn]);
-        }
-
         // Every caller keeps only the names its type spells, so a backed enum offers its `…Kind` beside its `…Type`.
         $this->siblingImportNames = [];
 
@@ -133,13 +129,7 @@ final class AnalysisImports
      */
     private function enumTypeFqcns(MethodAnalysis $analysis): array
     {
-        $fqcns = [...array_values($analysis->enumResources), ...array_values($analysis->directEnumFqcns)];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
+        return array_values(array_unique($analysis->directEnumFqcns));
     }
 
     /**
@@ -161,50 +151,6 @@ final class AnalysisImports
     }
 
     /**
-     * Enums the AsEnum rewrite leaves with no bare `XType` token anywhere, so their type import is dead.
-     *
-     * Mirrors ResourceTransformer::rewriteEnumResourceTypes()'s GC; without it a wrapped-only enum
-     * emits an unused `import type` that fails a consumer's noUnusedLocals.
-     *
-     * @return list<class-string>
-     */
-    private function asEnumWrappedOnlyFqcns(MethodAnalysis $analysis): array
-    {
-        if (! EnumWrapSpelling::enabled()) {
-            return [];
-        }
-
-        $directFqcns = array_values($analysis->directEnumFqcns);
-        $inlineFqcns = [];
-
-        foreach ($analysis->inlineEnumFqcns as $branchFqcns) {
-            $inlineFqcns = [...$inlineFqcns, ...$branchFqcns];
-        }
-
-        $dead = [];
-
-        foreach ($analysis->enumResources as $propName => $fqcn) {
-            if (! isset($analysis->directEnumFqcns[$propName])
-                && ! in_array($fqcn, $directFqcns, true)
-                && ! in_array($fqcn, $inlineFqcns, true)) {
-                $dead[] = $fqcn;
-            }
-        }
-
-        // The multi-enum ternary rewrite replaces every branch token, and unlike the wrap above it
-        // does not spare an enum that only an inline object type reads.
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            foreach ($branchFqcns as $fqcn) {
-                if (! in_array($fqcn, $directFqcns, true)) {
-                    $dead[] = $fqcn;
-                }
-            }
-        }
-
-        return array_values(array_unique($dead));
-    }
-
-    /**
      * Build the const/value import map, which only the tolki package's AsEnum wrapper consumes.
      *
      * @return TypesImportMap
@@ -215,12 +161,6 @@ final class AnalysisImports
             return [];
         }
 
-        $fqcns = [...array_values($analysis->enumResources), ...$this->constOnlyEnumFqcns($analysis)];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return $this->collectModularValueImports(array_values(array_unique($fqcns)));
+        return $this->collectModularValueImports($this->constOnlyEnumFqcns($analysis));
     }
 }

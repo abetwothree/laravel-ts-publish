@@ -144,10 +144,11 @@ it('builds import maps from an analysis', function () {
 });
 
 it('drops the type import of an enum the AsEnum wrap leaves with no bare token', function () {
-    $wrappedOnly = new MethodAnalysis(enumResources: ['role' => Role::class]);
+    $wrappedOnly = new MethodAnalysis(inlineEnumResourceFqcns: ['role' => [Role::class]], wrappedEnums: ['role' => [Role::class]]);
     $alsoReadDirectly = new MethodAnalysis(
-        enumResources: ['role' => Role::class],
         directEnumFqcns: ['raw_role' => Role::class],
+        inlineEnumResourceFqcns: ['role' => [Role::class]],
+        wrappedEnums: ['role' => [Role::class]],
     );
 
     expect(new AnalysisImports()->build($wrappedOnly, 'workbench/app/events')['typeImports'])->toBe([])

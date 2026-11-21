@@ -630,8 +630,8 @@ test('an enum-resource ternary publishes each bare enum type when the tolki pack
 });
 
 test('an EnumResource on a framework-owned key is skipped rather than fataling', function () {
-    // collectProps() drops `errors` for @inertiajs/core, but the key keeps its enumResources entry —
-    // the rewrite has to tolerate a channel with no surviving prop to index.
+    // collectProps() drops `errors` for @inertiajs/core, but the key keeps its wrap's const queue, which no surviving
+    // prop indexes.
     $result = analyzeSharedDataFor(MiddlewareWithEnumResourceErrors::class);
 
     expect($result)->not->toBeNull()

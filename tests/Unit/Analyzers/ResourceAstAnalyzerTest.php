@@ -1631,7 +1631,7 @@ describe('ResourceAstAnalyzer returns empty analysis', function () {
         $analysis = new ResourceAnalysis;
 
         expect($analysis->properties)->toBe([])
-            ->and($analysis->enumResources)->toBe([])
+            ->and($analysis->wrappedEnums)->toBe([])
             ->and($analysis->nestedResources)->toBe([])
             ->and($analysis->customImports)->toBe([])
             ->and($analysis->directEnumFqcns)->toBe([])
@@ -1646,7 +1646,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
         $analysis = $analyzer->analyze();
 
         expect($analysis->properties)->toBe([])
-            ->and($analysis->enumResources)->toBe([])
+            ->and($analysis->wrappedEnums)->toBe([])
             ->and($analysis->nestedResources)->toBe([]);
     });
 
@@ -1656,7 +1656,7 @@ describe('ResourceAstAnalyzer edge cases', function () {
         $analysis = $analyzer->analyze();
 
         expect($analysis->properties)->toBe([])
-            ->and($analysis->enumResources)->toBe([])
+            ->and($analysis->wrappedEnums)->toBe([])
             ->and($analysis->nestedResources)->toBe([]);
     });
 

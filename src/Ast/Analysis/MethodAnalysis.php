@@ -44,11 +44,8 @@ use LogicException;
  * @phpstan-type InlineEnumFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type InlineModelFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type InlineResourceFqcnsMap = array<array-key, list<class-string>>
- * @phpstan-type MultiEnumFqcnsMap = array<array-key, list<class-string>>
  * @phpstan-type WrappedEnumsMap = array<array-key, list<class-string>>
  * @phpstan-type FqcnQueueMap = array<array-key, list<class-string>>
- * @phpstan-type EnumResourceArmShape = array{wrapIsCollection: bool, directIsArray: bool}
- * @phpstan-type EnumResourceArmShapeMap = array<array-key, EnumResourceArmShape>
  * @phpstan-type CastInForce = array{
  *     type: string,
  *     import: string|null,
@@ -155,7 +152,6 @@ class MethodAnalysis
      * @param  AnalyzedPropertyList  $properties  `bodyType` is set only on an index signature whose value a docblock
      *                                            fill or a same-pattern union changed: the value its body gives it;
      *                                            `fillType` is that signature's docblock fill, kept through a put-back
-     * @param  ClassMapType  $enumResources  property name => enum FQCN (via EnumResource::make)
      * @param  ClassMapType  $nestedResources  property name => resource FQCN
      * @param  ImportMapType  $customImports  import path => list of type names
      * @param  ClassMapType  $directEnumFqcns  property name => FQCN for direct access; FQCN => FQCN for embedded enums
@@ -164,10 +160,8 @@ class MethodAnalysis
      * @param  InlineModelFqcnsMap  $inlineModelFqcns  property name => list of model FQCNs embedded in inline object type strings
      * @param  InlineResourceFqcnsMap  $inlineResourceFqcns  property name => the resource FQCN behind each resource
      *                                                       token, in type order
-     * @param  MultiEnumFqcnsMap  $multiEnumResourceFqcns  property name => ordered list of enum FQCNs (for multi-EnumResource ternary/union branches, used for AsEnum rewrite)
-     * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => list of enum FQCNs embedded via EnumResource in inline object type strings (used for value imports)
-     * @param  EnumResourceArmShapeMap  $enumResourceArmShapes  property name => each arm's own array shape,
-     *                                                          for a mixed EnumResource/direct-access ternary or match
+     * @param  InlineEnumFqcnsMap  $inlineEnumResourceFqcns  property name => the enum behind each const a wrap's
+     *                                                       `AsEnum<typeof …>` spells, one per token in print order
      * @param  WrappedEnumsMap  $wrappedEnums  property name => the enums its value wraps in an `EnumResource`, at any
      *                                         depth; a set no token is read from
      * @param  CastMap  $casts  property name => the text a method-level #[TsCasts] entry wrote for it, the path of its
@@ -180,7 +174,6 @@ class MethodAnalysis
      */
     public function __construct(
         public array $properties = [],
-        public array $enumResources = [],
         public array $nestedResources = [],
         public array $customImports = [],
         public array $directEnumFqcns = [],
@@ -188,9 +181,7 @@ class MethodAnalysis
         public array $inlineEnumFqcns = [],
         public array $inlineModelFqcns = [],
         public array $inlineResourceFqcns = [],
-        public array $multiEnumResourceFqcns = [],
         public array $inlineEnumResourceFqcns = [],
-        public array $enumResourceArmShapes = [],
         public array $wrappedEnums = [],
         public array $casts = [],
         public array $carried = [],
@@ -372,12 +363,9 @@ class MethodAnalysis
         $this->holdsUnreadKeys = $this->holdsUnreadKeys || $source->holdsUnreadKeys;
         $this->holdsUnnamedKeys = $this->holdsUnnamedKeys || $source->holdsUnnamedKeys;
         // A spread would renumber a numeric property name, which PHP stores as an int.
-        $this->enumResources = array_replace($this->enumResources, $source->enumResources);
         $this->nestedResources = array_replace($this->nestedResources, $source->nestedResources);
         $this->directEnumFqcns = array_replace($this->directEnumFqcns, $source->directEnumFqcns);
         $this->modelFqcns = array_replace($this->modelFqcns, $source->modelFqcns);
-        $this->multiEnumResourceFqcns = array_replace($this->multiEnumResourceFqcns, $source->multiEnumResourceFqcns);
-        $this->enumResourceArmShapes = array_replace($this->enumResourceArmShapes, $source->enumResourceArmShapes);
 
         foreach ($source->properties as $property) {
             if (! isset($source->casts[$property['name']])) {
@@ -434,7 +422,6 @@ class MethodAnalysis
         $this->readsCompletely = $source->readsCompletely;
         $this->holdsUnreadKeys = $source->holdsUnreadKeys;
         $this->holdsUnnamedKeys = $source->holdsUnnamedKeys;
-        $this->enumResources = $source->enumResources;
         $this->nestedResources = $source->nestedResources;
         $this->customImports = $source->customImports;
         $this->directEnumFqcns = $source->directEnumFqcns;
@@ -442,9 +429,7 @@ class MethodAnalysis
         $this->inlineEnumFqcns = $source->inlineEnumFqcns;
         $this->inlineModelFqcns = $source->inlineModelFqcns;
         $this->inlineResourceFqcns = $source->inlineResourceFqcns;
-        $this->multiEnumResourceFqcns = $source->multiEnumResourceFqcns;
         $this->inlineEnumResourceFqcns = $source->inlineEnumResourceFqcns;
-        $this->enumResourceArmShapes = $source->enumResourceArmShapes;
         $this->wrappedEnums = $source->wrappedEnums;
         $this->casts = $source->casts;
         $this->carried = $source->carried;
@@ -497,8 +482,7 @@ class MethodAnalysis
 
     /**
      * Queue, in branch order, the class each branch of a merge types a key with where two branches type it apart, as a
-     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import. Run on the
-     * merged analysis, whose types decide whether the enums the branches wrap a key in can be listed per token.
+     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import.
      *
      * @param  list<self>  $branches
      */
@@ -519,7 +503,6 @@ class MethodAnalysis
             $this->inlineModelFqcns,
             array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
         );
-        $this->listSplitEnumResources($branches);
     }
 
     /**
@@ -615,12 +598,10 @@ class MethodAnalysis
      */
     public function hasFqcnChannel(string $name): bool
     {
-        return isset($this->enumResources[$name]) || isset($this->nestedResources[$name])
-            || isset($this->directEnumFqcns[$name]) || isset($this->modelFqcns[$name])
-            || isset($this->inlineEnumFqcns[$name]) || isset($this->inlineModelFqcns[$name])
-            || isset($this->inlineResourceFqcns[$name])
-            || isset($this->multiEnumResourceFqcns[$name]) || isset($this->inlineEnumResourceFqcns[$name])
-            || isset($this->enumResourceArmShapes[$name]) || isset($this->wrappedEnums[$name]);
+        return isset($this->nestedResources[$name]) || isset($this->directEnumFqcns[$name])
+            || isset($this->modelFqcns[$name]) || isset($this->inlineEnumFqcns[$name])
+            || isset($this->inlineModelFqcns[$name]) || isset($this->inlineResourceFqcns[$name])
+            || isset($this->inlineEnumResourceFqcns[$name]) || isset($this->wrappedEnums[$name]);
     }
 
     /**
@@ -653,9 +634,7 @@ class MethodAnalysis
     public function channelFqcns(string $name): array
     {
         return [
-            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
-            ...$this->channelClasses($name, $this->directEnumFqcns, $this->multiEnumResourceFqcns),
-            ...$this->inlineEnumFqcns[$name] ?? [],
+            ...$this->readEnumFqcns($name),
             ...$this->channelClasses($name, $this->modelFqcns, $this->inlineModelFqcns),
             ...$this->channelClasses($name, $this->nestedResources, $this->inlineResourceFqcns),
         ];
@@ -669,8 +648,7 @@ class MethodAnalysis
     public function singleChannelFqcns(string $name): array
     {
         return [
-            ...(isset($this->enumResources[$name]) ? [$this->enumResources[$name]] : []),
-            ...$this->channelClasses($name, $this->directEnumFqcns, $this->multiEnumResourceFqcns),
+            ...(isset($this->directEnumFqcns[$name]) ? [$this->directEnumFqcns[$name]] : []),
             ...(isset($this->modelFqcns[$name]) ? [$this->modelFqcns[$name]] : []),
             ...(isset($this->nestedResources[$name]) ? [$this->nestedResources[$name]] : []),
         ];
@@ -684,8 +662,8 @@ class MethodAnalysis
     public function allChannelFqcns(): array
     {
         return $this->fqcnsOnChannels(
-            [$this->enumResources, $this->directEnumFqcns, $this->modelFqcns, $this->nestedResources],
-            [$this->multiEnumResourceFqcns, $this->inlineEnumFqcns, $this->inlineModelFqcns, $this->inlineResourceFqcns],
+            [$this->directEnumFqcns, $this->modelFqcns, $this->nestedResources],
+            [$this->inlineEnumFqcns, $this->inlineModelFqcns, $this->inlineResourceFqcns],
         );
     }
 
@@ -706,7 +684,7 @@ class MethodAnalysis
      */
     public function allWrappedEnumFqcns(): array
     {
-        return $this->fqcnsOnChannels([$this->enumResources], [$this->multiEnumResourceFqcns, $this->inlineEnumResourceFqcns]);
+        return $this->fqcnsOnChannels([], [$this->inlineEnumResourceFqcns]);
     }
 
     /**
@@ -737,17 +715,7 @@ class MethodAnalysis
      */
     public function wrapConstFqcns(string $name): array
     {
-        return [...$this->topWrappedEnumFqcns($name), ...$this->inlineEnumResourceFqcns[$name] ?? []];
-    }
-
-    /**
-     * The enums a property's value wraps in an `EnumResource` at its top, leaving out those its inline objects wrap.
-     *
-     * @return list<class-string>
-     */
-    public function topWrappedEnumFqcns(string $name): array
-    {
-        return $this->channelClasses($name, $this->enumResources, $this->multiEnumResourceFqcns);
+        return $this->inlineEnumResourceFqcns[$name] ?? [];
     }
 
     /**
@@ -758,10 +726,9 @@ class MethodAnalysis
     public function forgetChannels(string $name): void
     {
         unset(
-            $this->enumResources[$name], $this->nestedResources[$name], $this->directEnumFqcns[$name],
-            $this->modelFqcns[$name], $this->multiEnumResourceFqcns[$name], $this->inlineEnumFqcns[$name],
-            $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name], $this->inlineEnumResourceFqcns[$name],
-            $this->enumResourceArmShapes[$name], $this->wrappedEnums[$name], $this->casts[$name],
+            $this->nestedResources[$name], $this->directEnumFqcns[$name], $this->modelFqcns[$name],
+            $this->inlineEnumFqcns[$name], $this->inlineModelFqcns[$name], $this->inlineResourceFqcns[$name],
+            $this->inlineEnumResourceFqcns[$name], $this->wrappedEnums[$name], $this->casts[$name],
             $this->declaredTokenFqcns[$name],
         );
     }
@@ -894,16 +861,13 @@ class MethodAnalysis
 
         unset($property);
 
-        $this->enumResources = TopLevelRenumbering::rekey($this->enumResources, $names);
         $this->nestedResources = TopLevelRenumbering::rekey($this->nestedResources, $names);
         $this->directEnumFqcns = TopLevelRenumbering::rekey($this->directEnumFqcns, $names);
         $this->modelFqcns = TopLevelRenumbering::rekey($this->modelFqcns, $names);
         $this->inlineEnumFqcns = TopLevelRenumbering::rekey($this->inlineEnumFqcns, $names);
         $this->inlineModelFqcns = TopLevelRenumbering::rekey($this->inlineModelFqcns, $names);
         $this->inlineResourceFqcns = TopLevelRenumbering::rekey($this->inlineResourceFqcns, $names);
-        $this->multiEnumResourceFqcns = TopLevelRenumbering::rekey($this->multiEnumResourceFqcns, $names);
         $this->inlineEnumResourceFqcns = TopLevelRenumbering::rekey($this->inlineEnumResourceFqcns, $names);
-        $this->enumResourceArmShapes = TopLevelRenumbering::rekey($this->enumResourceArmShapes, $names);
         $this->wrappedEnums = TopLevelRenumbering::rekey($this->wrappedEnums, $names);
         $this->casts = TopLevelRenumbering::rekey($this->casts, $names);
         $this->declaredTokenFqcns = TopLevelRenumbering::rekey($this->declaredTokenFqcns, $names);
@@ -921,16 +885,13 @@ class MethodAnalysis
         $rows = array_values(array_filter($this->properties, static fn (array $property): bool => $property['name'] === $name));
         $slice->properties = JsEmitter::isIndexSignatureKey($name) ? $rows : array_slice($rows, -1);
         $key = [$name => true];
-        $slice->enumResources = array_intersect_key($this->enumResources, $key);
         $slice->nestedResources = array_intersect_key($this->nestedResources, $key);
         $slice->directEnumFqcns = array_intersect_key($this->directEnumFqcns, $key);
         $slice->modelFqcns = array_intersect_key($this->modelFqcns, $key);
         $slice->inlineEnumFqcns = array_intersect_key($this->inlineEnumFqcns, $key);
         $slice->inlineModelFqcns = array_intersect_key($this->inlineModelFqcns, $key);
         $slice->inlineResourceFqcns = array_intersect_key($this->inlineResourceFqcns, $key);
-        $slice->multiEnumResourceFqcns = array_intersect_key($this->multiEnumResourceFqcns, $key);
         $slice->inlineEnumResourceFqcns = array_intersect_key($this->inlineEnumResourceFqcns, $key);
-        $slice->enumResourceArmShapes = array_intersect_key($this->enumResourceArmShapes, $key);
         $slice->wrappedEnums = array_intersect_key($this->wrappedEnums, $key);
         $slice->casts = array_intersect_key($this->casts, $key);
         $slice->declaredTokenFqcns = array_intersect_key($this->declaredTokenFqcns, $key);
@@ -1165,65 +1126,6 @@ class MethodAnalysis
 
         return array_all($source->properties, static fn (array $property): bool => ! isset($held[$property['name']])
             || JsEmitter::isIndexSignatureKey($property['name']));
-    }
-
-    /**
-     * List in branch order the enums the branches wrap a key in where they wrap it in different ones, as a ternary of
-     * EnumResource arms is listed, when no branch reads it bare and its type holds one token per enum.
-     *
-     * @param  list<self>  $branches
-     */
-    private function listSplitEnumResources(array $branches): void
-    {
-        $wrapping = array_replace([], ...array_map(
-            fn (self $branch): array => $branch->enumResources + $branch->multiEnumResourceFqcns,
-            $branches,
-        ));
-
-        foreach ($this->properties as $property) {
-            if (! isset($wrapping[$property['name']])) {
-                continue;
-            }
-
-            $wrapped = $this->wrappedEnums($property['name'], $branches);
-            $tokens = ValueResult::filledArms($property['type']);
-
-            if ($wrapped === null || count($wrapped) < 2 || count($tokens) !== count($wrapped)) {
-                continue;
-            }
-
-            unset($this->enumResources[$property['name']], $this->enumResourceArmShapes[$property['name']]);
-            $this->multiEnumResourceFqcns[$property['name']] = $wrapped;
-        }
-    }
-
-    /**
-     * Each enum the branches holding a key wrap it in, once each in branch order; null where one of them does not wrap
-     * it, or also reads it bare.
-     *
-     * @param  list<self>  $branches
-     * @return list<class-string>|null
-     */
-    private function wrappedEnums(string $name, array $branches): ?array
-    {
-        $wrapped = [];
-
-        foreach ($branches as $branch) {
-            if (! in_array($name, array_column($branch->properties, 'name'), true)) {
-                continue;
-            }
-
-            $own = $branch->multiEnumResourceFqcns[$name]
-                ?? (isset($branch->enumResources[$name]) ? [$branch->enumResources[$name]] : null);
-
-            if ($own === null || isset($branch->directEnumFqcns[$name])) {
-                return null;
-            }
-
-            array_push($wrapped, ...$own);
-        }
-
-        return array_values(array_unique($wrapped));
     }
 
     /**

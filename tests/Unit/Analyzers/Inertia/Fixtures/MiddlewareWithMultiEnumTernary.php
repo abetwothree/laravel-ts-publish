@@ -10,7 +10,7 @@ use Inertia\Middleware;
 use Workbench\App\Enums\Role;
 use Workbench\App\Enums\Status;
 
-/** A two-enum ternary, whose FQCNs land in multiEnumResourceFqcns rather than enumResources. */
+/** A ternary that wraps a different enum in each arm. */
 final class MiddlewareWithMultiEnumTernary extends Middleware
 {
     public function share(Request $request): array

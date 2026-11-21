@@ -219,12 +219,7 @@ final class CastChannels
      */
     private function enumsOf(MethodAnalysis $analysis, string $name): array
     {
-        $typed = [
-            ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
-            ...(isset($analysis->directEnumFqcns[$name]) ? [$analysis->directEnumFqcns[$name]] : []),
-            ...($analysis->multiEnumResourceFqcns[$name] ?? []),
-            ...($analysis->inlineEnumFqcns[$name] ?? []),
-        ];
+        $typed = $analysis->readEnumFqcns($name);
 
         return [...array_values(array_diff($analysis->wrappedEnumFqcns($name), $typed)), ...$typed];
     }
@@ -264,8 +259,6 @@ final class CastChannels
     private function wrapsOf(MethodAnalysis $analysis, string $name): array
     {
         return array_values(array_unique([
-            ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
-            ...($analysis->multiEnumResourceFqcns[$name] ?? []),
             ...($analysis->inlineEnumResourceFqcns[$name] ?? []),
             ...$analysis->wrappedEnumFqcns($name),
         ]));
@@ -387,12 +380,7 @@ final class CastChannels
         $names = array_flip(array_column($analysis->properties, 'name'));
         $referenced = [];
 
-        foreach ([
-            $analysis->enumResources,
-            $analysis->directEnumFqcns,
-            $analysis->modelFqcns,
-            $analysis->nestedResources,
-        ] as $map) {
+        foreach ([$analysis->directEnumFqcns, $analysis->modelFqcns, $analysis->nestedResources] as $map) {
             foreach ($map as $key => $fqcn) {
                 if (isset($names[$key])) {
                     $referenced[$fqcn] = true;
@@ -400,12 +388,7 @@ final class CastChannels
             }
         }
 
-        foreach ([
-            $analysis->multiEnumResourceFqcns,
-            $analysis->inlineEnumFqcns,
-            $analysis->inlineModelFqcns,
-            $analysis->inlineResourceFqcns,
-        ] as $map) {
+        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $fqcns) {
                 foreach ($fqcns as $fqcn) {
                     $referenced[$fqcn] = true;

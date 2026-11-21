@@ -171,7 +171,6 @@ final class BranchJoin
         }
 
         $target->properties = $properties;
-        $target->enumResources = $channels->enumResources;
         $target->nestedResources = $channels->nestedResources;
         $target->customImports = $channels->customImports;
         $target->directEnumFqcns = $channels->directEnumFqcns;
@@ -179,9 +178,7 @@ final class BranchJoin
         $target->inlineEnumFqcns = $channels->inlineEnumFqcns;
         $target->inlineModelFqcns = $channels->inlineModelFqcns;
         $target->inlineResourceFqcns = $channels->inlineResourceFqcns;
-        $target->multiEnumResourceFqcns = $channels->multiEnumResourceFqcns;
         $target->inlineEnumResourceFqcns = $channels->inlineEnumResourceFqcns;
-        $target->enumResourceArmShapes = $channels->enumResourceArmShapes;
         $target->wrappedEnums = $channels->wrappedEnums;
         $target->casts = self::castsEveryBranchAgrees($analyses, array_keys($propertyMap));
         $target->carried = $channels->carried;
