@@ -66,6 +66,7 @@ final class OffsetReadHandler implements ExpressionHandler
      */
     private static function alone(array $member): array
     {
+        // hoistNull() merges arms by their text, which would fold two classes one name spells into one arm.
         return self::namesNoClass($member)
             ? [...$member, 'type' => TsTypeString::hoistNull([$member['type']])]
             : $member;

@@ -1295,7 +1295,7 @@ class ResourceTransformer extends CoreTransformer
     /**
      * Return the unique enum FQCNs whose consts the keys' wraps write, for value-import generation.
      *
-     * @return list<string>
+     * @return list<class-string>
      */
     protected function enumPropertyFqcns(): array
     {

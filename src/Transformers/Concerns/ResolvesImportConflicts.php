@@ -118,7 +118,7 @@ trait ResolvesImportConflicts
      * Map each enum's const, under the name this file gives it, to the enum's globally-qualified value type: the
      * globals file has no `AsEnum` import, so it spells a wrap of the enum by that type.
      *
-     * @param  list<string>  $fqcns
+     * @param  list<class-string>  $fqcns
      * @return array<string, string> constName|alias => 'dot.separated.namespace.NameType'
      */
     protected function qualifiedConstTypes(array $fqcns): array

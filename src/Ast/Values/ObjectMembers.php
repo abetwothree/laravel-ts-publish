@@ -31,7 +31,10 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  *      directEnumFqcn?: class-string,
  *      embeddedEnumFqcns?: list<class-string>,
  * }
- * @phpstan-type WrapChannels = array{embeddedEnumResourceFqcns?: list<class-string>, wrappedEnumFqcns?: list<class-string>}
+ * @phpstan-type WrapChannels = array{
+ *      embeddedEnumResourceFqcns?: list<class-string>,
+ *      wrappedEnumFqcns?: list<class-string>,
+ * }
  *
  * @internal
  */

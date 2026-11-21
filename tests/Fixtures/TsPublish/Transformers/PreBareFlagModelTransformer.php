@@ -39,6 +39,9 @@ class PreBareFlagModelTransformer extends ModelTransformer
      */
     private function withoutBareFlag(array $properties): array
     {
-        return array_map(fn (array $info): array => array_diff_key($info, ['alsoBare' => true, 'asEnumType' => true]), $properties);
+        return array_map(
+            fn (array $info): array => array_diff_key($info, ['alsoBare' => true, 'asEnumType' => true]),
+            $properties,
+        );
     }
 }

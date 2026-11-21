@@ -194,7 +194,11 @@ trait ResolvesEnumPropertyArgTypes
         $spelled = EnumWrapSpelling::enabled();
         $kind = $spelled ? TokenKind::WrapConst : TokenKind::Enum;
         $type = $spelled
-            ? TsTypeString::substituteEnumType($payload['type'], ValueResult::enumTypeName($enum), EnumWrapSpelling::ofEnum($enum))
+            ? TsTypeString::substituteEnumType(
+                $payload['type'],
+                ValueResult::enumTypeName($enum),
+                EnumWrapSpelling::ofEnum($enum),
+            )
             : $payload['type'];
         $pattern = TsTypeString::queuedTokenPattern([$kind->nameOf($enum)], $kind->anchor());
         $tokens = (int) preg_match_all($pattern, $type);

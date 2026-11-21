@@ -1184,7 +1184,7 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
-     * Build the enum appends properties for the Tolki package variant.
+     * The enum appends' rows of the model's Resource interface.
      *
      * @return array<string, EnumPropertyInfo>
      */
