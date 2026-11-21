@@ -75,28 +75,6 @@ final class InlineObjectResult
     }
 
     /**
-     * Whether a union of an object with others reads each enum token of it from its own place in the queue: no enum a
-     * member nests shares its name with another enum the object holds, read or wrapped, as memberEnumFqcns() queues a
-     * nested enum again after the members, where such a union reads it as the next object's token.
-     */
-    public static function queuesEnumsApart(MethodAnalysis $object): bool
-    {
-        $held = [
-            ...array_values($object->directEnumFqcns),
-            ...array_merge(...array_values($object->inlineEnumFqcns)),
-            ...$object->allWrapConstFqcns(),
-            ...$object->allWrappedEnumFqcns(),
-        ];
-        $nested = array_diff(self::selfKeyedEnums($object), $object->allWrappedEnumFqcns());
-
-        return ! array_any($nested, static fn (string $enum): bool => array_any(
-            $held,
-            static fn (string $other): bool => $other !== $enum
-                && EnumNames::typeName($other) === EnumNames::typeName($enum),
-        ));
-    }
-
-    /**
      * An analysis as the inline object type it publishes, carrying the import channels of every class it names: one
      * object per variant where the literal's rows still hold its groups (LiteralVariants), else one object.
      *
@@ -110,7 +88,7 @@ final class InlineObjectResult
         $variants = $analysis->variants;
         $objects = $variants !== null && $variants->holdsFor($analysis) ? $variants->objects() : [];
 
-        if ($objects === [] || ! array_all($objects, self::queuesEnumsApart(...))) {
+        if ($objects === []) {
             return $this->oneObject($analysis, $spreadArms);
         }
 
@@ -122,16 +100,6 @@ final class InlineObjectResult
 
         // A reader that takes the keys back reads them from one object, as ValueResult::unsplit() hands it over.
         return [...$union, 'unsplit' => ['of' => $union['type'], 'print' => $this->oneObject($analysis, $spreadArms)]];
-    }
-
-    /**
-     * The enums an object keys by their own FQCN, which no member owns: those its members nest.
-     *
-     * @return array<array-key, class-string>
-     */
-    private static function selfKeyedEnums(MethodAnalysis $object): array
-    {
-        return array_diff_key($object->directEnumFqcns, array_flip(array_column($object->properties, 'name')));
     }
 
     /**
@@ -336,7 +304,7 @@ final class InlineObjectResult
 
     /**
      * The enum behind each enum token of the members' types, member by member in the order the inline object type
-     * spells them, then each enum keyed by its own FQCN, which no member owns.
+     * spells them. An enum a member nests is on its own queue already, so the one keyed by its FQCN is not read again.
      *
      * A member whose cast moved its enum to an inline queue keeps its place, as aliasing reads each name's queue in
      * order. With `$withWraps`, a member's `EnumResource` consts join its own enums for type imports. A wrap's enum
@@ -358,14 +326,6 @@ final class InlineObjectResult
                 ...($analysis->inlineEnumFqcns[$memberName] ?? []),
                 ...($withWraps ? ($analysis->inlineEnumResourceFqcns[$memberName] ?? []) : []),
             );
-        }
-
-        $wrapped = $analysis->allWrappedEnumFqcns();
-
-        foreach (self::selfKeyedEnums($analysis) as $fqcn) {
-            if (! in_array($fqcn, $wrapped, true)) {
-                $fqcns[] = $fqcn;
-            }
         }
 
         return $fqcns;

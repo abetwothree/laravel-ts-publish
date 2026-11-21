@@ -6442,16 +6442,18 @@ declare global {
             nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
         }
         /**
-         * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
-         * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
-         * another text, and a shared key beside a dependent's nested enum (GH-157).
+         * Objects holding two same-named enums, one of them inside a nested value: each literal splits, every token naming its
+         * own enum. Swapped at the top level, swapped nested with another text, and a shared key beside a dependent's nested
+         * enum (GH-157, GH-76).
          */
-        export interface SwappedEnumsResource {
-            priority: workbench.app.enums.PriorityType | null;
-            stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } | { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType } | null;
-            meta: { priority: workbench.app.enums.PriorityType | null; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } | { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType; extra: boolean } | null };
-            shared: { status: workbench.app.enums.StatusType; is_pinned: boolean; lead: { stage: workbench.crm.enums.StatusType } | null };
-        }
+        export type SwappedEnumsResource = {
+            meta: { priority: 0; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } } | { priority: 1; stages: { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null };
+            shared: { status: workbench.app.enums.StatusType; is_pinned: true; lead: { stage: workbench.crm.enums.StatusType } } | { status: workbench.app.enums.StatusType; is_pinned: false; lead: null };
+        } & (
+            | { priority: 0; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } }
+            | { priority: 1; stages: { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType } }
+            | { priority: 2 | 3 | null; stages: null }
+        );
         /**
          * Arms that spell one text, each binding the two same-named resources in the other order: Low and Medium stay apart,
          * at the top level and nested (GH-157).
@@ -6550,7 +6552,7 @@ declare global {
             app_or_crm_wrap_under_key: { subject: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
             wrap_or_two_reads: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
             crm_spread_over_wrap: { c: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
-            literals_nested_crm: { s: workbench.app.enums.StatusType; x: { c: workbench.crm.enums.StatusType } } | { s: workbench.crm.enums.StatusType; x: null };
+            literals_nested_crm: { s: workbench.app.enums.StatusType; x: { c: workbench.crm.enums.StatusType } } | { s: workbench.app.enums.StatusType; x: null };
         }
         /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
         export interface WalkedWrapResource {

@@ -14654,25 +14654,18 @@
             "name": "SwappedEnumsResource",
             "properties": [
                 {
-                    "name": "priority",
-                    "type": "PriorityType | null",
-                    "optional": false
-                },
-                {
-                    "name": "stages",
-                    "type": "{ primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType } | null",
-                    "optional": false
-                },
-                {
                     "name": "meta",
-                    "type": "{ priority: PriorityType | null; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } | null }",
+                    "type": "{ priority: 0; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null }",
                     "optional": false
                 },
                 {
                     "name": "shared",
-                    "type": "{ status: WorkbenchStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }",
+                    "type": "{ status: WorkbenchStatusType; is_pinned: true; lead: { stage: CrmStatusType } } | { status: WorkbenchStatusType; is_pinned: false; lead: null }",
                     "optional": false
                 }
+            ],
+            "variants": [
+                "{ priority: 0; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: WorkbenchStatusType } } | { priority: 2 | 3 | null; stages: null }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedResourcesResource": {
@@ -15166,7 +15159,7 @@
                 },
                 {
                     "name": "literals_nested_crm",
-                    "type": "{ s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: CrmStatusType; x: null }",
+                    "type": "{ s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: WorkbenchStatusType; x: null }",
                     "optional": false
                 }
             ]

@@ -8205,6 +8205,7 @@ describe('an EnumResource wrap spells its AsEnum type wherever it is read (GH-16
             'app_or_crm_wrap_under_key' => '{ subject: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> }',
             'wrap_or_two_reads' => 'AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType',
             'crm_spread_over_wrap' => '{ c: AsEnum<typeof WorkbenchStatus> | CrmStatusType }',
+            'literals_nested_crm' => '{ s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: WorkbenchStatusType; x: null }',
         ]],
         'rows, or null, before wraps' => [RowsBesideWrapsResource::class, [
             'rows_then_two_wraps' => '{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>',

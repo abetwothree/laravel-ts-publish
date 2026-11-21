@@ -14654,25 +14654,18 @@
             "name": "SwappedEnumsResource",
             "properties": [
                 {
-                    "name": "priority",
-                    "type": "PriorityType | null",
-                    "optional": false
-                },
-                {
-                    "name": "stages",
-                    "type": "{ primary: EnumsStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: EnumsStatusType } | null",
-                    "optional": false
-                },
-                {
                     "name": "meta",
-                    "type": "{ priority: PriorityType | null; stages: { primary: EnumsStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: EnumsStatusType; extra: boolean } | null }",
+                    "type": "{ priority: 0; stages: { primary: EnumsStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: EnumsStatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null }",
                     "optional": false
                 },
                 {
                     "name": "shared",
-                    "type": "{ status: EnumsStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }",
+                    "type": "{ status: EnumsStatusType; is_pinned: true; lead: { stage: CrmStatusType } } | { status: EnumsStatusType; is_pinned: false; lead: null }",
                     "optional": false
                 }
+            ],
+            "variants": [
+                "{ priority: 0; stages: { primary: EnumsStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: EnumsStatusType } } | { priority: 2 | 3 | null; stages: null }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedResourcesResource": {
@@ -15166,7 +15159,7 @@
                 },
                 {
                     "name": "literals_nested_crm",
-                    "type": "{ s: EnumsStatusType; x: { c: CrmStatusType } } | { s: CrmStatusType; x: null }",
+                    "type": "{ s: EnumsStatusType; x: { c: CrmStatusType } } | { s: EnumsStatusType; x: null }",
                     "optional": false
                 }
             ]

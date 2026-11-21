@@ -244,9 +244,11 @@ it('keeps two same-named enums apart through a seed', function () {
         ->and(json_encode(new SeededEnumMembers()->pair()))->toBe('{"a":0,"b":"lead","stamped":true}');
 });
 
-// ObjectMembers cannot hand a same-named pair out member by member once one sits a level down.
-it('keeps only the written keys where the seed cannot place a same-named pair', function () {
-    expect(analyzedKeyTypes(SeededEnumMembers::class, 'nestedPair'))->toBe(['stamped' => 'boolean'])
+it('keeps two same-named enums apart through a seed, one of them a level down', function () {
+    expect(analyzedKeyTypes(SeededEnumMembers::class, 'nestedPair'))->toBe([
+        'a' => 'WorkbenchStatusType', 'inner' => '{ b: CrmStatusType }', 'stamped' => 'boolean',
+    ])->and(analyzedImportNames(SeededEnumMembers::class, 'nestedPair'))
+        ->toBe(['StatusType as CrmStatusType', 'StatusType as WorkbenchStatusType'])
         ->and(json_encode(new SeededEnumMembers()->nestedPair()))->toBe('{"a":0,"inner":{"b":"lead"},"stamped":true}');
 });
 

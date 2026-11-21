@@ -76,6 +76,23 @@ it('queues the enums a member wraps on the queue its tokens are read by', functi
     'tolki off' => [false, 'StatusType | RoleType', 'embeddedEnumFqcns', []],
 ]);
 
+it('queues an enum a member nests once, at its member', function () {
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('s', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
+    $analysis->addProperty('x', ['type' => '{ c: StatusType }', 'optional' => false, 'embeddedEnumFqcns' => [CrmStatus::class]]);
+    $analysis->addProperty('t', ['type' => 'StatusType', 'optional' => false, 'directEnumFqcn' => Status::class]);
+
+    expect(new InlineObjectResult()->of($analysis)['embeddedEnumFqcns'] ?? [])
+        ->toBe([Status::class, CrmStatus::class, Status::class]);
+});
+
+it('splits a literal whose arm nests one of two same-named enums, each token read by its own class', function () {
+    $split = new InlineObjectResult()->of(nestedFormLiteral('sameNameNestedArm'));
+
+    expect($split['type'])->toBe('{ pinned: true; s: StatusType; v: { c: StatusType } } | { pinned: false; s: StatusType; v: null }')
+        ->and($split['embeddedEnumFqcns'] ?? [])->toBe([Status::class, CrmStatus::class, Status::class]);
+});
+
 it('prints the open marker in the gap mode where the object may hold keys no name names, and none out of it', function (array $properties, array $arms, bool $shows, string $type) {
     $analysis = new MethodAnalysis;
 
