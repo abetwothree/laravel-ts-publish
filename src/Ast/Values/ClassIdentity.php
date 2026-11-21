@@ -39,14 +39,14 @@ final class ClassIdentity
     }
 
     /**
-     * Whether one name spells two different classes of a kind the results are read by.
+     * Whether one name spells two different classes of one kind.
      *
      * @param  list<ValueExpressionResult>  $results
      */
     public static function spellsTwoClassesAlike(array $results): bool
     {
         return array_any(
-            self::readKinds(),
+            TokenKind::cases(),
             static fn (TokenKind $kind): bool => self::sharesAName(
                 array_merge(...array_map($kind->channelFqcns(...), $results)),
                 $kind->nameOf(...),
@@ -65,7 +65,7 @@ final class ClassIdentity
      */
     public static function membersByClass(array $union, array $arms): array
     {
-        $kinds = self::readKinds();
+        $kinds = TokenKind::cases();
         /** @var array<string, string> $members identity => text */
         $members = [];
         $nullable = false;
@@ -154,16 +154,6 @@ final class ClassIdentity
         $queue->take($result['type']);
 
         return $queue->outrunsItsTokens() ? null : $models;
-    }
-
-    /**
-     * The kinds results are read by class over: every kind, as each token of a wrap rides its own queue too.
-     *
-     * @return list<TokenKind>
-     */
-    private static function readKinds(): array
-    {
-        return TokenKind::cases();
     }
 
     /**
