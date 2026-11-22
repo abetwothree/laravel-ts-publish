@@ -14775,6 +14775,186 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\BracketVarResource": {
+            "name": "BracketVarResource",
+            "properties": [
+                {
+                    "name": "comments_by_slug",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_by_slug_nested",
+                    "type": "{ inner: Comment[] }",
+                    "optional": false
+                },
+                {
+                    "name": "comment_contents_by_slug_mapped",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "comment_contents_by_slug_collected",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "comment_record",
+                    "type": "Record<string, Comment>",
+                    "optional": false
+                },
+                {
+                    "name": "comment_list",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "options_by_name",
+                    "type": "{ itemId: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "options_by_name_nested",
+                    "type": "{ inner: { itemId: number }[] }",
+                    "optional": false
+                },
+                {
+                    "name": "option_ids_by_name_mapped",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "option_ids_by_name_collected",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "option_record",
+                    "type": "Record<string, { itemId: number }>",
+                    "optional": false
+                },
+                {
+                    "name": "option_list",
+                    "type": "{ itemId: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "zipped_with_untyped_posts",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "titles_from_untyped_posts",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "zipped_typed_comments",
+                    "type": "{ content: string; id: number }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\ParamTagClassesResource": {
+            "name": "ParamTagClassesResource",
+            "properties": [
+                {
+                    "name": "private_amounts_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "private_amounts_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "interface_labels_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "interface_labels_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "backed_enum_values_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "backed_enum_values_by_native_type",
+                    "type": "(string | number)[] | Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "unit_enum_names_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "unit_enum_names_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "collection_counts_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "collection_counts_by_native_type",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "abstract_areas_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "abstract_areas_by_native_type",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "loose_labels_by_param_tag",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "loose_labels_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\SelfGenericVarResource": {
+            "name": "SelfGenericVarResource",
+            "properties": [
+                {
+                    "name": "self_kid_names",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "named_kid_names",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "self_first_kid_name",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "named_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [

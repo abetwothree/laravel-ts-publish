@@ -6512,6 +6512,50 @@ declare global {
             mode_title: string | null;
         }
     }
+    export namespace workbench.app.http.resources.docblockReads {
+        /** `@var X[]` over string-keyed locals with controls, and a typed two-array `array_map()` (GH-134; plan tasks T1, T4). */
+        export interface BracketVarResource {
+            comments_by_slug: workbench.app.models.Comment[];
+            comments_by_slug_nested: { inner: workbench.app.models.Comment[] };
+            comment_contents_by_slug_mapped: string[];
+            comment_contents_by_slug_collected: string[];
+            comment_record: Record<string, workbench.app.models.Comment>;
+            comment_list: workbench.app.models.Comment[];
+            options_by_name: { itemId: number }[];
+            options_by_name_nested: { inner: { itemId: number }[] };
+            option_ids_by_name_mapped: number[];
+            option_ids_by_name_collected: number[];
+            option_record: Record<string, { itemId: number }>;
+            option_list: { itemId: number }[];
+            zipped_with_untyped_posts: unknown;
+            titles_from_untyped_posts: string[] | Record<string, string>;
+            zipped_typed_comments: { content: string; id: number }[];
+        }
+        /** A closure `@param` naming a class that is not a model, each beside its native twin (GH-134; plan task T2). */
+        export interface ParamTagClassesResource {
+            private_amounts_by_param_tag: unknown;
+            private_amounts_by_native_type: string[] | Record<string, string>;
+            interface_labels_by_param_tag: unknown;
+            interface_labels_by_native_type: string[] | Record<string, string>;
+            backed_enum_values_by_param_tag: unknown;
+            backed_enum_values_by_native_type: (string | number)[] | Record<string, string | number>;
+            unit_enum_names_by_param_tag: unknown;
+            unit_enum_names_by_native_type: string[] | Record<string, string>;
+            collection_counts_by_param_tag: unknown;
+            collection_counts_by_native_type: number[] | Record<string, number>;
+            abstract_areas_by_param_tag: unknown;
+            abstract_areas_by_native_type: number[] | Record<string, number>;
+            loose_labels_by_param_tag: unknown;
+            loose_labels_by_native_type: string[] | Record<string, string>;
+        }
+        /** `self` inside a generic `@var` in a final class's trait, beside the class named there (GH-134; plan task T3). */
+        export interface SelfGenericVarResource {
+            self_kid_names: unknown;
+            named_kid_names: string[];
+            self_first_kid_name: unknown;
+            named_first_kid_name: string | null;
+        }
+    }
     export namespace workbench.app.http.resources.droppedArms {
         /**
          * Under Laravel's `array<string, mixed>` stub, an arm no rule types beside a typed one (GH-161): `cache()` sends
