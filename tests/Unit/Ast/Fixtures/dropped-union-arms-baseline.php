@@ -71,4 +71,7 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideDropResource', 'line' => 29, 'expression' => 'cache(\'u\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideTypedKeyResource', 'line' => 27, 'expression' => 'cache(\'u\')', 'site' => 'closure-union'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\WalkedArmDropResource', 'line' => 28, 'expression' => 'cache(\'u\')', 'site' => 'closure-union'],
+    // Probe (GH-161): `$d['by'] ?? 'z'` reads a key of the local the walk builds, which it cannot type; the default
+    // stands alone, and the title it drops is a string too, so `by: string` holds (YD1, a guard B1 and B2a keep).
+    ['subject' => 'Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource', 'line' => 245, 'expression' => '$d[\'by\']', 'site' => 'coalesce-left'],
 ];

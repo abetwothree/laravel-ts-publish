@@ -6841,6 +6841,62 @@ declare global {
         }
     }
     export namespace app.http.resources.spreads {
+        /** Walk bases over an earlier key, `??=` of a key the walk lacks, resource spreads in merges (GH-161 B2a, B2b, B3, B6). */
+        export interface BaseFormsSpreadResource {
+            ternary_local_coalesced: { id: number; by: { name: string | null; email: string | null } };
+            ternary_local_given_key: { id: number; by: { name: string | null; email: string | null } };
+            match_local_given_key: { id: number; by: { name: string | null; email: string | null } };
+            elvis_local_given_key: { id: number; by: { name: string | null; email: string | null } };
+            elvis_base_helper: { id: number; by: { name: string | null; email: string | null } };
+            plus_assigned_ternary_helper: { id: number; by: { name: string | null; email: string | null }; n: number };
+            ternary_base_in_if_helper: { id: number; by: { name: string | null; email: string | null }; n?: number };
+            merged_ternary_helper: { id: number; by: { name: string | null; email: string | null } };
+            copied_ternary_helper: { id: number; by: { name: string | null; email: string | null } };
+            nested_coalesced_helper: { row: { id: number; by: { name: string | null; email: string | null } } };
+            static_coalesced_helper: { id: number; by: { name: string | null; email: string | null } };
+            flag_then_coalesced_helper: { id: number; by: boolean };
+            coalesced_under_exact_return: { id: number; by: { name: string | null; email: string | null } };
+            documented_coalesced_helper: { id: number; by: { name: string | null; email: string | null } };
+            ternary_only_helper: { id: number; by: { name: string | null; email: string | null } };
+            match_base_helper: { id: number; by: { name: string | null; email: string | null } };
+            returned_ternary_helper: { id: number; by: { name: string | null; email: string | null } };
+            old_coalesce_idiom_helper: { id: number; by: string };
+            plus_default_over_ternary: { by: string };
+            joined_local_base: { c: number };
+            returned_whole_ternary: Record<string, unknown>;
+            ternary_base_unheld_coalesce: { id: number; by: { name: string | null; email: string | null } };
+            literal_base_unheld_coalesce: { id: number; by: { name: string | null; email: string | null }; n: number };
+            helper_base_unheld_coalesce: { id: number; by: { name: string | null; email: string | null }; n: number };
+            unheld_coalesce: { a: number };
+            credited_title: number;
+            name: number;
+        }
+        /** Locals written and read inside one block, some of which then exit, each in a helper's returns (GH-161 B4, B5). */
+        export interface BlockReadSpreadResource {
+            one_return_after_block: { n?: number; by?: { name: string | null; email: string | null } };
+            unconditional_write_in_block: { by?: { name: string | null; email: string | null }; n?: number };
+            nested_read_in_block: { row?: { by: { name: string | null; email: string | null } }; n?: number };
+            read_in_else: { n?: number; by?: { name: string | null; email: string | null } };
+            read_in_elseif: { n?: number; by?: { name: string | null; email: string | null } };
+            read_in_switch_case: { by?: { name: string | null; email: string | null }; n?: number };
+            read_in_try: { by?: { name: string | null; email: string | null }; n?: number };
+            read_two_deep: { by?: { name: string | null; email: string | null }; n?: number };
+            read_in_when_closure?: { by: { name: string | null; email: string | null } };
+            read_in_loop_return: { by?: { name: string | null; email: string | null }; n?: number };
+            read_in_switch_one_path: { by: { name: string | null; email: string | null } };
+            read_in_try_rethrow: { by: { name: string | null; email: string | null } };
+            value_read_in_writing_block: { early?: unknown; n?: number };
+            maybe_local_value_in_block: { row?: unknown; n?: number };
+            condition_rewrites_local: { v?: unknown; n?: number };
+            emptiness_guard_throws: { row?: Record<string, number> | never[]; n?: number };
+            emptiness_guard_returns: { n?: number; row?: Record<string, number> | never[] };
+            conditional_unset_in_block: { row?: unknown; n?: number };
+            key_write_in_exiting_block: { by?: { name: string | null; email: string | null }; n?: number };
+            exiting_key_write_nested: { row?: { by: { name: string | null; email: string | null } }; n?: number };
+            exiting_maybe_key_write: { by?: { name: string | null; email: string | null }; n?: number };
+            whole_write_nested_in_exiting_block: { early?: { a: number }; late?: { a: number } };
+            nested_whole_write_then_spread: { by?: { name: string | null; email: string | null }; n?: number };
+        }
         /**
          * Two returns; the first spreads a local an inner `if` may write over an earlier `by` (GH-161). Where the local holds
          * `by`, Laravel sends the title there.
@@ -6848,6 +6904,22 @@ declare global {
         export interface BranchedLocalSpreadResource {
             by?: { name: string | null; email: string | null };
             n?: number;
+        }
+        /** Merge closures whose returns include a partly read variable; collect() of a value or [] (GH-121 B7, GH-153 B8). */
+        export interface ClosureCollectReadsResource {
+            values_of_keyed_local: string[];
+            collected_keyed_local: unknown;
+            values_of_nullable_map: string[];
+            collected_nullable_map: unknown;
+            values_of_nullable_shape: string[];
+            collected_nullable_shape: unknown;
+            values_of_nullable_list: string[];
+            collected_nullable_list: string[];
+            collected_split_or_empty: unknown;
+            merged_when_lone_variable?: number;
+            merged_literal_beside_variable: number;
+            merged_literal_beside_appended: number;
+            merged_when_literal_beside_variable?: number;
         }
         /**
          * A helper whose local may leave `by` unset, defaulted by `??=`, spread over an earlier `by` (GH-161). The helper
@@ -6857,6 +6929,11 @@ declare global {
             id: number;
             by: { name: string | null; email: string | null };
         }
+        /** An arm BaseFormsSpreadResource spreads inside a merge, over an earlier key of its own name (GH-121 B6). */
+        export interface CreditArmResource {
+            credited_title: string;
+            credited_flag: boolean;
+        }
         /**
          * Spreads of maps and lists that write keys again or add numbered keys (GH-161, GH-153): a map local given a named
          * key over an earlier key, a list spread after a map, and a list spread beside a named key.
@@ -6865,6 +6942,14 @@ declare global {
             named_key_over_key: { by: { name: string | null; email: string | null }; z: number };
             list_after_map: Record<string, string>;
             list_beside_key: { x: string };
+        }
+        /** A ternary of two literals `toArray()` returns whole, which publishes neither literal's keys (GH-161 B2a). */
+        export interface ReturnedTernaryResource {
+        }
+        /** A `when()` key spread over an earlier `by`, which InertiaPropsWalkController resolves (GH-161 A9, C3). */
+        export interface WhenKeySpreadResource {
+            id: number;
+            by?: string;
         }
     }
     export namespace blog.http.resources {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Workbench\App\ValueObjects;
 
+use RuntimeException;
+
 /**
  * An author, a title, a flag and a pick the value-spread probes read (GH-154, GH-161).
  */
@@ -17,6 +19,12 @@ final class CreditLine
 
     /** @var list<int> a list a spread appends after a map */
     public array $ints = [];
+
+    /** @var list<array{done: bool}> rows a loop reads */
+    public array $rows = [];
+
+    /** @var array<string, int>|null a number map an emptiness guard reads */
+    public ?array $maybeCounts = null;
 
     public function __construct(
         public MailRecipient $author,
@@ -33,5 +41,25 @@ final class CreditLine
     public function tones(): array
     {
         return $this->flag ? ['by' => $this->title, 'tone' => 'warm'] : ['tone' => 'warm'];
+    }
+
+    /**
+     * Throws unless the line is flagged.
+     */
+    public function audit(): void
+    {
+        if (! $this->flag) {
+            throw new RuntimeException('audit');
+        }
+    }
+
+    /**
+     * A closed shape writing `by` as the title.
+     *
+     * @return array{by: string}
+     */
+    public function extras(): array
+    {
+        return ['by' => $this->title];
     }
 }

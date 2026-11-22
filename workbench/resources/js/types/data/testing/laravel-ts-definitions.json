@@ -22012,6 +22012,266 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource": {
+            "name": "BaseFormsSpreadResource",
+            "properties": [
+                {
+                    "name": "ternary_local_coalesced",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_local_given_key",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "match_local_given_key",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "elvis_local_given_key",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "elvis_base_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "plus_assigned_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_base_in_if_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "merged_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "copied_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_coalesced_helper",
+                    "type": "{ row: { id: number; by: { name: string | null; email: string | null } } }",
+                    "optional": false
+                },
+                {
+                    "name": "static_coalesced_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "flag_then_coalesced_helper",
+                    "type": "{ id: number; by: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesced_under_exact_return",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "documented_coalesced_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_only_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "match_base_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "returned_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "old_coalesce_idiom_helper",
+                    "type": "{ id: number; by: string }",
+                    "optional": false
+                },
+                {
+                    "name": "plus_default_over_ternary",
+                    "type": "{ by: string }",
+                    "optional": false
+                },
+                {
+                    "name": "joined_local_base",
+                    "type": "{ c: number }",
+                    "optional": false
+                },
+                {
+                    "name": "returned_whole_ternary",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_base_unheld_coalesce",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "literal_base_unheld_coalesce",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_base_unheld_coalesce",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "unheld_coalesce",
+                    "type": "{ a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "credited_title",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\BlockReadSpreadResource": {
+            "name": "BlockReadSpreadResource",
+            "properties": [
+                {
+                    "name": "one_return_after_block",
+                    "type": "{ n?: number; by?: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "unconditional_write_in_block",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_read_in_block",
+                    "type": "{ row?: { by: { name: string | null; email: string | null } }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_else",
+                    "type": "{ n?: number; by?: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_elseif",
+                    "type": "{ n?: number; by?: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_switch_case",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_try",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_two_deep",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_when_closure",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": true
+                },
+                {
+                    "name": "read_in_loop_return",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_switch_one_path",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_try_rethrow",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "value_read_in_writing_block",
+                    "type": "{ early?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "maybe_local_value_in_block",
+                    "type": "{ row?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "condition_rewrites_local",
+                    "type": "{ v?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guard_throws",
+                    "type": "{ row?: Record<string, number> | never[]; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guard_returns",
+                    "type": "{ n?: number; row?: Record<string, number> | never[] }",
+                    "optional": false
+                },
+                {
+                    "name": "conditional_unset_in_block",
+                    "type": "{ row?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "key_write_in_exiting_block",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "exiting_key_write_nested",
+                    "type": "{ row?: { by: { name: string | null; email: string | null } }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "exiting_maybe_key_write",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "whole_write_nested_in_exiting_block",
+                    "type": "{ early?: { a: number }; late?: { a: number } }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_whole_write_then_spread",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Spreads\\BranchedLocalSpreadResource": {
             "name": "BranchedLocalSpreadResource",
             "properties": [
@@ -22022,6 +22282,76 @@
                 },
                 {
                     "name": "n",
+                    "type": "number",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ClosureCollectReadsResource": {
+            "name": "ClosureCollectReadsResource",
+            "properties": [
+                {
+                    "name": "values_of_keyed_local",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_keyed_local",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "values_of_nullable_map",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable_map",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "values_of_nullable_shape",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable_shape",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "values_of_nullable_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_split_or_empty",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "merged_when_lone_variable",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "merged_literal_beside_variable",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "merged_literal_beside_appended",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "merged_when_literal_beside_variable",
                     "type": "number",
                     "optional": true
                 }
@@ -22038,6 +22368,21 @@
                 {
                     "name": "by",
                     "type": "{ name: string | null; email: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\CreditArmResource": {
+            "name": "CreditArmResource",
+            "properties": [
+                {
+                    "name": "credited_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "credited_flag",
+                    "type": "boolean",
                     "optional": false
                 }
             ]
@@ -22059,6 +22404,25 @@
                     "name": "list_beside_key",
                     "type": "{ x: string }",
                     "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ReturnedTernaryResource": {
+            "name": "ReturnedTernaryResource",
+            "properties": []
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\WhenKeySpreadResource": {
+            "name": "WhenKeySpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "string",
+                    "optional": true
                 }
             ]
         },
