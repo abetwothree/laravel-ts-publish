@@ -6571,6 +6571,10 @@ declare global {
             n: number;
             users: workbench.app.models.User[] | workbench.crm.models.User[];
         }
+        /** A held local that keeps the `cache()` list a spread may write over an earlier string (GH-162 E1 guard). */
+        export interface FoldSiteDropResource {
+            spread_local_held: { k: string | number[] };
+        }
         /** The same-named users of ArmBesideDropResource joined by a returned variable's branches (GH-161). */
         export interface WalkedArmDropResource {
             users: workbench.app.models.User[] | workbench.crm.models.User[];
@@ -6841,6 +6845,33 @@ declare global {
         }
     }
     export namespace workbench.app.http.resources.spreads {
+        /**
+         * Named keys and resource or model arms beside typed maps, before and after them (GH-161 D2, D3).
+         *
+         * `three_model_spreads` is a guard whose golden is develop's known-short reading until #80 l64: of two same-named
+         * users it keeps one arm.
+         */
+        export interface ArmBesideMapResource {
+            map_before_unfit_key: Omit<Record<string, string>, 'a'> & { a: number };
+            model_key_before_map: { user: workbench.app.models.User | string | null };
+            arm_before_map: Omit<TitleFlagArmResource, keyof Record<string, string>> & Record<string, string>;
+            map_before_arm: Omit<Record<string, string>, keyof TitleFlagArmResource> & TitleFlagArmResource;
+            arm_then_two_maps: Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>;
+            map_arm_map: Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>;
+            two_maps_then_arm: Omit<Record<string, string | number>, keyof IdTitleArmResource> & IdTitleArmResource;
+            key_arm_two_maps: Omit<IdTitleArmResource, 'n' | 'id' | 'by' | keyof Record<string, string | number>> & Omit<Record<string, string | number>, 'n' | 'id' | 'by'> & { n: number | string; id: number | string; by: string | number };
+            two_maps_then_null_arm: Omit<Record<string, string | number>, keyof NullNoteArmResource> & NullNoteArmResource;
+            null_arm_then_two_maps: Omit<NullNoteArmResource, keyof Record<string, string | number>> & Record<string, string | number>;
+            maybe_map_before_user_arm: workbench.app.http.resources.UserResource;
+            arm_then_maybe_map: TitleFlagArmResource;
+            maybe_map_then_arm: TitleFlagArmResource;
+            signature_arm_then_map: Omit<TagSignatureArmResource, keyof Record<string, string>> & Record<string, string>;
+            signature_arm_then_maybe_key: Omit<TagSignatureArmResource, 'name'> & { name?: number };
+            wrap_arm_then_map: Omit<StatusWrapArmResource, keyof Record<string, string>> & Record<string, string>;
+            wrap_arm_then_maybe_key: Omit<StatusWrapArmResource, 'name'> & { name?: number };
+            same_named_arm_after_map: Omit<Record<string, workbench.app.models.User>, keyof workbench.crm.models.User> & workbench.crm.models.User;
+            three_model_spreads: Omit<workbench.crm.models.User, keyof workbench.app.models.User> & workbench.crm.models.User;
+        }
         /** Walk bases over an earlier key, `??=` of a key the walk lacks, resource spreads in merges (GH-161 B2a, B2b, B3, B6). */
         export interface BaseFormsSpreadResource {
             ternary_local_coalesced: { id: number; by: { name: string | null; email: string | null } };
@@ -6934,6 +6965,45 @@ declare global {
             credited_title: string;
             credited_flag: boolean;
         }
+        /** An arm ArmBesideMapResource spreads beside two maps, whose `id` and `by` both fit their values (GH-161 D3). */
+        export interface IdTitleArmResource {
+            id: number;
+            by: string;
+        }
+        /** Lists and keyless values beside maps and named keys, and maps alone that may be empty (GH-161 D1, D2, D4a, D4b, D5). */
+        export interface ListSpreadsResource {
+            labels_method_then_ints: Record<string, string>;
+            ints_then_labels: Record<string, string>;
+            labels_then_ints_under_return: Record<string, string>;
+            labels_then_array_values: Record<string, string>;
+            labels_then_helper_list: Record<string, string>;
+            labels_then_local_list: Record<string, string>;
+            labels_then_other_list_method: Record<string, string>;
+            labels_then_keyless_count: Record<string, string>;
+            labels_then_nullable_list: Record<string, string>;
+            labels_then_rows: Record<string, string>;
+            labels_then_static_helper_list: Record<string, string>;
+            ints_plus_key: { x: number };
+            local_built_labels_then_ints: Record<string, string>;
+            local_ints_then_key_over_key: { by: string; z: number };
+            keyless_item_beside_key: { a: number };
+            list_plus_keyed: { a: string };
+            keyed_plus_list: { a: string };
+            coalesced_map_alone: Record<string, unknown>;
+            local_map_list_over_key: { by: { name: string | null; email: string | null } | string };
+            map_bool_key_list: Omit<Record<string, string>, 'x'> & { x: boolean };
+            map_list_bool_key: Omit<Record<string, string>, 'x'> & { x: boolean };
+            map_list_nullable_key: Omit<Record<string, string>, 'note'> & { note: string | null };
+            map_nullable_key: Omit<Record<string, string>, 'note'> & { note: string | null };
+            labels_method_plus_key: { by: number | string };
+            empty_default_map_alone: Record<string, string>;
+            preset_default_map_alone: Record<string, string>;
+            literal_body_map_alone: Record<string, string>;
+            literal_body_map_then_counts: Record<string, string | number>;
+            literal_body_map_then_labels: Record<string, string>;
+            emptiness_guarded_spread_throws: { row: Record<string, unknown> };
+            emptiness_guarded_spread_returns: { n?: number; row?: Record<string, unknown> };
+        }
         /**
          * Spreads of maps and lists that write keys again or add numbered keys (GH-161, GH-153): a map local given a named
          * key over an earlier key, a list spread after a map, and a list spread beside a named key.
@@ -6943,8 +7013,71 @@ declare global {
             list_after_map: Record<string, string>;
             list_beside_key: { x: string };
         }
+        /** An arm ArmBesideMapResource spreads beside two maps, whose `note` is always null (GH-161 D3). */
+        export interface NullNoteArmResource {
+            id: number;
+            note: null;
+        }
         /** A ternary of two literals `toArray()` returns whole, which publishes neither literal's keys (GH-161 B2a). */
         export interface ReturnedTernaryResource {
+        }
+        /** An arm holding a number key beside an enum wrap (GH-161 D3). */
+        export interface StatusWrapArmResource {
+            id: number;
+            name: string;
+            status: workbench.app.enums.StatusType;
+        }
+        /** An arm whose members no reader lists: named keys beside a template-literal signature (GH-161 D3). */
+        export interface TagSignatureArmResource {
+            id: number;
+            name: string;
+            [key: `${string}_tag`]: string | undefined;
+        }
+        /** An arm ArmBesideMapResource spreads beside a string map, whose `by` the map's value does not fit (GH-161 D3). */
+        export interface TitleFlagArmResource {
+            name: string;
+            by: boolean;
+        }
+        /** A map method a subclass may override, spread over earlier keys, and other objects' seeded maps (GH-161 C2, Q-A). */
+        export interface TypedSeedSourceResource {
+            overridable_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            overridable_map_local: { by: { name: string | null; email: string | null } | string; z: number | string };
+            overridable_map_spread: { by: { name: string | null; email: string | null } | string; z: number | string };
+            seed_from_other_call: { seen: boolean; [key: string]: unknown };
+            seed_from_property: { seen: boolean; [key: string]: unknown };
+            seed_from_coalesced: { seen: boolean; [key: string]: unknown };
+            seed_from_static_call: { seen: boolean; [key: string]: unknown };
+            seed_from_other_call_nested: { row: unknown };
+        }
+        /** Typed maps and shapes written whole into a local, given a key, then spread over earlier keys (GH-161 C2, C3, C4). */
+        export interface TypedSeedSpreadResource {
+            tones_given_key_under_map_return: { by: { name: string | null; email: string | null }; z: number };
+            shape_method_given_key: { by: { name: string | null; email: string | null }; z: number };
+            map_property_given_key: { by: { name: string | null; email: string | null }; z: number };
+            local_receiver_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            static_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            filtered_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            map_plus_assigned_key: { by: { name: string | null; email: string | null }; z: number };
+            map_with_key_unset: { by: { name: string | null; email: string | null }; z: number };
+            own_delegate_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            docblock_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            coalesced_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            helper_built_map_given_key: { by: string; z: number };
+            shape_property_given_key: { by: { name: string | null; email: string | null }; z: number };
+            collected_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            number_map_given_key_on_one_path: { by: { name: string | null; email: string | null }; z: number };
+            map_over_earlier_tone: { tone: { name: string | null; email: string | null } };
+            map_given_two_keys: { by: { name: string | null; email: string | null }; z: number };
+            map_written_in_if_given_key: { by: { name: string | null; email: string | null }; z: number };
+            string_map_given_key_on_one_path: { by: { name: string | null; email: string | null }; z: number };
+            map_given_number_key_as_value: unknown;
+            map_given_number_key_spread: { by: { name: string | null; email: string | null } };
+            typed_open_local_over_keys: { by: { name: string | null; email: string | null }; z: number };
+            top_tones_given_key: { by: { name: string | null; email: string | null }; z: number };
+            top_map_over_earlier_tone: { tone: { name: string | null; email: string | null } };
+            top_shape_method_given_key: { by: { name: string | null; email: string | null } };
+            returned_map_given_number_key: { n: number };
+            top_typed_open_local_over_keys: { by: { name: string | null; email: string | null }; z: number };
         }
         /** A `when()` key spread over an earlier `by`, which InertiaPropsWalkController resolves (GH-161 A9, C3). */
         export interface WhenKeySpreadResource {

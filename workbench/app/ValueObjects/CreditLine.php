@@ -26,12 +26,38 @@ final class CreditLine
     /** @var array<string, int>|null a number map an emptiness guard reads */
     public ?array $maybeCounts = null;
 
+    /** @var array<string, string>|null a string map `?? []` defaults */
+    public ?array $maybeLabels = null;
+
+    /** @var list<int>|null a list `?? []` defaults */
+    public ?array $maybeInts = null;
+
+    /** @var array{by: string, k: int} a closed shape given another key */
+    public array $meta = ['by' => '', 'k' => 0];
+
+    /** @var array<string, string> a string map whose default is not empty */
+    public array $presets = ['tone' => 'warm'];
+
+    public ?string $note = null;
+
+    public int $count = 0;
+
     public function __construct(
         public MailRecipient $author,
         public string $title = '',
         public bool $flag = false,
         public string $pick = '',
     ) {}
+
+    /**
+     * A static open map.
+     *
+     * @return array<string, string>
+     */
+    public static function defaults(): array
+    {
+        return ['by' => 'hi', 'tone' => 'warm'];
+    }
 
     /**
      * An open map that writes `by` only when the line is flagged.
@@ -41,6 +67,36 @@ final class CreditLine
     public function tones(): array
     {
         return $this->flag ? ['by' => $this->title, 'tone' => 'warm'] : ['tone' => 'warm'];
+    }
+
+    /**
+     * A number map that writes `by` only when the line is flagged.
+     *
+     * @return array<string, int>
+     */
+    public function counted(): array
+    {
+        return $this->flag ? ['by' => 7, 'n' => 1] : ['n' => 1];
+    }
+
+    /**
+     * A string map whose body is one literal.
+     *
+     * @return array<string, string>
+     */
+    public function labelsLit(): array
+    {
+        return ['by' => $this->title, 'tone' => 'warm'];
+    }
+
+    /**
+     * The ints, as a list.
+     *
+     * @return list<int>
+     */
+    public function idList(): array
+    {
+        return $this->ints;
     }
 
     /**

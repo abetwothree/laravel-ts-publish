@@ -15010,6 +15010,16 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\FoldSiteDropResource": {
+            "name": "FoldSiteDropResource",
+            "properties": [
+                {
+                    "name": "spread_local_held",
+                    "type": "{ k: string | number[] }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DroppedArms\\WalkedArmDropResource": {
             "name": "WalkedArmDropResource",
             "properties": [
@@ -22012,6 +22022,106 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ArmBesideMapResource": {
+            "name": "ArmBesideMapResource",
+            "properties": [
+                {
+                    "name": "map_before_unfit_key",
+                    "type": "Omit<Record<string, string>, 'a'> & { a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "model_key_before_map",
+                    "type": "{ user: ModelsUser | string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "arm_before_map",
+                    "type": "Omit<TitleFlagArmResource, keyof Record<string, string>> & Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "map_before_arm",
+                    "type": "Omit<Record<string, string>, keyof TitleFlagArmResource> & TitleFlagArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "arm_then_two_maps",
+                    "type": "Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "map_arm_map",
+                    "type": "Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "two_maps_then_arm",
+                    "type": "Omit<Record<string, string | number>, keyof IdTitleArmResource> & IdTitleArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "key_arm_two_maps",
+                    "type": "Omit<IdTitleArmResource, 'n' | 'id' | 'by' | keyof Record<string, string | number>> & Omit<Record<string, string | number>, 'n' | 'id' | 'by'> & { n: number | string; id: number | string; by: string | number }",
+                    "optional": false
+                },
+                {
+                    "name": "two_maps_then_null_arm",
+                    "type": "Omit<Record<string, string | number>, keyof NullNoteArmResource> & NullNoteArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "null_arm_then_two_maps",
+                    "type": "Omit<NullNoteArmResource, keyof Record<string, string | number>> & Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "maybe_map_before_user_arm",
+                    "type": "UserResource",
+                    "optional": false
+                },
+                {
+                    "name": "arm_then_maybe_map",
+                    "type": "TitleFlagArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "maybe_map_then_arm",
+                    "type": "TitleFlagArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "signature_arm_then_map",
+                    "type": "Omit<TagSignatureArmResource, keyof Record<string, string>> & Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "signature_arm_then_maybe_key",
+                    "type": "Omit<TagSignatureArmResource, 'name'> & { name?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_arm_then_map",
+                    "type": "Omit<StatusWrapArmResource, keyof Record<string, string>> & Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_arm_then_maybe_key",
+                    "type": "Omit<StatusWrapArmResource, 'name'> & { name?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "same_named_arm_after_map",
+                    "type": "Omit<Record<string, ModelsUser>, keyof CrmUser> & CrmUser",
+                    "optional": false
+                },
+                {
+                    "name": "three_model_spreads",
+                    "type": "Omit<CrmUser, keyof ModelsUser> & CrmUser",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource": {
             "name": "BaseFormsSpreadResource",
             "properties": [
@@ -22387,6 +22497,181 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Spreads\\IdTitleArmResource": {
+            "name": "IdTitleArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ListSpreadsResource": {
+            "name": "ListSpreadsResource",
+            "properties": [
+                {
+                    "name": "labels_method_then_ints",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "ints_then_labels",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_ints_under_return",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_array_values",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_helper_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_local_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_other_list_method",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_keyless_count",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_nullable_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_rows",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_static_helper_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "ints_plus_key",
+                    "type": "{ x: number }",
+                    "optional": false
+                },
+                {
+                    "name": "local_built_labels_then_ints",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "local_ints_then_key_over_key",
+                    "type": "{ by: string; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "keyless_item_beside_key",
+                    "type": "{ a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "list_plus_keyed",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "keyed_plus_list",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesced_map_alone",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "local_map_list_over_key",
+                    "type": "{ by: { name: string | null; email: string | null } | string }",
+                    "optional": false
+                },
+                {
+                    "name": "map_bool_key_list",
+                    "type": "Omit<Record<string, string>, 'x'> & { x: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "map_list_bool_key",
+                    "type": "Omit<Record<string, string>, 'x'> & { x: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "map_list_nullable_key",
+                    "type": "Omit<Record<string, string>, 'note'> & { note: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "map_nullable_key",
+                    "type": "Omit<Record<string, string>, 'note'> & { note: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "labels_method_plus_key",
+                    "type": "{ by: number | string }",
+                    "optional": false
+                },
+                {
+                    "name": "empty_default_map_alone",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "preset_default_map_alone",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "literal_body_map_alone",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "literal_body_map_then_counts",
+                    "type": "Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "literal_body_map_then_labels",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guarded_spread_throws",
+                    "type": "{ row: Record<string, unknown> }",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guarded_spread_returns",
+                    "type": "{ n?: number; row?: Record<string, unknown> }",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Spreads\\MapSpreadsResource": {
             "name": "MapSpreadsResource",
             "properties": [
@@ -22407,9 +22692,264 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Spreads\\NullNoteArmResource": {
+            "name": "NullNoteArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "null",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\Spreads\\ReturnedTernaryResource": {
             "name": "ReturnedTernaryResource",
             "properties": []
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\StatusWrapArmResource": {
+            "name": "StatusWrapArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TagSignatureArmResource": {
+            "name": "TagSignatureArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TitleFlagArmResource": {
+            "name": "TitleFlagArmResource",
+            "properties": [
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TypedSeedSourceResource": {
+            "name": "TypedSeedSourceResource",
+            "properties": [
+                {
+                    "name": "overridable_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "overridable_map_local",
+                    "type": "{ by: { name: string | null; email: string | null } | string; z: number | string }",
+                    "optional": false
+                },
+                {
+                    "name": "overridable_map_spread",
+                    "type": "{ by: { name: string | null; email: string | null } | string; z: number | string }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_other_call",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_property",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_coalesced",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_static_call",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_other_call_nested",
+                    "type": "{ row: unknown }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TypedSeedSpreadResource": {
+            "name": "TypedSeedSpreadResource",
+            "properties": [
+                {
+                    "name": "tones_given_key_under_map_return",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "shape_method_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_property_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "local_receiver_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "static_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "filtered_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_plus_assigned_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_with_key_unset",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "own_delegate_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "docblock_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesced_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_built_map_given_key",
+                    "type": "{ by: string; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "shape_property_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "collected_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "number_map_given_key_on_one_path",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_over_earlier_tone",
+                    "type": "{ tone: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "map_given_two_keys",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_written_in_if_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "string_map_given_key_on_one_path",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_given_number_key_as_value",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "map_given_number_key_spread",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "typed_open_local_over_keys",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "top_tones_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "top_map_over_earlier_tone",
+                    "type": "{ tone: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "top_shape_method_given_key",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "returned_map_given_number_key",
+                    "type": "{ n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "top_typed_open_local_over_keys",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                }
+            ]
         },
         "Workbench\\App\\Http\\Resources\\Spreads\\WhenKeySpreadResource": {
             "name": "WhenKeySpreadResource",
