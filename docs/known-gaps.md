@@ -61,12 +61,14 @@ override's among them, are left out with no warning. In a spread helper, a `@ret
 own or `toArray()`'s, types the dropped branch in place instead. A join that keeps such a fill, beside branches sending
 two same-named models or enums of other names, such as the app's and the CRM's `User`, keeps one arm for that pair.
 
-### An outer declaration keeps an accessor's `null`
+### An outer declaration keeps an accessor's or a helper's own `null`
 
 An inline `@var`, a `toArray()` `@return` key or a closure's `@return` that leaves `null` out replaces a `null` only a
 declaration produced, and keeps every `null` the body proves. An accessor's `null` counts as its body's, whatever the
 body read, so `/** @var string $e */ $e = $post->excerpt;` over a getter returning `?string` publishes
-`string | null`. Drop the `null` with `??` or a type that admits none, and the declaration's type stands.
+`string | null`. So does a `null` a helper method's own `@return` spells: over a helper documented
+`@return array{a: string|null}`, `/** @var array{a: string} $x */ $x = $this->meta();` publishes `{ a: string | null }`.
+Drop the `null` with `??` or a type that admits none, and the declaration's type stands.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
