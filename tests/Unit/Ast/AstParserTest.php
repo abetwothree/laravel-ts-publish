@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
+use Illuminate\Support\Collection;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -113,6 +114,34 @@ it('evicts the least recently read file once the cache is full', function () {
 
         expect($parser->parseFile($paths[0]))->toBe($first)
             ->and($parser->parseFile($paths[1]))->not->toBe($second);
+    } finally {
+        array_map(unlink(...), $paths);
+        rmdir($dir);
+    }
+});
+
+it('keeps a dependency file cached however many other files the cap evicts', function () {
+    $cap = new ReflectionClassConstant(AstParser::class, 'MAX_CACHED_FILES')->getValue();
+    $dir = sys_get_temp_dir().'/ast-parser-pinned-'.uniqid();
+    mkdir($dir);
+    $paths = array_map(function (int $i) use ($dir): string {
+        file_put_contents($path = "{$dir}/file{$i}.php", "<?php \$value = {$i};");
+
+        return $path;
+    }, range(0, $cap));
+
+    try {
+        $parser = new AstParser;
+        $framework = (string) new ReflectionClass(Collection::class)->getFileName();
+        $pinned = $parser->parseFile($framework);
+        $first = $parser->parseFile($paths[0]);
+
+        foreach (array_slice($paths, 1) as $path) {
+            $parser->parseFile($path);
+        }
+
+        expect($parser->parseFile($framework))->toBe($pinned)
+            ->and($parser->parseFile($paths[0]))->not->toBe($first);
     } finally {
         array_map(unlink(...), $paths);
         rmdir($dir);

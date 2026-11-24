@@ -402,7 +402,14 @@ class TsTypeString
      */
     public function hasNullArm(string $type): bool
     {
-        return array_intersect(['null', VisibleGaps::DECLARED_NULL], $this->splitTopLevelUnion($type)) !== [];
+        // A hot read: a type spelling neither is answered without being split.
+        if (! str_contains($type, 'null') && ! str_contains($type, VisibleGaps::DECLARED_NULL)) {
+            return false;
+        }
+
+        $arms = $this->splitTopLevelUnion($type);
+
+        return in_array('null', $arms, true) || in_array(VisibleGaps::DECLARED_NULL, $arms, true);
     }
 
     /**

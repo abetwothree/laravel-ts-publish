@@ -765,6 +765,7 @@ no backing model, only a `Model` root hands off to the relation walk. On a model
 Every file an analyzer parses goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records
 the file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too.
 A read that bypasses it leaves the generation cache serving stale output when that file changes.
+The 256-file AST cache never evicts a dependency's file (`DependencyFiles`), so a framework file is parsed once per run.
 `AstParser::parseSource()` records nothing, so use it only for source that is not on disk.
 
 A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and

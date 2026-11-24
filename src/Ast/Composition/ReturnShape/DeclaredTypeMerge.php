@@ -449,9 +449,10 @@ final readonly class DeclaredTypeMerge
      */
     private function unhedged(array $body, string $declared): array
     {
-        $arms = TsTypeString::splitTopLevelUnion($body[0]);
-
-        if (! in_array(VisibleGaps::DECLARED_KEYS, $arms, true) || self::tells($declared) === 0) {
+        // Every merge passes here and few bodies spell the mark, so one scan spares the split.
+        if (! str_contains($body[0], VisibleGaps::DECLARED_KEYS)
+            || ! in_array(VisibleGaps::DECLARED_KEYS, TsTypeString::splitTopLevelUnion($body[0]), true)
+            || self::tells($declared) === 0) {
             return $body;
         }
 

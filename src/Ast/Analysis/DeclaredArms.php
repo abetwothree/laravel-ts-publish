@@ -33,7 +33,7 @@ final class DeclaredArms
      */
     public static function nullable(string $type): string
     {
-        return self::marking() ? VisibleGaps::nullMarked($type) : $type;
+        return str_contains($type, 'null') && self::marking() ? VisibleGaps::nullMarked($type) : $type;
     }
 
     /**
@@ -42,7 +42,7 @@ final class DeclaredArms
      */
     public static function withDeclaredNull(string $type): string
     {
-        return self::marking() && $type !== 'unknown'
+        return $type !== 'unknown' && self::marking()
             ? VisibleGaps::restored($type, [VisibleGaps::DECLARED_NULL])
             : TsTypeString::withNullArm($type);
     }
@@ -55,7 +55,7 @@ final class DeclaredArms
      */
     public static function attribute(string $type, string $modelFqcn, string $name): string
     {
-        if (! self::marking()) {
+        if (! str_contains($type, 'null') || ! self::marking()) {
             return $type;
         }
 
@@ -72,7 +72,7 @@ final class DeclaredArms
      */
     public static function nullsafe(string $type, Expr $receiver, ExpressionEngine $engine): string
     {
-        if (! self::marking() || $type === 'unknown') {
+        if ($type === 'unknown' || ! self::marking()) {
             return TsTypeString::withNullArm($type);
         }
 

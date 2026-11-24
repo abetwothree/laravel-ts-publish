@@ -71,7 +71,8 @@ final class VisibleGaps
      */
     public static function holds(string $type): bool
     {
-        return self::holdsUntyped($type) || self::holdsMarks($type);
+        // Every gap, mark and marker spells a `$`, which few types hold, so one scan clears most of them.
+        return str_contains($type, '$') && (self::holdsUntyped($type) || self::holdsMarks($type));
     }
 
     /**
