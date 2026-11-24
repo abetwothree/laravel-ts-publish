@@ -511,6 +511,25 @@ final class ValueResult
     }
 
     /**
+     * A result with what another says the value is beside its own type and classes: each of the other's VALUE_FACTS and
+     * whether it keeps its keys, as a declaration laid whole over a reading takes them (DeclaredFill).
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  ValueExpressionResult  $of
+     * @return ValueExpressionResult
+     */
+    public static function withValueFactsOf(array $result, array $of): array
+    {
+        foreach ([...self::VALUE_FACTS, 'keepsKeys'] as $fact) {
+            if (array_key_exists($fact, $of)) {
+                $result[$fact] = $of[$fact];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Whether a result is a literal printed one object per variant, each an array PHP holds, while its type is still
      * that union.
      *

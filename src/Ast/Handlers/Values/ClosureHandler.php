@@ -111,11 +111,13 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return $this->readOrAnnotated($read(), $closure, $scope);
         }
 
+        // In the mode, the annotation's own `null` is a declared one the `@return` replaces, as in its `T|null` twin.
         return DeclaredArms::underDeclaration(
-            $read,
-            fn (array $body, bool $nested): array => $body['type'] === 'unknown'
-                ? $this->readOrAnnotated($body, $closure, $scope)
-                : DeclaredFill::merged($body, $nested ? DeclaredArms::asNested($documented) : $documented),
+            fn (): array => $this->readOrAnnotated($read(), $closure, $scope),
+            static fn (array $body, bool $nested): array => DeclaredFill::merged(
+                $body,
+                $nested ? DeclaredArms::asNested($documented) : $documented,
+            ),
         ) ?? ValueResult::unknown();
     }
 

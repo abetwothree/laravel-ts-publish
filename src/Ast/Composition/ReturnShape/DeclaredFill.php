@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
@@ -34,9 +35,9 @@ final class DeclaredFill
     ];
 
     /**
-     * A reading merged with the declaration over it: the declaration whole where the merge reads as it, the reading
-     * where the merge leaves it or no queue of its channels can tell which class each merged token names, else the
-     * reading retyped, each class the merge names queued as requeue() says.
+     * A reading merged with the declaration over it: the declaration whole, with what the reading says the value is,
+     * where the merge reads as it; the reading where the merge leaves it or no queue of its channels can tell which
+     * class each merged token names; else the reading retyped, each class the merge names queued as requeue() says.
      *
      * The reading merges as a read out of the gap mode spells it, so a gap stays for the declaration of the key it
      * reaches, and the fill reads alike in either mode.
@@ -61,7 +62,7 @@ final class DeclaredFill
         }
 
         if ($text === $declared['type']) {
-            return [...$declared, 'optional' => $reading['optional']];
+            return ValueResult::withValueFactsOf($declared, $reading);
         }
 
         $requeue = self::requeue($held, self::singles($reading), $text, $slots, $names);

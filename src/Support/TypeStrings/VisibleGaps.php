@@ -291,11 +291,12 @@ final class VisibleGaps
 
     /**
      * The type with every gap arm and open marker at any depth removed and every mark unmarked(), exactly as the reader
-     * prints it with no gap shown, and the id of each gap removed, in order, each once.
+     * prints it with no gap shown, or each mark kept where $keepsMarks holds, and the id of each gap removed, in order,
+     * each once.
      *
      * @return Stripped
      */
-    public static function stripped(string $type): array
+    public static function stripped(string $type, bool $keepsMarks = false): array
     {
         if (! self::holds($type)) {
             return [$type, []];
@@ -304,9 +305,9 @@ final class VisibleGaps
         $ids = [];
         $text = TypeRewriter::rewrite(
             $type,
-            static function (string $arm) use (&$ids): ?string {
+            static function (string $arm) use (&$ids, $keepsMarks): ?string {
                 if (self::isMark($arm) || ! self::isGap($arm)) {
-                    return self::unmarkedArm($arm);
+                    return $keepsMarks ? $arm : self::unmarkedArm($arm);
                 }
 
                 $ids[] = (int) substr($arm, strlen(self::GAP_PREFIX));

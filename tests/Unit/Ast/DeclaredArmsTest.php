@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredFill;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Cache\CacheBootstrap;
 use AbeTwoThree\LaravelTsPublish\EnumResource;
@@ -59,6 +60,19 @@ function declaredArmsType(
 }
 
 /**
+ * The whole result a value reads as through PostResource, as a local the tag declares inline.
+ *
+ * @return array<string, mixed>
+ */
+function declaredArmsResult(string $value, string $tag): array
+{
+    $body = '/** @var '.$tag.' $z */ $z = '.$value.'; return $z;';
+    $expr = new AstParser()->parseSource('<?php function () { '.$body.' };')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr);
+}
+
+/**
  * Whether a text spells either mark.
  */
 function spellsDeclaredMark(string $text): bool
@@ -77,6 +91,7 @@ describe('the marks', function () {
             ->and(VisibleGaps::stripped('(string | $declNull)[] | $gap2'))->toBe(['(string | null)[]', [2]])
             ->and(VisibleGaps::stripped('string | null | $declNull'))->toBe(['string | null', []])
             ->and(VisibleGaps::stripped('string[] | Record<string, string> | $declKeys'))->toBe(['string[] | Record<string, string>', []])
+            ->and(VisibleGaps::stripped('(string | $declNull)[] | $gap2 | $declKeys', keepsMarks: true))->toBe(['(string | $declNull)[] | $declKeys', [2]])
             ->and(VisibleGaps::ids('string | $declNull'))->toBe([])
             ->and(VisibleGaps::unmarked('{ a: string | $declNull }[] | $declKeys'))->toBe('{ a: string | null }[]');
     });
@@ -315,12 +330,25 @@ test('an outer @var replaces the null of a nullable column a cast class reads', 
     'a castable whose get() never returns null' => ['status', 'array{label: string}', '{ label: string }'],
 ]);
 
-test('a toArray() @return key and a closure @return keep the null an accessor read through ?-> proves', function () {
+// A helper's body is read under the `@var` too, so its frame keeps each mark for that declaration to replace.
+test('an outer declaration over another method\'s body keeps the null it proves and replaces a declared one', function () {
     expect(publishedResourceKeyTypes(ChainAccessorReturnResource::class, Comment::class))->toBe([
         'chain_accessor' => 'string | null',
         'closure_accessor' => '(string | null)[]',
         'bare_chain_accessor' => 'string | null',
+        'var_column_helper' => '{ parent: number }',
+        'var_ternary_helper' => '{ parent: number | null }',
+        'bare_column_helper' => '{ parent: number | null }',
     ]);
+});
+
+test('a declaration laid whole over a reading keeps what the reading says the value is', function () {
+    $reading = ['type' => 'string | $declNull', 'optional' => true, 'absent' => true, 'removed' => true, 'keepsKeys' => true, 'listKeys' => true];
+    $cast = '(object) [\'a\' => $this->featured_image_url]';
+
+    expect(DeclaredFill::merged($reading, ['type' => 'string', 'optional' => false]))
+        ->toBe(['type' => 'string', 'optional' => true, 'absent' => true, 'removed' => true, 'listKeys' => true, 'keepsKeys' => true])
+        ->and(declaredArmsResult($cast, 'array{a: string}'))->toMatchArray(['type' => '{ a: string }', 'keepsKeys' => true]);
 });
 
 // The replay strips no gap: a gap a variant's key holds stays for the `@return` that fills it, and warns no earlier.
@@ -414,7 +442,10 @@ describe('the leak guard', function () {
     test('no analysis, memo entry read out of the modes or cached transformer spells a mark', function () {
         $memo = resolve(AnalysisMemo::class);
         $memo->reset();
-        $analysis = resolve(AstEngine::class)->analyze(DeclaredArmsResource::class, 'toArray', Post::class);
+        $analysis = [
+            resolve(AstEngine::class)->analyze(DeclaredArmsResource::class, 'toArray', Post::class),
+            resolve(AstEngine::class)->analyze(ChainAccessorReturnResource::class, 'toArray', Comment::class),
+        ];
         /** @var array<string, list<array{value: mixed}>> $entries */
         $entries = (fn (): array => $this->entries)->call($memo);
         $outOfModes = array_filter(

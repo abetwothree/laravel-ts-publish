@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DocumentedClosureResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedClosureParamResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReassignedPostParamResource;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use PhpParser\Comment\Doc;
 use PhpParser\Node\Expr;
@@ -383,6 +384,20 @@ it('reads a @return that narrows a closure\'s return union before the union, thr
     'a vague @return' => ['/** @return mixed */', 'self|null', '({ views: number; shares: number } | null)[]'],
 ]);
 
+// Strings, so Pint cannot respell either union: a native `?T` and its `T|null` twin read alike under a `@return`.
+it('reads a @return over a closure\'s ?T return as it reads it over the T|null twin, through map()', function (string $docComment, string $union, string $nullable, string $expected) {
+    $callback = static fn (string $type): string => $docComment.' fn ($i): '.$type.' => \\'.Opaque::class.'::value($i)';
+
+    expect(closureHandlerMappedType($callback($union), PostStats::class))->toBe($expected)
+        ->and(closureHandlerMappedType($callback($nullable), PostStats::class))->toBe($expected);
+})->with([
+    'a class without its null' => ['/** @return \\'.Post::class.' */', '\\'.Post::class.'|null', '?\\'.Post::class, 'Post[]'],
+    'a subclass of the native class' => ['/** @return \\'.Post::class.' */', '\\'.Model::class.'|null', '?\\'.Model::class, 'Post[]'],
+    'a refined scalar' => ['/** @return non-empty-string */', 'string|null', '?string', 'string[]'],
+    'a @return keeping the null' => ['/** @return \\'.Post::class.'|null */', '\\'.Post::class.'|null', '?\\'.Post::class, '(Post | null)[]'],
+    'a vague @return' => ['/** @return mixed */', 'self|null', '?self', '({ views: number; shares: number } | null)[]'],
+]);
+
 it('reads a function closure\'s self|null return as its ?self twin, through map()', function () {
     $returns = fn (string $type): string => 'function ($i): '.$type.' { return \\'.Opaque::class.'::value($i); }';
 
@@ -677,6 +692,7 @@ it('merges a closure\'s @return with its body, replacing only the arms a declara
     'a nullable column' => ['/** @return string */ fn ($i) => $this->featured_image_url', 'string[]'],
     'a nullable column, the @return keeping its null' => ['/** @return string|null */ fn ($i) => $this->featured_image_url', '(string | null)[]'],
     'a literal null the body proves' => ['/** @return string */ fn ($i) => $i > 1 ? $this->title : null', '(string | null)[]'],
+    'a literal null the body proves beside a native ?T' => ['/** @return string */ fn ($i): ?string => $i > 1 ? $this->title : null', '(string | null)[]'],
     'an inner closure\'s native T|null' => [
         '/** @return list<\\'.Post::class.'> */ fn ($i) => collect([1])->map(fn ($j): \\'.Post::class.'|null => \\'.Opaque::class.'::value($j))->all()',
         'Post[][]',
