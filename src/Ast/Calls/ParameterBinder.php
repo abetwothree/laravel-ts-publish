@@ -1049,7 +1049,9 @@ final class ParameterBinder
     {
         $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
         $context = $scope->declaringFileClass;
-        $tag = $name === null ? null : resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context);
+        $tag = $name === null
+            ? null
+            : resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context, namesReceiver: true);
 
         if ($tag === null || preg_match('/(?<![\\w\\\\$])(?:self|static|parent|\\$this)(?![\\w\\\\])/i', $tag) === 1) {
             return null;

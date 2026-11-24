@@ -14860,7 +14860,7 @@
             "properties": [
                 {
                     "name": "private_amounts_by_param_tag",
-                    "type": "unknown",
+                    "type": "string[] | Record<string, string>",
                     "optional": false
                 },
                 {
@@ -14870,7 +14870,7 @@
                 },
                 {
                     "name": "interface_labels_by_param_tag",
-                    "type": "unknown",
+                    "type": "string[] | Record<string, string>",
                     "optional": false
                 },
                 {
@@ -14880,7 +14880,7 @@
                 },
                 {
                     "name": "backed_enum_values_by_param_tag",
-                    "type": "unknown",
+                    "type": "(string | number)[] | Record<string, string | number>",
                     "optional": false
                 },
                 {
@@ -14890,7 +14890,7 @@
                 },
                 {
                     "name": "unit_enum_names_by_param_tag",
-                    "type": "unknown",
+                    "type": "string[] | Record<string, string>",
                     "optional": false
                 },
                 {
@@ -14900,7 +14900,7 @@
                 },
                 {
                     "name": "collection_counts_by_param_tag",
-                    "type": "unknown",
+                    "type": "number[] | Record<string, number>",
                     "optional": false
                 },
                 {
@@ -14910,7 +14910,7 @@
                 },
                 {
                     "name": "abstract_areas_by_param_tag",
-                    "type": "unknown",
+                    "type": "number[] | Record<string, number>",
                     "optional": false
                 },
                 {
@@ -14920,7 +14920,7 @@
                 },
                 {
                     "name": "loose_labels_by_param_tag",
-                    "type": "unknown",
+                    "type": "string[] | Record<string, string>",
                     "optional": false
                 },
                 {

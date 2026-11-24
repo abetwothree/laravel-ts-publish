@@ -6,9 +6,12 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\DeclaredClosureResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ParamTagShapesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\TypedClosureParameterResource;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\Resources\Json\JsonResource;
 use PhpParser\Node\Stmt\Expression;
+use Workbench\App\Http\Resources\DocblockReads\ParamTagClassesResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 
@@ -97,6 +100,62 @@ it('binds a value closure parameter by its @param class where the element names 
         'doc_param_global' => [now()->format('Y')],
     ]);
 });
+
+/**
+ * What Laravel sends for a resource over no model, decoded from its JSON.
+ *
+ * @param  class-string<JsonResource>  $resource
+ * @return array<string, mixed>
+ */
+function paramTagSends(string $resource): array
+{
+    /** @var array<string, mixed> */
+    return json_decode((string) json_encode(new $resource(null)->resolve(request())), true);
+}
+
+// A `@param` names the receiver as its native type does, even where the class's own reading cannot publish.
+it('binds a value closure parameter by an @param naming a class that is not a model', function (string $resource, string $pair, string $type, array $sent) {
+    expect(analyzedKeyTypes($resource))
+        ->toHaveKey("{$pair}_by_param_tag", $type)
+        ->toHaveKey("{$pair}_by_native_type", $type)
+        ->and(paramTagSends($resource))
+        ->toHaveKey("{$pair}_by_param_tag", $sent)
+        ->toHaveKey("{$pair}_by_native_type", $sent);
+})->with([
+    'a value object with private state' => [ParamTagClassesResource::class, 'private_amounts', 'string[] | Record<string, string>', ['5.00']],
+    'an interface' => [ParamTagClassesResource::class, 'interface_labels', 'string[] | Record<string, string>', ['a']],
+    'BackedEnum' => [ParamTagClassesResource::class, 'backed_enum_values', '(string | number)[] | Record<string, string | number>', [1]],
+    'UnitEnum' => [ParamTagClassesResource::class, 'unit_enum_names', 'string[] | Record<string, string>', ['Published']],
+    'a bare Collection' => [ParamTagClassesResource::class, 'collection_counts', 'number[] | Record<string, number>', [2]],
+    'an abstract class that is not a model' => [ParamTagClassesResource::class, 'abstract_areas', 'number[] | Record<string, number>', [4]],
+    'a class with an untyped public property' => [ParamTagClassesResource::class, 'loose_labels', 'string[] | Record<string, string>', ['L']],
+    'a value object read by a numeric method' => [ParamTagShapesResource::class, 'square_areas', 'number[] | Record<string, number>', [4]],
+    'a nullable interface' => [ParamTagShapesResource::class, 'nullable_labels', '(string | null)[] | Record<string, string | null>', ['a']],
+    'a collection sent without all()' => [ParamTagShapesResource::class, 'amount_collection', 'string[] | Record<string, string>', ['5.00']],
+    'an array_map() callback' => [ParamTagShapesResource::class, 'mapped_amounts', 'string[] | Record<string, string>', ['5.00']],
+    'a statement closure' => [ParamTagShapesResource::class, 'statement_amounts', 'string[] | Record<string, string>', ['5.00']],
+    'a shape' => [ParamTagShapesResource::class, 'label_rows', '{ label: string }[] | Record<string, { label: string }>', [['label' => 'a']]],
+    'an enum\'s cases' => [
+        ParamTagShapesResource::class,
+        'case_rows',
+        '{ value: string | number; name: string }[] | Record<string, { value: string | number; name: string }>',
+        [['value' => 0, 'name' => 'Draft'], ['value' => 1, 'name' => 'Published']],
+    ],
+    'an options builder' => [
+        ParamTagShapesResource::class,
+        'enum_options',
+        '{ value: string | number; name: string }[] | Record<string, { value: string | number; name: string }>',
+        [['value' => 0, 'name' => 'Draft'], ['value' => 1, 'name' => 'Published']],
+    ],
+    'an options builder re-indexed into a list' => [
+        ParamTagShapesResource::class,
+        'enum_option_list',
+        '{ value: string | number; name: string }[]',
+        [['value' => 0, 'name' => 'Draft'], ['value' => 1, 'name' => 'Published']],
+    ],
+    'a helper the resource spreads' => [ParamTagShapesResource::class, 'helper_amounts', 'string[] | Record<string, string>', ['5.00']],
+    'a nested key' => [ParamTagShapesResource::class, 'nested_labels', '{ labels: string[] | Record<string, string> }', ['labels' => ['a']]],
+]);
 
 // A union spelled `X|null` names its class as `?X` does; Pint rewrites the spelling in a fixture, so it is parsed here.
 it('binds a closure parameter typed X|null by its class', function () {

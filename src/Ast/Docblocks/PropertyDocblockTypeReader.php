@@ -119,12 +119,21 @@ final class PropertyDocblockTypeReader
      * it. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
+     * @param  bool  $namesReceiver  whether any VarTypeWhitelist form passes, its reading partial or absent, as an
+     *                               interface's or a bare collection's is, because the tag only names a receiver
      */
-    public function extractParamTag(string $docComment, string $name, ReflectionClass $context): ?string
-    {
+    public function extractParamTag(
+        string $docComment,
+        string $name,
+        ReflectionClass $context,
+        bool $namesReceiver = false,
+    ): ?string {
         $type = DocblockTags::named($docComment, 'param')[$name] ?? null;
+        $accepted = $type !== null && ($namesReceiver
+            ? VarTypeWhitelist::for($context)->unknownLeaves($type) !== null
+            : $this->readsInFull($type, $context, unreadAccepted: false));
 
-        return $type !== null && $this->readsInFull($type, $context, unreadAccepted: false) ? $type : null;
+        return $accepted ? $type : null;
     }
 
     /**
