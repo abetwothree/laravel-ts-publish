@@ -297,6 +297,7 @@ test('an outer @var keeps a null the value proves where a declared one joins it'
 })->with([
     '?-> in a $this chain over an accessor' => ['$this->post?->excerpt', CommentResource::class, Comment::class],
     '?-> over a nullable $resource\'s accessor' => ['$this->resource?->excerpt', NullableShorthandWrappedResource::class, Post::class],
+    '?-> in a $this chain over an accessor whose body returns null' => ['$this->published_author?->name', PostResource::class, ColumnAccessorPost::class],
     'whenLoaded() of a declared-nullable relation over a ternary null' => [
         '$this->whenLoaded(\'parent\', fn () => $this->id > 1 ? $this->name : null)',
         CategoryResource::class,
@@ -316,6 +317,7 @@ test('an outer @var replaces a declared null joining a value that proves none', 
         ->and(declaredArmsType($value, tag: 'string', resource: $resource, model: $model))->toBe('string');
 })->with([
     '?-> in a $this chain over a nullable column' => ['$this->post?->featured_image_url', CommentResource::class, Comment::class],
+    '?-> in a $this chain over a relation' => ['$this->author?->name', PostResource::class, ColumnAccessorPost::class],
     'whenLoaded() of a declared-nullable relation over a NOT NULL column' => [
         '$this->whenLoaded(\'parent\', fn () => $this->parent->name)',
         CategoryResource::class,

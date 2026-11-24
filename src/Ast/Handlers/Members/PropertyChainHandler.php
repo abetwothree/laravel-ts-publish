@@ -50,7 +50,7 @@ final class PropertyChainHandler implements ExpressionHandler
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof NullsafePropertyFetch) {
-            $info = $this->analyzePropertyChain($expr, $scope);
+            $info = $this->analyzePropertyChain($expr, $scope, $engine);
 
             return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
         }
@@ -64,7 +64,7 @@ final class PropertyChainHandler implements ExpressionHandler
             }
 
             if ($info['type'] === 'unknown') {
-                $info = $this->analyzePropertyChain($expr, $scope);
+                $info = $this->analyzePropertyChain($expr, $scope, $engine);
             }
 
             return TsTypeString::isUnknownOnly($info['type']) ? null : $info;
@@ -72,7 +72,7 @@ final class PropertyChainHandler implements ExpressionHandler
 
         // Any other chain rooted at `$this`: `$this->author->name`, or 3+ deep as `$this->resource->user->role`.
         if ($expr instanceof PropertyFetch) {
-            $info = $this->analyzePropertyChain($expr, $scope);
+            $info = $this->analyzePropertyChain($expr, $scope, $engine);
 
             if ($info['type'] !== 'unknown') {
                 return $info;
@@ -90,7 +90,7 @@ final class PropertyChainHandler implements ExpressionHandler
      *
      * @return ValueExpressionResult
      */
-    private function analyzePropertyChain(Expr $expr, AnalysisScope $scope): array
+    private function analyzePropertyChain(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $chain = $this->decomposePropertyChain($expr);
 
@@ -164,9 +164,8 @@ final class PropertyChainHandler implements ExpressionHandler
                 return ValueResult::unknown();
             }
 
-            // Each step a `?->` reads is a relation or a `$resource` only a declaration may leave null.
             $type = DeclaredArms::markedNull($relationInfo['type']);
-            $type = $hasNullable ? DeclaredArms::withDeclaredNull($type) : $type;
+            $type = $hasNullable ? $this->withNullsafeNull($type, $expr, $engine) : $type;
 
             /** @var ValueExpressionResult $result */
             $result = ['type' => $type, 'optional' => false];
@@ -183,9 +182,24 @@ final class PropertyChainHandler implements ExpressionHandler
         }
 
         $type = DeclaredArms::attribute($tsInfo['type'], $currentModel, $lastStep['name']);
-        $type = $hasNullable ? DeclaredArms::withDeclaredNull($type) : $type;
+        $type = $hasNullable ? $this->withNullsafeNull($type, $expr, $engine) : $type;
 
         return ValueResult::withAttributeChannels(['type' => $type, 'optional' => false], $tsInfo);
+    }
+
+    /**
+     * A chain's type with the `null` its `?->` short circuit adds, read off the receiver of its last `?->` step as
+     * DeclaredArms::nullsafe() reads any receiver's, so an accessor's own `null` there stays the body's.
+     */
+    private function withNullsafeNull(string $type, Expr $chain, ExpressionEngine $engine): string
+    {
+        $step = $chain;
+
+        while ($step instanceof PropertyFetch) {
+            $step = $step->var;
+        }
+
+        return DeclaredArms::nullsafe($type, $step instanceof NullsafePropertyFetch ? $step->var : $step, $engine);
     }
 
     /**
