@@ -30,6 +30,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
+use PhpParser\Node\UnionType;
 
 /**
  * Closures and arrow functions used as a property value — resolves the body's return type(s), falling back to the
@@ -167,6 +168,8 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      * annotation is absent, vague or unread and TsTypeString::documentedWins() says the docblock says more. Null when
      * neither types the closure: see convertAstTypeNodeToTs() and documentedReturnType().
      *
+     * A `T|null` union reads as its `?T` twin, except that a `@return` saying more than `unknown` comes first.
+     *
      * @return ClosureAnnotationResult|ValueExpressionResult|null
      */
     private function resolveClosureAstReturnType(Expr $expr, AnalysisScope $scope): ?array
@@ -175,13 +178,21 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
+        $union = $expr->returnType instanceof UnionType;
+        $documented = $union ? $this->documentedReturnType($expr, $scope) : null;
+
+        // A union's `@return` comes first, as it may narrow `Post|null` to `Post`; `?Post` keeps its native read.
+        if ($documented !== null && TsTypeString::documentedWins('unknown', $documented['type'])) {
+            return $documented;
+        }
+
         $native = $expr->returnType === null ? null : $this->convertAstTypeNodeToTs($expr->returnType, $scope);
 
         if ($native !== null && ! TsTypeString::isVagueTsType($native['type'])) {
             return $native;
         }
 
-        $documented = $this->documentedReturnType($expr, $scope);
+        $documented = $union ? $documented : $this->documentedReturnType($expr, $scope);
 
         return $documented !== null && TsTypeString::documentedWins($native['type'] ?? 'unknown', $documented['type'])
             ? $documented
@@ -212,15 +223,17 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult: the type, with its FQCN or the custom
      * imports a class's override brings.
      *
-     * Returns null for union/intersection types, void/never/mixed and unresolvable classes; `self`, `static` and
-     * `parent` name the class the scope binds them to.
+     * Returns null for intersections, unions other than one type beside `null`, void/never/mixed and unresolvable
+     * classes; `self`, `static` and `parent` name the class the scope binds them to.
      *
      * @return ClosureAnnotationResult|null
      */
     private function convertAstTypeNodeToTs(Node $typeNode, AnalysisScope $scope): ?array
     {
-        if ($typeNode instanceof NullableType) {
-            $inner = $this->convertAstTypeNodeToTs($typeNode->type, $scope);
+        $nullable = $this->nullableArm($typeNode);
+
+        if ($nullable !== null) {
+            $inner = $this->convertAstTypeNodeToTs($nullable, $scope);
 
             if ($inner === null) {
                 return null;
@@ -267,5 +280,26 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 
         // UnionType / IntersectionType — fall through to body analysis
         return null;
+    }
+
+    /**
+     * The type a `?T`, `T|null` or `null|T` return type makes nullable; null for any other type.
+     */
+    private function nullableArm(Node $typeNode): ?Node
+    {
+        if ($typeNode instanceof NullableType) {
+            return $typeNode->type;
+        }
+
+        if (! $typeNode instanceof UnionType || count($typeNode->types) !== 2) {
+            return null;
+        }
+
+        $named = array_values(array_filter(
+            $typeNode->types,
+            static fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
+        ));
+
+        return count($named) === 1 ? $named[0] : null;
     }
 }

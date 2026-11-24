@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Enumerable;
@@ -461,6 +462,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      * `null` callback, else what the callback returns, each element `| null` as a shorter array pads with it, and
      * each parameter bound to the classes its array declares its elements as.
      *
+     * An element nothing types leaves its parameter what the parameter declares, as the one-array form does; a tuple
+     * of it, or a body it leaves partly `unknown`, declines.
+     *
      * @param  non-empty-list<ValueExpressionResult>  $inputs
      * @param  non-empty-list<Expr>  $arrays
      * @return ValueExpressionResult|null
@@ -468,13 +472,21 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     private function mappedArrays(Expr $callback, array $inputs, array $arrays, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $parameters = [];
+        $untyped = false;
 
         foreach ($inputs as $input) {
             $elements = ArrayArms::arms($input['type'], ArrayArms::elementOf(...));
             $elements = $elements === null ? [] : array_values(array_diff(array_unique($elements), ['never']));
 
-            if ($elements === [] || in_array('unknown', $elements, true)) {
+            if ($elements === [] || ($zips && in_array('unknown', $elements, true))) {
                 return null;
+            }
+
+            if (in_array('unknown', $elements, true)) {
+                $parameters[] = ValueResult::unknown();
+                $untyped = true;
+
+                continue;
             }
 
             // An array's gap is an element no rule typed, so it stays in the element's union.
@@ -491,9 +503,26 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $declared = array_filter(array_map(fn (Expr $array): ?ReceiverType => $resolver->elementClasses($array, $scope), $arrays));
         $body = $this->resolveArrayCallback($callback, $parameters, null, true, $scope, $engine, declaredElements: $declared);
 
-        return $body === null || $body['type'] === 'unknown'
+        // A declared type around the call, such as an inline `@var`, fills only a whole `unknown`, never a partial one.
+        return $body === null || $body['type'] === 'unknown' || ($untyped && $this->holdsUnknown($body['type']))
             ? null
             : [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
+    }
+
+    /**
+     * Whether a type holds `unknown` at any depth, its gaps and open markers set aside.
+     */
+    private function holdsUnknown(string $type): bool
+    {
+        $holds = false;
+
+        TypeRewriter::rewrite(VisibleGaps::stripped($type)[0], static function (string $arm) use (&$holds): string {
+            $holds = $holds || $arm === 'unknown';
+
+            return $arm;
+        });
+
+        return $holds;
     }
 
     /**

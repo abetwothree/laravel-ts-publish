@@ -14840,7 +14840,7 @@
                 },
                 {
                     "name": "zipped_with_untyped_posts",
-                    "type": "unknown",
+                    "type": "{ content: string; title: string }[]",
                     "optional": false
                 },
                 {

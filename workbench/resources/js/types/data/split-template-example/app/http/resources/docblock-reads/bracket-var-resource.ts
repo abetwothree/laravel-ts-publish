@@ -19,7 +19,7 @@ export interface BracketVarResource
     option_ids_by_name_collected: number[];
     option_record: Record<string, { itemId: number }>;
     option_list: { itemId: number }[];
-    zipped_with_untyped_posts: unknown;
+    zipped_with_untyped_posts: { content: string; title: string }[];
     titles_from_untyped_posts: string[] | Record<string, string>;
     zipped_typed_comments: { content: string; id: number }[];
 }

@@ -638,10 +638,12 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
   [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
 - **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
   `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a
-  shorter array pads with `null`. A `null` callback returns the one array, or zips several into tuples. An object,
-  a `Collection` included, declines, since PHP throws a `TypeError` on it, and a `Collection` records a warning naming
-  the line and its `all()`. `array_values()` and `array_filter()` of a `Collection` warn the same way, yet keep its
-  items' type. `array_values()` marks its list keyed 0..n-1, so `array_keys()` of it lists numbers.
+  shorter array pads with `null`. An element nothing types leaves its parameter what it declares, as with one array;
+  a body it leaves partly `unknown` declines, so an inline `@var` around the call still fills it. A `null` callback
+  returns the one array, or zips several into tuples. An object, a `Collection` included, declines, since PHP throws a
+  `TypeError` on it, and a `Collection` records a warning naming the line and its `all()`. `array_values()` and
+  `array_filter()` of a `Collection` warn the same way, yet keep its items' type. `array_values()` marks its list keyed
+  0..n-1, so `array_keys()` of it lists numbers.
 - **`data_get($target, 'a.b')` is the chain `$target?->a?->b`**: `KnownFunctionCallHandler` unions an explicit default
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.

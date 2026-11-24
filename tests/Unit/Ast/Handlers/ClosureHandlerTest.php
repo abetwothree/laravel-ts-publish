@@ -25,12 +25,14 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\NullableType;
 use PhpParser\Node\Param;
+use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\UnionType;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\Support\Opaque;
 use Workbench\App\ValueObjects\PostStats;
 
 /**
@@ -338,6 +340,56 @@ it('reads a closure\'s self or static return, native or documented, as the class
     'a @return static' => ['/** @return static */', null, '{ views: number; shares: number }'],
     'a @return self or null' => ['/** @return self|null */', null, '{ views: number; shares: number } | null'],
 ]);
+
+/**
+ * The type `collect([1])->map($callback)->all()` publishes in $class's scope over a post, the callback read as source.
+ *
+ * Source, not a fixture: Pint rewrites a linted file's `self|null` return to `?self`.
+ *
+ * @param  class-string  $class
+ */
+function closureHandlerMappedType(string $callback, string $class): string
+{
+    $statement = new AstParser()->parseSource('<?php collect([1])->map('.$callback.')->all();')[0];
+    assert($statement instanceof Expression);
+
+    return new ResourceAstAnalyzer(new ReflectionClass($class), Post::class)->resolve($statement->expr)['type'];
+}
+
+// `T|null` is the union PHP spells `?T`, so a closure returning either reads the same, `static` on an open class too.
+it('reads a closure\'s return union of one type and null as its ? twin, through map()', function (string $union, string $nullable, string $class, string $expected) {
+    $returns = fn (string $type): string => 'fn ($i): '.$type.' => \\'.Opaque::class.'::value($i)';
+
+    expect(closureHandlerMappedType($returns($union), $class))->toBe($expected)
+        ->and(closureHandlerMappedType($returns($nullable), $class))->toBe($expected);
+})->with([
+    'self|null on a final class' => ['self|null', '?self', PostStats::class, '({ views: number; shares: number } | null)[]'],
+    'null|self' => ['null|self', '?self', PostStats::class, '({ views: number; shares: number } | null)[]'],
+    'static|null on a final class' => ['static|null', '?static', PostStats::class, '({ views: number; shares: number } | null)[]'],
+    'self|null on an open class' => ['self|null', '?self', PostResource::class, '(PostResource | null)[]'],
+    'static|null on an open class' => ['static|null', '?static', PostResource::class, '(PostResource | null)[]'],
+    'a named class or null' => ['\\'.Comment::class.'|null', '?\\'.Comment::class, PostStats::class, '(Comment | null)[]'],
+    'null or a named value class' => ['null|\\'.PostStats::class, '?\\'.PostStats::class, PostResource::class, '({ views: number; shares: number } | null)[]'],
+    'a scalar or null' => ['int|null', '?int', PostStats::class, '(number | null)[]'],
+]);
+
+it('reads a @return that narrows a closure\'s return union before the union, through map()', function (string $docComment, string $union, string $expected) {
+    $callback = $docComment.' fn ($i): '.$union.' => \\'.Opaque::class.'::value($i)';
+
+    expect(closureHandlerMappedType($callback, PostStats::class))->toBe($expected);
+})->with([
+    'a class without its null' => ['/** @return \\'.Comment::class.' */', '\\'.Comment::class.'|null', 'Comment[]'],
+    'a refined scalar' => ['/** @return non-empty-string */', 'string|null', 'string[]'],
+    'a vague @return' => ['/** @return mixed */', 'self|null', '({ views: number; shares: number } | null)[]'],
+]);
+
+it('reads a function closure\'s self|null return as its ?self twin, through map()', function () {
+    $returns = fn (string $type): string => 'function ($i): '.$type.' { return \\'.Opaque::class.'::value($i); }';
+
+    expect(closureHandlerMappedType($returns('self|null'), PostStats::class))
+        ->toBe(closureHandlerMappedType($returns('?self'), PostStats::class))
+        ->toBe('({ views: number; shares: number } | null)[]');
+});
 
 // A docblock that names a global class the file does not import still reads it, as it did before the relative spelling.
 it('reads a @return naming a global class the file does not import', function () {
