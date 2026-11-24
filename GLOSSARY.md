@@ -186,11 +186,23 @@ _Avoid_: case, branch, split
 
 **Visible gap**:
 A dropped arm, or the keys an object may hold that inference cannot name, kept in a key's type so the method's `@return` can type it where it stands. A gap the docblock leaves untyped is dropped before the type publishes.
-_Avoid_: mark, placeholder
+_Avoid_: placeholder
 
 **Gap mode**:
-How inference reads the keys a method's own `@return` types, the analyzed method's or a spread helper's, keeping each visible gap for that docblock. Unlike a reading, it changes what a type keeps, not how values reach the client.
+How inference reads the keys a method's own `@return` types, the analyzed method's or a spread helper's, keeping each visible gap for that docblock. It brings the declaration mode. Unlike a reading, it changes what a type keeps, not how values reach the client.
 _Avoid_: showing gaps, gap flag
+
+**Declared arm**:
+A union arm only a declaration produced, such as a nullable column's `null`, a `?T` return's `null`, or the `Record` beside a map over an untyped array. An outer declaration, an inline `@var`, a `toArray()` `@return` key or a closure's `@return`, replaces it where it leaves it out. While the declaration mode reads it, it is a mark in the type: [AST engine § Declared arms](docs/components/ast-engine.md#declared-arms).
+_Avoid_: soft arm, signature null
+
+**Proven arm**:
+A union arm the body itself proves, such as a literal `null`, `?? null`, or a ternary's or `match` arm's `null`. An outer declaration never replaces it. Every arm that is not a declared arm is proven.
+_Avoid_: hard arm, body null
+
+**Declaration mode**:
+How inference reads a value under an outer declaration, marking each declared arm so the declaration can replace it. The gap mode brings it.
+_Avoid_: soft mode, softening
 
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.

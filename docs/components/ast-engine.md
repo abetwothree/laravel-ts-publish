@@ -616,9 +616,10 @@ no reader binds from, for the join to name. `VariableWrites` classifies each wri
 cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so
 `$s = $s . 'x'` reads the value `$s` held before.
 
-Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague or the `null` a
-dropped arm left. It also replaces a `never[]` a drop left where it lists, and fills a literal's member that its own
-item's drop left `null` or `never[]` where `T`'s member admits that, importing only what the filled member spells.
+Inside the span the assigned value's reading merges with `T` position by position ([§ Declared arms](#declared-arms)),
+and `T` fills whole where that reading is vague or only the `null` a dropped arm left. It also replaces a `never[]` a
+drop left where it lists, and fills a literal's member that its own item's drop left `null` or `never[]` where `T`'s
+member admits that, importing only what the filled member spells.
 A union `T` gives the member every arm's type but `null`'s, in one fixed order, and none where an arm lacks the key.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
@@ -637,7 +638,9 @@ a by-reference parameter of a callee the scan cannot name.
 `array-key` key and an alias the file's class sees among them. An alias admits only what its definition would, spelled
 directly in the file that wrote it, so one naming an unimported global class declines. A callable inside a shape reads
 `unknown` by design, so `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the
-tag has callables, and no more. A collection local's bare read is what its `all()` sends, so a record keyed of either
+tag has callables, and no more. A `@var` with no reading, an interface's, passes too, since it still names a receiver,
+and a closure's `@param` read for its class (`extractParamTag()`'s `$namesReceiver`) passes in any whitelisted form,
+its reading partial or absent. A collection local's bare read is what its `all()` sends, so a record keyed of either
 kind keeps its list arm.
 
 ### By-reference calls
@@ -1046,9 +1049,12 @@ appends the mark (`DeclaredArms::withDeclaredNull()`), so a `null` the value its
 and `ValueResult::gapTransparent()` mark again a `null` the read keeps, so every reader decides as out of the mode.
 `DeclaredTypeMerge` sets marks aside: a `$declNull` takes only the declaration's own `null`, and a `$declKeys` drops the
 `Record` arms where the declaration names no keyed arm. [`DeclaredFill`] lays an inline `@var` or a closure's `@return`
-over a reading as a `@return` merges a key, its gaps aside, and its classes requeued as `ReturnShapeRefiner`'s are. The
-outermost fill turns the marks it left back into what they stand for; a nested one keeps them and marks its own
-declaration's `null`. `stripped()` does the same at a strip, and a variant reads its arms unmarked, so none publishes.
+over a reading as a `@return` merges a key, its gaps aside, and its classes requeued as `ReturnShapeRefiner`'s are; a
+merge that reads as the declaration takes it whole with what the reading says the value is
+(`ValueResult::withValueFactsOf()`), such as `keepsKeys`. The outermost fill turns the marks it left back into what they
+stand for; a nested one keeps them and marks its own declaration's `null`. A frame read in the mode, a helper's, keeps
+them past its strip (`MethodAnalysis::stripGaps()`) for the declaration it is read under; any other strip turns them
+back as `stripped()` does, and a variant reads its arms unmarked, so none publishes.
 
 Forcing every key into the mode moves no published byte, as
 [Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.

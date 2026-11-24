@@ -179,10 +179,14 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
   declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
   both spell first, then the keys both name (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
 - the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
-  within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
-  member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
-  union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms no other
-  body arm covers (`DeclaredTypeMerge::armWithin()`).
+  within `string` and a declared subclass within a body class (any class is within `object`,
+  `DeclaredTypeMerge::classWithin()`), or all but its `null` are and the body's are not within the member's, each body
+  arm takes the member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a
+  class of a union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms
+  no other body arm covers (`DeclaredTypeMerge::armWithin()`);
+- an arm only a declaration produced ([AST engine § Declared arms](ast-engine.md#declared-arms)) is set aside first: a
+  declared `null` comes back only where the member has a `null`, and the key hedge beside an untyped array's `Record`
+  drops each `Record` arm where the member names no keyed arm (`DeclaredTypeMerge::unhedged()`).
 
 A shape is open only where the engine cannot name every key it holds: the array literal walk flags a key no literal
 or constant names and a spread whose value is no closed shape (`MethodAnalysis::$holdsUnnamedKeys`), and a variable's
