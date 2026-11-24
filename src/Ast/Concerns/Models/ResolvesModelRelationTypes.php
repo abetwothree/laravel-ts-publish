@@ -46,7 +46,7 @@ trait ResolvesModelRelationTypes
 
         $relation = resolve(ModelAttributeResolver::class)->resolveRelation($scope->modelClass, $name);
 
-        return [...$relation, 'type' => DeclaredArms::nullable($relation['type'])];
+        return [...$relation, 'type' => DeclaredArms::markedNull($relation['type'])];
     }
 
     /**

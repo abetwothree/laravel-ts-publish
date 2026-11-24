@@ -261,7 +261,7 @@ final class ReceiverMemberReader
         // A relation to many reads empty, which its list admits.
         $type = $filled !== null && ! str_ends_with($relation['type'], '[]') && self::findsNoRow($resolver, $modelFqcn, $name, $filled)
             ? TsTypeString::withNullArm($relation['type'])
-            : DeclaredArms::nullable($relation['type']);
+            : DeclaredArms::markedNull($relation['type']);
 
         /** @var ValueExpressionResult $result */
         $result = [...ValueResult::unknown(), 'type' => $type];

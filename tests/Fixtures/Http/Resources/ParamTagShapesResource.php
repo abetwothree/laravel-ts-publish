@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MaybeLabel;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReportSummary;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SureLabel;
 use BackedEnum;
@@ -14,6 +13,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
 use Workbench\App\Support\Opaque;
 use Workbench\App\ValueObjects\DocblockReads\HasLabel;
+use Workbench\App\ValueObjects\DocblockReads\MaybeLabel;
 use Workbench\App\ValueObjects\DocblockReads\PrivateMoney;
 use Workbench\App\ValueObjects\DocblockReads\Square;
 use Workbench\App\ValueObjects\DocblockReads\TextLabel;

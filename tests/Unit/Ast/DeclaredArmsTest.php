@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ColumnAccessorPost;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\File;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\CategoryResource;
 use Workbench\App\Http\Resources\CommentResource;
@@ -143,7 +144,7 @@ describe('the marks', function () {
 
 describe('the declaration mode', function () {
     test('every source reads as it always has out of the mode', function () {
-        expect(DeclaredArms::nullable('string | null'))->toBe('string | null')
+        expect(DeclaredArms::markedNull('string | null'))->toBe('string | null')
             ->and(DeclaredArms::attribute('string | null', Post::class, 'featured_image_url'))->toBe('string | null')
             ->and(DeclaredArms::keysHedged('string[] | Record<string, string>'))->toBe('string[] | Record<string, string>')
             ->and(declaredArmsType('$this->featured_image_url'))->toBe('string | null');
@@ -151,8 +152,8 @@ describe('the declaration mode', function () {
 
     test('a source marks only the null a declaration produced, in the mode', function () {
         $marked = resolve(AnalysisMemo::class)->markingDeclared(static fn (): array => [
-            DeclaredArms::nullable('string | null'),
-            DeclaredArms::nullable('null'),
+            DeclaredArms::markedNull('string | null'),
+            DeclaredArms::markedNull('null'),
             DeclaredArms::attribute('string | null', Post::class, 'featured_image_url'),
             DeclaredArms::attribute('string | null', Image::class, 'aspect_ratio'),
             DeclaredArms::keysHedged('string[] | Record<string, string>'),
@@ -289,7 +290,7 @@ test('an outer @var keeps each arm the body proves, and a null no declaration ty
     'a declared null beside a proven one' => ['$this->id > 1 ? $this->featured_image_url : null', '', 'string', 'string | null'],
 ]);
 
-// A source that adds a declared `null` beside a value keeps every `null` the value itself proves (fix round 1).
+// A source that adds a declared `null` beside a value keeps every `null` the value itself proves.
 test('an outer @var keeps a null the value proves where a declared one joins it', function (string $value, string $resource, string $model) {
     expect(declaredArmsType($value, resource: $resource, model: $model))->toBe('string | null')
         ->and(declaredArmsType($value, tag: 'string', resource: $resource, model: $model))->toBe('string | null');
@@ -370,7 +371,6 @@ test('a declaration that names a subclass of the class a reading holds refines i
 
 test('the workbench fixture reads each outer declaration over each kind of arm', function () {
     expect(publishedResourceKeyTypes(DeclaredArmsResource::class, Post::class))->toBe([
-        'var_closure_union' => 'Post[]',
         'var_closure_nullable' => 'Post[]',
         'var_closure_model' => 'Post[]',
         'var_closure_model_narrowed' => 'Post[]',
@@ -385,7 +385,6 @@ test('the workbench fixture reads each outer declaration over each kind of arm',
         'var_mapped_column' => 'string[]',
         'var_zipped' => '{ content: string; other: number }[]',
         'var_flags' => 'true[]',
-        'decl_closure_union' => 'Post[]',
         'decl_closure_nullable' => 'Post[]',
         'decl_closure_array' => '{ a: number }[]',
         'decl_two_array_nullsafe' => 'string[]',
@@ -394,12 +393,12 @@ test('the workbench fixture reads each outer declaration over each kind of arm',
         'decl_hedged_map' => 'string[]',
         'decl_first_kid_name' => 'string',
         'decl_column' => 'string',
-        'when_closure_union?' => 'Post[]',
+        'when_closure_nullable?' => 'Post[]',
         'when_closure_array?' => '{ a: number }[]',
         'when_column?' => 'string',
         'when_first_kid_name?' => 'string',
         'when_flags?' => 'true[]',
-        'bare_closure_union' => '(Post | null)[]',
+        'bare_closure_nullable' => '(Post | null)[]',
         'bare_param_nullsafe' => '(string | null)[]',
         'bare_hedged_map' => '(string | null)[] | Record<string, string | null>',
         'bare_first_kid_name' => 'string | null',
@@ -455,9 +454,9 @@ describe('the leak guard', function () {
         );
         $leaked = array_keys(array_filter($outOfModes, static fn (array $stored): bool => spellsDeclaredMark(serialize($stored))));
 
+        $directory = sys_get_temp_dir().'/ts-publish-marks-'.uniqid();
         Config::set('ts-publish.cache.store', null);
-        Config::set('ts-publish.cache.directory', sys_get_temp_dir().'/ts-publish-marks-'.uniqid());
-        $manifest = CacheBootstrap::manifest();
+        Config::set('ts-publish.cache.directory', $directory);
         $runner = new class extends BaseRunner
         {
             public function run(): void {}
@@ -467,14 +466,20 @@ describe('the leak guard', function () {
                 $this->cachedGenerate($fqcn, ResourceGenerator::class);
             }
         };
-        $runner->useCache($manifest);
-        $runner->build(DeclaredArmsResource::class);
-        $snapshot = base64_decode((string) $manifest->snapshot(ResourceGenerator::class.'::'.DeclaredArmsResource::class));
+
+        try {
+            $manifest = CacheBootstrap::manifest();
+            $runner->useCache($manifest);
+            $runner->build(DeclaredArmsResource::class);
+            $snapshot = base64_decode((string) $manifest->snapshot(ResourceGenerator::class.'::'.DeclaredArmsResource::class));
+        } finally {
+            File::deleteDirectory($directory);
+        }
 
         expect(spellsDeclaredMark(serialize($analysis)))->toBeFalse()
             ->and(count($entries))->toBeGreaterThan(count($outOfModes))
             ->and($leaked)->toBe([])
-            ->and($snapshot)->toContain('var_closure_union')
+            ->and($snapshot)->toContain('var_closure_nullable')
             ->and(spellsDeclaredMark($snapshot))->toBeFalse();
     });
 });

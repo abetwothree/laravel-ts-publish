@@ -440,7 +440,7 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
             $value = $scope->varValueBindings[$name];
 
             return ($scope->declaredParameters[$name] ?? null) === $value
-                ? [...$value, 'type' => DeclaredArms::nullable($value['type'])]
+                ? [...$value, 'type' => DeclaredArms::markedNull($value['type'])]
                 : $value;
         }
 

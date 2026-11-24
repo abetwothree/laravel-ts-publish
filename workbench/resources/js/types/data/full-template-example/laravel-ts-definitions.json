@@ -14859,11 +14859,6 @@
             "name": "DeclaredArmsResource",
             "properties": [
                 {
-                    "name": "var_closure_union",
-                    "type": "Post[]",
-                    "optional": false
-                },
-                {
                     "name": "var_closure_nullable",
                     "type": "Post[]",
                     "optional": false
@@ -14934,11 +14929,6 @@
                     "optional": false
                 },
                 {
-                    "name": "decl_closure_union",
-                    "type": "Post[]",
-                    "optional": false
-                },
-                {
                     "name": "decl_closure_nullable",
                     "type": "Post[]",
                     "optional": false
@@ -14979,7 +14969,7 @@
                     "optional": false
                 },
                 {
-                    "name": "when_closure_union",
+                    "name": "when_closure_nullable",
                     "type": "Post[]",
                     "optional": true
                 },
@@ -15004,7 +14994,7 @@
                     "optional": true
                 },
                 {
-                    "name": "bare_closure_union",
+                    "name": "bare_closure_nullable",
                     "type": "(Post | null)[]",
                     "optional": false
                 },

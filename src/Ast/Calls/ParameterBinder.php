@@ -426,6 +426,27 @@ final class ParameterBinder
     }
 
     /**
+     * The one type a native declaration spells, alone or beside `null`, with whether `null` is there; null for any
+     * other type, a lone `null` included.
+     *
+     * @return array{Node, bool}|null
+     */
+    public static function nativeArm(Node $type): ?array
+    {
+        if ($type instanceof NullableType) {
+            return [$type->type, true];
+        }
+
+        $arms = $type instanceof UnionType ? $type->types : [$type];
+        $named = array_values(array_filter(
+            $arms,
+            static fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
+        ));
+
+        return count($named) === 1 ? [$named[0], count($arms) > 1] : null;
+    }
+
+    /**
      * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -1033,17 +1054,9 @@ final class ParameterBinder
      */
     private static function classArm(Node $type): array
     {
-        if ($type instanceof NullableType) {
-            return [$type->type instanceof Name ? $type->type : null, true];
-        }
+        [$arm, $nullable] = self::nativeArm($type) ?? [null, false];
 
-        $arms = $type instanceof UnionType ? $type->types : [$type];
-        $named = array_values(array_filter(
-            $arms,
-            fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
-        ));
-
-        return count($named) === 1 && $named[0] instanceof Name ? [$named[0], count($arms) > 1] : [null, false];
+        return $arm instanceof Name ? [$arm, $nullable] : [null, false];
     }
 
     /**
@@ -1275,8 +1288,8 @@ final class ParameterBinder
         }
 
         return $variadic
-            ? [...$value, 'type' => ValueResult::arrayWrapType(DeclaredArms::nullable($value['type'])), 'optional' => false]
-            : [...$value, 'type' => DeclaredArms::nullable($value['type']), 'optional' => false];
+            ? [...$value, 'type' => ValueResult::arrayWrapType(DeclaredArms::markedNull($value['type'])), 'optional' => false]
+            : [...$value, 'type' => DeclaredArms::markedNull($value['type']), 'optional' => false];
     }
 
     /**

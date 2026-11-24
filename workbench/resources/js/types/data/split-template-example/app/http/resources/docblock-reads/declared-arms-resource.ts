@@ -10,7 +10,6 @@ import type { Post } from '../../../models';
  */
 export interface DeclaredArmsResource
 {
-    var_closure_union: Post[];
     var_closure_nullable: Post[];
     var_closure_model: Post[];
     var_closure_model_narrowed: Post[];
@@ -25,7 +24,6 @@ export interface DeclaredArmsResource
     var_mapped_column: string[];
     var_zipped: { content: string; other: number }[];
     var_flags: true[];
-    decl_closure_union: Post[];
     decl_closure_nullable: Post[];
     decl_closure_array: { a: number }[];
     decl_two_array_nullsafe: string[];
@@ -34,12 +32,12 @@ export interface DeclaredArmsResource
     decl_hedged_map: string[];
     decl_first_kid_name: string;
     decl_column: string;
-    when_closure_union?: Post[];
+    when_closure_nullable?: Post[];
     when_closure_array?: { a: number }[];
     when_column?: string;
     when_first_kid_name?: string;
     when_flags?: true[];
-    bare_closure_union: (Post | null)[];
+    bare_closure_nullable: (Post | null)[];
     bare_param_nullsafe: (string | null)[];
     bare_hedged_map: (string | null)[] | Record<string, string | null>;
     bare_first_kid_name: string | null;

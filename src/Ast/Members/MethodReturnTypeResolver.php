@@ -159,7 +159,7 @@ final class MethodReturnTypeResolver
         $reflected = $this->reflected($class, $methodName);
 
         if ($reflected !== null && ! TsTypeString::isVagueTsType($reflected['type'])) {
-            return [...$reflected, 'type' => DeclaredArms::nullable($reflected['type'])];
+            return [...$reflected, 'type' => DeclaredArms::markedNull($reflected['type'])];
         }
 
         return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading, $literals)

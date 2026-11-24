@@ -165,7 +165,7 @@ final class PropertyChainHandler implements ExpressionHandler
             }
 
             // Each step a `?->` reads is a relation or a `$resource` only a declaration may leave null.
-            $type = DeclaredArms::nullable($relationInfo['type']);
+            $type = DeclaredArms::markedNull($relationInfo['type']);
             $type = $hasNullable ? DeclaredArms::withDeclaredNull($type) : $type;
 
             /** @var ValueExpressionResult $result */

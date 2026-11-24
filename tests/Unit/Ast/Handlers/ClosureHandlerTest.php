@@ -685,7 +685,7 @@ it('drops the old binding\'s member and method for a parameter reassigned to ano
         ->toBe(['old_prop?' => 'unknown', 'new_prop?' => 'string', 'old_method?' => 'unknown']);
 });
 
-// GH-161 T5: a closure's own `@return` is an outer declaration over its body.
+// A closure's own `@return` is an outer declaration over its body.
 it('merges a closure\'s @return with its body, replacing only the arms a declaration produced', function (string $callback, string $expected) {
     expect(closureHandlerMappedType($callback, PostResource::class))->toBe($expected);
 })->with([

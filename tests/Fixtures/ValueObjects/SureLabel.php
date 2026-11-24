@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects;
 
+use Workbench\App\ValueObjects\DocblockReads\MaybeLabel;
+
 /** A label that is always present, narrowing MaybeLabel's return. */
 final class SureLabel implements MaybeLabel
 {

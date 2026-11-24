@@ -6538,7 +6538,6 @@ declare global {
          * `featured_image_url` is a nullable string column, `title` a NOT NULL one, and a comment's `parent_id` a nullable key.
          */
         export interface DeclaredArmsResource {
-            var_closure_union: app.models.Post[];
             var_closure_nullable: app.models.Post[];
             var_closure_model: app.models.Post[];
             var_closure_model_narrowed: app.models.Post[];
@@ -6553,7 +6552,6 @@ declare global {
             var_mapped_column: string[];
             var_zipped: { content: string; other: number }[];
             var_flags: true[];
-            decl_closure_union: app.models.Post[];
             decl_closure_nullable: app.models.Post[];
             decl_closure_array: { a: number }[];
             decl_two_array_nullsafe: string[];
@@ -6562,12 +6560,12 @@ declare global {
             decl_hedged_map: string[];
             decl_first_kid_name: string;
             decl_column: string;
-            when_closure_union?: app.models.Post[];
+            when_closure_nullable?: app.models.Post[];
             when_closure_array?: { a: number }[];
             when_column?: string;
             when_first_kid_name?: string;
             when_flags?: true[];
-            bare_closure_union: (app.models.Post | null)[];
+            bare_closure_nullable: (app.models.Post | null)[];
             bare_param_nullsafe: (string | null)[];
             bare_hedged_map: (string | null)[] | Record<string, string | null>;
             bare_first_kid_name: string | null;

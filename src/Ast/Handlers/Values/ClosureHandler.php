@@ -31,12 +31,12 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use PhpParser\Node\NullableType;
 use PhpParser\Node\UnionType;
 
 /**
- * Closures and arrow functions used as a property value — resolves the body's return type(s), falling back to the
- * declared return-type annotation, or the docblock's `@return` where it says more, when the body resolves to `unknown`.
+ * Closures and arrow functions used as a property value: the body's return type(s), or the return-type annotation, or
+ * the docblock's `@return` where it says more, in place of a body that reads `unknown`. A `@return` that types the
+ * closure is an outer declaration over that reading, merged with it (DeclaredFill).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -138,7 +138,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 
         return $annotationResult === null
             ? $body
-            : [...$annotationResult, 'type' => DeclaredArms::nullable($annotationResult['type']), 'optional' => false];
+            : [...$annotationResult, 'type' => DeclaredArms::markedNull($annotationResult['type']), 'optional' => false];
     }
 
     /**
@@ -259,10 +259,10 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      */
     private function convertAstTypeNodeToTs(Node $typeNode, AnalysisScope $scope): ?array
     {
-        $nullable = $this->nullableArm($typeNode);
+        $arm = ParameterBinder::nativeArm($typeNode);
 
-        if ($nullable !== null) {
-            $inner = $this->convertAstTypeNodeToTs($nullable, $scope);
+        if ($arm !== null && $arm[1]) {
+            $inner = $this->convertAstTypeNodeToTs($arm[0], $scope);
 
             if ($inner === null) {
                 return null;
@@ -307,28 +307,6 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return $result;
         }
 
-        // UnionType / IntersectionType — fall through to body analysis
         return null;
-    }
-
-    /**
-     * The type a `?T`, `T|null` or `null|T` return type makes nullable; null for any other type.
-     */
-    private function nullableArm(Node $typeNode): ?Node
-    {
-        if ($typeNode instanceof NullableType) {
-            return $typeNode->type;
-        }
-
-        if (! $typeNode instanceof UnionType || count($typeNode->types) !== 2) {
-            return null;
-        }
-
-        $named = array_values(array_filter(
-            $typeNode->types,
-            static fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
-        ));
-
-        return count($named) === 1 ? $named[0] : null;
     }
 }

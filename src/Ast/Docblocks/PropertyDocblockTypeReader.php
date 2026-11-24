@@ -116,7 +116,8 @@ final class PropertyDocblockTypeReader
 
     /**
      * The type a method's `@phpstan-param`, `@psalm-param` or `@param` tag gives one parameter, as DocblockTags reads
-     * it. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables'.
+     * it. Null unless the type is a VarTypeWhitelist form that resolves with no `unknown` part but its callables', or,
+     * where $namesReceiver holds, any VarTypeWhitelist form.
      *
      * @param  ReflectionClass<object>  $context  the class or trait whose file's imports and namespace resolve it
      * @param  bool  $namesReceiver  whether any VarTypeWhitelist form passes, its reading partial or absent, as an

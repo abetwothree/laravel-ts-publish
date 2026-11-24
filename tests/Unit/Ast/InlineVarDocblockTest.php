@@ -988,7 +988,7 @@ describe('an inline @var on a local assignment', function () {
     });
 });
 
-// GH-161 T5: the tag is an outer declaration over the reading, merged with it position by position.
+// The tag is an outer declaration over the reading, merged with it position by position.
 describe('an inline @var over a reading it types', function () {
     test('replaces the arms only a declaration produced and keeps the ones the body proves', function (string $body, string $expected) {
         expect(inlineVarClosureType($body))->toBe($expected);

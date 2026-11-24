@@ -15,9 +15,10 @@ use PhpParser\Node\Expr;
 /**
  * The arms only a declaration produced, marked (VisibleGaps) while a read runs under an outer declaration, an inline
  * `@var`, a `toArray()` `@return` key or a closure `@return`, so that declaration replaces them and keeps every arm the
- * body proves: a nullable column's, cast's or relation's `null`, a `?T` return's or parameter's, a lookup's that may
- * find nothing (`find()`, `first()`, `value()`, `auth()->user()`, `tryFrom()`), the `null` of `?->` over a receiver
- * that holds no proven one, and the `Record` a map over an untyped array hedges its keys with.
+ * body proves: a nullable column's, cast's or relation's `null`, a `?T` or `?static` return's, a parameter's or a
+ * nullable `$resource`'s, a lookup's that may find nothing (`find()`, `first()`, `firstWhere()`, `value()`,
+ * `auth()->user()`, `auth()->id()`, `tryFrom()`), the `null` of `?->` over a receiver that holds no proven one, and the
+ * `Record` a map over an untyped array hedges its keys with.
  *
  * Out of the declaration mode (AnalysisMemo::markingDeclared()) every source reads as it always has.
  *
@@ -31,7 +32,7 @@ final class DeclaredArms
      * A type wholly a declaration's, a signature's, a column row's or a relation's, with its top-level `null` marked as
      * only that declaration's, in the declaration mode.
      */
-    public static function nullable(string $type): string
+    public static function markedNull(string $type): string
     {
         return str_contains($type, 'null') && self::marking() ? VisibleGaps::nullMarked($type) : $type;
     }

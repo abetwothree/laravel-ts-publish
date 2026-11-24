@@ -27,7 +27,6 @@ class DeclaredArmsResource extends JsonResource
 {
     /**
      * @return array{
-     *     decl_closure_union: list<Post>,
      *     decl_closure_nullable: list<Post>,
      *     decl_closure_array: list<array{a: int}>,
      *     decl_two_array_nullsafe: list<string>,
@@ -47,8 +46,6 @@ class DeclaredArmsResource extends JsonResource
         $branch = new CategoryBranch;
         $post = $this->resource->id > 1 ? $this->resource : null;
 
-        /** @var list<Post> $closureUnion */
-        $closureUnion = collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all();
         /** @var list<Post> $closureNullable */
         $closureNullable = collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all();
         /** @var list<Post> $closureModel */
@@ -103,7 +100,6 @@ class DeclaredArmsResource extends JsonResource
         $mappedCoalesceNull = collect([$this->resource])->map(fn (Post $p) => $p->featured_image_url ?? null)->all();
 
         return [
-            'var_closure_union' => $closureUnion,
             'var_closure_nullable' => $closureNullable,
             'var_closure_model' => $closureModel,
             'var_closure_model_narrowed' => $closureModelNarrowed,
@@ -118,7 +114,6 @@ class DeclaredArmsResource extends JsonResource
             'var_mapped_column' => $mappedColumn,
             'var_zipped' => $zipped,
             'var_flags' => $flags,
-            'decl_closure_union' => collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all(),
             'decl_closure_nullable' => collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all(),
             'decl_closure_array' => collect([1])->map(fn ($i): ?array => Opaque::value(['a' => $i]))->all(),
             'decl_two_array_nullsafe' => array_map(
@@ -131,12 +126,12 @@ class DeclaredArmsResource extends JsonResource
             'decl_hedged_map' => array_map(/** @param MaybeLabel $label */ fn ($label) => $label->label(), $labels),
             'decl_first_kid_name' => $branch->ownNamedFirstKidName(),
             'decl_column' => $this->resource->featured_image_url,
-            'when_closure_union' => $this->when(true, /** @return list<Post> */ fn () => collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all()),
+            'when_closure_nullable' => $this->when(true, /** @return list<Post> */ fn () => collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all()),
             'when_closure_array' => $this->when(true, /** @return list<array{a: int}> */ fn () => collect([1])->map(fn ($i): ?array => Opaque::value(['a' => $i]))->all()),
             'when_column' => $this->when(true, /** @return string */ fn () => $this->resource->featured_image_url),
             'when_first_kid_name' => $this->when(true, /** @return string */ fn () => $branch->ownNamedFirstKidName()),
             'when_flags' => $this->when(true, /** @return list<true> */ fn () => collect([1])->map(fn (int $i): bool => $i > 0)->all()),
-            'bare_closure_union' => collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all(),
+            'bare_closure_nullable' => collect([1])->map(fn ($i): ?Post => Opaque::value($this->resource))->all(),
             'bare_param_nullsafe' => collect($labels)->map(/** @param HasLabel|null $label */ fn ($label) => $label?->label())->values()->all(),
             'bare_hedged_map' => array_map(/** @param MaybeLabel $label */ fn ($label) => $label->label(), $labels),
             'bare_first_kid_name' => $branch->ownNamedFirstKidName(),

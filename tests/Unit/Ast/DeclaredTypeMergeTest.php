@@ -383,7 +383,7 @@ test('a filled position keeps the declared class beside each class the body read
     'other classes declared where the body reads its own' => ['{ by: User; ed: User; other: User | null }', [User::class, CrmUser::class, User::class]],
 ]);
 
-// GH-161 T5: a mark stands for an arm only a declaration produced, which a declaration over it replaces.
+// A mark stands for an arm only a declaration produced, which a declaration over it replaces.
 test('a declared null\'s mark takes only the declaration\'s own null, and a proven null beside it stays', function (string $body, string $declared, string $expected) {
     expect(mergedType($body, $declared))->toBe($expected);
 })->with([
