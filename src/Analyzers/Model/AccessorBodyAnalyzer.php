@@ -74,7 +74,7 @@ final class AccessorBodyAnalyzer
         );
 
         // An accessor's `null` is its body's to prove, whatever it read: an outer declaration never replaces it.
-        return $info === null ? null : [...$info, 'type' => VisibleGaps::unmarked($info['type'])];
+        return $info === null ? null : [...$info, 'type' => VisibleGaps::nullUnmarked($info['type'])];
     }
 
     /**

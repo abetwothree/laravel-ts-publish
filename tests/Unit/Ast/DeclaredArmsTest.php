@@ -94,7 +94,9 @@ describe('the marks', function () {
             ->and(VisibleGaps::stripped('string[] | Record<string, string> | $declKeys'))->toBe(['string[] | Record<string, string>', []])
             ->and(VisibleGaps::stripped('(string | $declNull)[] | $gap2 | $declKeys', keepsMarks: true))->toBe(['(string | $declNull)[] | $declKeys', [2]])
             ->and(VisibleGaps::ids('string | $declNull'))->toBe([])
-            ->and(VisibleGaps::unmarked('{ a: string | $declNull }[] | $declKeys'))->toBe('{ a: string | null }[]');
+            ->and(VisibleGaps::unmarked('{ a: string | $declNull }[] | $declKeys'))->toBe('{ a: string | null }[]')
+            ->and(VisibleGaps::nullUnmarked('{ a: string | null | $declNull }[] | $declKeys'))->toBe('{ a: string | null }[] | $declKeys')
+            ->and(VisibleGaps::nullUnmarked('string[] | $declKeys'))->toBe('string[] | $declKeys');
     });
 
     test('a result is unmarked in its type and in the one object a split literal prints', function () {
@@ -227,6 +229,13 @@ test('an outer @var replaces each kind of arm only a declaration produced', func
     'an untyped array\'s Record twin' => [
         'array_map(fn (\\'.Post::class.' $p) => $p->title, \\'.Opaque::class.'::value([]))',
         '',
+        'list<string>',
+        'string[] | Record<string, string>',
+        'string[]',
+    ],
+    'an untyped array\'s Record twin an accessor\'s body maps' => [
+        '$p->tag_names',
+        '\\'.ColumnAccessorPost::class.' $p',
         'list<string>',
         'string[] | Record<string, string>',
         'string[]',

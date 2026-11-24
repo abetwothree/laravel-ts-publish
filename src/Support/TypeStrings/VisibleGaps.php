@@ -126,6 +126,17 @@ final class VisibleGaps
     }
 
     /**
+     * The type with each declared null's mark at any depth turned back into the `null` it stands for, the key hedge's
+     * mark kept.
+     */
+    public static function nullUnmarked(string $type): string
+    {
+        return str_contains($type, self::DECLARED_NULL)
+            ? TypeRewriter::rewrite($type, static fn (string $arm): string => $arm === self::DECLARED_NULL ? 'null' : $arm)
+            : $type;
+    }
+
+    /**
      * The gap arm for a gap id.
      */
     public static function arm(int $id): string
