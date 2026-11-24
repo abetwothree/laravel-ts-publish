@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources;
 
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MaybeLabel;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ReportSummary;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\SureLabel;
 use BackedEnum;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workbench\App\Enums\Status;
@@ -17,10 +21,20 @@ use Workbench\App\ValueObjects\DocblockReads\TextLabel;
 /**
  * A closure `@param` naming a class that is not a model, each beside its native twin, in the shapes
  * ParamTagClassesResource leaves out: a numeric method, a nullable interface, no `all()`, `array_map()`, a statement
- * closure, a shape, an enum's cases, options builders, a helper spread and a nested key.
+ * closure, a shape, an enum's cases, options builders, a helper spread and a nested key. Beside an element whose class
+ * a property declares, the narrower of the two binds.
  */
 class ParamTagShapesResource extends JsonResource
 {
+    /** @var list<SureLabel> */
+    public array $sureLabels = [];
+
+    /** @var list<ReportSummary> */
+    public array $reports = [];
+
+    /** @var list<MaybeLabel> */
+    public array $maybeLabels = [];
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
@@ -92,6 +106,16 @@ class ParamTagShapesResource extends JsonResource
             'nested_labels_by_native_type' => [
                 'labels' => collect($labels)->map(fn (HasLabel $label) => $label->label())->all(),
             ],
+            'declared_element_labels' => collect($this->sureLabels)
+                ->map(/** @param MaybeLabel $label */ fn ($label) => $label->label())
+                ->all(),
+            'declared_element_mapped_labels' => array_map(/** @param MaybeLabel $label */ fn ($label) => $label->label(), $this->sureLabels),
+            'declared_element_reports' => collect($this->reports)
+                ->map(/** @param Arrayable $report */ fn ($report) => $report->toArray())
+                ->all(),
+            'declared_wider_element_labels' => collect($this->maybeLabels)
+                ->map(/** @param SureLabel $label */ fn ($label) => $label->label())
+                ->all(),
         ];
     }
 

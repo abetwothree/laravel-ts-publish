@@ -157,6 +157,16 @@ it('binds a value closure parameter by an @param naming a class that is not a mo
     'a nested key' => [ParamTagShapesResource::class, 'nested_labels', '{ labels: string[] | Record<string, string> }', ['labels' => ['a']]],
 ]);
 
+// Of a `@param` and the class a property declares its element as, the narrower binds.
+it('binds a value closure parameter by the narrower of its @param and its element\'s declared class', function () {
+    expect(analyzedKeyTypes(ParamTagShapesResource::class))->toMatchArray([
+        'declared_element_labels' => 'string[]',
+        'declared_element_mapped_labels' => 'string[]',
+        'declared_element_reports' => '{ total: number }[]',
+        'declared_wider_element_labels' => 'string[]',
+    ]);
+});
+
 // A union spelled `X|null` names its class as `?X` does; Pint rewrites the spelling in a fixture, so it is parsed here.
 it('binds a closure parameter typed X|null by its class', function () {
     $statement = new AstParser()->parseSource('<?php function (\\Workbench\\App\\Models\\Post|null $post) { return $post?->title; };')[0];

@@ -791,18 +791,25 @@ final class ParameterBinder
     }
 
     /**
-     * The classes an array declares its element as, for a parameter that declares no class of its own, natively or by
-     * `@param`, which ClosureHandler binds instead; null for a model, which binds by the model the element carries.
+     * The classes an array declares its element as, for a parameter with no native type whose `@param` names no class
+     * or one they narrow; null for a model, which binds by the model the element carries, and for any other
+     * declaration, which ClosureHandler binds instead.
      *
      * @return non-empty-list<class-string>|null
      */
     private static function undeclaredElementClasses(?Param $param, ?ReceiverType $declared, AnalysisScope $scope, ?string $docComment): ?array
     {
-        if ($declared === null || $param === null || $param->type !== null || self::declaredClass($param, $scope, $docComment) !== null) {
+        if ($declared === null || $param === null || $param->type !== null) {
             return null;
         }
 
-        return array_any($declared->classes, static fn (string $class): bool => is_a($class, Model::class, true)) ? null : $declared->classes;
+        $documented = self::declaredClass($param, $scope, $docComment)[0] ?? null;
+        $narrows = $documented === null
+            || ($declared->within([$documented]) && ! new ReceiverType([$documented])->within($declared->classes));
+
+        return ! $narrows || array_any($declared->classes, static fn (string $class): bool => is_a($class, Model::class, true))
+            ? null
+            : $declared->classes;
     }
 
     /**
