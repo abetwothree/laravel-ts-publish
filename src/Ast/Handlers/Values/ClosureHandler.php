@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredFill;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
@@ -91,7 +93,8 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 
     /**
      * A closure's returns resolved in its own bindings, or its return-type annotation or `@return` where they read
-     * `unknown`.
+     * `unknown`. A `@return` that types the closure is an outer declaration over its returns: they are read under it
+     * and merged with it (DeclaredFill).
      *
      * @param  non-empty-list<Expr>  $closureReturns
      * @return ValueExpressionResult
@@ -99,17 +102,41 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     private function resolveBody(ArrowFunction|ClosureExpr $closure, array $closureReturns, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $resolve = $this->returnResolver($closure, $engine);
-        $bodyResult = count($closureReturns) === 1
+        $read = static fn (): array => count($closureReturns) === 1
             ? $resolve($closureReturns[0])
             : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
+        $documented = $closure->getDocComment() === null ? null : $this->documentedReturnType($closure, $scope);
 
-        if ($bodyResult['type'] !== 'unknown') {
-            return $bodyResult;
+        if ($documented === null) {
+            return $this->readOrAnnotated($read(), $closure, $scope);
+        }
+
+        return DeclaredArms::underDeclaration(
+            $read,
+            fn (array $body, bool $nested): array => $body['type'] === 'unknown'
+                ? $this->readOrAnnotated($body, $closure, $scope)
+                : DeclaredFill::merged($body, $nested ? DeclaredArms::asNested($documented) : $documented),
+        ) ?? ValueResult::unknown();
+    }
+
+    /**
+     * A closure's body reading, else, where it reads `unknown`, its return-type annotation or `@return`, the `null`
+     * of which only that declaration says.
+     *
+     * @param  ValueExpressionResult  $body
+     * @return ValueExpressionResult
+     */
+    private function readOrAnnotated(array $body, ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): array
+    {
+        if ($body['type'] !== 'unknown') {
+            return $body;
         }
 
         $annotationResult = $this->resolveClosureAstReturnType($closure, $scope);
 
-        return $annotationResult === null ? $bodyResult : [...$annotationResult, 'optional' => false];
+        return $annotationResult === null
+            ? $body
+            : [...$annotationResult, 'type' => DeclaredArms::nullable($annotationResult['type']), 'optional' => false];
     }
 
     /**

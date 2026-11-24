@@ -12,6 +12,10 @@ use Closure;
  * `$gapN`, and an object that may hold keys no rule could name carries the open marker `#$open: unknown`, so the
  * declared type can fill both in place. Both are stripped before a type is published.
  *
+ * Under an outer declaration, an arm only a declaration produced is a mark: `$declNull` for a `null`, which a reader
+ * reads as that `null` and a carried read keeps, and `$declKeys` beside the `Record` an untyped array's keys hedge,
+ * carried as a gap is. Stripping turns them back into the `null` they stand for and drops the hedge.
+ *
  * A gap is read only as a whole union arm, so a PHP key or a string literal spelled `$gap1` stays, and `#$open` is no
  * index signature and no key a printer writes. Each reader returns its input as it is when holds() is false.
  *
@@ -28,14 +32,30 @@ final class VisibleGaps
 
     public const string MARKER = self::MARKER_KEY.': unknown';
 
+    /** The mark of a `null` only a declaration produced, such as a nullable column's or a `?T` return's. */
+    public const string DECLARED_NULL = '$declNull';
+
+    /** The mark beside the `Record` arm a map over an untyped array hedges its keys with, which PHP's `array` declares. */
+    public const string DECLARED_KEYS = '$declKeys';
+
     private const string GAP_PREFIX = '$gap';
 
+    private const string MARK_PREFIX = '$decl';
+
     /**
-     * Whether one union arm is a gap.
+     * Whether one union arm is a gap or a mark.
      */
     public static function isGap(string $arm): bool
     {
-        return preg_match('/^\$gap[1-9]\d*$/D', $arm) === 1;
+        return self::isMark($arm) || preg_match('/^\$gap[1-9]\d*$/D', $arm) === 1;
+    }
+
+    /**
+     * Whether one union arm marks an arm only a declaration produced.
+     */
+    public static function isMark(string $arm): bool
+    {
+        return $arm === self::DECLARED_NULL || $arm === self::DECLARED_KEYS;
     }
 
     /**
@@ -47,11 +67,61 @@ final class VisibleGaps
     }
 
     /**
-     * Whether a type may spell a gap or the open marker; false proves it spells neither.
+     * Whether a type may spell a gap, a mark or the open marker; false proves it spells none.
      */
     public static function holds(string $type): bool
     {
+        return self::holdsUntyped($type) || self::holdsMarks($type);
+    }
+
+    /**
+     * Whether a type may spell a gap or the open marker, an arm or a key no rule typed; false proves it spells neither.
+     */
+    public static function holdsUntyped(string $type): bool
+    {
         return str_contains($type, self::GAP_PREFIX) || str_contains($type, self::MARKER_KEY);
+    }
+
+    /**
+     * Whether a type may spell a mark; false proves it spells none.
+     */
+    public static function holdsMarks(string $type): bool
+    {
+        return str_contains($type, self::MARK_PREFIX);
+    }
+
+    /**
+     * The type with its top-level `null` arm spelled as the declared-null mark, once, where another arm stands beside
+     * it.
+     */
+    public static function nullMarked(string $type): string
+    {
+        $arms = TsTypeShape::splitTopLevel($type, ['|']);
+
+        if (! in_array('null', $arms, true) || array_diff($arms, ['null', self::DECLARED_NULL]) === []) {
+            return $type;
+        }
+
+        $marked = [];
+
+        foreach ($arms as $arm) {
+            if ($arm !== 'null' && $arm !== self::DECLARED_NULL) {
+                $marked[] = $arm;
+            } elseif (! in_array(self::DECLARED_NULL, $marked, true)) {
+                $marked[] = self::DECLARED_NULL;
+            }
+        }
+
+        return implode(' | ', $marked);
+    }
+
+    /**
+     * The type with each mark at any depth turned back into what it stands for: `$declNull` into `null`, and the key
+     * hedge's mark dropped.
+     */
+    public static function unmarked(string $type): string
+    {
+        return self::holdsMarks($type) ? TypeRewriter::rewrite($type, self::unmarkedArm(...)) : $type;
     }
 
     /**
@@ -82,24 +152,36 @@ final class VisibleGaps
 
     /**
      * The type without its own top-level gap arms, its other arms joined as printed or `unknown` when none is left,
-     * and those gap arms.
+     * and those gap arms. A declared null's mark is read as the `null` it stands for, unless $marks sets it aside too,
+     * as the merge with a declaration does (DeclaredTypeMerge).
      *
      * @return SetAside
      */
-    public static function aside(string $type): array
+    public static function aside(string $type, bool $marks = false): array
     {
         if (! self::holds($type)) {
             return [$type, []];
         }
 
         $arms = TsTypeShape::splitTopLevel($type, ['|']);
-        $gaps = array_values(array_unique(array_filter($arms, self::isGap(...))));
+        $gaps = array_values(array_unique(array_filter(
+            $arms,
+            static fn (string $arm): bool => self::isGap($arm) && ($marks || $arm !== self::DECLARED_NULL),
+        )));
+        $readsNull = ! $marks && in_array(self::DECLARED_NULL, $arms, true);
 
-        if ($gaps === []) {
+        if ($gaps === [] && ! $readsNull) {
             return [$type, []];
         }
 
         $rest = array_diff($arms, $gaps);
+
+        // Two arms spelled alike may name two classes, so only the `null` the mark stands for joins one already there.
+        if ($readsNull) {
+            $rest = in_array('null', $rest, true)
+                ? array_diff($rest, [self::DECLARED_NULL])
+                : array_map(static fn (string $arm): string => $arm === self::DECLARED_NULL ? 'null' : $arm, $rest);
+        }
 
         return [match (count($rest)) {
             0 => 'unknown',
@@ -130,8 +212,8 @@ final class VisibleGaps
     }
 
     /**
-     * What a read makes of the type with its top-level gaps set aside, those gaps restored onto it; a read that
-     * declines stays null.
+     * What a read makes of the type with its top-level gaps set aside, those gaps restored onto it and a declared
+     * null's mark onto the `null` the read keeps (remarked()); a read that declines stays null.
      *
      * @param  Closure(string): ?string  $read
      */
@@ -140,7 +222,22 @@ final class VisibleGaps
         [$rest, $gaps] = self::aside($type);
         $result = $read($rest);
 
-        return $result === null ? null : self::restored($result, $gaps);
+        return $result === null ? null : self::restored(self::remarked($type, $result), $gaps);
+    }
+
+    /**
+     * A read's result with its top-level `null` marked again where the type it read held a `null` only as a declared
+     * one's mark, which aside() read as that `null`.
+     */
+    public static function remarked(string $read, string $result): string
+    {
+        if (! self::holdsMarks($read)) {
+            return $result;
+        }
+
+        $arms = TsTypeShape::splitTopLevel($read, ['|']);
+
+        return in_array(self::DECLARED_NULL, $arms, true) && ! in_array('null', $arms, true) ? self::nullMarked($result) : $result;
     }
 
     /**
@@ -192,8 +289,8 @@ final class VisibleGaps
     }
 
     /**
-     * The type with every gap arm and open marker at any depth removed, exactly as the reader prints it with no gap
-     * shown, and the id of each gap removed, in order, each once.
+     * The type with every gap arm and open marker at any depth removed and every mark unmarked(), exactly as the reader
+     * prints it with no gap shown, and the id of each gap removed, in order, each once.
      *
      * @return Stripped
      */
@@ -207,8 +304,8 @@ final class VisibleGaps
         $text = TypeRewriter::rewrite(
             $type,
             static function (string $arm) use (&$ids): ?string {
-                if (! self::isGap($arm)) {
-                    return $arm;
+                if (self::isMark($arm) || ! self::isGap($arm)) {
+                    return self::unmarkedArm($arm);
                 }
 
                 $ids[] = (int) substr($arm, strlen(self::GAP_PREFIX));
@@ -219,5 +316,30 @@ final class VisibleGaps
         );
 
         return [$text, array_values(array_unique($ids))];
+    }
+
+    /**
+     * The type with every gap arm and open marker at any depth removed, as stripped() removes them, each mark kept: as
+     * a read out of the gap mode spells it.
+     */
+    public static function withoutGaps(string $type): string
+    {
+        return self::holdsUntyped($type) ? TypeRewriter::rewrite(
+            $type,
+            static fn (string $arm): ?string => self::isGap($arm) && ! self::isMark($arm) ? null : $arm,
+            static fn (string $key, string $value): ?array => self::isMarker($key) ? null : [$key, $value],
+        ) : $type;
+    }
+
+    /**
+     * One union arm as unmarked() leaves it: a declared-null mark as `null`, the key hedge's mark dropped.
+     */
+    private static function unmarkedArm(string $arm): ?string
+    {
+        return match ($arm) {
+            self::DECLARED_NULL => 'null',
+            self::DECLARED_KEYS => null,
+            default => $arm,
+        };
     }
 }

@@ -88,8 +88,9 @@ The helpers and the test that pins them live in these files:
   prints without `listType()`'s `array_unique()`, since two arms spelled alike may name two classes. Static and
   `@internal`.
 - [`Support\TypeStrings\VisibleGaps`](../../src/Support/TypeStrings/VisibleGaps.php): the spelling of a visible gap,
-  a `$gapN` union arm and the open marker `#$open: unknown`, and the readers that set gaps aside, carry them over a
-  read, read an object without its marker, and strip both at any depth through `TypeRewriter`. Static and `@internal`.
+  a `$gapN` union arm and the open marker `#$open: unknown`, and of the declared-arm marks `$declNull` and `$declKeys`,
+  and the readers that set gaps aside, carry them over a read, read an object without its marker, and strip all of them
+  at any depth through `TypeRewriter`. Static and `@internal`.
 - [`Support\TypeStrings\RedundantArms`](../../src/Support/TypeStrings/RedundantArms.php): whether one union arm admits
   another, and a type with each admitted arm left out at every depth through `TypeRewriter`'s `$union` callback:
   `never[]` beside a list or `[]`, and a case literal beside an enum alias the caller's map says holds it. It drops no

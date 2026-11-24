@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Enums;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -202,7 +203,9 @@ final class EnumWrapPayload
 
             return [
                 ...$result,
-                'type' => $argExpr instanceof StaticCall && $this->returnsNull($argExpr, $scope) ? TsTypeString::withNullArm($type) : $type,
+                'type' => $argExpr instanceof StaticCall && $this->returnsNull($argExpr, $scope)
+                    ? DeclaredArms::withDeclaredNull($type)
+                    : $type,
                 'enumFqcn' => $enum,
             ];
         }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 
@@ -57,7 +58,7 @@ trait ResolvesModelAttributeTypes
         $enumFqcn = $tsInfo['enumFqcns'][0] ?? null;
 
         return [
-            'type' => $tsInfo['type'],
+            'type' => DeclaredArms::attribute($tsInfo['type'], $scope->modelClass, $attributeName),
             'enumFqcn' => $enumFqcn,
             'enumFqcns' => $tsInfo['enumFqcns'],
             ...(isset($tsInfo['enumTokenFqcns']) ? ['enumTokenFqcns' => $tsInfo['enumTokenFqcns']] : []),

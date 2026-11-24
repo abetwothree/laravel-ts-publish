@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\AnalyzesPluckCalls;
@@ -314,7 +315,7 @@ final class ModelFinderHandler implements ExpressionHandler
                 'page' => ['terminal' => $terminal, 'item' => $row, 'model' => null],
             ],
             in_array($terminal, ['get', 'cursor'], true) => ['result' => [...$row, 'type' => self::ROW.'[]'], 'element' => $row],
-            in_array($terminal, self::NULLABLE_SINGLE, true) => ['result' => [...$row, 'type' => self::ROW.' | null'], 'element' => null],
+            in_array($terminal, self::NULLABLE_SINGLE, true) => ['result' => [...$row, 'type' => DeclaredArms::withDeclaredNull(self::ROW)], 'element' => null],
             in_array($terminal, self::SOLE, true) => ['result' => $row, 'element' => null],
             default => null,
         };
@@ -483,7 +484,10 @@ final class ModelFinderHandler implements ExpressionHandler
         }
 
         return match ($kind) {
-            'nullableElement' => ['result' => [...$element, 'type' => TsTypeString::withNullArm($element['type'])], 'element' => null],
+            'nullableElement' => [
+                'result' => [...$element, 'type' => DeclaredArms::withDeclaredNull($element['type'])],
+                'element' => null,
+            ],
             'element' => ['result' => $element, 'element' => null],
             'list' => $step === 'values' ? [...$inner, 'keyed' => false] : $this->keptKeys($inner, $inner['keyed'] ?? false),
             'count' => ['result' => ['type' => 'number', 'optional' => false], 'element' => null],
@@ -584,7 +588,8 @@ final class ModelFinderHandler implements ExpressionHandler
             return ['result' => [...$model, 'type' => $basename.'[]'], 'element' => $model];
         }
 
-        $found = ['result' => [...$model, 'type' => $basename.(in_array($terminal, self::NULLABLE_SINGLE, true) ? ' | null' : '')], 'element' => null];
+        $type = in_array($terminal, self::NULLABLE_SINGLE, true) ? DeclaredArms::withDeclaredNull($basename) : $basename;
+        $found = ['result' => [...$model, 'type' => $type], 'element' => null];
 
         // A key no literal spells may be a list, so only a step the model answers alike reads past it.
         return $key !== null && ! $key instanceof Int_ && ! $key instanceof String_ ? [...$found, 'element' => $model, 'maybeOne' => true] : $found;
@@ -669,7 +674,7 @@ final class ModelFinderHandler implements ExpressionHandler
         $value = $this->analyzeRelatedModelProperty($column->value, $scope, $modelFqcn);
 
         return $terminal === 'value'
-            ? ['result' => [...$value, 'type' => TsTypeString::withNullArm($value['type'])], 'element' => null]
+            ? ['result' => [...$value, 'type' => DeclaredArms::withDeclaredNull($value['type'])], 'element' => null]
             : ['result' => [...$value, 'type' => ValueResult::arrayWrapType($value['type'])], 'element' => $value];
     }
 

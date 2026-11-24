@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\DecomposesPropertyChains;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
@@ -163,7 +164,9 @@ final class PropertyChainHandler implements ExpressionHandler
                 return ValueResult::unknown();
             }
 
-            $type = $hasNullable ? TsTypeString::withNullArm($relationInfo['type']) : $relationInfo['type'];
+            // Each step a `?->` reads is a relation or a `$resource` only a declaration may leave null.
+            $type = DeclaredArms::nullable($relationInfo['type']);
+            $type = $hasNullable ? DeclaredArms::withDeclaredNull($type) : $type;
 
             /** @var ValueExpressionResult $result */
             $result = ['type' => $type, 'optional' => false];
@@ -179,7 +182,8 @@ final class PropertyChainHandler implements ExpressionHandler
             return $result;
         }
 
-        $type = $hasNullable ? TsTypeString::withNullArm($tsInfo['type']) : $tsInfo['type'];
+        $type = DeclaredArms::attribute($tsInfo['type'], $currentModel, $lastStep['name']);
+        $type = $hasNullable ? DeclaredArms::withDeclaredNull($type) : $type;
 
         return ValueResult::withAttributeChannels(['type' => $type, 'optional' => false], $tsInfo);
     }

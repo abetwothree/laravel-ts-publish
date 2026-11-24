@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Collections;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
@@ -201,7 +202,7 @@ final class RelationCollectionChainHandler implements ExpressionHandler
 
             return [
                 ...ValueResult::unknown(),
-                'type' => class_basename($elementModel).' | null',
+                'type' => DeclaredArms::withDeclaredNull(class_basename($elementModel)),
                 'optional' => false,
                 'modelFqcn' => $elementModel,
             ];

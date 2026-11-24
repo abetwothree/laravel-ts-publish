@@ -475,6 +475,7 @@ it('releases an unclaimed parameter from every name-keyed table, then restores e
         $scope->relativeParameters[$name] = true;
         $scope->guardedParameters[$name] = 'guarded';
         $scope->leftOutParameters[$name] = [['name' => 'outerSource', 'value' => $outer]];
+        $scope->declaredParameters[$name] = ['type' => 'string', 'optional' => false];
     }
 
     $before = $scope->nameBindings();
@@ -668,3 +669,17 @@ it('drops the old binding\'s member and method for a parameter reassigned to ano
     expect(closureHandlerResourceKeys(ReassignedPostParamResource::class, Comment::class))
         ->toBe(['old_prop?' => 'unknown', 'new_prop?' => 'string', 'old_method?' => 'unknown']);
 });
+
+// GH-161 T5: a closure's own `@return` is an outer declaration over its body.
+it('merges a closure\'s @return with its body, replacing only the arms a declaration produced', function (string $callback, string $expected) {
+    expect(closureHandlerMappedType($callback, PostResource::class))->toBe($expected);
+})->with([
+    'a nullable column' => ['/** @return string */ fn ($i) => $this->featured_image_url', 'string[]'],
+    'a nullable column, the @return keeping its null' => ['/** @return string|null */ fn ($i) => $this->featured_image_url', '(string | null)[]'],
+    'a literal null the body proves' => ['/** @return string */ fn ($i) => $i > 1 ? $this->title : null', '(string | null)[]'],
+    'an inner closure\'s native T|null' => [
+        '/** @return list<\\'.Post::class.'> */ fn ($i) => collect([1])->map(fn ($j): \\'.Post::class.'|null => \\'.Opaque::class.'::value($j))->all()',
+        'Post[][]',
+    ],
+    'no @return' => ['fn ($i) => $this->featured_image_url', '(string | null)[]'],
+]);

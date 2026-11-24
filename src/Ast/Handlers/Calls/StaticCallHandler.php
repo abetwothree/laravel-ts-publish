@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -391,7 +392,7 @@ final class StaticCallHandler implements ExpressionHandler
         }
 
         if ($this->methodReturnAllowsNull($method)) {
-            $receiverResult['type'] = TsTypeString::withNullArm($receiverResult['type']);
+            $receiverResult['type'] = DeclaredArms::withDeclaredNull($receiverResult['type']);
         }
 
         return $receiverResult;

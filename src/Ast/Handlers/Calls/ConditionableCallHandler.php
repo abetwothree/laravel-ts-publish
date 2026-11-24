@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Traits\Conditionable;
@@ -281,7 +282,7 @@ final class ConditionableCallHandler implements ExpressionHandler
         $kept = [];
 
         foreach ($arms as $arm) {
-            $members = array_diff(TsTypeString::splitTopLevelUnion($arm['type']), ['null', 'void']);
+            $members = array_diff(TsTypeString::splitTopLevelUnion($arm['type']), ['null', VisibleGaps::DECLARED_NULL, 'void']);
 
             if ($members !== []) {
                 $kept[] = [...$arm, 'type' => implode(' | ', $members)];
@@ -307,6 +308,6 @@ final class ConditionableCallHandler implements ExpressionHandler
      */
     private function mayBeNull(string $type): bool
     {
-        return array_intersect(TsTypeString::splitTopLevelUnion($type), ['null', 'void']) !== [];
+        return array_intersect(TsTypeString::splitTopLevelUnion($type), ['null', VisibleGaps::DECLARED_NULL, 'void']) !== [];
     }
 }

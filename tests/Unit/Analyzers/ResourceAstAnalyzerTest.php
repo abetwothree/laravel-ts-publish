@@ -8441,26 +8441,26 @@ test('keeps a declared slot on its token past a filtered list the resource re-in
         "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
         "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
         "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
-        '    pair: { list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType; a: WorkbenchUser | null; b: User };',
+        '    pair: { list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType; a: WorkbenchUser; b: User };',
     ]],
     'two Status enums, without the tolki package' => [DeclaredOverrideFilteredStatusesResource::class, false, [
         "import type { User } from '@js/types/ui';",
         "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
         "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
         "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
-        '    pair: { list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType; a: WorkbenchUser | null; b: User };',
+        '    pair: { list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType; a: WorkbenchUser; b: User };',
     ]],
     'two User models, with the tolki package' => [DeclaredOverrideFilteredUsersResource::class, true, [
         "import type { User } from '@js/types/ui';",
         "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
         "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
-        '    pair: { list: (CrmUser | WorkbenchUser)[]; a: WorkbenchUser | null; b: User };',
+        '    pair: { list: (CrmUser | WorkbenchUser)[]; a: WorkbenchUser; b: User };',
     ]],
     'two User models, without the tolki package' => [DeclaredOverrideFilteredUsersResource::class, false, [
         "import type { User } from '@js/types/ui';",
         "import type { User as WorkbenchUser } from '../../../../../../workbench/app/models';",
         "import type { User as CrmUser } from '../../../../../../workbench/crm/models';",
-        '    pair: { list: (CrmUser | WorkbenchUser)[]; a: WorkbenchUser | null; b: User };',
+        '    pair: { list: (CrmUser | WorkbenchUser)[]; a: WorkbenchUser; b: User };',
     ]],
 ]);
 

@@ -1028,6 +1028,27 @@ gaps. `replaceable()` and `provisional()` settle a held warning as they settle a
 warning: its drop entry records the arm whether a merge fills it or not, and a silent gap records nothing, as its join
 records nothing out of the mode, so the audit baseline is the same in both.
 
+#### Declared arms
+
+An outer declaration, an inline `@var`, a `toArray()` `@return` key or a closure's `@return`, replaces each arm only a
+declaration produced and keeps each arm the body proves. In the declaration mode (`AnalysisMemo::markingDeclared()`,
+keyed `@declared`), which the gap mode brings and `hidingGaps()` and `rememberFact()` end, [`DeclaredArms`] marks such
+an arm at its source: `$declNull` for a nullable column's, cast's or relation's `null`, a `?T` return's or parameter's
+(`AnalysisScope::$declaredParameters` keeps a parameter's declared value for the read), a query's `find()`,
+`first()`, `firstWhere()` and `value()`, `auth()->user()` and `auth()->id()`, `tryFrom()`, a `$resource` a docblock
+declares nullable, and that of `?->` over a receiver holding no proven `null`; `$declKeys` beside the `Record` a map
+over an untyped array hedges its keys with. An accessor's `null`, whatever its body read, runtime nulls and every
+source not listed stay proven. A source that adds its `null` beside a value it read, a lookup, `?->` or `whenLoaded()`,
+appends the mark (`DeclaredArms::withDeclaredNull()`), so a `null` the value itself holds stays proven.
+
+`VisibleGaps::isGap()` matches both marks, but `aside()` reads `$declNull` as the `null` it stands for and `carried()`
+and `ValueResult::gapTransparent()` mark again a `null` the read keeps, so every reader decides as out of the mode.
+`DeclaredTypeMerge` sets marks aside: a `$declNull` takes only the declaration's own `null`, and a `$declKeys` drops the
+`Record` arms where the declaration names no keyed arm. [`DeclaredFill`] lays an inline `@var` or a closure's `@return`
+over a reading as a `@return` merges a key, its gaps aside, and its classes requeued as `ReturnShapeRefiner`'s are. The
+outermost fill turns the marks it left back into what they stand for; a nested one keeps them and marks its own
+declaration's `null`. `stripped()` does the same at a strip, and a variant reads its arms unmarked, so none publishes.
+
 Forcing every key into the mode moves no published byte, as
 [Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.
 
@@ -1177,6 +1198,8 @@ These pages cover the engine's neighbors:
 [`ClassIdentity`]: ../../src/Ast/Values/ClassIdentity.php
 [`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
+[`DeclaredArms`]: ../../src/Ast/Analysis/DeclaredArms.php
+[`DeclaredFill`]: ../../src/Ast/Composition/ReturnShape/DeclaredFill.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Enums/EnumValueTypes.php
 [`EnumWrapImports`]: ../../src/Ast/Enums/EnumWrapImports.php

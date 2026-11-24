@@ -14855,6 +14855,251 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\DeclaredArmsResource": {
+            "name": "DeclaredArmsResource",
+            "properties": [
+                {
+                    "name": "var_closure_union",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_nullable",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_model",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_model_narrowed",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_filtered",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_two_array_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_param_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_nullable_return",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_hedged_map",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_first_kid_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "var_parent_ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_column",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "var_mapped_column",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_zipped",
+                    "type": "{ content: string; other: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_flags",
+                    "type": "true[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_closure_union",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_closure_nullable",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_closure_array",
+                    "type": "{ a: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_two_array_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_param_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_nullable_return",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_hedged_map",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_first_kid_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "decl_column",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "when_closure_union",
+                    "type": "Post[]",
+                    "optional": true
+                },
+                {
+                    "name": "when_closure_array",
+                    "type": "{ a: number }[]",
+                    "optional": true
+                },
+                {
+                    "name": "when_column",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "when_first_kid_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "when_flags",
+                    "type": "true[]",
+                    "optional": true
+                },
+                {
+                    "name": "bare_closure_union",
+                    "type": "(Post | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "bare_param_nullsafe",
+                    "type": "(string | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "bare_hedged_map",
+                    "type": "(string | null)[] | Record<string, string | null>",
+                    "optional": false
+                },
+                {
+                    "name": "bare_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "bare_column",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "bare_zipped",
+                    "type": "{ content: string; other: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_ternary",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_coalesce_null",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_coalesced",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "var_uncovered",
+                    "type": "{ a: number; b: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "var_mixed",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_nullable_column",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_proven_nullsafe",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_mapped_coalesce_null",
+                    "type": "(string | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_ternary",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "decl_coalesce_null",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "decl_nullable_column",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "when_ternary",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "when_nullable_column",
+                    "type": "string | null",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocblockReads\\ParamTagClassesResource": {
             "name": "ParamTagClassesResource",
             "properties": [

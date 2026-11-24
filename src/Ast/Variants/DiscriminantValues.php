@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use UnitEnum;
 
 /**
@@ -43,7 +44,7 @@ final class DiscriminantValues
         $enums = array_values(array_unique($read));
         $values = [];
 
-        foreach (TsTypeString::splitTopLevelUnion($row['type']) as $arm) {
+        foreach (TsTypeString::splitTopLevelUnion(VisibleGaps::unmarked($row['type'])) as $arm) {
             $sent = self::armValues($arm, $enums, $scalarsMayBeCases || $read !== []);
 
             if ($sent === null) {

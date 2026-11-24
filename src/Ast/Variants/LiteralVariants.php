@@ -100,6 +100,8 @@ final class LiteralVariants
     {
         $object = new MethodAnalysis;
         $this->writes->replayed($values)->applyTo($object, $this->liftsMerges);
+        // A variant prints apart from the rows a declaration fills, so each declared `null` a row marked is sent as is.
+        $object->unmarkDeclaredArms();
         resolve(IndexSignatureReconciler::class)->reconcile($object);
 
         return $object;

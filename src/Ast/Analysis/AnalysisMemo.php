@@ -16,8 +16,8 @@ use LogicException;
  * computing it again could not differ, and a reuse replays the cache dependencies, dropped arms, gaps, fills and unread
  * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
  *
- * It also holds whether a read under way needs each enum case as its enum, and whether it shows gaps (the gap mode),
- * keeping the answers of each apart.
+ * It also holds whether a read under way needs each enum case as its enum, whether it shows gaps (the gap mode), and
+ * whether it marks each arm only a declaration produced (the declaration mode), keeping the answers of each apart.
  *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
@@ -81,6 +81,9 @@ final class AnalysisMemo
 
     /** Whether the read under way keeps the gap each dropped arm leaves in its type text: showingGaps(). */
     private bool $showsGaps = false;
+
+    /** Whether the read under way marks each arm only a declaration produced: markingDeclared(). */
+    private bool $marksDeclared = false;
 
     /** @var ValueSite|null the reading and scope of the value the innermost read under way types */
     private ?array $valueSite = null;
@@ -306,6 +309,34 @@ final class AnalysisMemo
     }
 
     /**
+     * Run a read in the declaration mode, as an outer declaration does over the value it types: every arm only a
+     * declaration produced is a mark in the type text (VisibleGaps), however many frames deep, for it to replace.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $read
+     * @return T
+     */
+    public function markingDeclared(Closure $read): mixed
+    {
+        [$around, $this->marksDeclared] = [$this->marksDeclared, true];
+
+        try {
+            return $read();
+        } finally {
+            $this->marksDeclared = $around;
+        }
+    }
+
+    /**
+     * Whether the read under way is in the declaration mode, which the gap mode brings.
+     */
+    public function marksDeclared(): bool
+    {
+        return $this->marksDeclared;
+    }
+
+    /**
      * Mark the value a read under way types by its reading and scope, handing back the mark it replaces for the reader
      * to restore: a body memoized apart from its reader's reading, an accessor's, asks filterReachesValue() of it.
      *
@@ -330,7 +361,8 @@ final class AnalysisMemo
     /**
      * A stored answer for a key when computing it again could not differ, else a fresh one, stored with the guards it
      * found held, since only those can cut a fresh computation short somewhere else; one a seed shaped is kept apart.
-     * So is one computed while a read needs enum cases as their enums, or shows gaps, each under its own key.
+     * So is one computed while a read needs enum cases as their enums, shows gaps or marks declared arms, each under
+     * its own key; the gap mode brings the marks, so its key says both.
      *
      * @template T
      *
@@ -339,7 +371,11 @@ final class AnalysisMemo
      */
     public function remember(string $key, Closure $compute): mixed
     {
-        $key .= ($this->enumReadings > 0 ? '@casesAsEnums' : '').($this->showsGaps ? '@gaps' : '');
+        $key .= ($this->enumReadings > 0 ? '@casesAsEnums' : '').match (true) {
+            $this->showsGaps => '@gaps',
+            $this->marksDeclared => '@declared',
+            default => '',
+        };
         $enums = PublishedEnums::version();
 
         $stored = $this->seeded === [] ? $this->entries[$key] ?? [] : [
@@ -387,8 +423,8 @@ final class AnalysisMemo
     }
 
     /**
-     * A fact's answer, as remember() gives one, computed with the gap mode off under its plain key, so a read in the
-     * mode and one out of it share it: a fact read through gap text could answer each mode differently.
+     * A fact's answer, as remember() gives one, computed with the gap and declaration modes off under its plain key,
+     * so a read in either mode and one out of it share it: a fact read through gap text could answer each differently.
      *
      * @template T
      *
@@ -448,7 +484,8 @@ final class AnalysisMemo
     }
 
     /**
-     * Run a read with the gap mode set as given, restoring the mode around it on every way out.
+     * Run a read with the gap mode set as given, the declaration mode with it, restoring both around it on every way
+     * out.
      *
      * @template T
      *
@@ -458,11 +495,13 @@ final class AnalysisMemo
     private function readingGaps(bool $shows, Closure $read): mixed
     {
         [$around, $this->showsGaps] = [$this->showsGaps, $shows];
+        [$marks, $this->marksDeclared] = [$this->marksDeclared, $shows];
 
         try {
             return $read();
         } finally {
             $this->showsGaps = $around;
+            $this->marksDeclared = $marks;
         }
     }
 

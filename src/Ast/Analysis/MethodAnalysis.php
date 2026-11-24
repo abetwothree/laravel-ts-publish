@@ -988,6 +988,15 @@ class MethodAnalysis
     }
 
     /**
+     * Turn each declared-arm mark in the type, body type and fill of every property back into what it stands for
+     * (VisibleGaps::unmarked()), its gaps and open markers left in place.
+     */
+    public function unmarkDeclaredArms(): void
+    {
+        $this->rewriteTypes(VisibleGaps::unmarked(...), static fn (): bool => true);
+    }
+
+    /**
      * Take every gap arm and open marker out of the type, body type and fill of each property $strips takes, every one
      * where it is null, and raise the warnings of each gap taken out.
      *

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
@@ -479,7 +480,7 @@ final class ParameterBinder
         }
 
         if ($value !== null) {
-            $scope->varValueBindings[$name] = $value;
+            $scope->varValueBindings[$name] = $scope->declaredParameters[$name] = $value;
         }
     }
 
@@ -1141,7 +1142,7 @@ final class ParameterBinder
             }
 
             if ($value !== null) {
-                $scope->varValueBindings[$name] = $value;
+                $scope->varValueBindings[$name] = $scope->declaredParameters[$name] = $value;
             }
         }
     }
@@ -1274,8 +1275,8 @@ final class ParameterBinder
         }
 
         return $variadic
-            ? [...$value, 'type' => ValueResult::arrayWrapType($value['type']), 'optional' => false]
-            : [...$value, 'optional' => false];
+            ? [...$value, 'type' => ValueResult::arrayWrapType(DeclaredArms::nullable($value['type'])), 'optional' => false]
+            : [...$value, 'type' => DeclaredArms::nullable($value['type']), 'optional' => false];
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
@@ -18,7 +19,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMemberReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverMethodReturnResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollections;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use Illuminate\Database\Eloquent\Model;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\PropertyFetch;
@@ -161,7 +161,7 @@ final class ThisPropertyHandler implements ExpressionHandler
 
         return [
             ...ValueResult::unknown(),
-            'type' => $receivers->redeclaresNullableProxy($scope) ? TsTypeString::withNullArm($type) : $type,
+            'type' => $receivers->redeclaresNullableProxy($scope) ? DeclaredArms::withDeclaredNull($type) : $type,
             'modelFqcn' => $model,
         ];
     }

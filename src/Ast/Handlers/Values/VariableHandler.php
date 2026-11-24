@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredFill;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\BindsMapCallbacks;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Collections\AnalyzesPluckCalls;
@@ -68,6 +70,7 @@ use ReflectionMethod;
  * @phpstan-import-type BindingGap from AnalysisScope
  *
  * @phpstan-type DeclaredReplacement array{ValueExpressionResult|null, list<Expr>|null}
+ * @phpstan-type TaggedReading array{ValueExpressionResult|null, ValueExpressionResult|null, list<Expr>|null}
  * @phpstan-type LeftMembers array<string, non-empty-list<Expr>>
  * @phpstan-type FilledReading array{ValueExpressionResult, list<Expr>}
  *
@@ -402,7 +405,8 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A bare variable's value from the binding its name came into the body with.
+     * A bare variable's value from the binding its name came into the body with, the `null` a parameter's own
+     * declaration gives it marked as only that declaration's (DeclaredArms).
      *
      * Where that binds no value, from the body's one write of it, which a value read takes while a receiver keeps the
      * class.
@@ -433,7 +437,11 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
         // Bound to an already-resolved value — a `collect(...)->map()` closure param, whose element type
         // CollectionPipelineHandler resolved before descending into the body.
         if (isset($scope->varValueBindings[$name])) {
-            return $scope->varValueBindings[$name];
+            $value = $scope->varValueBindings[$name];
+
+            return ($scope->declaredParameters[$name] ?? null) === $value
+                ? [...$value, 'type' => DeclaredArms::nullable($value['type'])]
+                : $value;
         }
 
         // Bound to a closure parameter's expression or a top-level local assignment; the closure param is the narrower
@@ -505,8 +513,9 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     }
 
     /**
-     * A declared local's reading where it stands, else its `@var` type where that can replace it, whole or in each
-     * placeholder a drop left; see declaredLocalValue().
+     * A declared local's reading where it stands, merged with its `@var` type (DeclaredFill), else that type where it
+     * can replace the reading, whole or in each placeholder a drop left; see declaredLocalValue(). The tag is an outer
+     * declaration over the reading, which is read under it (DeclaredArms::underDeclaration()).
      *
      * @param  VarDocBinding  $span
      * @return ValueExpressionResult|null
@@ -514,17 +523,47 @@ final class VariableHandler implements ExpressionHandler, KeepsHeldObjects
     private function declaredReadingOrTag(string $name, array $span, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $dropped = DroppedUnionArms::dropped();
-        // A placeholder the tag replaces is never published, so the warning its drop raised is not either.
-        [$reading, $replacement] = DroppedUnionArms::replaceable(
-            function () use ($name, $span, $scope, $engine, $dropped): array {
-                $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
 
-                return [$reading, ...$this->declaredReplacement($span, $reading, $dropped)];
-            },
-            fn (array $read, ?Expr $arm): bool => $read[1] === null || ($read[2] !== null && ! in_array($arm, $read[2], true)),
+        return DeclaredArms::underDeclaration(
+            // A placeholder the tag replaces is never published, so the warning its drop raised is not either.
+            fn (): array => DroppedUnionArms::replaceable(
+                function () use ($name, $span, $scope, $engine, $dropped): array {
+                    $reading = $this->boundExpressionValue($name, $span['expr'], $scope, $engine);
+
+                    return [$reading, ...$this->declaredReplacement($span, $reading, $dropped)];
+                },
+                fn (array $read, ?Expr $arm): bool => $read[1] === null || ($read[2] !== null && ! in_array($arm, $read[2], true)),
+            ),
+            fn (array $read, bool $nested): ?array => $this->filledByTag($read, $span, $dropped, $nested),
         );
+    }
 
-        return $replacement ?? $reading;
+    /**
+     * A declared local's value once its `@var` fills the reading: the replacement declaredReplacement() gave, the tag's
+     * own `null` marked where the whole tag replaces the reading in a nested fill; else a reading that stands merged
+     * with the tag; else the reading.
+     *
+     * @param  TaggedReading  $read  the reading, its replacement and the arms the replacement fills
+     * @param  VarDocBinding  $span
+     * @return ValueExpressionResult|null
+     */
+    private function filledByTag(array $read, array $span, int $dropped, bool $nested): ?array
+    {
+        [$reading, $replacement, $filledArms] = $read;
+
+        if ($replacement !== null) {
+            return $nested && $filledArms === null ? DeclaredArms::asNested($replacement) : $replacement;
+        }
+
+        if (! $this->readingStands($reading, $dropped)) {
+            return $reading;
+        }
+
+        $declared = resolve(PropertyDocblockTypeReader::class)->readDeclared($span['type'], $span['context']);
+
+        return ValueResult::isPublishableReading($declared)
+            ? DeclaredFill::merged($reading, $nested ? DeclaredArms::asNested($declared) : $declared)
+            : $reading;
     }
 
     /**

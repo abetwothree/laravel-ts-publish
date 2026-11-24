@@ -264,12 +264,12 @@ it('binds a typed two-array array_map() parameter over an untyped array as the o
     ],
 ]);
 
-// An inline `@var` around the call fills only a whole `unknown`, so a body left partly `unknown` must not stand there.
-it('declines a two-array body an untyped array leaves partly unknown, so an inline @var types it', function () {
+// An inline `@var` around the call merges with the body position by position, so a body left partly `unknown` stands.
+it('reads a two-array body an untyped array leaves partly unknown, which an inline @var fills', function () {
     $map = 'array_map(fn (\\'.Comment::class.' $c, $p) => [\'content\' => $c->content, \'other\' => $p], '
         .'$this->comments->all(), $this->opaque())';
 
-    expect(knownFunctionCallType($map, ArrayMapSourcesResource::class))->toBe('unknown')
+    expect(knownFunctionCallType($map, ArrayMapSourcesResource::class))->toBe('{ content: string; other: unknown }[]')
         ->and(knownFunctionCallType(
             'function () { /** @var list<array{content: string, other: int}> $z */ $z = '.$map.'; return $z; }',
             ArrayMapSourcesResource::class,

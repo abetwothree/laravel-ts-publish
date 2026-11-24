@@ -24,7 +24,6 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
-use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeRewriter;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Enumerable;
@@ -463,7 +462,7 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      * each parameter bound to the classes its array declares its elements as.
      *
      * An element nothing types leaves its parameter what the parameter declares, as the one-array form does; a tuple
-     * of it, or a body it leaves partly `unknown`, declines.
+     * of it declines.
      *
      * @param  non-empty-list<ValueExpressionResult>  $inputs
      * @param  non-empty-list<Expr>  $arrays
@@ -472,7 +471,6 @@ final class KnownFunctionCallHandler implements ExpressionHandler
     private function mappedArrays(Expr $callback, array $inputs, array $arrays, bool $zips, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         $parameters = [];
-        $untyped = false;
 
         foreach ($inputs as $input) {
             $elements = ArrayArms::arms($input['type'], ArrayArms::elementOf(...));
@@ -484,7 +482,6 @@ final class KnownFunctionCallHandler implements ExpressionHandler
 
             if (in_array('unknown', $elements, true)) {
                 $parameters[] = ValueResult::unknown();
-                $untyped = true;
 
                 continue;
             }
@@ -503,26 +500,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $declared = array_filter(array_map(fn (Expr $array): ?ReceiverType => $resolver->elementClasses($array, $scope), $arrays));
         $body = $this->resolveArrayCallback($callback, $parameters, null, true, $scope, $engine, declaredElements: $declared);
 
-        // A declared type around the call, such as an inline `@var`, fills only a whole `unknown`, never a partial one.
-        return $body === null || $body['type'] === 'unknown' || ($untyped && $this->holdsUnknown($body['type']))
+        return $body === null || $body['type'] === 'unknown'
             ? null
             : [...$body, 'type' => ValueResult::arrayWrapType($body['type']), 'optional' => false];
-    }
-
-    /**
-     * Whether a type holds `unknown` at any depth, its gaps and open markers set aside.
-     */
-    private function holdsUnknown(string $type): bool
-    {
-        $holds = false;
-
-        TypeRewriter::rewrite(VisibleGaps::stripped($type)[0], static function (string $arm) use (&$holds): string {
-            $holds = $holds || $arm === 'unknown';
-
-            return $arm;
-        });
-
-        return $holds;
     }
 
     /**
