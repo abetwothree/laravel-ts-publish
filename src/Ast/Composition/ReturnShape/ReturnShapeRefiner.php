@@ -205,12 +205,16 @@ final class ReturnShapeRefiner
             return false;
         }
 
-        [$classes, $replaces] = $requeue;
+        [$classes, $replaces, $alike] = $requeue;
 
         if ($replaces) {
             $analysis->requeueInline($name, $classes);
         } else {
             $analysis->queueEmbeddedClasses($name, $classes);
+        }
+
+        if ($alike !== []) {
+            $analysis->alikeClassFqcns[$name] = $alike;
         }
 
         unset($analysis->declaredTokenFqcns[$name]);

@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Generators\ResourceGenerator;
 use AbeTwoThree\LaravelTsPublish\Runners\BaseRunner;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\AnnulledResource;
@@ -22,6 +23,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\NullableShorthand
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\VariantGapReturnResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ColumnAccessorPost;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
@@ -351,7 +353,25 @@ test('an outer declaration over another method\'s body keeps the null it proves 
         'var_column_helper' => '{ parent: number }',
         'var_ternary_helper' => '{ parent: number | null }',
         'bare_column_helper' => '{ parent: number | null }',
+        'same_named' => '{ resource: WorkbenchAddress; model: WorkbenchAddress2 }',
+        'closure_same_named' => '{ resource: WorkbenchAddress; model: WorkbenchAddress2 }[]',
     ]);
+});
+
+// GH-76: each kind's channel keeps only its own order, so the merge records the order of a name both kinds print.
+test('a declaration that names a model beside a resource printing its name keeps each token\'s class', function () {
+    $data = new ResourceTransformer(ChainAccessorReturnResource::class)->data();
+    $alias = static function (string $folder) use ($data): string {
+        $path = array_values(array_filter(array_keys($data->typeImports), static fn (string $path): bool => str_ends_with($path, $folder)));
+
+        return ImportMaps::localName($data->typeImports[$path[0]][0]);
+    };
+    $resource = $alias('/http/resources');
+    $model = $alias('/models');
+
+    expect($resource)->not->toBe($model)
+        ->and($data->properties['same_named']['type'])->toBe("{ resource: {$resource}; model: {$model} }")
+        ->and($data->properties['closure_same_named']['type'])->toBe("{ resource: {$resource}; model: {$model} }[]");
 });
 
 test('a declaration laid whole over a reading keeps what the reading says the value is', function () {

@@ -21,7 +21,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type Slots from TokenSlots
  *
- * @phpstan-type Requeue = array{list<class-string>, bool}
+ * @phpstan-type Requeue = array{list<class-string>, bool, list<class-string>}
  *
  * @internal
  */
@@ -80,13 +80,14 @@ final class DeclaredFill
     /**
      * How the classes a merged type names are queued, so the publisher reads each token's class as its slot says, as it
      * reads a body's: each class the held queue lacks appended after it, else every class in print order after the
-     * single entries that lead each name's queue, replacing the inline queues; null where neither reads it so.
+     * single entries that lead each name's queue, replacing the inline queues; null where neither reads it so. The
+     * record of a name a model and a resource both print keeps that queue's order, which each kind's channels lose.
      *
      * @param  list<class-string>  $held  the classes the channels hold, in the order the publisher reads them
      * @param  list<class-string>  $singles  the held classes no inline queue holds, in that order
      * @param  Slots  $slots
      * @param  list<string>  $names
-     * @return Requeue|null the classes to queue, and whether they replace the inline queues
+     * @return Requeue|null the classes to queue, whether they replace the inline queues, and the alike record
      */
     public static function requeue(array $held, array $singles, string $text, array $slots, array $names): ?array
     {
@@ -99,7 +100,7 @@ final class DeclaredFill
         $added = array_values(array_unique(array_diff($classes, $held)));
 
         if (TokenSlots::queueRead([...$held, ...$added], $text, $names) === $expected) {
-            return [$added, false];
+            return [$added, false, self::alikeOf([...$held, ...$added])];
         }
 
         $leading = [];
@@ -118,7 +119,9 @@ final class DeclaredFill
             }
         }
 
-        return TokenSlots::queueRead([...$singles, ...$inline], $text, $names) === $expected ? [$inline, true] : null;
+        return TokenSlots::queueRead([...$singles, ...$inline], $text, $names) === $expected
+            ? [$inline, true, self::alikeOf([...$singles, ...$inline])]
+            : null;
     }
 
     /**
@@ -145,13 +148,33 @@ final class DeclaredFill
     }
 
     /**
-     * A value with classes queued on its inline channels, after the ones it holds or in their place.
+     * The models and resources of a queue whose names a model and a resource both print, in the queue's order.
+     *
+     * @param  list<class-string>  $queue
+     * @return list<class-string>
+     */
+    private static function alikeOf(array $queue): array
+    {
+        $ofKind = static fn (TokenKind $kind): array => array_values(array_filter(
+            $queue,
+            static fn (string $fqcn): bool => TokenKind::ofClass($fqcn) === $kind,
+        ));
+        $models = $ofKind(TokenKind::Model);
+        $resources = $ofKind(TokenKind::Resource);
+
+        return ClassIdentity::alikeRecord($models, $resources, array_values(array_intersect($queue, [...$models, ...$resources])));
+    }
+
+    /**
+     * A value with classes queued on its inline channels, after the ones it holds or in their place, and its record of
+     * which tokens of a name a model and a resource both print are whose.
      *
      * @param  ValueExpressionResult  $result
      * @param  list<class-string>  $classes
+     * @param  list<class-string>  $alike
      * @return ValueExpressionResult
      */
-    private static function requeued(array $result, array $classes, bool $replaces): array
+    private static function requeued(array $result, array $classes, bool $replaces, array $alike): array
     {
         if ($replaces) {
             unset($result['embeddedEnumFqcns'], $result['embeddedModelFqcns'], $result['embeddedResourceFqcns'], $result['alikeClassFqcns']);
@@ -163,6 +186,10 @@ final class DeclaredFill
             if ($channel !== null) {
                 $result[$channel] = [...$result[$channel] ?? [], $class];
             }
+        }
+
+        if ($alike !== []) {
+            $result['alikeClassFqcns'] = $alike;
         }
 
         return $result;
