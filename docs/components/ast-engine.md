@@ -1052,9 +1052,9 @@ and `ValueResult::gapTransparent()` mark again a `null` the read keeps, so every
 over a reading as a `@return` merges a key, its gaps aside, and its classes requeued as `ReturnShapeRefiner`'s are; a
 merge that reads as the declaration takes it whole with what the reading says the value is
 (`ValueResult::withValueFactsOf()`), such as `keepsKeys`. The outermost fill turns the marks it left back into what they
-stand for; a nested one keeps them and marks its own declaration's `null`. A frame read in the mode, a helper's, keeps
-them past its strip (`MethodAnalysis::stripGaps()`) for the declaration it is read under; any other strip turns them
-back as `stripped()` does, and a variant reads its arms unmarked, so none publishes.
+stand for; a nested one keeps them and marks its own declaration's top-level `null`. A frame read in the mode, a
+helper's, keeps them past its strip (`MethodAnalysis::stripGaps()`) for the declaration it is read under; any other strip
+turns them back as `stripped()` does, and a variant reads its arms unmarked, so none publishes.
 
 Forcing every key into the mode moves no published byte, as
 [Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.
