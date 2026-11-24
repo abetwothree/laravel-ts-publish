@@ -14935,7 +14935,7 @@
             "properties": [
                 {
                     "name": "self_kid_names",
-                    "type": "unknown",
+                    "type": "string[]",
                     "optional": false
                 },
                 {
@@ -14945,12 +14945,62 @@
                 },
                 {
                     "name": "self_first_kid_name",
-                    "type": "unknown",
+                    "type": "string | null",
                     "optional": false
                 },
                 {
                     "name": "named_first_kid_name",
                     "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "self_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "named_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "self_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "named_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_self_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_named_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_self_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "own_named_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "own_self_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_named_kid_sort_orders",
+                    "type": "number[]",
                     "optional": false
                 }
             ]

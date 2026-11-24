@@ -138,7 +138,8 @@ nor the member is final and the member is not private, is read by its declaratio
 `unknown`. The mark passes to what a member call, a static call or a property read on the receiver returns, to a
 ternary, a `??` or a block's write that joins it, and to a parameter it is passed to that is untyped or that the
 argument narrows (`relativeParameters`). Such an inline `@var` names no collection element, and an `instanceof`
-proof's classes drop the mark.
+proof's classes drop the mark. Where each class the spelling stands for among the classes and element an inline `@var`
+gives is final, no subclass exists, so the tag reads unmarked, as the class named in its place.
 
 ### Intersections
 

@@ -55,4 +55,48 @@ trait ListsKidNames
 
         return $kids->first()?->name;
     }
+
+    /**
+     * The kids' names re-indexed into a list, through `self` inside the `@var`.
+     */
+    public function selfKidNameList()
+    {
+        /** @var Collection<int, self> $kids */
+        $kids = $this->getRelationValue('children');
+
+        return $kids->map(fn ($kid) => $kid->name)->values()->all();
+    }
+
+    /**
+     * The kids' names re-indexed into a list, through the class named inside the `@var`.
+     */
+    public function namedKidNameList()
+    {
+        /** @var Collection<int, CategoryBranch> $kids */
+        $kids = $this->getRelationValue('children');
+
+        return $kids->map(fn ($kid) => $kid->name)->values()->all();
+    }
+
+    /**
+     * The kids' sort orders, through `self` inside the `@var`.
+     */
+    public function selfKidSortOrders()
+    {
+        /** @var Collection<int, self> $kids */
+        $kids = $this->getRelationValue('children');
+
+        return $kids->map(fn ($kid) => $kid->sort_order);
+    }
+
+    /**
+     * The kids' sort orders, through the class named inside the `@var`.
+     */
+    public function namedKidSortOrders()
+    {
+        /** @var Collection<int, CategoryBranch> $kids */
+        $kids = $this->getRelationValue('children');
+
+        return $kids->map(fn ($kid) => $kid->sort_order);
+    }
 }
