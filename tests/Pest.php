@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -16,6 +17,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Support\RoundTripShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -38,6 +40,23 @@ use Workbench\App\Models\Post;
 uses(TestCase::class)
     ->beforeEach(fn () => ReturnMembers::$typesEveryKey = (bool) getenv('TS_PUBLISH_GAP_GATE'))
     ->in(__DIR__);
+
+// Every analysis the walk, the fold and a join hand on must lift into an ArrayShape and lower back unchanged. The
+// publish that publish-bench.sh times runs without the check, so no speed bar measures it.
+uses()
+    ->beforeEach(function () {
+        if ($this->getPrintableTestCaseMethodName() !== 'ts:publish writes files to disk') {
+            app()->instance(ShapeObserver::class, new RoundTripShapeObserver);
+        }
+    })
+    ->afterEach(function () {
+        $observer = app(ShapeObserver::class);
+
+        if ($observer instanceof RoundTripShapeObserver) {
+            $observer->rethrowCaught();
+        }
+    })
+    ->in('Unit/Analyzers', 'Unit/Ast', 'Feature/Commands/TsPublishCommandTest.php');
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or

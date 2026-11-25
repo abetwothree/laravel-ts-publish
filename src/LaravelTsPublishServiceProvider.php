@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Model\AccessorBodyAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\NullShapeObserver;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
@@ -51,6 +53,7 @@ class LaravelTsPublishServiceProvider extends PackageServiceProvider
         $this->app->singleton(JsEmitter::class);
         $this->app->singleton(TsTypeString::class);
         $this->app->singleton(TsNaming::class);
+        $this->app->singleton(ShapeObserver::class, NullShapeObserver::class);
 
         $this->app->bind(CacheRepository::class, fn () => CacheBootstrap::repository());
     }

@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -215,6 +216,8 @@ final class BranchJoin
         foreach ($unalike as $name) {
             $target->untype($name);
         }
+
+        resolve(ShapeObserver::class)->observed($target);
     }
 
     /**

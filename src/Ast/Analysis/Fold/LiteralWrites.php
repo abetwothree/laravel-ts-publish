@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
@@ -31,7 +33,6 @@ use PhpParser\Node;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type KeyedValues from ObjectMembers
- * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type PrintedArm from LiteralArms
  * @phpstan-import-type MapArm from LiteralArms
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
@@ -117,8 +118,8 @@ final class LiteralWrites
                 continue;
             }
 
-            [$absent, $removed] = self::rowFacts($row);
-            $this->addWrite($row['name'], $position, $fromMerge, $absent, $removed, $index);
+            $presence = KeyPresence::fromRow($row);
+            $this->addWrite($row['name'], $position, $fromMerge, $presence->absent, $presence->removed, $index);
         }
     }
 
@@ -131,10 +132,10 @@ final class LiteralWrites
     public function recordKey(string $name, array $result, int $position): void
     {
         $this->carryWide($result['customImports'] ?? [], $result['carriedFqcns'] ?? []);
-        [$absent, $removed] = self::valueFacts($result);
+        $presence = KeyPresence::fromValue($result);
         $source = $this->addSource(['value' => $result]);
         $this->keyedSources[$source] = true;
-        $this->addWrite($name, $position, false, $absent, $removed, $source);
+        $this->addWrite($name, $position, false, $presence->absent, $presence->removed, $source);
     }
 
     /**
@@ -161,8 +162,8 @@ final class LiteralWrites
 
         foreach ($keys as [$name, $result]) {
             $index = $this->addSource(['value' => $result]);
-            [$absent, $removed] = self::valueFacts($result);
-            $this->addWrite($name, $position, false, $absent, $removed, $index);
+            $presence = KeyPresence::fromValue($result);
+            $this->addWrite($name, $position, false, $presence->absent, $presence->removed, $index);
 
             if ($printedArm) {
                 $this->armSources[$index] = true;
@@ -249,11 +250,11 @@ final class LiteralWrites
         foreach ($values as $name => $value) {
             $at = $this->soleWrite((string) $name) ?? throw new LogicException("No keyed item alone writes `{$name}`.");
             $value ??= ValueResult::removed();
-            [$absent, $removed] = self::valueFacts($value);
+            $presence = KeyPresence::fromValue($value);
             $write = $this->writes[$at];
             $copy->sources[$write->source] = ['value' => $value];
             $replayed[$at] = new KeyWrite(
-                $write->name, $write->position, $write->fromMerge, $absent, $removed, $write->source,
+                $write->name, $write->position, $write->fromMerge, $presence->absent, $presence->removed, $write->source,
             );
         }
 
@@ -315,41 +316,8 @@ final class LiteralWrites
                     || self::keysFitMapValue($target, $arm['map']['value']['type']),
             ),
         )));
-    }
 
-    /**
-     * The presence facts a row's write carries: none where it is required, as a cast that keeps it says; else its
-     * own, a `?` with neither (a declaration's) read as a key its writer may leave unset.
-     *
-     * @param  AnalyzedProperty  $row
-     * @return array{bool, bool}
-     */
-    private static function rowFacts(array $row): array
-    {
-        if (! $row['optional']) {
-            return [false, false];
-        }
-
-        $removed = $row['removed'] ?? false;
-
-        return [($row['absent'] ?? false) || ! $removed, $removed];
-    }
-
-    /**
-     * The presence facts a written value carries, as addProperty() reads them.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return array{bool, bool}
-     */
-    private static function valueFacts(array $result): array
-    {
-        if (! $result['optional']) {
-            return [false, false];
-        }
-
-        $absent = $result['absent'] ?? false;
-
-        return [$absent, ! $absent || ($result['removed'] ?? false)];
+        resolve(ShapeObserver::class)->observed($target);
     }
 
     /**

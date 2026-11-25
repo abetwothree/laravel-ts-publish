@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
@@ -842,6 +843,8 @@ trait ReadsReturnedVariables
         } finally {
             [$this->untypedKeyWrites, $this->optionalValueKeys, $this->keyPaths] = $outer;
         }
+
+        resolve(ShapeObserver::class)->observed($analysis);
 
         return $analysis;
     }
