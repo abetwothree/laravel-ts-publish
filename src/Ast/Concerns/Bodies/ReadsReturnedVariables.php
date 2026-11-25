@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Build\ArrayWalk;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\ArrayShapes;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaqueKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaquePart;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
@@ -451,8 +452,8 @@ trait ReadsReturnedVariables
                 continue;
             }
 
-            // $var += [...] — PHP's union keeps every key already set, so only the new keys and each signature entry
-            // join, and a key the left side keeps drops the right side's channels along with its value.
+            // $var += [...] — PHP's union keeps every key already set, so the right side lands only on a key some path
+            // left unset, a new key or a signature entry.
             if ($stmt instanceof ExpressionStmt
                 && $stmt->expr instanceof Plus
                 && $stmt->expr->var instanceof Variable
@@ -1272,6 +1273,13 @@ trait ReadsReturnedVariables
         $held = clone $state;
         resolve(IndexSignatureReconciler::class)->reconcile($held);
         $bound = new InlineObjectResult()->of($held);
+        $optional = array_filter($held->properties, static fn (array $property): bool => $property['optional']);
+
+        // A key a path left unset holds no MissingValue, so its bare read throws, and `??` reads past it.
+        if ($optional !== [] && array_all($optional, static fn (array $property): bool => KeyPresence::ofRow($property)->isAbsentOnly())) {
+            $bound['absentKeys'] = true;
+        }
+
         $alias = AnalysisScope::walkAlias($varName);
         [$copy] = new NodeTraverser(new CloningVisitor, new class($varName, $alias) extends NodeVisitorAbstract
         {

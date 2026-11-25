@@ -575,6 +575,50 @@ test('a value a branch cannot type drops beside a typed one, and a lone null sta
     'in every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', 'c: unknown'],
 ]);
 
+// PHP's `+` keeps a key that exists, a held null included, and `??` reads past an unset or null one, so a default lands
+// where a branch skipped the key; a when() value is set and stays.
+test('a + or ?? lays its default on a key the walk may lack, and leaves a key it always holds', function (string $body, string $members) {
+    expect(walkedMembers($body))->toBe($members);
+})->with([
+    'a ?? self-read over an if-built base' => [
+        '$d = ["id" => 0]; if ($x) { $d["by"] = $this->resource->title; } $d["by"] = $d["by"] ?? "z";',
+        'id: number; by: string',
+    ],
+    'a ?? self-read over an empty base' => [
+        '$d = []; if ($x) { $d["by"] = $this->resource->title; } $d["by"] = $d["by"] ?? "z";',
+        'by: string',
+    ],
+    'a += over a branch-set key' => ['$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => "z"];', 'id: number; k: number | string'],
+    'a += of an untypable value, which drops beside the typed one' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => $this->resource->nowhere];',
+        'id: number; k: number',
+    ],
+    'a += over an untypable value a branch set' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = $this->resource->nowhere; } $d += ["k" => "none"];',
+        'id: number; k: unknown',
+    ],
+    'a += over an untypable value a loop set' => [
+        '$d = ["id" => 0]; foreach ($rows as $i) { if ($i > 1) { $d["k"] = $i; } } $d += ["k" => "none"];',
+        'id: number; k: unknown',
+    ],
+    'a + base over an untypable value a mergeWhen() sets' => [
+        '$d = ["id" => 0, $this->mergeWhen($x, ["k" => $this->resource->nowhere])] + ["k" => "z"];',
+        'id: number; k: unknown',
+    ],
+    'a += that may not run' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } if ($y) { $d += ["k" => "z"]; }',
+        'id: number; k?: number | string',
+    ],
+    'a + over a when() key' => ['$d = ["by" => $this->when($x, 1)] + ["by" => "z"];', 'by?: number'],
+    'a += over a when() key' => ['$d = ["by" => $this->when($x, 1)]; $d += ["by" => "z"];', 'by?: number'],
+    'a ?? self-read over a when() key' => ['$d = ["by" => $this->when($x, "a")]; $d["by"] = $d["by"] ?? "z";', 'by?: string'],
+    'a ?? self-read over a ternary base' => [
+        '$d = $x ? ["by" => $this->resource->title] : []; $d["by"] = $d["by"] ?? "z";',
+        'by: string',
+    ],
+    'a + over a local the read sees two writes of' => ['$a = []; if ($x) { $a["k"] = 1; } $d = $a + ["k" => "x"];', ''],
+]);
+
 // The arm left out is the last write of its key in the branch, or before the branches for the keys held before them.
 test('the join records each branch value it leaves out, a value held before the branches included', function (string $body, array $dropped) {
     DroppedUnionArms::start();

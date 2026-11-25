@@ -6,6 +6,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ArrayUnion;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\BaseForm;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\BaseForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
@@ -138,7 +140,8 @@ trait ReadsArrayBases
     }
 
     /**
-     * `$a + $b`, which keeps every key $a sets, as `+=` does; null unless both sides read.
+     * `$a + $b`, which keeps every key $a sets and takes $b's where $a may lack it, joined as `+=` joins it; null
+     * unless both sides read.
      *
      * @return TAnalysis|null
      */
@@ -147,13 +150,8 @@ trait ReadsArrayBases
         $left = $this->readsAsArray($expr) ? $this->analyzeArrayExpression($expr->left, $topLevel) : null;
         $right = $left === null ? null : $this->analyzeArrayExpression($expr->right, $topLevel);
 
-        if ($left === null || $right === null) {
-            return null;
-        }
-
-        $right->dropKeysHeldBy($left);
-        $left->merge($right);
-
-        return $left;
+        return $left === null || $right === null
+            ? null
+            : ArrayUnion::plusAnalyses($left, $right, $left, JoinOptions::union());
     }
 }

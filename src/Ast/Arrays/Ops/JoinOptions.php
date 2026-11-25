@@ -29,4 +29,13 @@ final readonly class JoinOptions
         public array $returns = [],
         public ?AnalysisScope $scope = null,
     ) {}
+
+    /**
+     * How `+` and `+=` join a key the left may leave unset: an untypable value the right lays drops beside the left's
+     * typed one, an untypable left value keeps the key `unknown`, and a lone `null` stays.
+     */
+    public static function union(): self
+    {
+        return new self(dropsUntypedBranches: true, keepsLoneNull: true, keepsFirstUntyped: true);
+    }
 }

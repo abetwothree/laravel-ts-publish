@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Arrays\Build;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ArrayUnion;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ShapeJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ShapeWrites;
@@ -181,11 +182,13 @@ final class ArrayWalk
     }
 
     /**
-     * Land a `$var += value` of a value read as $added: PHP's union keeps every key already set, so only the new keys
-     * and each signature entry join, and a key the walk keeps drops the value's channels along with its value.
+     * Land a `$var += value` of a value read as $added: PHP's union keeps every key already set, so a held key takes
+     * the value only where some path left it unset, as ArrayUnion::plus() lays it, and the new keys and each signature
+     * entry join. A key every path holds drops the value's channels along with its value.
      */
     public function plus(ArrayShape $added, bool $conditional, Expr $value): void
     {
+        $this->layOnUnset($added, $conditional, $value);
         $write = ShapeWrites::withoutKeys($added, array_map(static fn (ShapeKey|ShapeSignature $entry): string => $entry->writtenName(), $this->held->entries));
         $this->noteUntypedItems($value, $write);
         $this->merge($write, $conditional, $value);
@@ -436,6 +439,15 @@ final class ArrayWalk
     }
 
     /**
+     * How the walk joins a key's values across paths, as a ternary's arms join: an untypable value drops out beside a
+     * typed one, and a lone `null` stays.
+     */
+    private static function joinOptions(): JoinOptions
+    {
+        return new JoinOptions(dropsUntypedBranches: true, keepsLoneNull: true);
+    }
+
+    /**
      * A held key where some path may leave it unset: the join of the path that keeps it and one that lacks it.
      *
      * @param  Entry  $entry
@@ -470,10 +482,7 @@ final class ArrayWalk
      */
     private function joined(array $branches, ?Closure $recorded = null): ArrayShape
     {
-        $joined = $this->lowered(ShapeJoin::exclusive(
-            $branches,
-            new JoinOptions(dropsUntypedBranches: true, keepsLoneNull: true),
-        ));
+        $joined = $this->lowered(ShapeJoin::exclusive($branches, self::joinOptions()));
         resolve(ShapeObserver::class)->observed($joined);
 
         if ($recorded !== null) {
@@ -547,6 +556,53 @@ final class ArrayWalk
         }
 
         $this->paths[$key] = $paths;
+    }
+
+    /**
+     * Lay a `+=` value on each held key some path may have left unset, as ArrayUnion::plus() lays it there, noting
+     * what the key holds on each path; where the statement may not run, the keys before it stay a branch.
+     */
+    private function layOnUnset(ArrayShape $added, bool $conditional, Expr $value): void
+    {
+        $unset = array_flip(ArrayUnion::unsetKeys($this->held));
+        $named = [];
+
+        foreach ($added->entries as $entry) {
+            if ($entry instanceof ShapeKey && ! isset($unset[$entry->name])) {
+                $named[] = $entry->name;
+            }
+        }
+
+        // A signature entry joins with the new keys below, so only the keys laid here go through the union.
+        $kept = ShapeWrites::withoutKeys($added, $named);
+        $laid = array_values(array_filter(
+            $kept->entries,
+            static fn (ShapeKey|ShapeSignature $entry): bool => $entry instanceof ShapeKey,
+        ));
+
+        if ($laid === []) {
+            return;
+        }
+
+        $write = new ArrayShape($laid, wide: $kept->wide);
+        $leftUnset = $this->keysLeftUnset($value, $write);
+        $types = ShapeWrites::typesOf($this->held);
+        $this->noteVanishing($write);
+
+        foreach ($laid as $entry) {
+            $name = $entry->writtenName();
+            $this->recordWrite(
+                $name,
+                true,
+                $types[$name] ?? null,
+                isset($leftUnset[$name]),
+                $entry->value->channels['heldObjectKeys'] ?? null,
+                $entry->value->type(),
+            );
+        }
+
+        $filled = ArrayShapes::ofAnalysis($this->lowered(ArrayUnion::plus($this->held, $write, JoinOptions::union())));
+        $this->held = $conditional ? $this->joined([$this->held, $filled]) : $filled;
     }
 
     /**

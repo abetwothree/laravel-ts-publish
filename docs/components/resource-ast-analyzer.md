@@ -525,8 +525,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   a whole array `analyzeArrayExpression()` reads, such as `$this->method()`. The same values passed without a closure
   merge alike, since Laravel merges `value($value)`. A side read as no array is an empty branch; one the analysis cannot
   read leaves the merge, and a variable holding it, not read completely. A key set before a merge keeps its value and
-  presence, as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and
-  PHP's `+` alike, keeping each signature entry.
+  presence, as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule,
+  keeping each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`, unless the value hands it to a resource's
@@ -716,8 +716,8 @@ come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand
 is spread as the value it resolves to, so an object joins as an object arm, and an untyped one as
 `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. For the same reason a nullable list
 operand is spread without its `null`, and two nullable lists add `number`, as PHP adds `null + null` as `0`. With no
-array on either side, `+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them
-as `+=` does.
+array on either side, `+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and joins them
+through `ArrayUnion::plus()`, as `+=` does: the right's value lands only on a key the left may leave unset.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations

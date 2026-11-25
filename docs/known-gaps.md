@@ -1312,13 +1312,6 @@ as an arm of its own type. A list such as `explode()`'s, an enum list, a union o
 adds nothing. A local whose read sees one write reads as the array it holds, in a method's whole `return` as in a
 value, a merge closure's own included. Type the operand with a docblock, or the key with `#[TsCasts]`.
 
-### A `+` default for a key only some paths set is left out
-
-`if ($c) { $d['label'] = 5; } $d += ['label' => 'none'];` publishes `label?: number`, though Laravel always sends
-`label`, as `5` or `'none'`: a key the left side of `+` holds drops the right side's copy, even where the left's is
-optional. Write the default first, `$d = ['label' => 'none'];`, and the branch's write after it, which publishes
-`label: string | number`.
-
 ### A named key a `when*()` call can drop beside numeric keys publishes the keyed shape
 
 `['label' => $this->when($c, 'x'), 42 => 'y']` publishes `{ label?: string; "42": string }`. When `$c` is false the API

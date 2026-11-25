@@ -27,6 +27,9 @@ and each channel map's order). See the [ADR](../decisions/2026-11-22-one-array-m
   `BranchJoin`, over random write sequences. A seed's or a write's extras and opaque parts fold into the read flags
   as `ShapeLowering::folded()` folds them; a written shape keeps its own, and no never-empty proof. A new channel map
   is added there as in `ShapeJoin`.
+- **PHP's `+`.** [`ArrayUnion::plus()`](../../src/Ast/Arrays/Ops/ArrayUnion.php) keeps the left's entries, then the
+  right's new ones; a left key some path may leave unset joins the right's value, and a key held on every path, a
+  `when()` value included, keeps its own. The `+` base, the walk's `+=` and Inertia's `+` props all go through it.
 - **Who reads it.** [`ShapeLowering::into()`](../../src/Ast/Arrays/Print/ShapeLowering.php) writes a shape back into
   the `MethodAnalysis` publishers read; `BranchJoin::joinInto()` lifts its branches, joins and lowers them.
 - **The per-key join.** [`KeyValue::joined()`](../../src/Ast/Arrays/Shape/KeyValue.php) joins one key's values across

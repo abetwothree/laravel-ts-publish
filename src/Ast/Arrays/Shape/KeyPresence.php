@@ -121,6 +121,14 @@ final readonly class KeyPresence
     }
 
     /**
+     * Whether some path may leave the key unset: absent, or a `?` neither fact explains, read as fromRow() reads one.
+     */
+    public function mayBeUnset(): bool
+    {
+        return $this->optional && ($this->absent || ! $this->removed);
+    }
+
+    /**
      * Whether the key is sent on every path.
      */
     public function isSure(): bool
@@ -147,6 +155,15 @@ final readonly class KeyPresence
     public function held(): self
     {
         return new self(false, false, $this->removed);
+    }
+
+    /**
+     * This presence on the path where `+` keeps the value the key holds: set, and left out only where that value may
+     * be removed.
+     */
+    public function kept(): self
+    {
+        return new self($this->removed, false, $this->removed);
     }
 
     /**
