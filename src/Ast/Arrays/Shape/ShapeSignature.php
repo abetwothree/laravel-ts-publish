@@ -21,4 +21,12 @@ final readonly class ShapeSignature
         public string $pattern,
         public KeyValue $value,
     ) {}
+
+    /**
+     * The name the entry is written under: the signature's pattern.
+     */
+    public function writtenName(): string
+    {
+        return $this->pattern;
+    }
 }

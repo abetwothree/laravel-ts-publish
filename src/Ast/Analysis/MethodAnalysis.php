@@ -251,6 +251,40 @@ class MethodAnalysis
     }
 
     /**
+     * Carried classes with more of them, once each per kind; a kind more brings none of stays as it was.
+     *
+     * @param  CarriedMap  $carried
+     * @param  CarriedMap  $more
+     * @return CarriedMap
+     */
+    public static function carriedWith(array $carried, array $more): array
+    {
+        foreach ($more as $kind => $fqcns) {
+            if ($fqcns !== []) {
+                $carried[$kind] = array_values(array_unique([...$carried[$kind] ?? [], ...$fqcns]));
+            }
+        }
+
+        return $carried;
+    }
+
+    /**
+     * Custom imports with more of them appended, path by path, each repeat kept.
+     *
+     * @param  ImportMapType  $imports
+     * @param  ImportMapType  $more
+     * @return ImportMapType
+     */
+    public static function importsWith(array $imports, array $more): array
+    {
+        foreach ($more as $path => $types) {
+            $imports[$path] = [...$imports[$path] ?? [], ...$types];
+        }
+
+        return $imports;
+    }
+
+    /**
      * Record one resolved value as a property and route every FQCN channel it carries.
      *
      * The one place a value becomes a property: a channel added here reaches every collector,
@@ -304,10 +338,7 @@ class MethodAnalysis
 
         $this->queueChannels($name, $result);
 
-        foreach ($result['customImports'] ?? [] as $path => $types) {
-            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
-        }
-
+        $this->customImports = self::importsWith($this->customImports, $result['customImports'] ?? []);
         $this->carry($result['carriedFqcns'] ?? []);
     }
 
@@ -381,10 +412,7 @@ class MethodAnalysis
         $this->alikeClassFqcns = array_replace($this->alikeClassFqcns, $source->alikeClassFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
-
-        foreach ($source->customImports as $path => $types) {
-            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
-        }
+        $this->customImports = self::importsWith($this->customImports, $source->customImports);
 
         foreach ($source->inlineEnumFqcns as $propName => $fqcns) {
             $this->inlineEnumFqcns[$propName] = [...($this->inlineEnumFqcns[$propName] ?? []), ...$fqcns];
@@ -564,11 +592,7 @@ class MethodAnalysis
      */
     public function carry(array $carried): void
     {
-        foreach ($carried as $kind => $fqcns) {
-            if ($fqcns !== []) {
-                $this->carried[$kind] = array_values(array_unique([...($this->carried[$kind] ?? []), ...$fqcns]));
-            }
-        }
+        $this->carried = self::carriedWith($this->carried, $carried);
     }
 
     /**

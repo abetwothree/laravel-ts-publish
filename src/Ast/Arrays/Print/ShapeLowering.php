@@ -35,6 +35,7 @@ final class ShapeLowering
      */
     public static function into(MethodAnalysis $target, ArrayShape $shape): void
     {
+        $shape = self::folded($shape);
         $properties = [];
         $nested = $direct = $models = $inlineEnums = $inlineModels = $inlineResources = $wrapConsts = [];
         $wrapped = $casts = $slots = $alike = $held = $closed = [];
@@ -133,21 +134,35 @@ final class ShapeLowering
         $target->customImports = $wide->customImports;
         $target->carried = $wide->carried;
         $target->readsCompletely = $wide->readsCompletely;
-        $target->holdsUnreadKeys = $wide->holdsUnreadKeys || $shape->extras !== null;
+        $target->holdsUnreadKeys = $wide->holdsUnreadKeys;
         $target->holdsUnnamedKeys = $wide->holdsUnnamedKeys;
         $target->flatTypeAlias = $wide->flatTypeAlias;
         $target->flatTypeAliasFqcn = $wide->flatTypeAliasFqcn;
         $target->variants = $wide->variants;
         $target->setSpreadArms($wide->spreadArms);
+    }
+
+    /**
+     * A shape as its lowering reads it: its extras and each opaque part held as unread keys in its read flags, since no
+     * row can say the keys they bring.
+     */
+    public static function folded(ArrayShape $shape): ArrayShape
+    {
+        if ($shape->extras === null && $shape->opaque === []) {
+            return $shape;
+        }
 
         foreach ($shape->opaque as $part) {
             // A literal's kinds wait for the rule their builder brings, so none lowers as a walk's would.
             if (! in_array($part->kind, self::UNREAD_KINDS, true)) {
                 throw new LogicException("No rule lowers an opaque part of kind {$part->kind->name} yet.");
             }
-
-            $target->holdUnreadKeys();
         }
+
+        return new ArrayShape($shape->entries, null, [], $shape->nonEmptyProof, $shape->wide->flagged(
+            readsCompletely: $shape->wide->readsCompletely && $shape->opaque === [],
+            holdsUnreadKeys: true,
+        ));
     }
 
     /**

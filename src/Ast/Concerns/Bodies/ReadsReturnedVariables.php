@@ -17,7 +17,6 @@ use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaquePart;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -430,7 +429,7 @@ trait ReadsReturnedVariables
                 $baseAnalysis = $this->analysisScope()->readingLevel(fn (): ?MethodAnalysis => $this->readAgainstWalk(
                     $assigned,
                     $varName,
-                    $walk->state(),
+                    $walk->state(...),
                     fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
                 ));
 
@@ -462,7 +461,7 @@ trait ReadsReturnedVariables
                 $addedAnalysis = $this->analysisScope()->readingLevel(fn (): ?MethodAnalysis => $this->readAgainstWalk(
                     $added,
                     $varName,
-                    $walk->state(),
+                    $walk->state(...),
                     fn (Expr $value): ?MethodAnalysis => $this->analyzeArrayExpression($value, $topLevel),
                 ));
 
@@ -489,7 +488,7 @@ trait ReadsReturnedVariables
                 $written = $stmt->expr->expr;
                 $result = $this->analysisScope()->readingKey(
                     $keyName,
-                    fn (): array => $this->readAgainstWalk($written, $varName, $walk->state(), $this->analyzeValueExpression(...)),
+                    fn (): array => $this->readAgainstWalk($written, $varName, $walk->state(...), $this->analyzeValueExpression(...)),
                 );
                 $walk->write($keyName, $result, $isConditional, $written);
 
@@ -507,7 +506,12 @@ trait ReadsReturnedVariables
                 $default = $stmt->expr->expr;
                 $walk->coalesce($keyName, fn (MethodAnalysis $state): array => $this->analysisScope()->readingKey(
                     $keyName,
-                    fn (): array => $this->readAgainstWalk($default, $varName, $state, $this->analyzeValueExpression(...)),
+                    fn (): array => $this->readAgainstWalk(
+                        $default,
+                        $varName,
+                        static fn (): MethodAnalysis => $state,
+                        $this->analyzeValueExpression(...),
+                    ),
                 ), $isConditional);
 
                 continue;
@@ -634,21 +638,6 @@ trait ReadsReturnedVariables
         $bound = $this->soleSpelledWrite($read, $this->analysisScope());
 
         return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
-    }
-
-    /**
-     * Join the exclusive branches of an `if` chain or a loop, each the keys the variable holds at its end, as a
-     * ternary's arms join: an untypable value drops out beside a typed one, and a lone `null` stays.
-     *
-     * @param  non-empty-list<TAnalysis>  $branches
-     * @return TAnalysis
-     */
-    protected function joinedBranches(array $branches): MethodAnalysis
-    {
-        $joined = $this->newVariableAnalysis();
-        BranchJoin::joinInto($joined, $branches, dropsUntypedBranches: true, keepsLoneNull: true);
-
-        return $joined;
     }
 
     /**
@@ -791,7 +780,6 @@ trait ReadsReturnedVariables
             $seed === null ? null : ArrayShapes::ofAnalysis($seed),
             $varName,
             $this->newVariableAnalysis(...),
-            $this->joinedBranches(...),
             fn (array $result): array => $this->reading()->arrayValue($result),
             $this->namedKey(...),
         );
@@ -1257,13 +1245,20 @@ trait ReadsReturnedVariables
      *
      * @template TRead
      *
+     * @param  Closure(): MethodAnalysis  $state  the keys the walk holds, asked for only where the value reads them
      * @param  Closure(Expr): TRead  $read
      * @return TRead
      */
-    private function readAgainstWalk(Expr $value, string $varName, MethodAnalysis $state, Closure $read): mixed
+    private function readAgainstWalk(Expr $value, string $varName, Closure $state, Closure $read): mixed
     {
+        if (! $this->readsVariableIn($value, $varName)) {
+            return $read($value);
+        }
+
+        $state = $state();
+
         // A walk holds no key before its first whole write, while a parameter may hold its caller's, read as before.
-        if ($state->properties === [] || ! $this->readsVariableIn($value, $varName)) {
+        if ($state->properties === []) {
             return $read($value);
         }
 

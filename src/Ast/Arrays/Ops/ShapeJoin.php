@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ArrayShape;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
@@ -21,17 +22,12 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * where a branch lacks it or joined with that branch's extras, signatures by pattern, extras and opaque parts unioned,
  * the wide data as MethodAnalysis::merge() merges it, and no arm carried. No named key is absorbed into the extras.
  *
- * @phpstan-import-type LooseMaps from ShapeWide
- *
  * @internal
  */
 final class ShapeJoin
 {
     /** The class maps a branch replaces and the queues it appends to, each key kept where it first stood. */
-    private const array MERGED_MAPS = [
-        'nestedResources', 'directEnumFqcns', 'modelFqcns',
-        'inlineEnumFqcns', 'inlineModelFqcns', 'inlineResourceFqcns', 'inlineEnumResourceFqcns', 'wrappedEnums',
-    ];
+    private const array MERGED_MAPS = [...KeyValue::CLASS_MAPS, ...KeyValue::QUEUES];
 
     /**
      * Join exclusive branches, one of which runs, into one shape.
@@ -49,14 +45,21 @@ final class ShapeJoin
 
         /** @var array<array-key, non-empty-list<int>> $holders the branch of each of those values */
         $holders = [];
+
+        /** @var array<array-key, non-empty-list<KeyPresence>> $presences each named key's presence, as its entry states it */
+        $presences = [];
         $signatures = [];
 
         foreach ($branches as $index => $branch) {
             foreach (self::written($branch) as $entry) {
-                $name = self::nameOf($entry);
+                $name = $entry->writtenName();
                 $values[$name][] = $entry->value;
                 $holders[$name][] = $index;
                 $signatures[$name] = $entry instanceof ShapeSignature;
+
+                if ($entry instanceof ShapeKey) {
+                    $presences[$name][] = $entry->presence;
+                }
             }
         }
 
@@ -72,10 +75,7 @@ final class ShapeJoin
                 continue;
             }
 
-            $presence = KeyPresence::join(
-                array_map(static fn (KeyValue $value): KeyPresence => $value->presence(), $keyValues),
-                count($holders[$name]) === count($branches),
-            );
+            $presence = KeyPresence::join($presences[$name] ?? [], count($holders[$name]) === count($branches));
             $entries[] = new ShapeKey(
                 $name, self::joinedValue(self::besideExtras($keyValues, $holders[$name], $branches), $options), $presence,
             );
@@ -210,15 +210,8 @@ final class ShapeJoin
 
             $kept[] = $own;
 
-            foreach ($own as $path => $types) {
-                $imports[$path] = [...$imports[$path] ?? [], ...$types];
-            }
-
-            foreach ($wide->carried as $kind => $fqcns) {
-                if ($fqcns !== []) {
-                    $carried[$kind] = array_values(array_unique([...$carried[$kind] ?? [], ...$fqcns]));
-                }
-            }
+            $imports = MethodAnalysis::importsWith($imports, $own);
+            $carried = MethodAnalysis::carriedWith($carried, $wide->carried);
 
             foreach (self::MERGED_MAPS as $map) {
                 $order[$map] = ($order[$map] ?? []) + array_fill_keys($wide->order[$map] ?? [], true);
@@ -227,12 +220,12 @@ final class ShapeJoin
             // merge() drops the alike record of each key the branch holds without one before it lays the branch's own.
             foreach ($branch->entries as $entry) {
                 if (! isset($entry->value->channels['alikeClassFqcns'])) {
-                    unset($alike[self::nameOf($entry)]);
+                    unset($alike[$entry->writtenName()]);
                 }
             }
 
             $alike += array_fill_keys($wide->order['alikeClassFqcns'] ?? [], true);
-            $loose = self::mergedLoose($loose, $wide->loose);
+            $loose = ShapeWrites::looseMerged($loose, $wide->loose, dropsDeclared: true);
             $flatTypeAlias ??= $wide->flatTypeAlias;
             $flatTypeAliasFqcn ??= $wide->flatTypeAliasFqcn;
         }
@@ -254,31 +247,6 @@ final class ShapeJoin
     }
 
     /**
-     * One branch's loose channel entries merged over the joined ones, as MethodAnalysis::merge() merges a map: a class
-     * the later sets, a queue appended, an alike record replaced; a cast, slots, dotted-key close or held object go.
-     *
-     * @param  LooseMaps  $loose
-     * @param  LooseMaps  $own
-     * @return LooseMaps
-     */
-    private static function mergedLoose(array $loose, array $own): array
-    {
-        foreach (['nestedResources', 'directEnumFqcns', 'modelFqcns', 'alikeClassFqcns'] as $map) {
-            if (isset($own[$map])) {
-                $loose[$map] = array_replace($loose[$map] ?? [], $own[$map]);
-            }
-        }
-
-        foreach (['inlineEnumFqcns', 'inlineModelFqcns', 'inlineResourceFqcns', 'inlineEnumResourceFqcns', 'wrappedEnums'] as $queue) {
-            foreach ($own[$queue] ?? [] as $name => $classes) {
-                $loose[$queue][$name] = [...$loose[$queue][$name] ?? [], ...$classes];
-            }
-        }
-
-        return $loose;
-    }
-
-    /**
      * The branches a dropping join reads, every write of a key another branch spells unalike in one of them read as the
      * untyped value it stood in for, so the join drops it. In the gap mode, a branch whose returned value the options
      * name reads as a gap there instead, which the join keeps beside the rest.
@@ -293,7 +261,7 @@ final class ShapeJoin
 
         foreach ($branches as $index => $branch) {
             foreach ($branch->entries as $entry) {
-                $rows[self::nameOf($entry)][$index][] = $entry->value;
+                $rows[$entry->writtenName()][$index][] = $entry->value;
             }
         }
 
@@ -358,7 +326,7 @@ final class ShapeJoin
         $entries = [];
 
         foreach ($branch->entries as $entry) {
-            if (self::nameOf($entry) !== $name) {
+            if ($entry->writtenName() !== $name) {
                 $others[] = $entry->value->type();
                 $entries[] = $entry;
 
@@ -377,13 +345,5 @@ final class ShapeJoin
         return new ArrayShape(
             $entries, $branch->extras, $branch->opaque, $branch->nonEmptyProof, $branch->wide->retyping($name, $imports),
         );
-    }
-
-    /**
-     * The name an entry is written under: a key's own, or a signature's pattern.
-     */
-    private static function nameOf(ShapeKey|ShapeSignature $entry): string
-    {
-        return $entry instanceof ShapeKey ? $entry->name : $entry->pattern;
     }
 }

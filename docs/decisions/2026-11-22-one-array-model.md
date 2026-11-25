@@ -22,12 +22,8 @@ round-trip guard the tests bind (`ShapeObserver`), and each domain then takes it
 ## Fallbacks that remain
 
 Where a component cannot reach parity, it keeps today's representation behind the new API. The prototype built before
-Phase 1 recorded two:
+Phase 1 recorded two; the returned-variable walk reached parity on an `ArrayShape` in Phase 1, so one remains:
 
-- **The returned-variable walk, for #134 l184.** `ArrayWalk` keeps `MethodAnalysis` rows behind its API and joins its
-  branches through `ShapeJoin`. A walk held as an `ArrayShape` must first restate `MethodAnalysis::merge()`'s per-map
-  rules: a whole write keeps a reassigned key's held-object facts, a signature's queues concatenate, and an overwritten
-  key's embedded classes and custom imports stay.
 - **A signature's raw value.** `ShapeSignature` holds its value as the row prints it, `| undefined` included. The print
   adds no `undefined` where the value already held one, so a lifted row cannot give the raw value back; a builder that
   writes a signature itself can keep it raw.
@@ -38,4 +34,7 @@ Phase 1 recorded two:
   the join.
 - `MethodAnalysis` and `ShapeLowering` remain until publishers read shapes; the lift and the lowering cost a little
   on each join, measured per phase against the speed bars.
+- Until then `ShapeWrites` and `ShapeJoin` restate `MethodAnalysis`'s per-map write and merge rules, such as a whole
+  write keeping a reassigned key's held object and a signature's queues appending; a property test holds `ShapeWrites`
+  to those methods, map order included.
 - `Analysis/Fold/` stays where it is until a follow-up moves it under `Arrays/Build/`.

@@ -20,4 +20,12 @@ final readonly class ShapeKey
         public KeyPresence $presence,
         public bool $armOnly = false,
     ) {}
+
+    /**
+     * The name the entry is written under: a key's own.
+     */
+    public function writtenName(): string
+    {
+        return $this->name;
+    }
 }

@@ -72,6 +72,15 @@ it('joins a key every branch holds by its values', function () {
     expect(joinedKeys($joined))->toBe(['a' => 'string | number']);
 });
 
+it('joins a key\'s presence as its entry states it, over the presence its value was read with', function () {
+    $branch = new ArrayShape([new ShapeKey('a', joinTypeValue('string'), KeyPresence::missing())]);
+    $joined = ShapeJoin::exclusive([$branch, $branch], new JoinOptions);
+
+    expect($joined->entries[0])->toBeInstanceOf(ShapeKey::class)
+        ->and($joined->entries[0]->presence ?? null)->toEqual(KeyPresence::missing())
+        ->and(joinedKeys($joined))->toBe(['?a' => 'string']);
+});
+
 it('makes a key a sealed branch lacks optional and absent there', function () {
     $joined = ShapeJoin::exclusive([joinShape(['a' => 'string', 'b' => 'number']), joinShape(['a' => 'string'])], new JoinOptions);
     $b = $joined->entries[1];

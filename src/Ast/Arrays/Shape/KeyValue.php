@@ -59,8 +59,11 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
  */
 final readonly class KeyValue
 {
-    /** The queues a branch join keeps one copy of where two branches hold the key alike. */
-    private const array QUEUES = [
+    /** The class maps a value names its key's class on, the later value's winning. */
+    public const array CLASS_MAPS = ['nestedResources', 'directEnumFqcns', 'modelFqcns'];
+
+    /** The queues a value appends its key's classes to; a branch join keeps one copy where two branches hold it alike. */
+    public const array QUEUES = [
         'inlineEnumFqcns', 'inlineModelFqcns', 'inlineResourceFqcns', 'inlineEnumResourceFqcns', 'wrappedEnums',
     ];
 
@@ -232,6 +235,18 @@ final readonly class KeyValue
     }
 
     /**
+     * A key's channels without its import channels, cast, slots and alike record, as MethodAnalysis::forgetChannels()
+     * leaves them.
+     *
+     * @param  KeyChannels  $channels
+     * @return KeyChannels
+     */
+    public static function classless(array $channels): array
+    {
+        return array_intersect_key($channels, array_flip(['heldObjectKeys', 'closedToDottedKeys']));
+    }
+
+    /**
      * The value's printed type.
      */
     public function type(): string
@@ -368,7 +383,7 @@ final readonly class KeyValue
      */
     private static function mergedChannels(array $channels, array $own): array
     {
-        foreach (['nestedResources', 'directEnumFqcns', 'modelFqcns'] as $map) {
+        foreach (self::CLASS_MAPS as $map) {
             if (isset($own[$map])) {
                 $channels[$map] = $own[$map];
             }
@@ -481,18 +496,6 @@ final readonly class KeyValue
         }
 
         return [$channels, $embedded];
-    }
-
-    /**
-     * A key's channels without its import channels, cast, slots and alike record, as MethodAnalysis::forgetChannels()
-     * leaves them.
-     *
-     * @param  KeyChannels  $channels
-     * @return KeyChannels
-     */
-    private static function classless(array $channels): array
-    {
-        return array_intersect_key($channels, array_flip(['heldObjectKeys', 'closedToDottedKeys']));
     }
 
     /**

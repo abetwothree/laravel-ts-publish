@@ -73,6 +73,18 @@ final readonly class ShapeWide
     ) {}
 
     /**
+     * The same wide data with its read flags set where given.
+     */
+    public function flagged(?bool $readsCompletely = null, ?bool $holdsUnreadKeys = null): self
+    {
+        return new self(
+            $this->customImports, $this->carried, $readsCompletely ?? $this->readsCompletely,
+            $holdsUnreadKeys ?? $this->holdsUnreadKeys, $this->holdsUnnamedKeys, $this->flatTypeAlias,
+            $this->flatTypeAliasFqcn, $this->variants, $this->spreadArms, $this->order, $this->loose,
+        );
+    }
+
+    /**
      * The same wide data once a key is retyped with no class, as MethodAnalysis::retypeClassLess() retypes it: other
      * custom imports, and the key out of each map's order but its held objects' and its dotted-key close's.
      *

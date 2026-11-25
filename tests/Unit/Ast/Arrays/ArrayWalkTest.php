@@ -6,9 +6,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Build\ArrayWalk;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Print\ShapeLowering;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\ArrayShapes;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ArrayShape;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaqueKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaquePart;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeKey;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -18,20 +21,14 @@ use PhpParser\Node\Scalar\String_;
 // Each row's expectation is what ReadsReturnedVariables left for the same writes before the walk moved here.
 
 /**
- * A walk of `$d` whose host joins as the returned-variable walk does and sends each value as it is.
+ * A walk of `$d` whose host sends each value as it is, from a seed's keys or none.
  */
-function arrayWalk(?MethodAnalysis $seed = null): ArrayWalk
+function arrayWalk(MethodAnalysis|ArrayShape|null $seed = null): ArrayWalk
 {
     return ArrayWalk::from(
-        $seed === null ? null : ArrayShapes::ofAnalysis($seed),
+        $seed instanceof MethodAnalysis ? ArrayShapes::ofAnalysis($seed) : $seed,
         'd',
         static fn (): MethodAnalysis => new MethodAnalysis,
-        static function (array $branches): MethodAnalysis {
-            $joined = new MethodAnalysis;
-            BranchJoin::joinInto($joined, $branches, dropsUntypedBranches: true, keepsLoneNull: true);
-
-            return $joined;
-        },
         static fn (array $result): array => $result,
         static fn (Expr $key): ?string => $key instanceof String_ ? $key->value : null,
     );
@@ -240,6 +237,39 @@ it('drops the parts held before a whole write that always runs, and keeps them p
     expect($walk->shape()->opaque)->toHaveCount($parts)
         ->and($walk->state()->holdsUnreadKeys)->toBe($parts === 1);
 })->with(['always' => [false, 0], 'conditionally' => [true, 1]]);
+
+it('reads a seed\'s, a whole write\'s or a += value\'s extras and opaque parts as unread keys', function (bool $extras, bool $opaque) {
+    $lifted = ArrayShapes::ofAnalysis(walkAnalysis(['a' => 'string']));
+    $unread = new ArrayShape(
+        $lifted->entries,
+        $extras ? new KeyValue(['type' => 'number', 'optional' => false, 'description' => '']) : null,
+        $opaque ? [walkPart()] : [],
+        false,
+        $lifted->wide,
+    );
+    $assigned = arrayWalk();
+    $assigned->assign($unread, false, new Array_);
+    $added = arrayWalk();
+    $added->plus($unread, false, new Array_);
+    $flags = static fn (ArrayWalk $walk): array => [$walk->state()->holdsUnreadKeys, $walk->state()->readsCompletely];
+
+    expect([$flags(arrayWalk($unread)), $flags($assigned), $flags($added)])->toBe(array_fill(0, 3, [true, ! $opaque]));
+})->with(['typed extras' => [true, false], 'an opaque part' => [false, true]]);
+
+it('keeps a seed key\'s own presence through a join, over the presence its value was read with', function () {
+    $lifted = ArrayShapes::ofAnalysis(walkAnalysis(['a' => 'string']));
+    $walk = arrayWalk(new ArrayShape([new ShapeKey('a', $lifted->entries[0]->value, KeyPresence::missing())]));
+    $walk->branches([clone $walk, clone $walk], false, static function (): void {});
+
+    expect(walkedKeys($walk))->toBe(['?a' => 'string']);
+});
+
+it('hands out its keys as a copy, which a change leaves the walk holding', function () {
+    $walk = arrayWalk(walkAnalysis(['a' => 'string']));
+    $walk->state()->properties = [];
+
+    expect(walkedKeys($walk))->toBe(['a' => 'string']);
+});
 
 it('lowers its shape into the analysis it holds', function () {
     $walk = arrayWalk(walkAnalysis(['a' => 'string']));
