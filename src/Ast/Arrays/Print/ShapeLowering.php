@@ -35,6 +35,14 @@ final class ShapeLowering
             $properties[] = self::row($name, $entry->value, $entry instanceof ShapeKey ? $entry->presence : null);
             $channels = $entry->value->channels;
 
+            foreach ($entry->value->embedded as $map => $classes) {
+                match ($map) {
+                    'nestedResources' => $nested += $classes,
+                    'directEnumFqcns' => $direct += $classes,
+                    'modelFqcns' => $models += $classes,
+                };
+            }
+
             if ($channels === []) {
                 continue;
             }
@@ -125,6 +133,31 @@ final class ShapeLowering
     }
 
     /**
+     * Replace the channels an analysis keeps under a key's name with a value's, each where it stands, beside the classes
+     * its queues key by themselves.
+     */
+    public static function layChannels(MethodAnalysis $target, string $name, KeyValue $value): void
+    {
+        $channels = $value->channels;
+        self::lay($target->nestedResources, $name, $channels['nestedResources'] ?? null);
+        self::lay($target->directEnumFqcns, $name, $channels['directEnumFqcns'] ?? null);
+        self::lay($target->modelFqcns, $name, $channels['modelFqcns'] ?? null);
+        self::lay($target->inlineEnumFqcns, $name, $channels['inlineEnumFqcns'] ?? null);
+        self::lay($target->inlineModelFqcns, $name, $channels['inlineModelFqcns'] ?? null);
+        self::lay($target->inlineResourceFqcns, $name, $channels['inlineResourceFqcns'] ?? null);
+        self::lay($target->inlineEnumResourceFqcns, $name, $channels['inlineEnumResourceFqcns'] ?? null);
+        self::lay($target->wrappedEnums, $name, $channels['wrappedEnums'] ?? null);
+        self::lay($target->casts, $name, $channels['casts'] ?? null);
+        self::lay($target->declaredTokenFqcns, $name, $channels['declaredTokenFqcns'] ?? null);
+        self::lay($target->alikeClassFqcns, $name, $channels['alikeClassFqcns'] ?? null);
+        self::lay($target->heldObjectKeys, $name, $channels['heldObjectKeys'] ?? null);
+        self::lay($target->closedToDottedKeys, $name, $channels['closedToDottedKeys'] ?? null);
+        $target->nestedResources = array_replace($target->nestedResources, $value->embedded['nestedResources'] ?? []);
+        $target->directEnumFqcns = array_replace($target->directEnumFqcns, $value->embedded['directEnumFqcns'] ?? []);
+        $target->modelFqcns = array_replace($target->modelFqcns, $value->embedded['modelFqcns'] ?? []);
+    }
+
+    /**
      * One entry's row: its name, then its fields as the value holds them, with the entry's presence where it differs
      * from the one the value was read with.
      *
@@ -143,7 +176,27 @@ final class ShapeLowering
     }
 
     /**
-     * A channel map in the order the shape kept: each key where it stood, a key the shape gained after it.
+     * Set one key's entry in a channel map where the key stands, or drop it where the value holds none.
+     *
+     * @template T
+     *
+     * @param  array<array-key, T>  $map
+     * @param  T|null  $entry
+     *
+     * @param-out array<array-key, T>  $map
+     */
+    private static function lay(array &$map, string $name, mixed $entry): void
+    {
+        if ($entry === null) {
+            unset($map[$name]);
+        } else {
+            $map[$name] = $entry;
+        }
+    }
+
+    /**
+     * A channel map in the order the shape kept: each key where it stood, then a key the shape gained, then an entry
+     * no key owns that the order never held.
      *
      * @template T
      *
@@ -154,10 +207,6 @@ final class ShapeLowering
      */
     private static function ordered(array $order, array $loose, array $named): array
     {
-        if ($order === []) {
-            return $named;
-        }
-
         $map = [];
 
         foreach ($order as $key) {
@@ -168,6 +217,6 @@ final class ShapeLowering
             }
         }
 
-        return $map + $named;
+        return $map + $named + $loose;
     }
 }

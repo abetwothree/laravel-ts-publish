@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\NullShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
@@ -17,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReadPath;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InterveningResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Support\KeyJoinParityRecorder;
 use AbeTwoThree\LaravelTsPublish\Tests\Support\RoundTripShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Tests\TestCase;
 use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
@@ -41,22 +43,46 @@ uses(TestCase::class)
     ->beforeEach(fn () => ReturnMembers::$typesEveryKey = (bool) getenv('TS_PUBLISH_GAP_GATE'))
     ->in(__DIR__);
 
+// While KEY_JOIN_PARITY names a directory, each test records every analysis a join, the walk and the fold hand on, so
+// two runs compare join by join; CI never sets it.
+uses()
+    ->beforeEach(fn () => app()->instance(ShapeObserver::class, observingShapes($this, new NullShapeObserver)))
+    ->in(__DIR__);
+
 // Every analysis the walk, the fold and a join hand on must lift into an ArrayShape and lower back unchanged. The
 // publish that publish-bench.sh times runs without the check, so no speed bar measures it.
 uses()
     ->beforeEach(function () {
         if ($this->getPrintableTestCaseMethodName() !== 'ts:publish writes files to disk') {
-            app()->instance(ShapeObserver::class, new RoundTripShapeObserver);
+            app()->instance(ShapeObserver::class, observingShapes($this, new RoundTripShapeObserver));
         }
     })
-    ->afterEach(function () {
-        $observer = app(ShapeObserver::class);
-
-        if ($observer instanceof RoundTripShapeObserver) {
-            $observer->rethrowCaught();
-        }
-    })
+    ->afterEach(fn () => roundTripGuard()?->rethrowCaught())
     ->in('Unit/Analyzers', 'Unit/Ast', 'Feature/Commands/TsPublishCommandTest.php');
+
+/**
+ * The shape observer a test reads under: $observer, wrapped in the key-join recorder while KEY_JOIN_PARITY names its
+ * directory.
+ */
+function observingShapes(TestCase $test, ShapeObserver $observer): ShapeObserver
+{
+    $directory = getenv('KEY_JOIN_PARITY');
+
+    return is_string($directory) && $directory !== ''
+        ? new KeyJoinParityRecorder($directory, $test::class.$test->nameWithDataSet(), $observer)
+        : $observer;
+}
+
+/**
+ * The round-trip guard the running test reads under, through the key-join recorder where one wraps it; null where none.
+ */
+function roundTripGuard(): ?RoundTripShapeObserver
+{
+    $observer = app(ShapeObserver::class);
+    $observer = $observer instanceof KeyJoinParityRecorder ? $observer->inner : $observer;
+
+    return $observer instanceof RoundTripShapeObserver ? $observer : null;
+}
 
 /**
  * An engine that fails the test if a handler calls back into it, proving the handler resolved or

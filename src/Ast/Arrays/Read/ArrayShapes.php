@@ -16,9 +16,6 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 /**
  * Reads arrays as shapes: an analysis's rows, each with the channels it keeps under the key's name.
  *
- * @phpstan-import-type AnalyzedProperty from MethodAnalysis
- * @phpstan-import-type KeyRow from KeyValue
- * @phpstan-import-type KeyChannels from KeyValue
  * @phpstan-import-type LooseMaps from ShapeWide
  * @phpstan-import-type MapOrder from ShapeWide
  *
@@ -33,12 +30,11 @@ final class ArrayShapes
     {
         $entries = [];
         $owned = [];
-        $channels = [];
 
         foreach ($analysis->properties as $row) {
             $name = $row['name'];
             $owned[$name] = true;
-            $value = new KeyValue(self::valueRow($row), $channels[$name] ??= self::channelsOf($analysis, $name));
+            $value = KeyValue::of($analysis, $row);
             $entries[] = IndexSignatureKey::is($name)
                 ? new ShapeSignature($name, $value)
                 : new ShapeKey($name, $value, KeyPresence::ofRow($row));
@@ -59,83 +55,6 @@ final class ArrayShapes
             order: $order,
             loose: $loose,
         ));
-    }
-
-    /**
-     * A row's fields but its name, which the entry holds.
-     *
-     * @param  AnalyzedProperty  $row
-     * @return KeyRow
-     */
-    private static function valueRow(array $row): array
-    {
-        unset($row['name']);
-
-        return $row;
-    }
-
-    /**
-     * Each channel map's entry under a key's name, where it holds one.
-     *
-     * @return KeyChannels
-     */
-    private static function channelsOf(MethodAnalysis $analysis, string $name): array
-    {
-        $channels = [];
-
-        if (isset($analysis->nestedResources[$name])) {
-            $channels['nestedResources'] = $analysis->nestedResources[$name];
-        }
-
-        if (isset($analysis->directEnumFqcns[$name])) {
-            $channels['directEnumFqcns'] = $analysis->directEnumFqcns[$name];
-        }
-
-        if (isset($analysis->modelFqcns[$name])) {
-            $channels['modelFqcns'] = $analysis->modelFqcns[$name];
-        }
-
-        if (isset($analysis->inlineEnumFqcns[$name])) {
-            $channels['inlineEnumFqcns'] = $analysis->inlineEnumFqcns[$name];
-        }
-
-        if (isset($analysis->inlineModelFqcns[$name])) {
-            $channels['inlineModelFqcns'] = $analysis->inlineModelFqcns[$name];
-        }
-
-        if (isset($analysis->inlineResourceFqcns[$name])) {
-            $channels['inlineResourceFqcns'] = $analysis->inlineResourceFqcns[$name];
-        }
-
-        if (isset($analysis->inlineEnumResourceFqcns[$name])) {
-            $channels['inlineEnumResourceFqcns'] = $analysis->inlineEnumResourceFqcns[$name];
-        }
-
-        if (isset($analysis->wrappedEnums[$name])) {
-            $channels['wrappedEnums'] = $analysis->wrappedEnums[$name];
-        }
-
-        if (isset($analysis->casts[$name])) {
-            $channels['casts'] = $analysis->casts[$name];
-        }
-
-        if (isset($analysis->declaredTokenFqcns[$name])) {
-            $channels['declaredTokenFqcns'] = $analysis->declaredTokenFqcns[$name];
-        }
-
-        if (isset($analysis->alikeClassFqcns[$name])) {
-            $channels['alikeClassFqcns'] = $analysis->alikeClassFqcns[$name];
-        }
-
-        if (isset($analysis->heldObjectKeys[$name])) {
-            $channels['heldObjectKeys'] = $analysis->heldObjectKeys[$name];
-        }
-
-        if (isset($analysis->closedToDottedKeys[$name])) {
-            $channels['closedToDottedKeys'] = true;
-        }
-
-        return $channels;
     }
 
     /**

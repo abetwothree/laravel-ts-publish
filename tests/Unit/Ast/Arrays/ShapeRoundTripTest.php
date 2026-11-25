@@ -11,7 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ArrayShape;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeKey;
-use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeWide;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Tests\Support\RoundTripShapeObserver;
 use Workbench\App\Enums\Status;
@@ -98,7 +98,7 @@ function roundTripChanges(): array
 }
 
 it('runs every suite read under the round-trip guard', function () {
-    expect(resolve(ShapeObserver::class))->toBeInstanceOf(RoundTripShapeObserver::class);
+    expect(roundTripGuard())->toBeInstanceOf(RoundTripShapeObserver::class);
 });
 
 it('lifts an analysis into a shape and lowers it back with every field rebuilt', function () {
@@ -163,4 +163,14 @@ it('lowers an entry\'s presence over the one its value was read with', function 
     ShapeLowering::into($analysis, new ArrayShape([new ShapeKey('id', $value, new KeyPresence(true, false, true))]));
 
     expect($analysis->properties)->toBe([['name' => 'id', 'type' => 'number', 'optional' => true, 'description' => '', 'removed' => true]]);
+});
+
+it('lowers each channel entry no key owns, though the shape kept no order for its map', function () {
+    $analysis = new ResourceAnalysis;
+    $value = new KeyValue(['type' => 'User', 'optional' => false, 'description' => ''], ['modelFqcns' => User::class]);
+    ShapeLowering::into($analysis, new ArrayShape([new ShapeKey('author', $value, new KeyPresence)], wide: new ShapeWide(
+        loose: ['modelFqcns' => [Post::class => Post::class]],
+    )));
+
+    expect($analysis->modelFqcns)->toBe(['author' => User::class, Post::class => Post::class]);
 });

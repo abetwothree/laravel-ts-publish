@@ -8,9 +8,10 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Print\ShapeLowering;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
@@ -565,41 +566,47 @@ final class LiteralWrites
     }
 
     /**
-     * One key's row and maps, joined from each source's slice as a branch join joins them (BranchJoin::joinInto()):
-     * the first source's untyped value kept, as PHP may still send it, and every class kept apart and imported. The
-     * caller sets the fold's presence.
+     * One key's row and maps, joined from each source's value as a branch join joins them (KeyValue::joined()): the
+     * first source's untyped value kept, as PHP may still send it, and every class kept apart and imported. The caller
+     * sets the fold's presence.
      *
      * @param  list<int>  $sources
      */
     private function joinedSlice(string $name, array $sources): MethodAnalysis
     {
-        $slices = [];
+        $values = [];
 
         foreach ($sources as $index) {
             $source = $this->sources[$index];
 
             if (isset($source['value'])) {
-                $slice = new MethodAnalysis;
-                $slice->addProperty($name, self::withoutWide($source['value']));
-                $slices[] = $slice;
+                $values[] = KeyValue::ofResult($name, self::withoutWide($source['value']));
             } else {
-                $slices[] = $source['analysis']->sliceOf($name);
+                $slice = $source['analysis']->sliceOf($name);
+                $values[] = KeyValue::of($slice, $slice->properties[0]);
             }
         }
 
-        $joined = new MethodAnalysis;
-        BranchJoin::joinInto($joined, $slices, dropsUntypedBranches: true, keepsFirstUntyped: true);
+        if ($values === []) {
+            throw new LogicException('A joined key has a source.');
+        }
 
-        return $this->withDroppedGap($joined, $slices);
+        $joined = new MethodAnalysis;
+        $value = KeyValue::joined($values, dropsUntypedBranches: true, keepsFirstUntyped: true);
+        $joined->properties = [['name' => $name, ...$value->row]];
+        ShapeLowering::layChannels($joined, $name, $value);
+        resolve(ShapeObserver::class)->observed($joined);
+
+        return $this->withDroppedGap($joined, $values);
     }
 
     /**
      * In the gap mode, a joined key the join typed without a later source's untyped value, which may not be written,
      * with a gap arm in that value's place; out of it, the key as it is.
      *
-     * @param  list<MethodAnalysis>  $slices
+     * @param  list<KeyValue>  $values
      */
-    private function withDroppedGap(MethodAnalysis $joined, array $slices): MethodAnalysis
+    private function withDroppedGap(MethodAnalysis $joined, array $values): MethodAnalysis
     {
         $property = $joined->properties[0] ?? null;
 
@@ -608,10 +615,7 @@ final class LiteralWrites
             return $joined;
         }
 
-        $dropped = array_any(
-            array_slice($slices, 1),
-            static fn (MethodAnalysis $slice): bool => in_array('unknown', array_column($slice->properties, 'type'), true),
-        );
+        $dropped = array_any(array_slice($values, 1), static fn (KeyValue $value): bool => $value->type() === 'unknown');
 
         if ($dropped) {
             $id = DroppedUnionArms::gap($this->scope, 'fold-join', $this->literal, $property['type']);

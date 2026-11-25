@@ -14,6 +14,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
  *
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
+ * @phpstan-import-type KeyRow from KeyValue
  *
  * @internal
  */
@@ -31,7 +32,7 @@ final readonly class KeyPresence
     /**
      * The presence a row says, exactly as it holds it.
      *
-     * @param  AnalyzedProperty  $row
+     * @param  AnalyzedProperty|KeyRow  $row
      */
     public static function ofRow(array $row): self
     {
