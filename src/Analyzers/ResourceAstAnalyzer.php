@@ -28,6 +28,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\ReturnShapeRefiner;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\ReadsArrayBases;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\ReadsReturnedVariables;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
@@ -84,10 +85,8 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\ArrowFunction;
-use PhpParser\Node\Expr\BinaryOp\Plus;
 use PhpParser\Node\Expr\BooleanNot;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\FuncCall;
@@ -98,7 +97,6 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
-use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Do_;
@@ -113,8 +111,6 @@ use ReflectionMethod;
 
 /**
  * Analyzes a JsonResource's toArray() body to extract property names, types, and optional markers via AST.
- *
- * @phpstan-type WrittenLocal array{string, Expr}
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
@@ -138,6 +134,10 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     use InspectsResourceSubject;
     use NarrowsInstanceofSubjects;
     use ParsesTsCasts;
+
+    /** @use ReadsArrayBases<ResourceAnalysis> */
+    use ReadsArrayBases;
+
     use ReadsNonNullGuards;
 
     /** @use ReadsReturnedVariables<ResourceAnalysis> */
@@ -372,25 +372,19 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The analysis of a whole array a method returns or builds a variable from: a literal, a `parent::` call
-     * readParentCall() reads, an `array_merge()` of those, an own-model `only()`/`except()`, a `$this->method()` call,
-     * a local written once with any of them, or a `+` of any of them; null for any other expression.
+     * The analysis of one array literal read as a whole base.
      */
-    protected function analyzeArrayExpression(Expr $expr, bool $topLevel = true): ?ResourceAnalysis
+    protected function arrayLiteralAnalysis(Array_ $array, bool $topLevel): ResourceAnalysis
     {
-        if ($expr instanceof Array_) {
-            return $this->analyzeReturnArray($expr, $topLevel);
-        }
+        return $this->analyzeReturnArray($array, $topLevel);
+    }
 
-        $local = $this->writtenLocal($expr);
-
-        if ($local !== null) {
-            return $this->readWrittenLocal(
-                $local,
-                fn (Expr $value): ?ResourceAnalysis => $this->analyzeArrayExpression($value, $topLevel),
-            );
-        }
-
+    /**
+     * The analysis of a base only this analyzer reads: a `parent::` call readParentCall() reads, an `array_merge()`
+     * of literals and such calls, an own-model `only()`/`except()` or a `$this->method()` call; null for any other.
+     */
+    protected function hostArrayBase(Expr $expr, bool $topLevel): ?ResourceAnalysis
+    {
         $parentMethod = $this->readParentCall($expr);
 
         if ($parentMethod !== null) {
@@ -400,21 +394,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         // array_merge(parent::share($request), [...]) — the shape a shared-data middleware writes.
         if ($expr instanceof FuncCall) {
             return $this->analyzeReturnArrayMerge($expr, $topLevel);
-        }
-
-        // `$a + $b` keeps every key $a sets, as `+=` does.
-        if ($expr instanceof Plus) {
-            $left = $this->readsAsArray($expr) ? $this->analyzeArrayExpression($expr->left, $topLevel) : null;
-            $right = $left === null ? null : $this->analyzeArrayExpression($expr->right, $topLevel);
-
-            if ($left === null || $right === null) {
-                return null;
-            }
-
-            $right->dropKeysHeldBy($left);
-            $left->merge($right);
-
-            return $left;
         }
 
         if (! $expr instanceof MethodCall || ! $expr->name instanceof Identifier) {
@@ -430,24 +409,12 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * Whether analyzeArrayExpression() reads an expression, decided without analyzing it: a gate that analyzed a write
-     * the walk then analyzes again would count its dropped union arms twice.
+     * Whether hostArrayBase() reads an expression, decided without analyzing it.
      */
-    protected function readsAsArray(Expr $expr): bool
+    protected function hostReadsArrayBase(Expr $expr): bool
     {
-        if ($expr instanceof Plus) {
-            return $this->readsAsArray($expr->left) && $this->readsAsArray($expr->right);
-        }
-
-        $local = $this->writtenLocal($expr);
-
-        if ($local !== null) {
-            return $this->readWrittenLocal($local, $this->readsAsArray(...));
-        }
-
         if (! $expr instanceof MethodCall) {
-            return $expr instanceof Array_
-                || $this->readParentCall($expr) !== null
+            return $this->readParentCall($expr) !== null
                 || ($expr instanceof FuncCall
                     && $this->mergedArrayLiteral($expr, $this->scope, $this->methodName) !== null);
         }
@@ -482,26 +449,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The keys a parameter holds on entry: the object literal its bound value spells, read back key by key.
-     */
-    protected function parameterSeed(string $varName): ?MethodAnalysis
-    {
-        $bound = $this->scope->varValueBindings[$varName] ?? null;
-
-        return $bound === null ? null : ObjectMembers::seed($bound, $this->scope->carriesImports);
-    }
-
-    /**
-     * The string, int or class-constant literal a local holds at a read that sees its one write.
-     */
-    protected function literalLocal(Variable $read): ?Expr
-    {
-        $bound = $this->soleSpelledWrite($read, $this->scope);
-
-        return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
-    }
-
-    /**
      * A JSON:API toAttributes() array's appended string names the model attribute Laravel reads for it, as a keyless
      * string in its literal does.
      *
@@ -517,17 +464,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
             $value->value,
             fn (): array => $this->analyzeValueExpression($this->modelAttributeRead($value->value)),
         )];
-    }
-
-    /**
-     * A returned variable's exclusive branches join as a ternary's arms do: an untypable value drops out beside a typed
-     * one, and a lone `null` stays.
-     *
-     * @param  non-empty-list<ResourceAnalysis>  $branches
-     */
-    protected function joinedBranches(array $branches): ResourceAnalysis
-    {
-        return $this->mergeReturnBranches($branches, dropsUntypedBranches: true, keepsLoneNull: true);
     }
 
     /**
@@ -2114,14 +2050,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
     }
 
     /**
-     * The keys one merged array literal sets, each required within its own branch.
-     */
-    private function mergedArrayAnalysis(Array_ $array): ResourceAnalysis
-    {
-        return $this->analyzeReturnArray($array, topLevel: false);
-    }
-
-    /**
      * The keys a merged model or method call sets.
      *
      * The resource's own model merges what `Model::toArray()` writes, through jsonSerialize(); any other value is read
@@ -2135,43 +2063,6 @@ class ResourceAstAnalyzer implements ExpressionEngine, ResolvesReturnedValues
         }
 
         return $this->analyzeArrayExpression($expr, topLevel: false);
-    }
-
-    /**
-     * A local variable's name and the value of the one write its read sees, unless its read is under way; null for any
-     * other expression.
-     *
-     * @return WrittenLocal|null
-     */
-    private function writtenLocal(Expr $expr): ?array
-    {
-        if (! $expr instanceof Variable || ! is_string($expr->name) || isset($this->scope->readingLocals[$expr->name])) {
-            return null;
-        }
-
-        $bound = $this->soleSpelledWrite($expr, $this->scope);
-
-        return $bound === null ? null : [$expr->name, $bound];
-    }
-
-    /**
-     * Read a local's written value while the local is marked as being read, so a value that names it again stops.
-     *
-     * @template TRead
-     *
-     * @param  WrittenLocal  $local
-     * @param  callable(Expr): TRead  $read
-     * @return TRead
-     */
-    private function readWrittenLocal(array $local, callable $read): mixed
-    {
-        $this->scope->readingLocals[$local[0]] = true;
-
-        try {
-            return $read($local[1]);
-        } finally {
-            unset($this->scope->readingLocals[$local[0]]);
-        }
     }
 
     /**

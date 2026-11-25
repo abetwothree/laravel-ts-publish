@@ -468,8 +468,8 @@ final class AnalysisScope
     public array $resolvingLocalVars = [];
 
     /**
-     * The locals ResourceAstAnalyzer is reading the one written value of as a whole array, so a value naming its own
-     * local stops. A spread method's body starts with none, whatever local read its caller is in.
+     * The locals a base read is reading the one written value of as a whole array (readingLocal()), so a value naming
+     * its own local stops. A spread method's body starts with none, whatever local read its caller is in.
      *
      * @var array<string, true>
      */
@@ -1308,6 +1308,25 @@ final class AnalysisScope
             return $read();
         } finally {
             unset($this->resolvingLocalVars[$name]);
+        }
+    }
+
+    /**
+     * Read a local's written value while the local is marked as being read, so a value that names it again stops.
+     *
+     * @template TRead
+     *
+     * @param  Closure(): TRead  $read
+     * @return TRead
+     */
+    public function readingLocal(string $name, Closure $read): mixed
+    {
+        $this->readingLocals[$name] = true;
+
+        try {
+            return $read();
+        } finally {
+            unset($this->readingLocals[$name]);
         }
     }
 

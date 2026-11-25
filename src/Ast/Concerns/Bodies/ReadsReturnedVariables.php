@@ -12,11 +12,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ByReferenceEffect;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\StatementBlocks;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -37,6 +39,7 @@ use PhpParser\Node\Expr\AssignOp\Plus;
 use PhpParser\Node\Expr\BinaryOp;
 use PhpParser\Node\Expr\BinaryOp\Concat;
 use PhpParser\Node\Expr\CallLike;
+use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\PostDec;
@@ -152,23 +155,11 @@ trait ReadsReturnedVariables
     abstract public function reading(): Reading;
 
     /**
-     * The string, int or class-constant literal a local holds at a read where the host binds it, so a key write or an
-     * unset() through that local names its key; null for any other read.
-     */
-    abstract protected function literalLocal(Variable $read): ?Expr;
-
-    /**
      * A new, empty analysis of the host's own type, for a variable's walk to fill.
      *
      * @return TAnalysis
      */
     abstract protected function newVariableAnalysis(): MethodAnalysis;
-
-    /**
-     * The keys a parameter holds on entry, read from the value the host binds it to; null where it binds none it can
-     * read back key by key.
-     */
-    abstract protected function parameterSeed(string $varName): ?MethodAnalysis;
 
     /**
      * The key and value an append `$var[] = value` writes where the host reads an appended item as a named key; null
@@ -177,15 +168,6 @@ trait ReadsReturnedVariables
      * @return array{name: string, result: ValueExpressionResult}|null
      */
     abstract protected function appendedKey(Expr $value): ?array;
-
-    /**
-     * Join the exclusive branches of an `if` chain or a loop, each the keys the variable holds at its end: a key every
-     * branch holds keeps each branch's type, and one some branch lacks is optional.
-     *
-     * @param  non-empty-list<TAnalysis>  $branches
-     * @return TAnalysis
-     */
-    abstract protected function joinedBranches(array $branches): MethodAnalysis;
 
     /**
      * The analysis of one array literal a closure returns, each key it sets required within that branch.
@@ -655,6 +637,44 @@ trait ReadsReturnedVariables
         // A join can be a branch of another, as a merged spread helper's is, which names what its branches saw.
         $this->branchNotes ??= new WeakMap;
         $this->branchNotes[$joined] = array_merge(...$notes);
+
+        return $joined;
+    }
+
+    /**
+     * The keys a parameter holds on entry: the object literal its bound value spells, read back key by key; null where
+     * the host binds none.
+     */
+    protected function parameterSeed(string $varName): ?MethodAnalysis
+    {
+        $scope = $this->analysisScope();
+        $bound = $scope->varValueBindings[$varName] ?? null;
+
+        return $bound === null ? null : ObjectMembers::seed($bound, $scope->carriesImports);
+    }
+
+    /**
+     * The string, int or class-constant literal a local holds at a read that sees its one write, so a key write or an
+     * unset() through that local names its key; null for any other read.
+     */
+    protected function literalLocal(Variable $read): ?Expr
+    {
+        $bound = $this->soleSpelledWrite($read, $this->analysisScope());
+
+        return $bound instanceof String_ || $bound instanceof Int_ || $bound instanceof ClassConstFetch ? $bound : null;
+    }
+
+    /**
+     * Join the exclusive branches of an `if` chain or a loop, each the keys the variable holds at its end, as a
+     * ternary's arms join: an untypable value drops out beside a typed one, and a lone `null` stays.
+     *
+     * @param  non-empty-list<TAnalysis>  $branches
+     * @return TAnalysis
+     */
+    protected function joinedBranches(array $branches): MethodAnalysis
+    {
+        $joined = $this->newVariableAnalysis();
+        BranchJoin::joinInto($joined, $branches, dropsUntypedBranches: true, keepsLoneNull: true);
 
         return $joined;
     }
