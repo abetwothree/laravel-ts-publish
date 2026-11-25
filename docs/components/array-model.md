@@ -12,13 +12,17 @@ and each channel map's order). See the [ADR](../decisions/2026-11-22-one-array-m
 - **Presence.** `KeyPresence` splits a key's `?` into absent and removed, beside the printed `?` a cast may set alone.
   Each derivation keeps its own default for a bare `?`: `fromRow()` reads it as absent, `fromValue()` as removed.
 - **Who builds it.** [`ArrayShapes::ofAnalysis()`](../../src/Ast/Arrays/Read/ArrayShapes.php) lifts a
-  `MethodAnalysis`; nothing else builds one yet.
+  `MethodAnalysis`, and `ShapeJoin` joins shapes; nothing else builds one yet.
 - **Who reads it.** [`ShapeLowering::into()`](../../src/Ast/Arrays/Print/ShapeLowering.php) writes a shape back into
-  the `MethodAnalysis` publishers read; nothing else reads one yet.
+  the `MethodAnalysis` publishers read; `BranchJoin::joinInto()` lifts its branches, joins and lowers them.
 - **The per-key join.** [`KeyValue::joined()`](../../src/Ast/Arrays/Shape/KeyValue.php) joins one key's values across
   branches: their union and slots, the cast they agree on, their classes split or read by class, and their presence
-  through `KeyPresence::join()`. `BranchJoin::joinInto()` calls it per key, and the literal's fold for a key with
-  several sources.
+  through `KeyPresence::join()`. `ShapeJoin::exclusive()` calls it per key, and `ShapeJoin::value()` for a literal's
+  key with several sources.
+- **The exclusive join.** [`ShapeJoin::exclusive()`](../../src/Ast/Arrays/Ops/ShapeJoin.php) joins shapes field by
+  field, as PHPStan unions constant arrays; its extras and non-empty rules are inert until a builder makes them. A dropping join first reads every
+  write of a key another branch spells unalike as untyped, or as a gap in the gap mode, the one such rule for branches
+  and a fold's sources. The wide data joins as `MethodAnalysis::merge()` merges it, each channel map in merge order.
 - **Print rules.** `Arrays/Print` is their home. `ShapeLowering` holds the top-level one: entries become rows, extras
   become `holdsUnreadKeys`, and the spread arms stay as the analysis held them.
 - **The guard.** `BranchJoin::joinInto()`, `LiteralWrites::applyTo()` and the walk hand each analysis to the

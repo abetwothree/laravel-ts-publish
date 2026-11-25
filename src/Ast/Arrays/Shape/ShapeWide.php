@@ -71,4 +71,26 @@ final readonly class ShapeWide
         public array $order = [],
         public array $loose = [],
     ) {}
+
+    /**
+     * The same wide data once a key is retyped with no class, as MethodAnalysis::retypeClassLess() retypes it: other
+     * custom imports, and the key out of each map's order but its held objects' and its dotted-key close's.
+     *
+     * @param  ImportMapType  $customImports
+     */
+    public function retyping(string $name, array $customImports): self
+    {
+        $order = $this->order;
+
+        foreach ($order as $map => $keys) {
+            if ($map !== 'heldObjectKeys' && $map !== 'closedToDottedKeys') {
+                $order[$map] = array_values(array_filter($keys, static fn (int|string $key): bool => (string) $key !== $name));
+            }
+        }
+
+        return new self(
+            $customImports, $this->carried, $this->readsCompletely, $this->holdsUnreadKeys, $this->holdsUnnamedKeys,
+            $this->flatTypeAlias, $this->flatTypeAliasFqcn, $this->variants, $this->spreadArms, $order, $this->loose,
+        );
+    }
 }

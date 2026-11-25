@@ -18,7 +18,6 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
@@ -804,20 +803,7 @@ class MethodAnalysis
         }
 
         $this->forgetChannels($name);
-
-        // A literal's spelling binds no import, so only a read token elsewhere keeps one.
-        $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
-            && ! TokenSlots::readsName(ImportMaps::localName($import), ...$others);
-
-        foreach ($this->customImports as $path => $names) {
-            $kept = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));
-
-            if ($kept === []) {
-                unset($this->customImports[$path]);
-            } else {
-                $this->customImports[$path] = $kept;
-            }
-        }
+        $this->customImports = TokenSlots::keptImports($this->customImports, $spelled, $others);
     }
 
     /**

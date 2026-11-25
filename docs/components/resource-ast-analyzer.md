@@ -142,7 +142,7 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 In the [gap mode](#the-gap-mode), the branch a spread helper's join drops beside a typed one stays as a gap arm on the
 key (`merge-branch-join`): held with the warning of the untyped write the branch names (`recordedMergeJoin()`), or
 silent where no branch names one (`gapDroppedReturns()`). A fill another branch spells unalike reads as a gap there
-rather than `unknown` (`BranchJoin::withUnalikeFillsUntyped()`). The helper's own `@return`, or the host's where the
+rather than `unknown` (`ShapeJoin::exclusive()`). The helper's own `@return`, or the host's where the
 helper's frame is read in the host's mode, then types each dropped branch in place. A key every branch left `unknown`,
 or only a `null` beside them, still reads `unknown`, which a member fills whole. A merge call names no returns, so only
 a named untyped write leaves a gap there.
@@ -730,7 +730,7 @@ set. Only this collector reads `$var->toArray()` as a model, so a model's `toArr
 writes a value Laravel may remove (`removed`), and whether a merge call wrote it. At the end of the literal, before the
 reconcile, [`LiteralFold`](../../src/Ast/Analysis/Fold/LiteralFold.php) decides each key once as PHP builds the literal
 and, where `Reading::filtersBodyOf()` holds, as `filter()` lifts each merge over the keys after it; `applyTo()` writes
-the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept, beside the arms its
+the key from every value it can send, joined by `ShapeJoin::value()` with every class kept, beside the arms its
 print keeps. The last map's arm takes in every earlier map's value, a map that may be `[]` prints only so joined, and a
 map's arm after another item stays only where every key fits its value. A merged literal is read through the same loop.
 A key's slot sits where its first write landed on each path, so a first write that may not land lets a merge before the
@@ -1070,10 +1070,10 @@ up unused; see
 ### `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel, plus two flat scalars
 
 `mergeReturnBranches()` is public for `InertiaPageAnalyzer`, which merges one component's renders through it, and
-delegates to `BranchJoin::joinInto()`, which a literal's fold also joins a key's sources with. The join needs a
-per-branch property map to union a key that several branches set, which a field-by-field merge cannot express. It takes
-every channel from `MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to
-`merge()` reaches branch merging too.
+delegates to `BranchJoin::joinInto()`, which joins the branches' shapes with `ShapeJoin::exclusive()`; a literal's fold
+joins a key's sources with `ShapeJoin::value()`. A key several branches set joins by `KeyValue::joined()`, which a
+field-by-field merge cannot express. The rest joins by `MethodAnalysis::merge()`'s rules, restated over shapes in
+`ShapeJoin`, so a channel added to `merge()` is added there too, beside the lift and the lowering.
 
 The inline queues are never deduped, in `merge()` as in `addProperty()`, for the reason
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
@@ -1094,7 +1094,7 @@ each kind through its own
 [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
 [Import name registry](import-name-registry.md#rewriting-aliased-type-references).
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
-`unionResults()`. `BranchJoin::joinInto()` reads a key's branches by class the same way, over all four kinds, wherever
+`unionResults()`. `KeyValue::joined()` reads a key's branches by class the same way, over all four kinds, wherever
 the join kept a type with no declared slots (`keepsClassesApart()`): a method's returns, a merge call's value and
 default, a returned variable's branches and a literal's fold alike. A queue a branch only repeats of an earlier one is
 dropped inside the join, so repeats do not pile up.

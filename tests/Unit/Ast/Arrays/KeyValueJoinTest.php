@@ -2,16 +2,11 @@
 
 declare(strict_types=1);
 
-use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
-use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
-use PhpParser\Node\Expr\Variable;
-use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Http\Resources\AddressResource;
+use Workbench\App\Models\Address;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 
 /**
@@ -55,7 +50,6 @@ it('joins one key\'s branch values under each of the join\'s flags', function (a
     'a literal\'s key keeps its first untyped source' => [fn () => [joinValue('unknown'), joinValue('string')], ['dropsUntypedBranches' => true, 'keepsFirstUntyped' => true], 'unknown'],
     'a literal\'s key types a later untyped source away' => [fn () => [joinValue('string'), joinValue('unknown')], ['dropsUntypedBranches' => true, 'keepsFirstUntyped' => true], 'string'],
     'two branches spelling a declared name unalike' => [fn () => [joinValue('User | User', [null, User::class]), joinValue('User', [User::class])], [], 'unknown'],
-    'a dropping join drops a fill another branch spells unalike' => [fn () => [joinValue('User | User', [null, User::class]), joinModelValue('User')], ['dropsUntypedBranches' => true], 'User'],
 ]);
 
 it('keeps the branches\' presence and their joined slots', function () {
@@ -109,24 +103,57 @@ it('keeps no class behind a literal\'s key its first source leaves untyped', fun
         ->and($typed->channels)->toBe(['modelFqcns' => User::class]);
 });
 
-it('leaves a gap for each method return a branch spells unalike in the gap mode, under a provisional read', function () {
-    $scope = new AnalysisScope(new ReflectionClass(PostResource::class));
-    $branches = array_map(function (array $branch): ResourceAnalysis {
-        $analysis = new ResourceAnalysis(properties: [['name' => 'k', 'type' => $branch[0], 'optional' => false, 'description' => '']]);
-        $analysis->declaredTokenFqcns = ['k' => $branch[1]];
+/**
+ * One branch's value of a key read as one class of the given kind, a model's or a resource's.
+ *
+ * @param  class-string  $class
+ */
+function joinClassValue(string $type, string $class, string $kind = 'modelFqcn'): KeyValue
+{
+    $analysis = new MethodAnalysis;
+    $analysis->addProperty('k', ['type' => $type, 'optional' => false, $kind => $class]);
 
-        return $analysis;
-    }, [['User | User', [null, User::class]], ['User', [User::class]]]);
-    $returns = [new Variable('a'), new Variable('b')];
-    $join = static fn (): string => KeyValue::joined(array_map(
-        static fn (ResourceAnalysis $armed): KeyValue => KeyValue::of($armed, $armed->properties[0]),
-        BranchJoin::withUnalikeFillsUntyped($branches, $returns, $scope),
-    ), dropsUntypedBranches: true)->type();
+    return KeyValue::of($analysis, $analysis->properties[0]);
+}
 
-    $type = resolve(AnalysisMemo::class)->showingGaps(
-        fn (): string => DroppedUnionArms::provisional($join, static fn (string $type): bool => true),
-    );
+/**
+ * One branch's value of a key whose text embeds a model, queued and keyed by itself, beside its description.
+ */
+function joinQueuedValue(string $description = ''): KeyValue
+{
+    $analysis = new MethodAnalysis(properties: [['name' => 'k', 'type' => '{ u: User }', 'optional' => false, 'description' => $description]]);
+    $analysis->inlineModelFqcns = ['k' => [User::class]];
+    $analysis->modelFqcns = [User::class => User::class];
 
-    expect(VisibleGaps::ids($type))->toHaveCount(2)
-        ->and(VisibleGaps::stripped($type)[0])->toBe('unknown');
+    return KeyValue::of($analysis, $analysis->properties[0]);
+}
+
+it('queues each class branches type a key with apart, each keyed by itself', function () {
+    $joined = KeyValue::joined([joinClassValue('User', User::class), joinClassValue('Post', Post::class)]);
+
+    expect($joined->type())->toBe('User | Post')
+        ->and($joined->channels)->toBe(['inlineModelFqcns' => [User::class, Post::class]])
+        ->and($joined->embedded)->toBe(['modelFqcns' => [User::class => User::class, Post::class => Post::class]]);
 });
+
+it('reads a key two classes print alike by its union, each token queued by its own class', function () {
+    $joined = KeyValue::joined([joinClassValue('Address', AddressResource::class, 'resourceFqcn'), joinClassValue('Address', Address::class)]);
+
+    expect($joined->type())->toBe('Address | Address')
+        ->and($joined->channels)->toBe([
+            'alikeClassFqcns' => [AddressResource::class, Address::class],
+            'inlineModelFqcns' => [Address::class],
+            'inlineResourceFqcns' => [AddressResource::class],
+        ])
+        ->and($joined->embedded)->toBe([
+            'modelFqcns' => [Address::class => Address::class],
+            'nestedResources' => [AddressResource::class => AddressResource::class],
+        ]);
+});
+
+it('keeps one copy of a queue a later branch only repeats, holding the key alike', function (array $values, array $queue) {
+    expect(KeyValue::joined($values)->channels['inlineModelFqcns'] ?? null)->toBe($queue);
+})->with([
+    'alike' => [fn () => [joinQueuedValue(), joinQueuedValue()], [User::class]],
+    'with another description' => [fn () => [joinQueuedValue(), joinQueuedValue('the user')], [User::class, User::class]],
+]);

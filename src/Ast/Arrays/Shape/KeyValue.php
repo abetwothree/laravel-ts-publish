@@ -172,8 +172,9 @@ final readonly class KeyValue
      * as if every branch held the key; a caller with branches that lack it joins their presence again.
      *
      * A spread helper, a merge call and a literal's key with several sources drop an untyped branch
-     * ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull). A literal's key keeps
-     * `unknown` where its first branch is untyped ($keepsFirstUntyped).
+     * ($dropsUntypedBranches), each value another branch spells unalike already read as untyped (ShapeJoin); only a
+     * merge call keeps the `null` left alone ($keepsLoneNull). A literal's key keeps `unknown` where its first branch
+     * is untyped ($keepsFirstUntyped).
      *
      * @param  non-empty-list<self>  $values  each branch's value, in branch order
      */
@@ -183,10 +184,6 @@ final readonly class KeyValue
         bool $keepsLoneNull = false,
         bool $keepsFirstUntyped = false,
     ): self {
-        if ($dropsUntypedBranches) {
-            $values = self::withUnalikeFillsUntyped($values);
-        }
-
         $rows = array_column($values, 'row');
         $unalike = $keepsFirstUntyped && $rows[0]['type'] === 'unknown';
         // A dropping join has read an unalike fill as untyped already, so only a strict one meets one here.
@@ -227,7 +224,7 @@ final readonly class KeyValue
             ...($bodyType === $type || $unalike ? [] : ['bodyType' => $bodyType]),
             ...($fillType === null || $unalike ? [] : ['fillType' => $fillType]),
             ...(array_all($rows, static fn (array $row): bool => $row['keepsKeys'] ?? false) ? ['keepsKeys' => true] : []),
-            ...MethodAnalysis::presenceFacts($presence->absent, $presence->removed),
+            ...$presence->facts(),
         ];
         [$channels, $embedded] = self::joinedChannels($values, $slots, $apart, $unalike);
 
@@ -251,31 +248,31 @@ final readonly class KeyValue
     }
 
     /**
-     * Each branch value a join reads, each one another branch spells unalike read as the untyped value it stood in
-     * for, so the join drops it and keeps the other branches.
-     *
-     * @param  non-empty-list<self>  $values
-     * @return non-empty-list<self>
+     * The value retyped with a text naming no class, `unknown` unless given, with no class behind it.
      */
-    private static function withUnalikeFillsUntyped(array $values): array
+    public function untyped(string $type = 'unknown'): self
     {
-        $entries = array_map(
-            static fn (self $value): array => [$value->row['type'], $value->channels['declaredTokenFqcns'] ?? []],
-            $values,
-        );
-        $unalike = BranchJoin::declaredBranches($entries, true)[1];
+        $row = ['type' => $type] + $this->row;
+        unset($row['bodyType'], $row['fillType']);
 
-        if ($unalike === []) {
-            return $values;
+        return new self($row, self::classless($this->channels), $this->embedded);
+    }
+
+    /**
+     * The value with its row's `?` and presence facts set to a presence, as MethodAnalysis::withPresence() sets them.
+     */
+    public function withPresence(KeyPresence $presence): self
+    {
+        $row = $this->row;
+
+        if ($row['optional'] === $presence->optional && ($row['absent'] ?? false) === $presence->absent
+            && ($row['removed'] ?? false) === $presence->removed) {
+            return $this;
         }
 
-        foreach ($values as $index => $value) {
-            if (in_array($entries[$index], $unalike, true)) {
-                $values[$index] = $value->untyped();
-            }
-        }
+        unset($row['absent'], $row['removed']);
 
-        return $values;
+        return new self([...$row, 'optional' => $presence->optional, ...$presence->facts()], $this->channels, $this->embedded);
     }
 
     /**
@@ -520,16 +517,5 @@ final readonly class KeyValue
             ...(($channels['inlineEnumResourceFqcns'] ?? []) !== [] ? ['embeddedEnumResourceFqcns' => $channels['inlineEnumResourceFqcns']] : []),
             ...(($channels['wrappedEnums'] ?? []) !== [] ? ['wrappedEnumFqcns' => $channels['wrappedEnums']] : []),
         ];
-    }
-
-    /**
-     * The value typed `unknown` with no class behind it, its own channels kept apart from its classes.
-     */
-    private function untyped(): self
-    {
-        $row = ['type' => 'unknown'] + $this->row;
-        unset($row['bodyType'], $row['fillType']);
-
-        return new self($row, self::classless($this->channels), $this->embedded);
     }
 }

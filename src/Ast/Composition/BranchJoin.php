@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
-use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ShapeJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Print\ShapeLowering;
-use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
-use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\ArrayShapes;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
-use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
@@ -20,9 +18,8 @@ use PhpParser\Node;
 
 /**
  * Joins one key's branch types into one type, beside the token slots a declared text's arms bring to it, and keeps the
- * casts every branch agrees on.
+ * cast every branch agrees on; joins branch analyses through ShapeJoin.
  *
- * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type CastInForce from MethodAnalysis
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type DeclaredArm from TokenSlots
@@ -32,16 +29,10 @@ use PhpParser\Node;
 final class BranchJoin
 {
     /**
-     * Join branch analyses into an empty target: a key some branch lacks is optional and absent, a value any branch may
-     * remove stays so, channels merge as MethodAnalysis::merge() does, less each queue a branch only repeats of an
-     * earlier one, a cast survives only where every branch setting its key casts it alike, flatTypeAlias is the first
-     * non-null, and a lone branch's variants stay.
+     * Join branch analyses into an empty target, as ShapeJoin::exclusive() joins their shapes.
      *
-     * A spread helper, a merge call and a literal's key with several sources drop an untyped branch
-     * ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
-     *
-     * A literal's key keeps `unknown` where its first branch is untyped, a held value PHP may still send
-     * ($keepsFirstUntyped). Two classes one name spells, of any token kind, stay two arms, each read by its class.
+     * A spread helper's returns, a merge call and a returned variable's branches drop an untyped branch
+     * ($dropsUntypedBranches); the last two keep the `null` left alone ($keepsLoneNull).
      *
      * @param  list<MethodAnalysis>  $analyses
      * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
@@ -51,150 +42,15 @@ final class BranchJoin
         array $analyses,
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
-        bool $keepsFirstUntyped = false,
         array $returns = [],
         ?AnalysisScope $scope = null,
     ): void {
-        if ($dropsUntypedBranches) {
-            $analyses = self::withUnalikeFillsUntyped($analyses, $returns, $scope);
-        }
-
-        $branchCount = count($analyses);
-
-        /** @var array<array-key, non-empty-list<KeyValue>> $values each branch's value of a key, by its name */
-        $values = [];
-
-        // The analysis-wide data, and each channel a key no branch writes keeps, merge as MethodAnalysis::merge()
-        // merges them; each key's own channels are its joined value's.
-        $channels = new MethodAnalysis;
-        $flatTypeAlias = null;
-        $flatTypeAliasFqcn = null;
-
-        /** @var list<MethodAnalysis> $merged each branch as its channels merge, without the queues it only repeats */
-        $merged = [];
-
-        foreach ($analyses as $analysis) {
-            // A key a branch writes twice, as a helper and a later key may, is one key it sends.
-            foreach ($analysis->writtenProperties() as $prop) {
-                $values[$prop['name']][] = KeyValue::of($analysis, $prop);
-            }
-
-            $branch = clone $analysis;
-
-            foreach ($merged as $earlier) {
-                $branch->dropRepeatsOf($earlier);
-            }
-
-            $merged[] = $branch;
-            $channels->merge($branch);
-            $channels->properties = [];
-
-            $flatTypeAlias ??= $analysis->flatTypeAlias;
-            $flatTypeAliasFqcn ??= $analysis->flatTypeAliasFqcn;
-        }
-
-        $properties = [];
-        $untyped = [];
-        $channels->casts = [];
-        $channels->declaredTokenFqcns = [];
-        $channels->closedToDottedKeys = [];
-
-        foreach ($values as $name => $keyValues) {
-            $name = (string) $name;
-            $joined = KeyValue::joined($keyValues, $dropsUntypedBranches, $keepsLoneNull);
-            // An index signature (e.g. `[key: number]`) never carries `?:`, a syntax error, whatever its branches say.
-            $presence = JsEmitter::isIndexSignatureKey($name) ? new KeyPresence : KeyPresence::join(
-                array_map(static fn (KeyValue $value): KeyPresence => $value->presence(), $keyValues),
-                count($keyValues) === $branchCount,
-            );
-            $properties[] = MethodAnalysis::withPresence(
-                ['name' => $name, ...$joined->row], $presence->optional, $presence->absent, $presence->removed,
-            );
-            ShapeLowering::layChannels($channels, $name, $joined);
-
-            if ($keepsFirstUntyped && $keyValues[0]->type() === 'unknown') {
-                $untyped[] = $name;
-            }
-        }
-
-        $target->properties = $properties;
-        $target->nestedResources = $channels->nestedResources;
-        $target->customImports = $channels->customImports;
-        $target->directEnumFqcns = $channels->directEnumFqcns;
-        $target->modelFqcns = $channels->modelFqcns;
-        $target->inlineEnumFqcns = $channels->inlineEnumFqcns;
-        $target->inlineModelFqcns = $channels->inlineModelFqcns;
-        $target->inlineResourceFqcns = $channels->inlineResourceFqcns;
-        $target->alikeClassFqcns = $channels->alikeClassFqcns;
-        $target->inlineEnumResourceFqcns = $channels->inlineEnumResourceFqcns;
-        $target->wrappedEnums = $channels->wrappedEnums;
-        $target->casts = $channels->casts;
-        $target->carried = $channels->carried;
-        $target->flatTypeAlias = $flatTypeAlias;
-        $target->flatTypeAliasFqcn = $flatTypeAliasFqcn;
-        $target->readsCompletely = $channels->readsCompletely;
-        $target->holdsUnreadKeys = $channels->holdsUnreadKeys;
-        $target->holdsUnnamedKeys = $channels->holdsUnnamedKeys;
-        $target->closedToDottedKeys = $channels->closedToDottedKeys;
-        $target->declaredTokenFqcns = $channels->declaredTokenFqcns;
-        $target->variants = count($analyses) === 1 ? $analyses[0]->variants : null;
-
-        // Untyped on the target, so the custom imports only the key's joined text spelled go with its classes.
-        foreach ($untyped as $name) {
-            $target->untype($name);
-        }
+        ShapeLowering::into($target, ShapeJoin::exclusive(
+            array_map(ArrayShapes::ofAnalysis(...), $analyses),
+            new JoinOptions($dropsUntypedBranches, $keepsLoneNull, returns: $returns, scope: $scope),
+        ));
 
         resolve(ShapeObserver::class)->observed($target);
-    }
-
-    /**
-     * The branches a dropping join reads, each fill another branch spells unalike read as the untyped value it stood
-     * in for, so the join drops it and publishes the other branches as it did before the fill. In the gap mode, a
-     * branch whose returned value $returns names reads as a gap there instead, which the join keeps beside the rest.
-     *
-     * @template T of MethodAnalysis
-     *
-     * @param  list<T>  $analyses
-     * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
-     * @return list<T>
-     */
-    public static function withUnalikeFillsUntyped(array $analyses, array $returns = [], ?AnalysisScope $scope = null): array
-    {
-        $gapScope = $returns !== [] && resolve(AnalysisMemo::class)->showsGaps() ? $scope : null;
-
-        /** @var array<array-key, list<array{string, Slots}>> $entries */
-        $entries = [];
-
-        foreach ($analyses as $analysis) {
-            foreach ($analysis->properties as $prop) {
-                $entries[$prop['name']][] = [$prop['type'], $analysis->declaredTokenFqcns[$prop['name']] ?? []];
-            }
-        }
-
-        foreach ($entries as $name => $keyEntries) {
-            $unalike = self::declaredBranches($keyEntries, true)[1];
-
-            if ($unalike === []) {
-                continue;
-            }
-
-            foreach ($analyses as $index => $analysis) {
-                $slots = $analysis->declaredTokenFqcns[$name] ?? [];
-
-                foreach ($analysis->properties as $prop) {
-                    if ($prop['name'] === (string) $name && in_array([$prop['type'], $slots], $unalike, true)) {
-                        $analyses[$index] = clone $analysis;
-                        $analyses[$index]->retypeClassLess((string) $name, $gapScope !== null && isset($returns[$index])
-                            ? VisibleGaps::arm(DroppedUnionArms::gap($gapScope, 'unalike-fill', $returns[$index], $prop['type']))
-                            : 'unknown');
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        return $analyses;
     }
 
     /**
@@ -238,38 +94,6 @@ final class BranchJoin
         }
 
         return [$joined, $unalike];
-    }
-
-    /**
-     * The cast entry of each key every branch that sets it casts to one text and import, as only then does the union
-     * publish that cast. It is optional where any branch's cast says so, since the union is; otherwise it keeps a flag
-     * only where every branch's cast sets the same one.
-     *
-     * @param  list<MethodAnalysis>  $analyses
-     * @param  list<array-key>  $names
-     * @return CastMap
-     */
-    public static function castsEveryBranchAgrees(array $analyses, array $names): array
-    {
-        $casts = [];
-
-        foreach ($names as $name) {
-            $branchCasts = [];
-
-            foreach ($analyses as $analysis) {
-                if (in_array((string) $name, array_column($analysis->properties, 'name'), true)) {
-                    $branchCasts[] = $analysis->casts[$name] ?? null;
-                }
-            }
-
-            $cast = self::agreedCast($branchCasts);
-
-            if ($cast !== null) {
-                $casts[(string) $name] = $cast;
-            }
-        }
-
-        return $casts;
     }
 
     /**

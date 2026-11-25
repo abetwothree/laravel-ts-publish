@@ -888,8 +888,9 @@ takes the key over, such as a `#[TsCasts]` override or a child key over a spread
 channels by hand would miss the next import channel added. `merge()` lets the later analysis's `casts` entry win, with
 or without an import, and drops the entry where the later analysis sets the key without a cast.
 
-Branch merging takes every channel from `merge()`, and [ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches]
-owns its rules; `BranchJoin::joinInto()` is the one join of a key across branches or sources.
+Branch merging joins every channel by `merge()`'s rules, and
+[ResourceAstAnalyzer § `mergeReturnBranches()`][merge-branches] owns them; `ShapeJoin` is the one join of a key across
+branches or sources, `BranchJoin::joinInto()` its adapter.
 
 ### An attribute read carries the attribute's channels
 

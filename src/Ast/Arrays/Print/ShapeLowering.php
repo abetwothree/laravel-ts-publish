@@ -133,8 +133,8 @@ final class ShapeLowering
     }
 
     /**
-     * Replace the channels an analysis keeps under a key's name with a value's, each where it stands, beside the classes
-     * its queues key by themselves.
+     * Replace the channels an analysis keeps under a key's name with a value's, each where it stands, beside the
+     * classes its queues key by themselves.
      */
     public static function layChannels(MethodAnalysis $target, string $name, KeyValue $value): void
     {

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
+use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
@@ -16,6 +18,8 @@ use Closure;
 /**
  * Reads a declaration's `tokenFqcns`: one slot per token of the names of the classes its slots hold, in print order,
  * the one reading every writer and reader of those slots shares.
+ *
+ * @phpstan-import-type TypesImportMap from Datable
  *
  * @phpstan-type Slots = list<class-string|null>
  * @phpstan-type Token = array{string, int, bool}
@@ -346,6 +350,33 @@ final class TokenSlots
             self::tokens('classes', [$name], $type),
             static fn (array $token): bool => $token[2],
         ));
+    }
+
+    /**
+     * The imports left once texts are retyped with no class: each but one the old texts spell and no text that stays
+     * reads, and each path still naming one.
+     *
+     * @param  TypesImportMap  $imports
+     * @param  list<string>  $spelled  the retyped texts as they stood
+     * @param  list<string>  $others  every text that stays, each new one included
+     * @return TypesImportMap
+     */
+    public static function keptImports(array $imports, array $spelled, array $others): array
+    {
+        // A literal's spelling binds no import, so only a read token elsewhere keeps one.
+        $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
+            && ! self::readsName(ImportMaps::localName($import), ...$others);
+        $kept = [];
+
+        foreach ($imports as $path => $names) {
+            $names = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));
+
+            if ($names !== []) {
+                $kept[$path] = $names;
+            }
+        }
+
+        return $kept;
     }
 
     /**

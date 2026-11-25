@@ -214,6 +214,14 @@ test('readsName() reads a name only where a reader binds it to an import', funct
     'no type' => [[], false],
 ]);
 
+test('keptImports() drops each import only the retyped texts spell, unless a text that stays reads it', function (array $others, array $kept) {
+    expect(TokenSlots::keptImports(['@/user' => ['User'], '@/post' => ['Post']], ['User | null'], $others))->toBe($kept);
+})->with([
+    'no text that stays reads it' => [['unknown'], ['@/post' => ['Post']]],
+    'a text that stays reads it' => [['unknown', 'User[]'], ['@/user' => ['User'], '@/post' => ['Post']]],
+    'a text that stays spells it only in a literal' => [['unknown', "'User'"], ['@/post' => ['Post']]],
+]);
+
 test('classLess() of generated declarations reads each as the oracle says', function () {
     $cases = tokenSlotsCases(98, 500);
     $unknownMembers = 0;

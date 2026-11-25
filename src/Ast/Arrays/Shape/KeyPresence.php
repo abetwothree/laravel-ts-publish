@@ -13,6 +13,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
  * printed `?`, which a cast or a docblock may set with neither. Each derivation keeps its own default for a bare `?`.
  *
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
+ * @phpstan-import-type PresenceFacts from MethodAnalysis
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type KeyRow from KeyValue
  *
@@ -138,5 +139,15 @@ final readonly class KeyPresence
     public function held(): self
     {
         return new self(false, false, $this->removed);
+    }
+
+    /**
+     * The presence facts a row keeps: each only where true.
+     *
+     * @return PresenceFacts
+     */
+    public function facts(): array
+    {
+        return MethodAnalysis::presenceFacts($this->absent, $this->removed);
     }
 }

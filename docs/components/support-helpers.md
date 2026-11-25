@@ -172,6 +172,7 @@ Ask what the helper's input domain is, not what calls it:
 | Is this type string TypeScript or PHPDoc, for the scanner? | `ScanDialect` |
 | Which class stands behind each token of a declaration's type, and what is that type read with no class? | `TokenSlots` |
 | Which names does a class's token take: its type's, an enum's `…Kind` or its const's? | `TokenSlots::typeName()`, `namesOf()` |
+| Which imports does a map keep once texts are retyped with no class? | `TokenSlots::keptImports()` |
 | What is one key's type joined from its branches, beside its slots? | `BranchJoin` |
 | What is this PHP type, `ReflectionX` or docblock, as a `TypeScriptTypeInfo`? | stays on `LaravelTsPublish` |
 

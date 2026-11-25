@@ -8,6 +8,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ShapeJoin;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Print\ShapeLowering;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
@@ -566,7 +568,7 @@ final class LiteralWrites
     }
 
     /**
-     * One key's row and maps, joined from each source's value as a branch join joins them (KeyValue::joined()): the
+     * One key's row and maps, joined from each source's value as a branch join joins them (ShapeJoin::value()): the
      * first source's untyped value kept, as PHP may still send it, and every class kept apart and imported. The caller
      * sets the fold's presence.
      *
@@ -592,7 +594,7 @@ final class LiteralWrites
         }
 
         $joined = new MethodAnalysis;
-        $value = KeyValue::joined($values, dropsUntypedBranches: true, keepsFirstUntyped: true);
+        $value = ShapeJoin::value($values, new JoinOptions(dropsUntypedBranches: true, keepsFirstUntyped: true));
         $joined->properties = [['name' => $name, ...$value->row]];
         ShapeLowering::layChannels($joined, $name, $value);
         resolve(ShapeObserver::class)->observed($joined);
