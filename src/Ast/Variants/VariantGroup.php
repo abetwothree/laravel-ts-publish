@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * A discriminant and the keys that follow its value, split into variants, with each key's row as the fold wrote it: a
@@ -35,7 +36,8 @@ final readonly class VariantGroup
     ) {}
 
     /**
-     * The type and presence of each named key's row in an analysis, in the order given; a key it lacks is left out.
+     * The type and presence of each named key's row in an analysis, in the order given, a declared `null`'s mark read
+     * as the `null` it stands for, as a strip leaves it; a key it lacks is left out.
      *
      * @param  list<string>  $keys
      * @return RowFingerprints
@@ -47,7 +49,7 @@ final readonly class VariantGroup
 
         foreach ($keys as $key) {
             if (isset($rows[$key])) {
-                $fingerprints[$key] = ['type' => $rows[$key]['type'], 'optional' => $rows[$key]['optional']];
+                $fingerprints[$key] = ['type' => VisibleGaps::unmarked($rows[$key]['type']), 'optional' => $rows[$key]['optional']];
             }
         }
 

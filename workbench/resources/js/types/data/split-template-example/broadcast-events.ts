@@ -3,6 +3,7 @@ import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
 import type { DispatchRelayed } from './app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
+import type { EnumWrapsBroadcast } from './app/events/EnumWrapsBroadcast';
 import type { FacilityAudited } from './app/events/FacilityAudited';
 import type { HandoverListed } from './app/events/HandoverListed';
 import type { ManifestAssembled } from './app/events/ManifestAssembled';
@@ -34,6 +35,7 @@ export type BroadcastEvent =
     | '.Workbench.App.Events.DispatchRelayed'
     | '.Workbench.App.Events.DocblockShapedEvent'
     | '.Workbench.App.Events.EnumBroadcastEvent'
+    | '.Workbench.App.Events.EnumWrapsBroadcast'
     | '.Workbench.App.Events.FacilityAudited'
     | '.Workbench.App.Events.HandoverListed'
     | '.Workbench.App.Events.ManifestAssembled'
@@ -65,6 +67,7 @@ export const BroadcastEvents = /* @__PURE__ */ Object.freeze({
     DispatchRelayed: '.Workbench.App.Events.DispatchRelayed',
     DocblockShapedEvent: '.Workbench.App.Events.DocblockShapedEvent',
     EnumBroadcastEvent: '.Workbench.App.Events.EnumBroadcastEvent',
+    EnumWrapsBroadcast: '.Workbench.App.Events.EnumWrapsBroadcast',
     FacilityAudited: '.Workbench.App.Events.FacilityAudited',
     HandoverListed: '.Workbench.App.Events.HandoverListed',
     ManifestAssembled: '.Workbench.App.Events.ManifestAssembled',
@@ -97,6 +100,7 @@ export type {
     DispatchRelayed,
     DocblockShapedEvent,
     EnumBroadcastEvent,
+    EnumWrapsBroadcast,
     FacilityAudited,
     HandoverListed,
     ManifestAssembled,

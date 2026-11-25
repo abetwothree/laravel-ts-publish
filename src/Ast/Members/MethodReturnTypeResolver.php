@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
@@ -158,7 +159,7 @@ final class MethodReturnTypeResolver
         $reflected = $this->reflected($class, $methodName);
 
         if ($reflected !== null && ! TsTypeString::isVagueTsType($reflected['type'])) {
-            return $reflected;
+            return [...$reflected, 'type' => DeclaredArms::markedNull($reflected['type'])];
         }
 
         return $this->bodyType($class, $methodName, $reflected, $passed, $backing, $runtime, $reading, $literals)

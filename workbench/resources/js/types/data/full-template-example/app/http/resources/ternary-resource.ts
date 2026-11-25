@@ -27,7 +27,7 @@ export interface TernaryResource
     status_or_null: AsEnum<typeof Status> | null;
     status_or_status: AsEnum<typeof Status>;
     status_resource_or_type: AsEnum<typeof Status> | StatusType;
-    status_type_or_resource: AsEnum<typeof Status> | StatusType;
+    status_type_or_resource: StatusType | AsEnum<typeof Status>;
     status_or_visibility: AsEnum<typeof Status> | AsEnum<typeof Visibility> | null;
     category_or_null: CategoryResource | null;
     category_or_category: CategoryResource | null;

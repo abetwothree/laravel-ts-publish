@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\OwnResourceRelationMode
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\ResourceRelationModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\TokenColumnModel;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\UntypedFilterOverrideModel;
+use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Fixtures\WrapFilterOverrideModel;
 use Illuminate\Support\Facades\Schema;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
@@ -45,6 +46,7 @@ use Workbench\App\Models\Tag;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Models\Warehouse;
+use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
  * An engine that answers every expression with one canned result, standing in for a relation read.
@@ -508,13 +510,14 @@ it('publishes a relation filter that names no token where the scope carries no i
     ]],
     'single relation, runtime keys' => [Comment::class, '$this->user->only($keys)', ['type' => 'Record<string, unknown>', 'optional' => false]],
     'multi-model accessor, an enum column' => [Warehouse::class, '$this->last_user_activity_by?->only([\'id\', \'role\'])', [
-        'type' => '{ id: number } | { id: number; role: unknown } | null', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+        'type' => '{ id: number } | { id: number; role: unknown } | null', 'optional' => false,
     ]],
+    // Two models' arms print one text and name no class, so they are one member.
     'multi-model accessor' => [Warehouse::class, '$this->last_user_activity_by->only([\'id\'])', [
-        'type' => '{ id: number } | { id: number }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+        'type' => '{ id: number }', 'optional' => false,
     ]],
     'multi-model accessor, a typed override arm beside an enum column' => [FilterOverrideModel::class, '$this->counterpart->only([\'id\', \'role\'])', [
-        'type' => 'string | { id: number; role: unknown }', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],
+        'type' => 'string | { id: number; role: unknown }', 'optional' => false,
     ]],
     'to-many' => [Comment::class, '$this->replies->only([1, 2])', ['type' => 'unknown[]', 'optional' => false]],
     'to-many ?->' => [Comment::class, '$this->replies?->except($keys)', ['type' => 'unknown[] | null', 'optional' => false]],
@@ -541,23 +544,16 @@ it('publishes a typed filter override\'s own return for a map proxy or multi-mod
     'multi-model accessor' => [FilterOverrideModel::class, '$this->counterpart->only([\'id\'])', [
         'type' => "string | Pick<User, 'id'>",
         'optional' => false,
-        'embeddedEnumFqcns' => [],
         'embeddedModelFqcns' => [User::class],
-        'customImports' => [],
     ]],
     'multi-model accessor, runtime keys' => [FilterOverrideModel::class, '$this->counterpart?->except($keys)', [
         'type' => 'number | Record<string, unknown> | null',
         'optional' => false,
-        'embeddedEnumFqcns' => [],
-        'embeddedModelFqcns' => [],
-        'customImports' => [],
     ]],
     'multi-model accessor, a nullable model return' => [ClassTypedFilterOverrideModel::class, '$this->counterpart->only([\'id\'])', [
         'type' => "ClassTypedFilterOverrideModel | Pick<User, 'id'> | null",
         'optional' => false,
-        'embeddedEnumFqcns' => [],
         'embeddedModelFqcns' => [ClassTypedFilterOverrideModel::class, User::class],
-        'customImports' => [],
     ]],
     'map proxy' => [FilterOverrideModel::class, '$this->twins->map->only([\'id\'])', ['type' => 'string[]', 'optional' => false]],
     'map proxy ?->, a nullable model return' => [ClassTypedFilterOverrideModel::class, '$this->resource->twins->map?->only([\'id\'])', [
@@ -567,6 +563,18 @@ it('publishes a typed filter override\'s own return for a map proxy or multi-mod
         'type' => 'PriorityType[]', 'optional' => false, 'directEnumFqcn' => Priority::class,
     ]],
 ]);
+
+// Each arm of a multi-model filter publishes as it does alone, so two wraps one const name spells keep their consts.
+it('keeps each override\'s wrap and its const in a multi-model filter\'s union', function () {
+    $scope = new AnalysisScope(new ReflectionClass(CommentResource::class), WrapFilterOverrideModel::class);
+
+    expect((new RelationFilterHandler)->resolve(relationFilterExpr('$this->counterpart->only([\'id\'])'), $scope, relationFilterHandlerThrowingEngine()))->toBe([
+        'type' => 'AsEnum<typeof Status> | AsEnum<typeof Status>',
+        'optional' => false,
+        'embeddedEnumResourceFqcns' => [Status::class, CrmStatus::class],
+        'wrappedEnumFqcns' => [Status::class, CrmStatus::class],
+    ]);
+});
 
 // Laravel's collection casts build their collection with no return type reflection can read, so the receiver rules
 // never see one; this arm types every member holding Support\Collection's own filter, which keeps keys.
@@ -618,9 +626,7 @@ it('answers a relation filter on a model whose override declares no return', fun
     'multi-model accessor' => ['$this->counterpart->only([\'id\'])', [
         'type' => "Pick<UntypedFilterOverrideModel, 'id'> | Pick<User, 'id'>",
         'optional' => false,
-        'embeddedEnumFqcns' => [],
         'embeddedModelFqcns' => [UntypedFilterOverrideModel::class, User::class],
-        'customImports' => [],
     ]],
     'map proxy' => ['$this->twins->map->only([\'id\', \'title\'])', [
         'type' => '{ id: number; title: string }[]', 'optional' => false, 'embeddedEnumFqcns' => [], 'embeddedModelFqcns' => [], 'customImports' => [],

@@ -11,6 +11,7 @@ test('converts model metadata to array and JSON', function () {
         properties: ['morphClass' => 'user'],
         propertyTypes: ['morphClass' => 'string'],
         typeImports: ['@/types/model-metadata' => ['ModelMetadataDetails']],
+        valueImports: ['../enums' => ['Status']],
     );
 
     expect($dto->toArray())
@@ -20,6 +21,7 @@ test('converts model metadata to array and JSON', function () {
             'properties' => ['morphClass' => 'user'],
             'propertyTypes' => ['morphClass' => 'string'],
             'typeImports' => ['@/types/model-metadata' => ['ModelMetadataDetails']],
+            'valueImports' => ['../enums' => ['Status']],
         ])
         ->and($dto->toJson())->toBeJson()
         ->and($dto->jsonSerialize())->toBe($dto->toArray());

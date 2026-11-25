@@ -5,8 +5,7 @@ Reads every `.ts` file in the committed workbench type trees, splits each proper
 parser of unknown-regression-gate.py, and walks every union at every depth for three findings:
 
   never     `never[]` beside a single list arm (`X[]`, `Array<X>`, `ReadonlyArray<X>`) or `[]`
-  literal   a string or number literal beside an enum alias whose `export type X = ...` lists it,
-            unless the property also wraps that enum in `AsEnum<typeof X>`, as the package keeps it
+  literal   a string or number literal beside an enum alias whose `export type X = ...` lists it
   duplicate two arms of one union spelled exactly alike
 
 Each arm of a resource split into arms reads in a scope of its own, `X[i]`, as an interface would.
@@ -46,7 +45,7 @@ def _regression_gate():
 
 _gate = _regression_gate()
 ROOT, git, parse_source = _gate.ROOT, _gate.git, _gate.parse_source
-OPENERS, CLOSERS, TYPE_ALIAS = _gate.OPENERS, _gate.CLOSERS, _gate.ALIAS
+OPENERS, CLOSERS = _gate.OPENERS, _gate.CLOSERS
 PAIRS = dict(zip(OPENERS, CLOSERS))
 QUOTES = "'\"`"
 EMPTY_LIST, EMPTY_TUPLE = "never[]", "[]"
@@ -58,7 +57,6 @@ ENUM_ALIAS = re.compile(r"^export\s+type\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<
 ENUM_CONST = re.compile(
     r"^export\s+const\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?:/\*\s*[@#]__PURE__\s*\*/\s*)?defineEnum\(", re.M
 )
-WRAP = re.compile(rf"AsEnum<\s*typeof\s+(?P<name>{NAME_PATH.pattern})\s*>")
 ESCAPE = re.compile(r"\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])")
 SIMPLE_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
 CAMEL = re.compile(r"-(\w)")
@@ -66,15 +64,9 @@ CAMEL = re.compile(r"-(\w)")
 # develop's probe commit for #166: its goldens hold the redundant arms the fix removes.
 PROBE_REV = "ec7876ad239217e05a0b1ebbb177cf5c78c62894"
 
-GLOBAL_109 = "#109: laravel-ts-global.ts spells an enum resource by its value type"
-
 # (path suffix, scope, key, kind) findings the package publishes on purpose, each with its reason. A scope may leave out
 # its outer namespaces, such as testing's `workbench.`, and an entry excuses only its own kind.
-BASELINE = {
-    ("laravel-ts-global.ts", "app.http.resources.EnumCollectionResource", "wrapped_history_or_array", "duplicate"):
-        GLOBAL_109,
-    ("laravel-ts-global.ts", "app.http.resources.TeamStatusAuditResource", "audit.status", "duplicate"): GLOBAL_109,
-}
+BASELINE: dict[tuple[str, str, str, str], str] = {}
 
 KINDS = {
     "never": "never[] beside a list arm",
@@ -287,18 +279,9 @@ def find_redundant(files: dict[str, str]) -> list[Finding]:
     for path, body in files.items():
         resolve = resolver(path, body, enums)
         # Joined, two arms' values would read as one union no published type carries.
-        props = parse_source(body, per_arm=True)
-        keys: dict[str, set[str]] = defaultdict(set)
-        for scope, key in props:
-            keys[scope].add(key)
-        type_aliases = {m["name"] for m in map(TYPE_ALIAS.match, body.splitlines()) if m}
-        wraps: dict[tuple[str, str], frozenset] = {}
-        for (scope, key), value in props.items():
-            published = (scope, property_of(key, keys[scope], type_aliases))
-            if published not in wraps:
-                wraps[published] = wrapped_enums(props[published], scope, resolve)
+        for (scope, key), value in parse_source(body, per_arm=True).items():
             for arms in unions(value):
-                values = frozenset().union(*(admits(resolve(arm, scope), wraps[published], enums) for arm in arms))
+                values = frozenset().union(*(admits(resolve(arm, scope), enums) for arm in arms))
                 for kind, arm in redundant(arms, values):
                     found.append(Finding(path, scope, key, kind, arm, " | ".join(arms)))
 
@@ -322,23 +305,9 @@ def literals(value: str) -> frozenset:
     return frozenset(v for v in map(literal, split_top(value, "|")) if v is not None)
 
 
-def property_of(key: str, keys: set[str], type_aliases: set[str]) -> str:
-    """The published key a parsed key sits under: its shortest parsed prefix, or the next one under a type alias."""
-    parsed = [prefix for prefix in (key[:i] for i, ch in enumerate(key) if ch in ".[") if prefix in keys] + [key]
-    return parsed[1] if parsed[0] in type_aliases and len(parsed) > 1 else parsed[0]
-
-
-def wrapped_enums(value: str, scope: str, resolve: Resolve) -> frozenset:
-    """The enum files whose const a property's value wraps in `AsEnum<typeof X>`, outside a string literal."""
-    depths = char_depths(value)
-    return frozenset(
-        enum[0] for m in WRAP.finditer(value) if depths[m.start()] != -1 and (enum := resolve(m["name"], scope))
-    )
-
-
-def admits(enum: tuple[str, str] | None, wrapped: frozenset, enums: EnumFiles) -> frozenset:
-    """The literals an arm admits as the enum alias it resolves to; an enum its property wraps admits none (R4)."""
-    if enum is None or enum[0] in wrapped:
+def admits(enum: tuple[str, str] | None, enums: EnumFiles) -> frozenset:
+    """The literals an arm admits as the enum alias it resolves to."""
+    if enum is None:
         return frozenset()
     return enums.aliases[enum[0]].get(enum[1], frozenset())
 
@@ -487,14 +456,16 @@ MODULE_CASES = [
      [("a.inner", "literal", "'image'")]),
     ("literal in an inline type alias", "export type PageProps = Inertia.SharedData & { p: never[] | number[], "
      "q: 0 | StatusType };", [("PageProps.p", "never", "never[]"), ("PageProps.q", "literal", "0")]),
-    # R4: an enum a property wraps admits no literal anywhere in that property.
-    ("control: literal beside the alias of an enum its property wraps",
-     "a: { w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType };", []),
-    ("control: a wrap and an alias each imported under another name", "a: AsEnum<typeof Kind> | 'image' | Media;", []),
-    ("control: a wrap of an enum whose file exports no type of its const's name",
-     "a: AsEnum<typeof Status> | 0 | StatusType;", []),
-    ("control: literal in an inline type alias's member that wraps its enum", "export type PageProps = "
-     "Inertia.SharedData & { v: { w: AsEnum<typeof MediaType>; x: 'image' | MediaTypeType } };", []),
+    # K1: a wrap spells its enum's const, so an alias beside it is a read's and admits its literals as any does.
+    ("literal beside the alias of an enum its property wraps",
+     "a: { w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType };", [("a.v", "literal", "'image'")]),
+    ("literal beside a wrap and an alias each imported under another name", "a: AsEnum<typeof Kind> | 'image' | Media;",
+     [("a", "literal", "'image'")]),
+    ("literal beside a wrap of an enum whose file exports no type of its const's name",
+     "a: AsEnum<typeof Status> | 0 | StatusType;", [("a", "literal", "0")]),
+    ("literal in an inline type alias's member that wraps its enum", "export type PageProps = "
+     "Inertia.SharedData & { v: { w: AsEnum<typeof MediaType>; x: 'image' | MediaTypeType } };",
+     [("PageProps.v.x", "literal", "'image'")]),
     ("literal beside its alias where the property wraps no enum",
      "a: { w: MediaTypeType; v: 'image' | MediaTypeType };", [("a.v", "literal", "'image'")]),
     ("literal beside its alias where a string spells a wrap",
@@ -566,8 +537,15 @@ SPLIT_CASES = [
      []),
 ]
 
-# (label, scope, property line in laravel-ts-global.ts, expected findings, how many of them fail the gate); a scope
-# without a namespace sits in app.http.resources.
+# A globals-file baseline, so the parsetest still checks how an entry matches a file, scope, key and kind.
+GLOBAL_BASELINE = {
+    ("laravel-ts-global.ts", "app.http.resources.EnumCollectionResource", "wrapped_history_or_array", "duplicate"):
+        "a globals-file entry for the parsetest",
+    ("laravel-ts-global.ts", "app.http.resources.TeamStatusAuditResource", "audit.status", "duplicate"):
+        "a globals-file entry for the parsetest",
+}
+# (label, scope, property line in laravel-ts-global.ts, expected findings, how many of them fail under GLOBAL_BASELINE);
+# a scope without a namespace sits in app.http.resources.
 GLOBAL_CASES = [
     ("literal beside a qualified alias", "ProbeResource", "a: 'image' | app.enums.MediaTypeType;",
      [("a", "literal", "'image'")], 1),
@@ -575,10 +553,10 @@ GLOBAL_CASES = [
      [("a", "literal", "'video'")], 1),
     ("control: qualified literal the alias does not list", "ProbeResource", "a: 'Image' | app.enums.MediaTypeType;",
      [], 0),
-    ("baselined duplicate (#109)", "EnumCollectionResource",
+    ("baselined duplicate", "EnumCollectionResource",
      "wrapped_history_or_array: app.enums.StatusType[] | app.enums.StatusType[];",
      [("wrapped_history_or_array", "duplicate", "app.enums.StatusType[]")], 0),
-    ("baselined member duplicate (#109)", "TeamStatusAuditResource",
+    ("baselined member duplicate", "TeamStatusAuditResource",
      "audit: { status: app.enums.StatusType[] | app.enums.StatusType[] };",
      [("audit.status", "duplicate", "app.enums.StatusType[]")], 0),
     ("duplicate the baseline does not list", "EnumCollectionResource",
@@ -663,10 +641,10 @@ def run_parsetest() -> int:
         )
 
     for label, scope, line, want, fails in GLOBAL_CASES:
-        check(label, GLOBALS, global_body(scope, line), want, fails)
+        check(label, GLOBALS, global_body(scope, line), want, fails, GLOBAL_BASELINE)
 
     for label, scope, line, want, fails in ELSEWHERE_CASES:
-        check(label, ELSEWHERE, global_body(scope, line), want, fails)
+        check(label, ELSEWHERE, global_body(scope, line), want, fails, GLOBAL_BASELINE)
 
     if failed:
         print(f"FAIL - {failed} of {total} parser cases failed")

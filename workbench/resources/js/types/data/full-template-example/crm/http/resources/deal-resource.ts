@@ -2,7 +2,7 @@ import { type AsEnum } from '@tolki/ts';
 
 import { Status as EnumsStatus } from '../../../app/enums';
 import { Status as CrmStatus } from '../../enums';
-import type { StatusType as EnumsStatusType } from '../../../app/enums';
+import type { StatusType } from '../../../app/enums';
 import type { UserResource as ResourcesUserResource } from '../../../app/http/resources';
 import type { User as ModelsUser } from '../../../app/models';
 import type { User as CrmUser } from '../../models';
@@ -21,7 +21,7 @@ export type DealResource = {
     id: number;
     title: string;
     value: string;
-    status: EnumsStatusType;
+    status: StatusType;
     status_enum: AsEnum<typeof EnumsStatus>;
     crm_enum: AsEnum<typeof CrmStatus>;
     status_pair: { app: AsEnum<typeof EnumsStatus>; crm: AsEnum<typeof CrmStatus> };

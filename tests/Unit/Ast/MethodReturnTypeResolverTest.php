@@ -199,7 +199,7 @@ test('a helper\'s plain enum case reads as its literal, as its shape\'s does, an
     expect(resourceProps(EnumCaseHelperResource::class))->toMatchArray(['draft' => '0', 'shaped_list' => '{ l: 0[] }'])
         ->and($resolve('draft'))->toBe(['type' => '0', 'optional' => false])
         ->and($resolve('outer'))->toBe(['type' => '0', 'optional' => false])
-        ->and($resolve('outerWrap')['type'] ?? null)->toBe('StatusType');
+        ->and($resolve('outerWrap')['type'] ?? null)->toBe('AsEnum<typeof Status>');
 });
 
 test('a body the model inherits filters the model it runs on', function () {

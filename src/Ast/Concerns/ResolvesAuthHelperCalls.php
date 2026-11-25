@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\AuthUserResolver;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Support\Facades\Auth;
 use PhpParser\Node\Expr;
@@ -53,14 +53,14 @@ trait ResolvesAuthHelperCalls
         }
 
         if ($name === 'user') {
-            return ['type' => class_basename($model).' | null', 'optional' => false, 'modelFqcn' => $model];
+            return ['type' => DeclaredArms::withDeclaredNull(class_basename($model)), 'optional' => false, 'modelFqcn' => $model];
         }
 
         DependencyRecorder::recordClass($model);
 
         $identifier = resolve(ModelAttributeResolver::class)->authIdentifierTsType($model);
 
-        return $identifier === null ? null : ['type' => TsTypeString::withNullArm($identifier), 'optional' => false];
+        return $identifier === null ? null : ['type' => DeclaredArms::withDeclaredNull($identifier), 'optional' => false];
     }
 
     /**

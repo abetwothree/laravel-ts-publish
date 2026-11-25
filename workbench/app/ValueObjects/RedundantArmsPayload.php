@@ -14,7 +14,7 @@ use Workbench\App\Enums\Visibility;
 
 /**
  * Fixture (GH-166): case literals beside the alias that admits them, and `never[]` beside a list, at every join; the
- * `*_kept` keys hold arms no sibling admits, or a case value beside the alias of an enum the key also wraps.
+ * `*_kept` keys hold arms no sibling admits, but `wrap_and_read_kept`, whose alias takes its case value in (GH-160).
  */
 final class RedundantArmsPayload
 {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
@@ -12,14 +13,15 @@ use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks\ResolvesCallbackValues;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelAttributeTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesRelatedModelTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Narrowing\ReadsNonNullGuards;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\SplitsOnCondition;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\AggregateValueType;
@@ -70,7 +72,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
     use InspectsResourceCalls;
     use ReadsNonNullGuards;
     use ResolvesCallbackValues;
-    use ResolvesEnumPropertyArgTypes;
+    use ResolvesModelAttributeTypes;
     use ResolvesModelRelationTypes;
     use ResolvesRelatedModelTypes;
 
@@ -248,7 +250,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
 
         unset($value['absentReadsNull']);
 
-        return $value['type'] === 'unknown' ? $value : ValueResult::unionResults([$value, $sent], countMembers: true);
+        return $value['type'] === 'unknown' ? $value : ValueResult::unionResults([$value, $sent]);
     }
 
     /**
@@ -602,7 +604,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
     /**
      * The attribute a whenHas()/whenAppended() call names, typed with every FQCN channel it carries.
      *
-     * An EnumResource::make()/::collection() value wraps one enum, so that read puts only the first on `enumFqcn`.
+     * An EnumResource::make()/::collection() value wraps one enum, so that read spells only the first as its wrap.
      *
      * @return ValueExpressionResult
      */
@@ -616,7 +618,10 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return ValueResult::withAttributeChannels($result, $info);
         }
 
-        return [...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]), 'enumFqcn' => $info['enumFqcn']];
+        return resolve(EnumWrapPayload::class)->spelledWrap([
+            ...ValueResult::withAttributeChannels($result, [...$info, 'enumFqcns' => []]),
+            'enumFqcn' => $info['enumFqcn'],
+        ]);
     }
 
     /**
@@ -657,7 +662,10 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return $value;
         }
 
-        return [...$value, 'type' => TsTypeString::withNullArm($value['type'])];
+        // A relation its model declares nullable loads null by that declaration; an undeclared one by what was stored.
+        return [...$value, 'type' => $loadsNull === true
+            ? DeclaredArms::withDeclaredNull($value['type'])
+            : TsTypeString::withNullArm($value['type'])];
     }
 
     /**
@@ -867,9 +875,7 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return [...$value, 'optional' => $value['optional'] || $default['optional']];
         }
 
-        // Count members, not arms: a `null` then keeps two enum resources from reading as a union of enum resources,
-        // which an inline array's member and Inertia shared data do not honour.
-        return ValueResult::unionResults([$value, $default], countMembers: true);
+        return ValueResult::unionResults([$value, $default]);
     }
 
     /**

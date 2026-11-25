@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Values;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\ModelFills;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
+use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredFill;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
@@ -29,11 +31,12 @@ use PhpParser\Node\Expr\Closure as ClosureExpr;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use PhpParser\Node\NullableType;
+use PhpParser\Node\UnionType;
 
 /**
- * Closures and arrow functions used as a property value — resolves the body's return type(s), falling back to the
- * declared return-type annotation, or the docblock's `@return` where it says more, when the body resolves to `unknown`.
+ * Closures and arrow functions used as a property value: the body's return type(s), or the return-type annotation, or
+ * the docblock's `@return` where it says more, in place of a body that reads `unknown`. A `@return` that types the
+ * closure is an outer declaration over that reading, merged with it (DeclaredFill).
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type TypesImportMap from Datable
@@ -90,7 +93,8 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
 
     /**
      * A closure's returns resolved in its own bindings, or its return-type annotation or `@return` where they read
-     * `unknown`.
+     * `unknown`. A `@return` that types the closure is an outer declaration over its returns: they are read under it
+     * and merged with it (DeclaredFill).
      *
      * @param  non-empty-list<Expr>  $closureReturns
      * @return ValueExpressionResult
@@ -98,17 +102,43 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     private function resolveBody(ArrowFunction|ClosureExpr $closure, array $closureReturns, AnalysisScope $scope, ExpressionEngine $engine): array
     {
         $resolve = $this->returnResolver($closure, $engine);
-        $bodyResult = count($closureReturns) === 1
+        $read = static fn (): array => count($closureReturns) === 1
             ? $resolve($closureReturns[0])
             : ValueResult::analyzeClosureUnion($closureReturns, $engine, $scope, resolve: $resolve);
+        $documented = $closure->getDocComment() === null ? null : $this->documentedReturnType($closure, $scope);
 
-        if ($bodyResult['type'] !== 'unknown') {
-            return $bodyResult;
+        if ($documented === null) {
+            return $this->readOrAnnotated($read(), $closure, $scope);
+        }
+
+        // In the mode, the annotation's own `null` is a declared one the `@return` replaces, as in its `T|null` twin.
+        return DeclaredArms::underDeclaration(
+            fn (): array => $this->readOrAnnotated($read(), $closure, $scope),
+            static fn (array $body, bool $nested): array => DeclaredFill::merged(
+                $body,
+                $nested ? DeclaredArms::asNested($documented) : $documented,
+            ),
+        ) ?? ValueResult::unknown();
+    }
+
+    /**
+     * A closure's body reading, else, where it reads `unknown`, its return-type annotation or `@return`, the `null`
+     * of which only that declaration says.
+     *
+     * @param  ValueExpressionResult  $body
+     * @return ValueExpressionResult
+     */
+    private function readOrAnnotated(array $body, ArrowFunction|ClosureExpr $closure, AnalysisScope $scope): array
+    {
+        if ($body['type'] !== 'unknown') {
+            return $body;
         }
 
         $annotationResult = $this->resolveClosureAstReturnType($closure, $scope);
 
-        return $annotationResult === null ? $bodyResult : [...$annotationResult, 'optional' => false];
+        return $annotationResult === null
+            ? $body
+            : [...$annotationResult, 'type' => DeclaredArms::markedNull($annotationResult['type']), 'optional' => false];
     }
 
     /**
@@ -157,7 +187,7 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
     {
         return $value !== null && (VisibleGaps::aside($value['type'])[0] === 'null'
             || isset($value['modelFqcn'])
-            || isset($value['enumFqcn'])
+            || ($value['wrappedEnumFqcns'] ?? []) !== []
             || isset($value['directEnumFqcn'])
             || isset($value['resourceFqcn']));
     }
@@ -167,6 +197,8 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      * annotation is absent, vague or unread and TsTypeString::documentedWins() says the docblock says more. Null when
      * neither types the closure: see convertAstTypeNodeToTs() and documentedReturnType().
      *
+     * A `T|null` union reads as its `?T` twin, except that a `@return` saying more than `unknown` comes first.
+     *
      * @return ClosureAnnotationResult|ValueExpressionResult|null
      */
     private function resolveClosureAstReturnType(Expr $expr, AnalysisScope $scope): ?array
@@ -175,13 +207,21 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return null;
         }
 
+        $union = $expr->returnType instanceof UnionType;
+        $documented = $union ? $this->documentedReturnType($expr, $scope) : null;
+
+        // A union's `@return` comes first, as it may narrow `Post|null` to `Post`; `?Post` keeps its native read.
+        if ($documented !== null && TsTypeString::documentedWins('unknown', $documented['type'])) {
+            return $documented;
+        }
+
         $native = $expr->returnType === null ? null : $this->convertAstTypeNodeToTs($expr->returnType, $scope);
 
         if ($native !== null && ! TsTypeString::isVagueTsType($native['type'])) {
             return $native;
         }
 
-        $documented = $this->documentedReturnType($expr, $scope);
+        $documented = $union ? $documented : $this->documentedReturnType($expr, $scope);
 
         return $documented !== null && TsTypeString::documentedWins($native['type'] ?? 'unknown', $documented['type'])
             ? $documented
@@ -212,15 +252,17 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
      * Convert a PHP-Parser return-type AST node to a ClosureAnnotationResult: the type, with its FQCN or the custom
      * imports a class's override brings.
      *
-     * Returns null for union/intersection types, void/never/mixed and unresolvable classes; `self`, `static` and
-     * `parent` name the class the scope binds them to.
+     * Returns null for intersections, unions other than one type beside `null`, void/never/mixed and unresolvable
+     * classes; `self`, `static` and `parent` name the class the scope binds them to.
      *
      * @return ClosureAnnotationResult|null
      */
     private function convertAstTypeNodeToTs(Node $typeNode, AnalysisScope $scope): ?array
     {
-        if ($typeNode instanceof NullableType) {
-            $inner = $this->convertAstTypeNodeToTs($typeNode->type, $scope);
+        $arm = ParameterBinder::nativeArm($typeNode);
+
+        if ($arm !== null && $arm[1]) {
+            $inner = $this->convertAstTypeNodeToTs($arm[0], $scope);
 
             if ($inner === null) {
                 return null;
@@ -265,7 +307,6 @@ final class ClosureHandler implements ExpressionHandler, KeepsHeldObjects
             return $result;
         }
 
-        // UnionType / IntersectionType — fall through to body analysis
         return null;
     }
 }

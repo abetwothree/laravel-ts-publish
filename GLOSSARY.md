@@ -55,6 +55,10 @@ _Avoid_: document
 A parallel model interface, such as `{Model}Resource`, that types each enum column as a resolved `AsEnum<>` instance instead of a raw value.
 _Avoid_: resource, model resource
 
+**Enum wrap**:
+An enum value sent through `EnumResource`, which sends the enum's object instead of its value. It publishes as `AsEnum<typeof X>` where it is read, or as the enum's alias with the tolki package off.
+_Avoid_: AsEnum rewrite, enum resource property
+
 **Accessor**:
 A model attribute computed by a getter instead of stored in a column. `{Model}Mutators` is only the name of the interface that holds them.
 _Avoid_: mutator
@@ -106,6 +110,14 @@ An import named inside an override, so a hand-written TypeScript type can be use
 **Import channel**:
 One kind of class name a published type carries so its file can import it, such as model, enum, or custom-import names.
 _Avoid_: channel, FQCN channel
+
+**Const queue**:
+The enum behind each `typeof` token a key's enum wraps print, in print order, so each token takes its own enum's alias where two enums share a name.
+_Avoid_: wrap queue, enum-resource queue
+
+**Alike record**:
+The model or API resource behind each token of a name that both a model and an API resource print, in print order, so each token takes its own class's alias.
+_Avoid_: alike queue, kind order
 
 **Index signature**:
 A published key pattern, such as ``[key: `${string}_tag`]``, that types every runtime key it matches.
@@ -174,11 +186,23 @@ _Avoid_: case, branch, split
 
 **Visible gap**:
 A dropped arm, or the keys an object may hold that inference cannot name, kept in a key's type so the method's `@return` can type it where it stands. A gap the docblock leaves untyped is dropped before the type publishes.
-_Avoid_: mark, placeholder
+_Avoid_: placeholder
 
 **Gap mode**:
-How inference reads the keys a method's own `@return` types, the analyzed method's or a spread helper's, keeping each visible gap for that docblock. Unlike a reading, it changes what a type keeps, not how values reach the client.
+How inference reads the keys a method's own `@return` types, the analyzed method's or a spread helper's, keeping each visible gap for that docblock. It brings the declaration mode. Unlike a reading, it changes what a type keeps, not how values reach the client.
 _Avoid_: showing gaps, gap flag
+
+**Declared arm**:
+A union arm only a declaration produced, such as a nullable column's `null`, a `?T` return's `null`, or the `Record` beside a map over an untyped array. An outer declaration, an inline `@var`, a `toArray()` `@return` key or a closure's `@return`, replaces it where it leaves it out. While the declaration mode reads it, it is a mark in the type: [AST engine § Declared arms](docs/components/ast-engine.md#declared-arms).
+_Avoid_: soft arm, signature null
+
+**Proven arm**:
+A union arm the body itself proves, such as a literal `null`, `?? null`, or a ternary's or `match` arm's `null`. An outer declaration never replaces it. Every arm that is not a declared arm is proven.
+_Avoid_: hard arm, body null
+
+**Declaration mode**:
+How inference reads a value under an outer declaration, marking each declared arm so the declaration can replace it. The gap mode brings it.
+_Avoid_: soft mode, softening
 
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.

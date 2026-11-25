@@ -3,6 +3,7 @@ import type { DeclaredPropsEvent } from './app/events/DeclaredPropsEvent';
 import type { DispatchRelayed } from './app/events/DispatchRelayed';
 import type { DocblockShapedEvent } from './app/events/DocblockShapedEvent';
 import type { EnumBroadcastEvent } from './app/events/EnumBroadcastEvent';
+import type { EnumWrapsBroadcast } from './app/events/EnumWrapsBroadcast';
 import type { FacilityAudited } from './app/events/FacilityAudited';
 import type { HandoverListed } from './app/events/HandoverListed';
 import type { ManifestAssembled } from './app/events/ManifestAssembled';
@@ -35,6 +36,7 @@ declare module "@laravel/echo" {
         ".Workbench.App.Events.DispatchRelayed": DispatchRelayed;
         ".Workbench.App.Events.DocblockShapedEvent": DocblockShapedEvent;
         ".Workbench.App.Events.EnumBroadcastEvent": EnumBroadcastEvent;
+        ".Workbench.App.Events.EnumWrapsBroadcast": EnumWrapsBroadcast;
         ".Workbench.App.Events.FacilityAudited": FacilityAudited;
         ".Workbench.App.Events.HandoverListed": HandoverListed;
         ".Workbench.App.Events.ManifestAssembled": ManifestAssembled;

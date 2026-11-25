@@ -3701,7 +3701,7 @@ declare global {
             wrapped_status_fallback: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType };
             latest_status_or_history: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
             wrapped_history_or_scalar: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType;
-            wrapped_history_or_array: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType[];
+            wrapped_history_or_array: workbench.app.enums.StatusType[];
         }
         /** Resource for testing @var null|Type docblock ordering (null-first convention). */
         export interface EnumNullFirstResource {
@@ -5831,7 +5831,7 @@ declare global {
          */
         export interface TeamStatusAuditResource {
             id: number;
-            audit: { status: workbench.app.enums.StatusType[] | workbench.app.enums.StatusType[] };
+            audit: { status: workbench.app.enums.StatusType[] };
         }
         /**
          * A local assigned from an `instanceof` ternary whose proven arm reads a relation only the subclass declares keeps the
@@ -6442,16 +6442,18 @@ declare global {
             nested_closure_return: { is_pinned: true; ones: number[]; detail: string } | { is_pinned: false; ones: number[]; detail: null };
         }
         /**
-         * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
-         * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
-         * another text, and a shared key beside a dependent's nested enum (GH-157).
+         * Objects holding two same-named enums, one of them inside a nested value: each literal splits, every token naming its
+         * own enum. Swapped at the top level, swapped nested with another text, and a shared key beside a dependent's nested
+         * enum (GH-157, GH-76).
          */
-        export interface SwappedEnumsResource {
-            priority: workbench.app.enums.PriorityType | null;
-            stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } | { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType } | null;
-            meta: { priority: workbench.app.enums.PriorityType | null; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } | { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType; extra: boolean } | null };
-            shared: { status: workbench.app.enums.StatusType; is_pinned: boolean; lead: { stage: workbench.crm.enums.StatusType } | null };
-        }
+        export type SwappedEnumsResource = {
+            meta: { priority: 0; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } } | { priority: 1; stages: { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null };
+            shared: { status: workbench.app.enums.StatusType; is_pinned: true; lead: { stage: workbench.crm.enums.StatusType } } | { status: workbench.app.enums.StatusType; is_pinned: false; lead: null };
+        } & (
+            | { priority: 0; stages: { primary: workbench.app.enums.StatusType; secondary: workbench.crm.enums.StatusType } }
+            | { priority: 1; stages: { primary: workbench.crm.enums.StatusType; secondary: workbench.app.enums.StatusType } }
+            | { priority: 2 | 3 | null; stages: null }
+        );
         /**
          * Arms that spell one text, each binding the two same-named resources in the other order: Low and Medium stay apart,
          * at the top level and nested (GH-157).
@@ -6508,6 +6510,250 @@ declare global {
             flag_title: string | null;
             mode: 'on' | 'off';
             mode_title: string | null;
+        }
+    }
+    export namespace workbench.app.http.resources.docblockReads {
+        /** `@var X[]` over string-keyed locals with controls, and a typed two-array `array_map()` (GH-134; plan tasks T1, T4). */
+        export interface BracketVarResource {
+            comments_by_slug: workbench.app.models.Comment[];
+            comments_by_slug_nested: { inner: workbench.app.models.Comment[] };
+            comment_contents_by_slug_mapped: string[];
+            comment_contents_by_slug_collected: string[];
+            comment_record: Record<string, workbench.app.models.Comment>;
+            comment_list: workbench.app.models.Comment[];
+            options_by_name: { itemId: number }[];
+            options_by_name_nested: { inner: { itemId: number }[] };
+            option_ids_by_name_mapped: number[];
+            option_ids_by_name_collected: number[];
+            option_record: Record<string, { itemId: number }>;
+            option_list: { itemId: number }[];
+            zipped_with_untyped_posts: { content: string; title: string }[];
+            titles_from_untyped_posts: string[] | Record<string, string>;
+            zipped_typed_comments: { content: string; id: number }[];
+        }
+        /**
+         * An outer declaration over a value, an inline `@var`, a `toArray()` `@return` key or a closure `@return`: it replaces
+         * each arm only a declaration produced, and keeps each arm the body proves (GH-134; plan task T5).
+         *
+         * `featured_image_url` is a nullable string column, `title` a NOT NULL one, and a comment's `parent_id` a nullable key.
+         */
+        export interface DeclaredArmsResource {
+            var_closure_nullable: workbench.app.models.Post[];
+            var_closure_model: workbench.app.models.Post[];
+            var_closure_model_narrowed: workbench.app.models.Post[];
+            var_closure_filtered: workbench.app.models.Post[];
+            var_two_array_nullsafe: string[];
+            var_param_nullsafe: string[];
+            var_nullable_return: string[];
+            var_hedged_map: string[];
+            var_first_kid_name: string;
+            var_parent_ids: number[];
+            var_column: string;
+            var_mapped_column: string[];
+            var_zipped: { content: string; other: number }[];
+            var_flags: true[];
+            decl_closure_nullable: workbench.app.models.Post[];
+            decl_closure_array: { a: number }[];
+            decl_two_array_nullsafe: string[];
+            decl_param_nullsafe: string[];
+            decl_nullable_return: string[];
+            decl_hedged_map: string[];
+            decl_first_kid_name: string;
+            decl_column: string;
+            when_closure_nullable?: workbench.app.models.Post[];
+            when_closure_array?: { a: number }[];
+            when_column?: string;
+            when_first_kid_name?: string;
+            when_flags?: true[];
+            bare_closure_nullable: (workbench.app.models.Post | null)[];
+            bare_param_nullsafe: (string | null)[];
+            bare_hedged_map: (string | null)[] | Record<string, string | null>;
+            bare_first_kid_name: string | null;
+            bare_column: string | null;
+            bare_zipped: { content: string; other: unknown }[];
+            var_ternary: string | null;
+            var_coalesce_null: string | null;
+            var_coalesced: string;
+            var_uncovered: { a: number; b: string | null };
+            var_mixed: string | null;
+            var_nullable_column: string | null;
+            var_proven_nullsafe: string | null;
+            var_mapped_coalesce_null: (string | null)[];
+            decl_ternary: string | null;
+            decl_coalesce_null: string | null;
+            decl_nullable_column: string | null;
+            when_ternary?: string | null;
+            when_nullable_column?: string | null;
+        }
+        /** A closure `@param` naming a class that is not a model, each beside its native twin (GH-134; plan task T2). */
+        export interface ParamTagClassesResource {
+            private_amounts_by_param_tag: string[] | Record<string, string>;
+            private_amounts_by_native_type: string[] | Record<string, string>;
+            interface_labels_by_param_tag: string[] | Record<string, string>;
+            interface_labels_by_native_type: string[] | Record<string, string>;
+            backed_enum_values_by_param_tag: (string | number)[] | Record<string, string | number>;
+            backed_enum_values_by_native_type: (string | number)[] | Record<string, string | number>;
+            unit_enum_names_by_param_tag: string[] | Record<string, string>;
+            unit_enum_names_by_native_type: string[] | Record<string, string>;
+            collection_counts_by_param_tag: number[] | Record<string, number>;
+            collection_counts_by_native_type: number[] | Record<string, number>;
+            abstract_areas_by_param_tag: number[] | Record<string, number>;
+            abstract_areas_by_native_type: number[] | Record<string, number>;
+            loose_labels_by_param_tag: string[] | Record<string, string>;
+            loose_labels_by_native_type: string[] | Record<string, string>;
+        }
+        /**
+         * `self` inside a generic `@var` in a final class's trait and own body, beside the class named there (GH-134; plan
+         * task T3).
+         */
+        export interface SelfGenericVarResource {
+            self_kid_names: string[];
+            named_kid_names: string[];
+            self_first_kid_name: string | null;
+            named_first_kid_name: string | null;
+            self_kid_name_list: string[];
+            named_kid_name_list: string[];
+            self_kid_sort_orders: number[];
+            named_kid_sort_orders: number[];
+            own_self_kid_name_list: string[];
+            own_named_kid_name_list: string[];
+            own_self_first_kid_name: string | null;
+            own_named_first_kid_name: string | null;
+            own_self_kid_sort_orders: number[];
+            own_named_kid_sort_orders: number[];
+        }
+    }
+    export namespace workbench.app.http.resources.droppedArms {
+        /**
+         * Under Laravel's `array<string, mixed>` stub, an arm no rule types beside a typed one (GH-161): `cache()` sends
+         * `null` here, beside an arrow override, a list of them, and lists of two same-named users.
+         */
+        export interface ArmBesideDropResource {
+            cb: () => string;
+            cbs: (() => string)[];
+            users: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+        /** A key the `@return` does not name, holding an arm no rule types beside two same-named users (GH-161). */
+        export interface ArmBesideTypedKeyResource {
+            n: number;
+            users: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+        /** A held local that keeps the `cache()` list a spread may write over an earlier string (GH-162 E1 guard). */
+        export interface FoldSiteDropResource {
+            spread_local_held: { k: string | number[] };
+        }
+        /** The same-named users of ArmBesideDropResource joined by a returned variable's branches (GH-161). */
+        export interface WalkedArmDropResource {
+            users: workbench.app.models.User[] | workbench.crm.models.User[];
+        }
+    }
+    export namespace workbench.app.http.resources.enumWraps {
+        /**
+         * Branches writing a wrap or a read of the app's or the CRM's `Status` into one key (GH-160, GH-76). Each branch sends
+         * its own enum, so the key keeps an arm for each, under its own alias.
+         */
+        export interface BranchedSameNamedWrapsResource {
+            written: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            read: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            nested: { w: workbench.app.enums.StatusType } | { w: workbench.crm.enums.StatusType };
+        }
+        /** A wrap, a bare read of the same enum and rows the `@return` fills (GH-160). The read sends the enum's value. */
+        export interface DeclaredWrapRowsResource {
+            subject: workbench.app.enums.StatusType | { s: workbench.app.enums.StatusType }[];
+        }
+        /**
+         * Lists array_filter() keeps of the app's and the CRM's `Status`, or of the `Address` model and its resource, each
+         * beside a later token of that name (GH-76, GH-160). The resource re-indexes each filtered list, so every token after
+         * one still names its own class.
+         */
+        export interface FilteredSameNamedListsResource {
+            either: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+            app_after: { list: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[]; one: workbench.app.enums.StatusType };
+            crm_after: { list: (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)[]; one: workbench.crm.enums.StatusType };
+            model_after: { list: (workbench.app.http.resources.Address | workbench.app.models.Address)[]; one: workbench.app.models.Address | null };
+            wrap_after: { list: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[]; one: workbench.app.enums.StatusType };
+            reads: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+            wraps: (workbench.crm.enums.StatusType | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+            addresses: (workbench.app.http.resources.Address | workbench.app.models.Address)[] | (workbench.app.models.Address | null)[];
+            mixed: (workbench.app.http.resources.Address | workbench.crm.enums.StatusType | workbench.app.models.Address | workbench.app.enums.StatusType)[] | workbench.app.enums.StatusType[];
+        }
+        /**
+         * Rows keyed by name and mapped to the app's and the CRM's `Status` (GH-160, GH-76): wrapped, read, and in an object.
+         * The list arm and the Record arm name each enum alike.
+         */
+        export interface KeyedSameNamedMapsResource {
+            wraps: (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)[] | Record<string, (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)>;
+            reads: (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)[] | Record<string, (workbench.app.enums.StatusType | workbench.crm.enums.StatusType)>;
+            objects: { app: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType }[] | Record<string, { app: workbench.app.enums.StatusType; crm: workbench.crm.enums.StatusType }>;
+        }
+        /**
+         * Two or more enum wraps below a top-level key, in a list, beside an object arm holding a wrap, and through `when()`
+         * (GH-160, GH-108). Each wrap sends its enum resource's object.
+         */
+        export interface NestedWrapsResource {
+            under_key: { subject: workbench.app.enums.StatusType | workbench.app.enums.RoleType };
+            in_list: (workbench.app.enums.StatusType | workbench.app.enums.RoleType)[];
+            two_levels: { outer: { inner: workbench.app.enums.StatusType | workbench.app.enums.RoleType } };
+            three_under_key: { subject: workbench.app.enums.StatusType | workbench.app.enums.RoleType | workbench.app.enums.VisibilityType };
+            three_top: workbench.app.enums.RoleType | workbench.app.enums.StatusType | workbench.app.enums.VisibilityType;
+            three_wraps_two_enums: workbench.app.enums.StatusType | workbench.app.enums.PriorityType | null;
+            wrap_or_object_wrap: workbench.app.enums.StatusType | { inner: workbench.app.enums.VisibilityType };
+            when_wrap_or_object_wrap: workbench.app.enums.StatusType | { inner: workbench.app.enums.VisibilityType };
+            when_two_wraps_one_nullable: workbench.app.enums.StatusType | workbench.app.enums.MediaTypeType | null;
+        }
+        /**
+         * Rows of the app and the CRM `Status`, or of names, in a ternary before two or three enum wraps, and a `null` first
+         * arm (GH-160). The rows send each enum's value, a wrap its object.
+         */
+        export interface RowsBesideWrapsResource {
+            rows_then_two_wraps: { c: workbench.crm.enums.StatusType; s: workbench.app.enums.StatusType }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType;
+            rows_then_three_wraps: { c: workbench.crm.enums.StatusType; s: workbench.app.enums.StatusType }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType | workbench.app.enums.VisibilityType;
+            named_rows_then_two_wraps: { n: string }[] | workbench.app.enums.StatusType | workbench.app.enums.RoleType;
+            null_then_two_wraps: workbench.app.enums.StatusType | workbench.app.enums.RoleType | null;
+        }
+        /**
+         * Wraps and reads of the app and the CRM `Status`, two enums that share a name (GH-160, GH-76). Each arm sends its own
+         * enum, so each keeps its own alias.
+         */
+        export interface SameNamedWrapsResource {
+            app_or_crm_wrap: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            app_or_crm_wrap_when: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            app_or_crm_wrap_under_key: { subject: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
+            wrap_or_two_reads: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+            crm_spread_over_wrap: { c: workbench.app.enums.StatusType | workbench.crm.enums.StatusType };
+            literals_nested_crm: { s: workbench.app.enums.StatusType; x: { c: workbench.crm.enums.StatusType } } | { s: workbench.app.enums.StatusType; x: null };
+            app_or_crm_wrap_or_read: workbench.app.enums.StatusType | workbench.crm.enums.StatusType;
+        }
+        /** A returned variable whose branches write one key as a wrap of the status or as the bare visibility (GH-134). */
+        export interface WalkedWrapResource {
+            id: number;
+            state: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
+        }
+        /**
+         * An enum wrap beside a bare read, a case, a `->value` or `->name` read, a literal or an object holding a read of the
+         * enum (GH-160, GH-108). The wrap sends its object, every other arm what it reads.
+         */
+        export interface WrapBesideReadResource {
+            wrap_or_helper_offset: workbench.app.enums.MediaTypeType;
+            wrap_or_nested_value: workbench.app.enums.MediaTypeType | string;
+            wrap_or_nested_nullable_value: workbench.app.enums.MediaTypeType | null;
+            match_wrap_read_literal: workbench.app.enums.StatusType | string;
+            match_wrap_value_name: workbench.app.enums.StatusType | workbench.app.enums.StatusKind;
+            match_wrap_value_other: workbench.app.enums.StatusType | string;
+            nested_make_or_collection_or_read: workbench.app.enums.StatusType | workbench.app.enums.StatusType[];
+            collection_or_plain_list: workbench.app.enums.StatusType[];
+            wrap_or_other_enum_case: workbench.app.enums.RoleType | workbench.app.enums.StatusType;
+            wrap_or_nested_nullable_case: workbench.app.enums.StatusType | null;
+            wrap_or_object_value: workbench.app.enums.MediaTypeType | { v: workbench.app.enums.MediaTypeType };
+        }
+        /**
+         * Enum wraps a helper returns or is passed (GH-108): a ternary of two wraps, a wrap over `whenHas()`, and a seed the
+         * helper writes a key into and returns.
+         */
+        export interface WrapHelpersResource {
+            picked: workbench.app.enums.StatusType | workbench.app.enums.VisibilityType | null;
+            status_wrap?: workbench.app.enums.StatusType;
+            card: { status: workbench.app.enums.StatusType; stamped: boolean };
         }
     }
     export namespace workbench.app.http.resources.jsonApi {
@@ -6646,6 +6892,264 @@ declare global {
         export interface SummaryCardResource {
             id: number;
             title: string;
+        }
+    }
+    export namespace workbench.app.http.resources.sameNamed {
+        /**
+         * The `Address` model beside `AddressResource`, which publishes as `Address` too (GH-76): side by side in an object, and
+         * as the two arms of a ternary. Each value keeps its own class's alias.
+         */
+        export interface AddressKindsResource {
+            data: { address: workbench.app.http.resources.Address | null; raw: workbench.app.models.Address | null };
+            either: workbench.app.models.Address | workbench.app.http.resources.Address | null;
+        }
+        /**
+         * A helper's declared shape alternating the app's and the CRM's `Status` over an untyped read (GH-81). Each token names
+         * the enum its member declares.
+         */
+        export interface DeclaredStatusesResource {
+            statuses: { a: workbench.app.enums.StatusType; b: workbench.crm.enums.StatusType; c: workbench.app.enums.StatusType | null };
+        }
+    }
+    export namespace workbench.app.http.resources.spreads {
+        /**
+         * Named keys and resource or model arms beside typed maps, before and after them (GH-161 D2, D3).
+         *
+         * `three_model_spreads` is a guard whose golden is develop's known-short reading until #80 l64: of two same-named
+         * users it keeps one arm.
+         */
+        export interface ArmBesideMapResource {
+            map_before_unfit_key: Omit<Record<string, string>, 'a'> & { a: number };
+            model_key_before_map: { user: workbench.app.models.User | string | null };
+            arm_before_map: Omit<TitleFlagArmResource, keyof Record<string, string>> & Record<string, string>;
+            map_before_arm: Omit<Record<string, string>, keyof TitleFlagArmResource> & TitleFlagArmResource;
+            arm_then_two_maps: Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>;
+            map_arm_map: Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>;
+            two_maps_then_arm: Omit<Record<string, string | number>, keyof IdTitleArmResource> & IdTitleArmResource;
+            key_arm_two_maps: Omit<IdTitleArmResource, 'n' | 'id' | 'by' | keyof Record<string, string | number>> & Omit<Record<string, string | number>, 'n' | 'id' | 'by'> & { n: number | string; id: number | string; by: string | number };
+            two_maps_then_null_arm: Omit<Record<string, string | number>, keyof NullNoteArmResource> & NullNoteArmResource;
+            null_arm_then_two_maps: Omit<NullNoteArmResource, keyof Record<string, string | number>> & Record<string, string | number>;
+            maybe_map_before_user_arm: workbench.app.http.resources.UserResource;
+            arm_then_maybe_map: TitleFlagArmResource;
+            maybe_map_then_arm: TitleFlagArmResource;
+            signature_arm_then_map: Omit<TagSignatureArmResource, keyof Record<string, string>> & Record<string, string>;
+            signature_arm_then_maybe_key: Omit<TagSignatureArmResource, 'name'> & { name?: number };
+            wrap_arm_then_map: Omit<StatusWrapArmResource, keyof Record<string, string>> & Record<string, string>;
+            wrap_arm_then_maybe_key: Omit<StatusWrapArmResource, 'name'> & { name?: number };
+            same_named_arm_after_map: Omit<Record<string, workbench.app.models.User>, keyof workbench.crm.models.User> & workbench.crm.models.User;
+            three_model_spreads: Omit<workbench.crm.models.User, keyof workbench.app.models.User> & workbench.crm.models.User;
+        }
+        /** Walk bases over an earlier key, `??=` of a key the walk lacks, resource spreads in merges (GH-161 B2a, B2b, B3, B6). */
+        export interface BaseFormsSpreadResource {
+            ternary_local_coalesced: { id: number; by: { name: string | null; email: string | null } };
+            ternary_local_given_key: { id: number; by: { name: string | null; email: string | null } };
+            match_local_given_key: { id: number; by: { name: string | null; email: string | null } };
+            elvis_local_given_key: { id: number; by: { name: string | null; email: string | null } };
+            elvis_base_helper: { id: number; by: { name: string | null; email: string | null } };
+            plus_assigned_ternary_helper: { id: number; by: { name: string | null; email: string | null }; n: number };
+            ternary_base_in_if_helper: { id: number; by: { name: string | null; email: string | null }; n?: number };
+            merged_ternary_helper: { id: number; by: { name: string | null; email: string | null } };
+            copied_ternary_helper: { id: number; by: { name: string | null; email: string | null } };
+            nested_coalesced_helper: { row: { id: number; by: { name: string | null; email: string | null } } };
+            static_coalesced_helper: { id: number; by: { name: string | null; email: string | null } };
+            flag_then_coalesced_helper: { id: number; by: boolean };
+            coalesced_under_exact_return: { id: number; by: { name: string | null; email: string | null } };
+            documented_coalesced_helper: { id: number; by: { name: string | null; email: string | null } };
+            ternary_only_helper: { id: number; by: { name: string | null; email: string | null } };
+            match_base_helper: { id: number; by: { name: string | null; email: string | null } };
+            returned_ternary_helper: { id: number; by: { name: string | null; email: string | null } };
+            old_coalesce_idiom_helper: { id: number; by: string };
+            plus_default_over_ternary: { by: string };
+            joined_local_base: { c: number };
+            returned_whole_ternary: Record<string, unknown>;
+            ternary_base_unheld_coalesce: { id: number; by: { name: string | null; email: string | null } };
+            literal_base_unheld_coalesce: { id: number; by: { name: string | null; email: string | null }; n: number };
+            helper_base_unheld_coalesce: { id: number; by: { name: string | null; email: string | null }; n: number };
+            unheld_coalesce: { a: number };
+            credited_title: number;
+            name: number;
+        }
+        /** Locals written and read inside one block, some of which then exit, each in a helper's returns (GH-161 B4, B5). */
+        export interface BlockReadSpreadResource {
+            one_return_after_block: { n?: number; by?: { name: string | null; email: string | null } };
+            unconditional_write_in_block: { by?: { name: string | null; email: string | null }; n?: number };
+            nested_read_in_block: { row?: { by: { name: string | null; email: string | null } }; n?: number };
+            read_in_else: { n?: number; by?: { name: string | null; email: string | null } };
+            read_in_elseif: { n?: number; by?: { name: string | null; email: string | null } };
+            read_in_switch_case: { by?: { name: string | null; email: string | null }; n?: number };
+            read_in_try: { by?: { name: string | null; email: string | null }; n?: number };
+            read_two_deep: { by?: { name: string | null; email: string | null }; n?: number };
+            read_in_when_closure?: { by: { name: string | null; email: string | null } };
+            read_in_loop_return: { by?: { name: string | null; email: string | null }; n?: number };
+            read_in_switch_one_path: { by: { name: string | null; email: string | null } };
+            read_in_try_rethrow: { by: { name: string | null; email: string | null } };
+            value_read_in_writing_block: { early?: unknown; n?: number };
+            maybe_local_value_in_block: { row?: unknown; n?: number };
+            condition_rewrites_local: { v?: unknown; n?: number };
+            emptiness_guard_throws: { row?: Record<string, number> | never[]; n?: number };
+            emptiness_guard_returns: { n?: number; row?: Record<string, number> | never[] };
+            conditional_unset_in_block: { row?: unknown; n?: number };
+            key_write_in_exiting_block: { by?: { name: string | null; email: string | null }; n?: number };
+            exiting_key_write_nested: { row?: { by: { name: string | null; email: string | null } }; n?: number };
+            exiting_maybe_key_write: { by?: { name: string | null; email: string | null }; n?: number };
+            whole_write_nested_in_exiting_block: { early?: { a: number }; late?: { a: number } };
+            nested_whole_write_then_spread: { by?: { name: string | null; email: string | null }; n?: number };
+        }
+        /**
+         * Two returns; the first spreads a local an inner `if` may write over an earlier `by` (GH-161). Where the local holds
+         * `by`, Laravel sends the title there.
+         */
+        export interface BranchedLocalSpreadResource {
+            by?: { name: string | null; email: string | null };
+            n?: number;
+        }
+        /** Merge closures whose returns include a partly read variable; collect() of a value or [] (GH-121 B7, GH-153 B8). */
+        export interface ClosureCollectReadsResource {
+            values_of_keyed_local: string[];
+            collected_keyed_local: unknown;
+            values_of_nullable_map: string[];
+            collected_nullable_map: unknown;
+            values_of_nullable_shape: string[];
+            collected_nullable_shape: unknown;
+            values_of_nullable_list: string[];
+            collected_nullable_list: string[];
+            collected_split_or_empty: unknown;
+            merged_when_lone_variable?: number;
+            merged_literal_beside_variable: number;
+            merged_literal_beside_appended: number;
+            merged_when_literal_beside_variable?: number;
+        }
+        /**
+         * A helper whose local may leave `by` unset, defaulted by `??=`, spread over an earlier `by` (GH-161). The helper
+         * always writes `by`, so Laravel sends the title or `'z'`, never the author.
+         */
+        export interface CoalescedHelperSpreadResource {
+            id: number;
+            by: { name: string | null; email: string | null };
+        }
+        /** An arm BaseFormsSpreadResource spreads inside a merge, over an earlier key of its own name (GH-121 B6). */
+        export interface CreditArmResource {
+            credited_title: string;
+            credited_flag: boolean;
+        }
+        /** An arm ArmBesideMapResource spreads beside two maps, whose `id` and `by` both fit their values (GH-161 D3). */
+        export interface IdTitleArmResource {
+            id: number;
+            by: string;
+        }
+        /** Lists and keyless values beside maps and named keys, and maps alone that may be empty (GH-161 D1, D2, D4a, D4b, D5). */
+        export interface ListSpreadsResource {
+            labels_method_then_ints: Record<string, string>;
+            ints_then_labels: Record<string, string>;
+            labels_then_ints_under_return: Record<string, string>;
+            labels_then_array_values: Record<string, string>;
+            labels_then_helper_list: Record<string, string>;
+            labels_then_local_list: Record<string, string>;
+            labels_then_other_list_method: Record<string, string>;
+            labels_then_keyless_count: Record<string, string>;
+            labels_then_nullable_list: Record<string, string>;
+            labels_then_rows: Record<string, string>;
+            labels_then_static_helper_list: Record<string, string>;
+            ints_plus_key: { x: number };
+            local_built_labels_then_ints: Record<string, string>;
+            local_ints_then_key_over_key: { by: string; z: number };
+            keyless_item_beside_key: { a: number };
+            list_plus_keyed: { a: string };
+            keyed_plus_list: { a: string };
+            coalesced_map_alone: Record<string, unknown>;
+            local_map_list_over_key: { by: { name: string | null; email: string | null } | string };
+            map_bool_key_list: Omit<Record<string, string>, 'x'> & { x: boolean };
+            map_list_bool_key: Omit<Record<string, string>, 'x'> & { x: boolean };
+            map_list_nullable_key: Omit<Record<string, string>, 'note'> & { note: string | null };
+            map_nullable_key: Omit<Record<string, string>, 'note'> & { note: string | null };
+            labels_method_plus_key: { by: number | string };
+            empty_default_map_alone: Record<string, string>;
+            preset_default_map_alone: Record<string, string>;
+            literal_body_map_alone: Record<string, string>;
+            literal_body_map_then_counts: Record<string, string | number>;
+            literal_body_map_then_labels: Record<string, string>;
+            emptiness_guarded_spread_throws: { row: Record<string, unknown> };
+            emptiness_guarded_spread_returns: { n?: number; row?: Record<string, unknown> };
+        }
+        /**
+         * Spreads of maps and lists that write keys again or add numbered keys (GH-161, GH-153): a map local given a named
+         * key over an earlier key, a list spread after a map, and a list spread beside a named key.
+         */
+        export interface MapSpreadsResource {
+            named_key_over_key: { by: { name: string | null; email: string | null }; z: number };
+            list_after_map: Record<string, string>;
+            list_beside_key: { x: string };
+        }
+        /** An arm ArmBesideMapResource spreads beside two maps, whose `note` is always null (GH-161 D3). */
+        export interface NullNoteArmResource {
+            id: number;
+            note: null;
+        }
+        /** A ternary of two literals `toArray()` returns whole, which publishes neither literal's keys (GH-161 B2a). */
+        export interface ReturnedTernaryResource {
+        }
+        /** An arm holding a number key beside an enum wrap (GH-161 D3). */
+        export interface StatusWrapArmResource {
+            id: number;
+            name: string;
+            status: workbench.app.enums.StatusType;
+        }
+        /** An arm whose members no reader lists: named keys beside a template-literal signature (GH-161 D3). */
+        export interface TagSignatureArmResource {
+            id: number;
+            name: string;
+            [key: `${string}_tag`]: string | undefined;
+        }
+        /** An arm ArmBesideMapResource spreads beside a string map, whose `by` the map's value does not fit (GH-161 D3). */
+        export interface TitleFlagArmResource {
+            name: string;
+            by: boolean;
+        }
+        /** A map method a subclass may override, spread over earlier keys, and other objects' seeded maps (GH-161 C2, Q-A). */
+        export interface TypedSeedSourceResource {
+            overridable_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            overridable_map_local: { by: { name: string | null; email: string | null } | string; z: number | string };
+            overridable_map_spread: { by: { name: string | null; email: string | null } | string; z: number | string };
+            seed_from_other_call: { seen: boolean; [key: string]: unknown };
+            seed_from_property: { seen: boolean; [key: string]: unknown };
+            seed_from_coalesced: { seen: boolean; [key: string]: unknown };
+            seed_from_static_call: { seen: boolean; [key: string]: unknown };
+            seed_from_other_call_nested: { row: unknown };
+        }
+        /** Typed maps and shapes written whole into a local, given a key, then spread over earlier keys (GH-161 C2, C3, C4). */
+        export interface TypedSeedSpreadResource {
+            tones_given_key_under_map_return: { by: { name: string | null; email: string | null }; z: number };
+            shape_method_given_key: { by: { name: string | null; email: string | null }; z: number };
+            map_property_given_key: { by: { name: string | null; email: string | null }; z: number };
+            local_receiver_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            static_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            filtered_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            map_plus_assigned_key: { by: { name: string | null; email: string | null }; z: number };
+            map_with_key_unset: { by: { name: string | null; email: string | null }; z: number };
+            own_delegate_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            docblock_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            coalesced_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            helper_built_map_given_key: { by: string; z: number };
+            shape_property_given_key: { by: { name: string | null; email: string | null }; z: number };
+            collected_map_given_key: { by: { name: string | null; email: string | null }; z: number };
+            number_map_given_key_on_one_path: { by: { name: string | null; email: string | null }; z: number };
+            map_over_earlier_tone: { tone: { name: string | null; email: string | null } };
+            map_given_two_keys: { by: { name: string | null; email: string | null }; z: number };
+            map_written_in_if_given_key: { by: { name: string | null; email: string | null }; z: number };
+            string_map_given_key_on_one_path: { by: { name: string | null; email: string | null }; z: number };
+            map_given_number_key_as_value: unknown;
+            map_given_number_key_spread: { by: { name: string | null; email: string | null } };
+            typed_open_local_over_keys: { by: { name: string | null; email: string | null }; z: number };
+            top_tones_given_key: { by: { name: string | null; email: string | null }; z: number };
+            top_map_over_earlier_tone: { tone: { name: string | null; email: string | null } };
+            top_shape_method_given_key: { by: { name: string | null; email: string | null } };
+            returned_map_given_number_key: { n: number };
+            top_typed_open_local_over_keys: { by: { name: string | null; email: string | null }; z: number };
+        }
+        /** A `when()` key spread over an earlier `by`, which InertiaPropsWalkController resolves (GH-161 A9, C3). */
+        export interface WhenKeySpreadResource {
+            id: number;
+            by?: string;
         }
     }
     export namespace workbench.blog.http.resources {
@@ -7074,6 +7578,10 @@ declare global {
         export interface EnumBroadcastEvent {
             status: workbench.app.enums.StatusType;
             color: workbench.app.enums.ColorType;
+        }
+        export interface EnumWrapsBroadcast {
+            status: workbench.app.enums.StatusType;
+            visibility: workbench.app.enums.VisibilityType | never[];
         }
         export interface FacilityAudited {
             facility: Partial<workbench.app.models.Facility>;

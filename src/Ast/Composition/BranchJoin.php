@@ -9,9 +9,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
@@ -34,14 +34,15 @@ final class BranchJoin
 {
     /**
      * Join branch analyses into an empty target: a key some branch lacks is optional and absent, a value any branch may
-     * remove stays so, channels merge as MethodAnalysis::merge() does, a cast survives only where every branch setting
-     * its key casts it alike, flatTypeAlias is the first non-null, and a lone branch's variants stay.
+     * remove stays so, channels merge as MethodAnalysis::merge() does, less each queue a branch only repeats of an
+     * earlier one, a cast survives only where every branch setting its key casts it alike, flatTypeAlias is the first
+     * non-null, and a lone branch's variants stay.
      *
      * A spread helper, a merge call and a literal's key with several sources drop an untyped branch
      * ($dropsUntypedBranches); only a merge call keeps the `null` left alone ($keepsLoneNull).
      *
      * A literal's key keeps `unknown` where its first branch is untyped, a held value PHP may still send
-     * ($keepsFirstUntyped), and two models or resources one name spells as two imported arms ($keepsClassesApart).
+     * ($keepsFirstUntyped). Two classes one name spells, of any token kind, stay two arms, each read by its class.
      *
      * @param  list<MethodAnalysis>  $analyses
      * @param  list<Node>  $returns  each branch's returned value, where the branches are a method's returns
@@ -52,7 +53,6 @@ final class BranchJoin
         bool $dropsUntypedBranches = false,
         bool $keepsLoneNull = false,
         bool $keepsFirstUntyped = false,
-        bool $keepsClassesApart = false,
         array $returns = [],
         ?AnalysisScope $scope = null,
     ): void {
@@ -80,6 +80,9 @@ final class BranchJoin
         /** @var array<array-key, list<ValueExpressionResult>> $classed each branch's value, with its classes */
         $classed = [];
 
+        /** @var list<MethodAnalysis> $merged each branch as its channels merge, without the queues it only repeats */
+        $merged = [];
+
         foreach ($analyses as $analysis) {
             // A key a branch writes twice, as a helper and a later key may, is one key it sends.
             foreach ($analysis->writtenProperties() as $prop) {
@@ -89,7 +92,14 @@ final class BranchJoin
                 $closed[$prop['name']] = ($closed[$prop['name']] ?? true) && isset($analysis->closedToDottedKeys[$prop['name']]);
             }
 
-            $channels->merge($analysis);
+            $branch = clone $analysis;
+
+            foreach ($merged as $earlier) {
+                $branch->dropRepeatsOf($earlier);
+            }
+
+            $merged[] = $branch;
+            $channels->merge($branch);
             $channels->properties = [];
 
             $flatTypeAlias ??= $analysis->flatTypeAlias;
@@ -102,6 +112,8 @@ final class BranchJoin
         /** @var array<array-key, Slots> $slots */
         $slots = [];
         $unalike = [];
+        /** @var array<array-key, ValueExpressionResult> $apart each key whose branches print two classes alike */
+        $apart = [];
 
         foreach ($propertyMap as $name => $entries) {
             if ($keepsFirstUntyped && $entries[0]['type'] === 'unknown') {
@@ -123,10 +135,12 @@ final class BranchJoin
                 ? null
                 : self::branchUnion($fillTypes, $dropsUntypedBranches, $keepsLoneNull, $declared);
 
-            // Text alone unions two same-named classes into one token; queueSplitClasses() queues both in branch order.
-            if ($keepsClassesApart && $bound && self::spellsClassesAlike($classed[$name])) {
-                $type = ValueResult::unionResults($classed[$name])['type'];
+            // Text alone unions two same-named classes into one token, so the key reads its classes off their union.
+            if (self::keepsClassesApart($type, $keySlots, $entries, $classed[$name])) {
+                $apart[$name] = ValueResult::unionResults($classed[$name]);
+                $type = $apart[$name]['type'];
                 $bodyType = $type;
+                $fillType = $fillType === null ? null : $type;
             }
 
             if ($keySlots !== []) {
@@ -171,7 +185,6 @@ final class BranchJoin
         }
 
         $target->properties = $properties;
-        $target->enumResources = $channels->enumResources;
         $target->nestedResources = $channels->nestedResources;
         $target->customImports = $channels->customImports;
         $target->directEnumFqcns = $channels->directEnumFqcns;
@@ -179,9 +192,9 @@ final class BranchJoin
         $target->inlineEnumFqcns = $channels->inlineEnumFqcns;
         $target->inlineModelFqcns = $channels->inlineModelFqcns;
         $target->inlineResourceFqcns = $channels->inlineResourceFqcns;
-        $target->multiEnumResourceFqcns = $channels->multiEnumResourceFqcns;
+        $target->alikeClassFqcns = $channels->alikeClassFqcns;
         $target->inlineEnumResourceFqcns = $channels->inlineEnumResourceFqcns;
-        $target->enumResourceArmShapes = $channels->enumResourceArmShapes;
+        $target->wrappedEnums = $channels->wrappedEnums;
         $target->casts = self::castsEveryBranchAgrees($analyses, array_keys($propertyMap));
         $target->carried = $channels->carried;
         $target->flatTypeAlias = $flatTypeAlias;
@@ -193,6 +206,10 @@ final class BranchJoin
         $target->declaredTokenFqcns = $slots;
         $target->variants = count($analyses) === 1 ? $analyses[0]->variants : null;
         $target->queueSplitClasses($analyses);
+
+        foreach ($apart as $name => $union) {
+            $target->requeueChannels((string) $name, $union);
+        }
 
         // No class stands behind a token of a key its branches spell unalike, so the key, now unknown, keeps none.
         foreach ($unalike as $name) {
@@ -406,30 +423,30 @@ final class BranchJoin
             ...(isset($analysis->nestedResources[$name]) ? ['resourceFqcn' => $analysis->nestedResources[$name]] : []),
             ...(($analysis->inlineModelFqcns[$name] ?? []) !== [] ? ['embeddedModelFqcns' => $analysis->inlineModelFqcns[$name]] : []),
             ...(($analysis->inlineResourceFqcns[$name] ?? []) !== [] ? ['embeddedResourceFqcns' => $analysis->inlineResourceFqcns[$name]] : []),
+            ...(($analysis->alikeClassFqcns[$name] ?? []) !== [] ? ['alikeClassFqcns' => $analysis->alikeClassFqcns[$name]] : []),
+            ...(isset($analysis->directEnumFqcns[$name]) ? ['directEnumFqcn' => $analysis->directEnumFqcns[$name]] : []),
+            ...(($analysis->inlineEnumFqcns[$name] ?? []) !== [] ? ['embeddedEnumFqcns' => $analysis->inlineEnumFqcns[$name]] : []),
+            ...(($analysis->inlineEnumResourceFqcns[$name] ?? []) !== [] ? ['embeddedEnumResourceFqcns' => $analysis->inlineEnumResourceFqcns[$name]] : []),
+            ...(($analysis->wrappedEnums[$name] ?? []) !== [] ? ['wrappedEnumFqcns' => $analysis->wrappedEnums[$name]] : []),
         ];
     }
 
     /**
-     * Whether a key's branch values spell two different models, or two different resources, with one name.
+     * Whether a key's branch values, joined into $type, are joined again by class: where two classes of any token kind
+     * print one name, and the join kept a type with no declared slots from fills that each repeat their branch's value.
      *
+     * A strict join's `unknown` stands, as a union by class would drop the branch it stands for. Declared slots say
+     * whose each token is themselves, and a fill another branch's value stands beside would lose its arm.
+     *
+     * @param  Slots  $keySlots
+     * @param  list<AnalyzedProperty>  $entries
      * @param  list<ValueExpressionResult>  $values
      */
-    private static function spellsClassesAlike(array $values): bool
+    private static function keepsClassesApart(string $type, array $keySlots, array $entries, array $values): bool
     {
-        $models = [];
-        $resources = [];
-
-        foreach ($values as $value) {
-            foreach ([...isset($value['modelFqcn']) ? [$value['modelFqcn']] : [], ...$value['embeddedModelFqcns'] ?? []] as $fqcn) {
-                $models[class_basename($fqcn)][$fqcn] = true;
-            }
-
-            foreach ([...isset($value['resourceFqcn']) ? [$value['resourceFqcn']] : [], ...$value['embeddedResourceFqcns'] ?? []] as $fqcn) {
-                $resources[TsNaming::resourceTypeName($fqcn)][$fqcn] = true;
-            }
-        }
-
-        return array_any([...$models, ...$resources], static fn (array $fqcns): bool => count($fqcns) > 1);
+        return $type !== 'unknown' && $keySlots === []
+            && array_all($entries, static fn (array $entry): bool => ($entry['fillType'] ?? $entry['type']) === $entry['type'])
+            && ClassIdentity::spellsTwoClassesAlike($values);
     }
 
     /**
@@ -444,15 +461,15 @@ final class BranchJoin
     {
         /** @var list<DeclaredArm> $joined */
         $joined = [];
-        $nullable = false;
+        $nulls = [];
 
         foreach ($types as $type) {
             $typeArms = $slotted[$type]
                 ?? array_map(static fn (string $arm): array => [$arm, []], TsTypeString::splitTopLevelUnion($type));
 
             foreach ($typeArms as $typeArm) {
-                if ($typeArm[0] === 'null') {
-                    $nullable = true;
+                if ($typeArm[0] === 'null' || $typeArm[0] === VisibleGaps::DECLARED_NULL) {
+                    $nulls[] = $typeArm[0];
                 } elseif ($typeArm[1] !== [] || ! in_array($typeArm[0], array_column($joined, 0), true)) {
                     $joined[] = $typeArm;
                 }
@@ -460,7 +477,7 @@ final class BranchJoin
         }
 
         $arms = array_column($joined, 0);
-        $arms = $nullable ? [...$arms, 'null'] : $arms;
+        $arms = $nulls === [] ? $arms : [...$arms, TsTypeString::hoistNull($nulls)];
 
         // Parentheses add no token, so the slots read the arms as they were declared.
         return [

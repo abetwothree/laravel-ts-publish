@@ -11,6 +11,7 @@ use JsonSerializable;
 
 /**
  * @phpstan-import-type TypesImportMap from Datable
+ * @phpstan-import-type ValuesImportMap from Datable
  *
  * @phpstan-type PropertyInfo = array{type: string, optional: bool}
  * @phpstan-type PropertiesList = array<array-key, PropertyInfo>
@@ -24,6 +25,7 @@ use JsonSerializable;
  *     properties: PropertiesList,
  *     typeImports: TypesImportMap,
  *     tsExtends: list<string>,
+ *     valueImports: ValuesImportMap,
  * }
  *
  * @implements Arrayable<string, mixed>
@@ -34,6 +36,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
      * @param  PropertiesList  $properties  Map of property name → ['type' => 'number', 'optional' => false]
      * @param  TypesImportMap  $typeImports  Map of import path → list of type names to import
      * @param  list<string>  $tsExtends  TypeScript extends clauses
+     * @param  ValuesImportMap  $valueImports  Map of import path → list of enum consts the types spell after `typeof`
      */
     public function __construct(
         public string $eventName,
@@ -45,6 +48,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
         public array $properties,
         public array $typeImports,
         public array $tsExtends = [],
+        public array $valueImports = [],
     ) {}
 
     /** @return BroadcastEventData */
@@ -60,6 +64,7 @@ final readonly class TsBroadcastEventDto implements Arrayable, Datable, Jsonable
             'properties' => $this->properties,
             'typeImports' => $this->typeImports,
             'tsExtends' => $this->tsExtends,
+            'valueImports' => $this->valueImports,
         ];
     }
 

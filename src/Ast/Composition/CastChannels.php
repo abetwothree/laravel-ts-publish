@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -156,7 +156,8 @@ final class CastChannels
             $enums = $this->enumsOf($analysis, $name);
             $models = $this->modelsOf($analysis, $name);
             $resources = $this->resourcesOf($analysis, $name);
-            $wraps = $this->wrapsOf($analysis, $name);
+            $wraps = $analysis->wrappedEnumFqcns($name);
+            $wrapped = $analysis->wrappedEnums[$name] ?? null;
 
             $cast = $analysis->casts[$name] ?? null;
             $analysis->forgetChannels($name);
@@ -165,10 +166,15 @@ final class CastChannels
                 $analysis->casts[$name] = $cast;
             }
 
+            // The value still sends each wrap whatever the text spells, so the key wraps them still.
+            if ($wrapped !== null) {
+                $analysis->wrappedEnums[$name] = $wrapped;
+            }
+
             $named = $declared === null ? null : $this->byKind(array_values(array_filter($declared)));
 
             [$kept, $carriedEnums] = $this->divide(
-                $enums, $type, $brought, ValueResult::enumTypeName(...), $broughtOver, $named['enums'] ?? null,
+                $enums, $type, $brought, EnumNames::typeName(...), $broughtOver, $named['enums'] ?? null,
             );
             $this->queue($analysis->inlineEnumFqcns, $analysis->directEnumFqcns, $name, $kept);
 
@@ -194,7 +200,7 @@ final class CastChannels
             // does not bring stays, and the publisher keeps the ones the text writes.
             $keptWraps = array_values(array_filter(
                 $wraps,
-                fn (string $fqcn): bool => ! in_array(ValueResult::enumConstName($fqcn), $brought, true),
+                fn (string $fqcn): bool => ! in_array(EnumNames::constName($fqcn), $brought, true),
             ));
 
             if ($keptWraps !== []) {
@@ -206,18 +212,16 @@ final class CastChannels
     }
 
     /**
-     * The enums whose type names a key's value carried, in the order its import channels queue them.
+     * The enums whose type names a key's value carried, in the order its import channels queue them, led by each enum
+     * it wraps that no type channel holds: a cast may spell a wrapped enum's value type for the object it sends.
      *
      * @return list<class-string>
      */
     private function enumsOf(MethodAnalysis $analysis, string $name): array
     {
-        return [
-            ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
-            ...(isset($analysis->directEnumFqcns[$name]) ? [$analysis->directEnumFqcns[$name]] : []),
-            ...($analysis->multiEnumResourceFqcns[$name] ?? []),
-            ...($analysis->inlineEnumFqcns[$name] ?? []),
-        ];
+        $typed = $analysis->readEnumFqcns($name);
+
+        return [...array_values(array_diff($analysis->wrappedEnumFqcns($name), $typed)), ...$typed];
     }
 
     /**
@@ -244,20 +248,6 @@ final class CastChannels
             ...(isset($analysis->nestedResources[$name]) ? [$analysis->nestedResources[$name]] : []),
             ...($analysis->inlineResourceFqcns[$name] ?? []),
         ];
-    }
-
-    /**
-     * The enums a key's value wrapped in an `EnumResource`, whose const an `AsEnum<typeof …>` would spell.
-     *
-     * @return list<class-string>
-     */
-    private function wrapsOf(MethodAnalysis $analysis, string $name): array
-    {
-        return array_values(array_unique([
-            ...(isset($analysis->enumResources[$name]) ? [$analysis->enumResources[$name]] : []),
-            ...($analysis->multiEnumResourceFqcns[$name] ?? []),
-            ...($analysis->inlineEnumResourceFqcns[$name] ?? []),
-        ]));
     }
 
     /**
@@ -376,12 +366,7 @@ final class CastChannels
         $names = array_flip(array_column($analysis->properties, 'name'));
         $referenced = [];
 
-        foreach ([
-            $analysis->enumResources,
-            $analysis->directEnumFqcns,
-            $analysis->modelFqcns,
-            $analysis->nestedResources,
-        ] as $map) {
+        foreach ([$analysis->directEnumFqcns, $analysis->modelFqcns, $analysis->nestedResources] as $map) {
             foreach ($map as $key => $fqcn) {
                 if (isset($names[$key])) {
                     $referenced[$fqcn] = true;
@@ -389,12 +374,7 @@ final class CastChannels
             }
         }
 
-        foreach ([
-            $analysis->multiEnumResourceFqcns,
-            $analysis->inlineEnumFqcns,
-            $analysis->inlineModelFqcns,
-            $analysis->inlineResourceFqcns,
-        ] as $map) {
+        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $fqcns) {
                 foreach ($fqcns as $fqcn) {
                     $referenced[$fqcn] = true;

@@ -18,12 +18,16 @@ use AbeTwoThree\LaravelTsPublish\Ast\Variants\Variant;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\VariantReader;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Unit\Ast\Variants\Fixtures\VariantFormsResource;
+use AbeTwoThree\LaravelTsPublish\Transformers\ResourceTransformer;
 use Illuminate\Support\Str;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\Ternary;
 use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\Status;
+use Workbench\App\Http\Resources\Discriminated\PinnedWrapsResource;
+use Workbench\App\Http\Resources\Discriminated\WrapArmsResource;
+use Workbench\App\Http\Resources\Discriminated\WrapOrReadResource;
 use Workbench\App\Models\Post;
 
 /**
@@ -387,3 +391,59 @@ it('makes no group where reading its arms leaves one out, and keeps neither the 
     expect($read)->toBeNull()
         ->and(DroppedUnionArms::dropped())->toBe($before);
 });
+
+// A wrap sends its enum as an object, so a key that wraps one never discriminates, whether the wrap prints `AsEnum` or,
+// without the tolki package, its enum's value type.
+it('never reads a key that wraps an enum as a discriminant', function (bool $tolki) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+    expect(variantsOf('wrapped_discriminant_kept'))->toBe([]);
+})->with(['tolki on' => [true], 'tolki off' => [false]]);
+
+// GH-160: with the tolki package a wrap and a read of one enum print apart, so their values split; without it both
+// print the enum's value type and stay one variant, as a key holding the wrap never discriminates either way.
+it('splits the values a wrap and a read of one enum send only where they print apart', function (string $resource, bool $tolki, array $rows) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+    expect(variantRows(resolve(AstEngine::class)->analyzeMethod($resource)))->toBe($rows);
+})->with([
+    'a wrap or a read, tolki on' => [WrapOrReadResource::class, true, [
+        'priority' => [
+            ['0', ['status' => 'AsEnum<typeof Status>', 'tally' => 'number']],
+            ['1', ['status' => 'StatusType', 'tally' => 'number']],
+            ['2 | 3 | null', ['status' => 'null', 'tally' => 'string']],
+        ],
+        'is_pinned' => [['true', ['stage' => 'AsEnum<typeof Status>']], ['false', ['stage' => 'StatusType']]],
+    ]],
+    'a wrap or a read, tolki off' => [WrapOrReadResource::class, false, [
+        'priority' => [
+            ['0 | 1', ['status' => 'StatusType', 'tally' => 'number']],
+            ['2 | 3 | null', ['status' => 'null', 'tally' => 'string']],
+        ],
+    ]],
+    'two wraps, tolki on' => [PinnedWrapsResource::class, true, [
+        'is_pinned' => [
+            ['true', ['state' => 'AsEnum<typeof Status>', 'stage' => 'StatusType', 'author' => 'UserResource']],
+            ['false', ['state' => 'AsEnum<typeof Visibility> | null', 'stage' => 'StatusType', 'author' => '-']],
+        ],
+    ]],
+    'two wraps, tolki off' => [PinnedWrapsResource::class, false, [
+        'is_pinned' => [
+            ['true', ['state' => 'StatusType', 'stage' => 'StatusType', 'author' => 'UserResource']],
+            ['false', ['state' => 'VisibilityType | null', 'stage' => 'StatusType', 'author' => '-']],
+        ],
+    ]],
+]);
+
+// A nested literal beside a same-named enum read splits per variant in either mode: without the tolki package the
+// wrap's value type rides its member's queue once, so no enum the object nests is queued twice.
+it('splits a nested literal holding a wrap beside a same-named enum read, with or without the tolki package', function (bool $tolki, string $type) {
+    config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+    expect(new ResourceTransformer(WrapArmsResource::class)->properties['beside_same_named']['type'])->toBe($type);
+})->with([
+    'tolki on' => [true, '{ pinned: true; e: AsEnum<typeof WorkbenchStatus>; c: StatusType; v: number } '
+        .'| { pinned: false; e: AsEnum<typeof WorkbenchStatus>; c: StatusType; v: null }'],
+    'tolki off' => [false, '{ pinned: true; e: WorkbenchStatusType; c: CrmStatusType; v: number } '
+        .'| { pinned: false; e: WorkbenchStatusType; c: CrmStatusType; v: null }'],
+]);

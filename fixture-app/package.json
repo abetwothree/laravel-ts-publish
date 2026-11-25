@@ -13,7 +13,7 @@
         "@tolki/ts": "^1.1.1",
         "laravel-echo": "^2.6.3",
         "pusher-js": "^8.6.0",
-        "vue": "^3.5.45"
+        "vue": "^3.5.46"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.3.5",

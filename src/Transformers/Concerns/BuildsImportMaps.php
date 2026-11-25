@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers\Concerns;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -70,17 +71,27 @@ trait BuildsImportMaps
     /**
      * Collect modular (per-file) const/value imports for a set of FQCNs.
      *
+     * With `$spelledIn`, a const is imported only when those types spell its local name after `typeof`.
+     *
      * @param  list<string>  $fqcns  List of enum FQCNs to import
+     * @param  list<string>|null  $spelledIn  the types the file publishes, as it spells them
      * @return TypesImportMap
      */
-    protected function collectModularValueImports(array $fqcns): array
+    protected function collectModularValueImports(array $fqcns, ?array $spelledIn = null): array
     {
         $imports = [];
+        $spelled = $spelledIn === null ? null : EnumWrapImports::consts(...$spelledIn);
 
         foreach ($fqcns as $fqcn) {
+            $name = $this->formatConstImportName($fqcn);
+
+            if ($spelled !== null && ! in_array(ImportMaps::localName($name), $spelled, true)) {
+                continue;
+            }
+
             $targetPath = TsNaming::namespaceToPath($fqcn);
             $importPath = TsNaming::relativeImportPath($this->namespacePath, $targetPath);
-            $imports[$importPath][] = $this->formatConstImportName($fqcn);
+            $imports[$importPath][] = $name;
         }
 
         return $imports;

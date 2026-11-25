@@ -85,6 +85,23 @@
                 }
             ]
         },
+        "Workbench\\App\\Events\\EnumWrapsBroadcast": {
+            "name": "EnumWrapsBroadcast",
+            "eventName": "EnumWrapsBroadcast",
+            "broadcastName": ".Workbench.App.Events.EnumWrapsBroadcast",
+            "properties": [
+                {
+                    "name": "status",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                },
+                {
+                    "name": "visibility",
+                    "type": "AsEnum<typeof Visibility> | never[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Events\\FacilityAudited": {
             "name": "FacilityAudited",
             "eventName": "FacilityAudited",
@@ -14637,25 +14654,18 @@
             "name": "SwappedEnumsResource",
             "properties": [
                 {
-                    "name": "priority",
-                    "type": "PriorityType | null",
-                    "optional": false
-                },
-                {
-                    "name": "stages",
-                    "type": "{ primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType } | null",
-                    "optional": false
-                },
-                {
                     "name": "meta",
-                    "type": "{ priority: PriorityType | null; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } | { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } | null }",
+                    "type": "{ priority: 0; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: WorkbenchStatusType; extra: boolean } } | { priority: 2 | 3 | null; stages: null }",
                     "optional": false
                 },
                 {
                     "name": "shared",
-                    "type": "{ status: WorkbenchStatusType; is_pinned: boolean; lead: { stage: CrmStatusType } | null }",
+                    "type": "{ status: WorkbenchStatusType; is_pinned: true; lead: { stage: CrmStatusType } } | { status: WorkbenchStatusType; is_pinned: false; lead: null }",
                     "optional": false
                 }
+            ],
+            "variants": [
+                "{ priority: 0; stages: { primary: WorkbenchStatusType; secondary: CrmStatusType } } | { priority: 1; stages: { primary: CrmStatusType; secondary: WorkbenchStatusType } } | { priority: 2 | 3 | null; stages: null }"
             ]
         },
         "Workbench\\App\\Http\\Resources\\Discriminated\\SwappedResourcesResource": {
@@ -14765,6 +14775,471 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\BracketVarResource": {
+            "name": "BracketVarResource",
+            "properties": [
+                {
+                    "name": "comments_by_slug",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "comments_by_slug_nested",
+                    "type": "{ inner: Comment[] }",
+                    "optional": false
+                },
+                {
+                    "name": "comment_contents_by_slug_mapped",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "comment_contents_by_slug_collected",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "comment_record",
+                    "type": "Record<string, Comment>",
+                    "optional": false
+                },
+                {
+                    "name": "comment_list",
+                    "type": "Comment[]",
+                    "optional": false
+                },
+                {
+                    "name": "options_by_name",
+                    "type": "{ itemId: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "options_by_name_nested",
+                    "type": "{ inner: { itemId: number }[] }",
+                    "optional": false
+                },
+                {
+                    "name": "option_ids_by_name_mapped",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "option_ids_by_name_collected",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "option_record",
+                    "type": "Record<string, { itemId: number }>",
+                    "optional": false
+                },
+                {
+                    "name": "option_list",
+                    "type": "{ itemId: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "zipped_with_untyped_posts",
+                    "type": "{ content: string; title: string }[]",
+                    "optional": false
+                },
+                {
+                    "name": "titles_from_untyped_posts",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "zipped_typed_comments",
+                    "type": "{ content: string; id: number }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\DeclaredArmsResource": {
+            "name": "DeclaredArmsResource",
+            "properties": [
+                {
+                    "name": "var_closure_nullable",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_model",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_model_narrowed",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_closure_filtered",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_two_array_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_param_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_nullable_return",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_hedged_map",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_first_kid_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "var_parent_ids",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_column",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "var_mapped_column",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_zipped",
+                    "type": "{ content: string; other: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_flags",
+                    "type": "true[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_closure_nullable",
+                    "type": "Post[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_closure_array",
+                    "type": "{ a: number }[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_two_array_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_param_nullsafe",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_nullable_return",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_hedged_map",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_first_kid_name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "decl_column",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "when_closure_nullable",
+                    "type": "Post[]",
+                    "optional": true
+                },
+                {
+                    "name": "when_closure_array",
+                    "type": "{ a: number }[]",
+                    "optional": true
+                },
+                {
+                    "name": "when_column",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "when_first_kid_name",
+                    "type": "string",
+                    "optional": true
+                },
+                {
+                    "name": "when_flags",
+                    "type": "true[]",
+                    "optional": true
+                },
+                {
+                    "name": "bare_closure_nullable",
+                    "type": "(Post | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "bare_param_nullsafe",
+                    "type": "(string | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "bare_hedged_map",
+                    "type": "(string | null)[] | Record<string, string | null>",
+                    "optional": false
+                },
+                {
+                    "name": "bare_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "bare_column",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "bare_zipped",
+                    "type": "{ content: string; other: unknown }[]",
+                    "optional": false
+                },
+                {
+                    "name": "var_ternary",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_coalesce_null",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_coalesced",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "var_uncovered",
+                    "type": "{ a: number; b: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "var_mixed",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_nullable_column",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_proven_nullsafe",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "var_mapped_coalesce_null",
+                    "type": "(string | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "decl_ternary",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "decl_coalesce_null",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "decl_nullable_column",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "when_ternary",
+                    "type": "string | null",
+                    "optional": true
+                },
+                {
+                    "name": "when_nullable_column",
+                    "type": "string | null",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\ParamTagClassesResource": {
+            "name": "ParamTagClassesResource",
+            "properties": [
+                {
+                    "name": "private_amounts_by_param_tag",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "private_amounts_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "interface_labels_by_param_tag",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "interface_labels_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "backed_enum_values_by_param_tag",
+                    "type": "(string | number)[] | Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "backed_enum_values_by_native_type",
+                    "type": "(string | number)[] | Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "unit_enum_names_by_param_tag",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "unit_enum_names_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "collection_counts_by_param_tag",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "collection_counts_by_native_type",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "abstract_areas_by_param_tag",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "abstract_areas_by_native_type",
+                    "type": "number[] | Record<string, number>",
+                    "optional": false
+                },
+                {
+                    "name": "loose_labels_by_param_tag",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "loose_labels_by_native_type",
+                    "type": "string[] | Record<string, string>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DocblockReads\\SelfGenericVarResource": {
+            "name": "SelfGenericVarResource",
+            "properties": [
+                {
+                    "name": "self_kid_names",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "named_kid_names",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "self_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "named_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "self_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "named_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "self_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "named_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_self_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_named_kid_name_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_self_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "own_named_first_kid_name",
+                    "type": "string | null",
+                    "optional": false
+                },
+                {
+                    "name": "own_self_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                },
+                {
+                    "name": "own_named_kid_sort_orders",
+                    "type": "number[]",
+                    "optional": false
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\DocumentedRecipientsResource": {
             "name": "DocumentedRecipientsResource",
             "properties": [
@@ -14781,6 +15256,61 @@
                 {
                     "name": "typed",
                     "type": "{ name: string | null; email: string | null }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideDropResource": {
+            "name": "ArmBesideDropResource",
+            "properties": [
+                {
+                    "name": "cb",
+                    "type": "() => string",
+                    "optional": false
+                },
+                {
+                    "name": "cbs",
+                    "type": "(() => string)[]",
+                    "optional": false
+                },
+                {
+                    "name": "users",
+                    "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideTypedKeyResource": {
+            "name": "ArmBesideTypedKeyResource",
+            "properties": [
+                {
+                    "name": "n",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "users",
+                    "type": "WorkbenchUser[] | CrmUser[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\FoldSiteDropResource": {
+            "name": "FoldSiteDropResource",
+            "properties": [
+                {
+                    "name": "spread_local_held",
+                    "type": "{ k: string | number[] }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\DroppedArms\\WalkedArmDropResource": {
+            "name": "WalkedArmDropResource",
+            "properties": [
+                {
+                    "name": "users",
+                    "type": "WorkbenchUser[] | CrmUser[]",
                     "optional": false
                 }
             ]
@@ -15030,6 +15560,316 @@
                 {
                     "name": "value",
                     "type": "MediaTypeType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\BranchedSameNamedWrapsResource": {
+            "name": "BranchedSameNamedWrapsResource",
+            "properties": [
+                {
+                    "name": "written",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "read",
+                    "type": "WorkbenchStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "nested",
+                    "type": "{ w: AsEnum<typeof WorkbenchStatus> } | { w: AsEnum<typeof CrmStatus> }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\DeclaredWrapRowsResource": {
+            "name": "DeclaredWrapRowsResource",
+            "properties": [
+                {
+                    "name": "subject",
+                    "type": "AsEnum<typeof Status> | StatusType | { s: StatusType }[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\FilteredSameNamedListsResource": {
+            "name": "FilteredSameNamedListsResource",
+            "properties": [
+                {
+                    "name": "either",
+                    "type": "(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "app_after",
+                    "type": "{ list: (CrmStatusType | WorkbenchStatusType)[]; one: WorkbenchStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "crm_after",
+                    "type": "{ list: (WorkbenchStatusType | CrmStatusType)[]; one: CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "model_after",
+                    "type": "{ list: (WorkbenchAddress | WorkbenchAddress2)[]; one: WorkbenchAddress2 | null }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_after",
+                    "type": "{ list: (AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[]; one: AsEnum<typeof WorkbenchStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(CrmStatusType | WorkbenchStatusType)[] | WorkbenchStatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof CrmStatus> | AsEnum<typeof WorkbenchStatus>)[] | AsEnum<typeof WorkbenchStatus>[]",
+                    "optional": false
+                },
+                {
+                    "name": "addresses",
+                    "type": "(WorkbenchAddress | WorkbenchAddress2)[] | (WorkbenchAddress2 | null)[]",
+                    "optional": false
+                },
+                {
+                    "name": "mixed",
+                    "type": "(WorkbenchAddress | AsEnum<typeof CrmStatus> | WorkbenchAddress2 | AsEnum<typeof WorkbenchStatus>)[] | AsEnum<typeof WorkbenchStatus>[]",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\KeyedSameNamedMapsResource": {
+            "name": "KeyedSameNamedMapsResource",
+            "properties": [
+                {
+                    "name": "wraps",
+                    "type": "(AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>)[] | Record<string, (AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>)>",
+                    "optional": false
+                },
+                {
+                    "name": "reads",
+                    "type": "(WorkbenchStatusType | CrmStatusType)[] | Record<string, (WorkbenchStatusType | CrmStatusType)>",
+                    "optional": false
+                },
+                {
+                    "name": "objects",
+                    "type": "{ app: WorkbenchStatusType; crm: CrmStatusType }[] | Record<string, { app: WorkbenchStatusType; crm: CrmStatusType }>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\NestedWrapsResource": {
+            "name": "NestedWrapsResource",
+            "properties": [
+                {
+                    "name": "under_key",
+                    "type": "{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> }",
+                    "optional": false
+                },
+                {
+                    "name": "in_list",
+                    "type": "(AsEnum<typeof Status> | AsEnum<typeof Role>)[]",
+                    "optional": false
+                },
+                {
+                    "name": "two_levels",
+                    "type": "{ outer: { inner: AsEnum<typeof Status> | AsEnum<typeof Role> } }",
+                    "optional": false
+                },
+                {
+                    "name": "three_under_key",
+                    "type": "{ subject: AsEnum<typeof Status> | AsEnum<typeof Role> | AsEnum<typeof Visibility> }",
+                    "optional": false
+                },
+                {
+                    "name": "three_top",
+                    "type": "AsEnum<typeof Role> | AsEnum<typeof Status> | AsEnum<typeof Visibility>",
+                    "optional": false
+                },
+                {
+                    "name": "three_wraps_two_enums",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Priority> | null",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_object_wrap",
+                    "type": "AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> }",
+                    "optional": false
+                },
+                {
+                    "name": "when_wrap_or_object_wrap",
+                    "type": "AsEnum<typeof Status> | { inner: AsEnum<typeof Visibility> }",
+                    "optional": false
+                },
+                {
+                    "name": "when_two_wraps_one_nullable",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof MediaType> | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\RowsBesideWrapsResource": {
+            "name": "RowsBesideWrapsResource",
+            "properties": [
+                {
+                    "name": "rows_then_two_wraps",
+                    "type": "{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>",
+                    "optional": false
+                },
+                {
+                    "name": "rows_then_three_wraps",
+                    "type": "{ c: CrmStatusType; s: WorkbenchStatusType }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | AsEnum<typeof Visibility>",
+                    "optional": false
+                },
+                {
+                    "name": "named_rows_then_two_wraps",
+                    "type": "{ n: string }[] | AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role>",
+                    "optional": false
+                },
+                {
+                    "name": "null_then_two_wraps",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof Role> | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\SameNamedWrapsResource": {
+            "name": "SameNamedWrapsResource",
+            "properties": [
+                {
+                    "name": "app_or_crm_wrap",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_when",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus>",
+                    "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_under_key",
+                    "type": "{ subject: AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_two_reads",
+                    "type": "AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType | CrmStatusType",
+                    "optional": false
+                },
+                {
+                    "name": "crm_spread_over_wrap",
+                    "type": "{ c: AsEnum<typeof WorkbenchStatus> | CrmStatusType }",
+                    "optional": false
+                },
+                {
+                    "name": "literals_nested_crm",
+                    "type": "{ s: WorkbenchStatusType; x: { c: CrmStatusType } } | { s: WorkbenchStatusType; x: null }",
+                    "optional": false
+                },
+                {
+                    "name": "app_or_crm_wrap_or_read",
+                    "type": "AsEnum<typeof WorkbenchStatus> | AsEnum<typeof CrmStatus> | WorkbenchStatusType",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\WalkedWrapResource": {
+            "name": "WalkedWrapResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "state",
+                    "type": "AsEnum<typeof Status> | VisibilityType | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\WrapBesideReadResource": {
+            "name": "WrapBesideReadResource",
+            "properties": [
+                {
+                    "name": "wrap_or_helper_offset",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_nested_value",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType | string",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_nested_nullable_value",
+                    "type": "AsEnum<typeof MediaType> | MediaTypeType | null",
+                    "optional": false
+                },
+                {
+                    "name": "match_wrap_read_literal",
+                    "type": "AsEnum<typeof Status> | StatusType | string",
+                    "optional": false
+                },
+                {
+                    "name": "match_wrap_value_name",
+                    "type": "AsEnum<typeof Status> | StatusType | StatusKind",
+                    "optional": false
+                },
+                {
+                    "name": "match_wrap_value_other",
+                    "type": "AsEnum<typeof Status> | StatusType | string",
+                    "optional": false
+                },
+                {
+                    "name": "nested_make_or_collection_or_read",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Status>[] | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "collection_or_plain_list",
+                    "type": "AsEnum<typeof Status>[] | StatusType[]",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_other_enum_case",
+                    "type": "AsEnum<typeof Role> | StatusType",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_nested_nullable_case",
+                    "type": "AsEnum<typeof Status> | StatusType | null",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_or_object_value",
+                    "type": "AsEnum<typeof MediaType> | { v: MediaTypeType }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\EnumWraps\\WrapHelpersResource": {
+            "name": "WrapHelpersResource",
+            "properties": [
+                {
+                    "name": "picked",
+                    "type": "AsEnum<typeof Status> | AsEnum<typeof Visibility> | null",
+                    "optional": false
+                },
+                {
+                    "name": "status_wrap",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": true
+                },
+                {
+                    "name": "card",
+                    "type": "{ status: AsEnum<typeof Status>; stamped: boolean }",
                     "optional": false
                 }
             ]
@@ -20393,17 +21233,17 @@
                 },
                 {
                     "name": "priority_when_not_null_make",
-                    "type": "AsEnum<typeof Priority> | PriorityType | null",
+                    "type": "PriorityType | AsEnum<typeof Priority> | null",
                     "optional": false
                 },
                 {
                     "name": "status_when_not_null_arrow",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "StatusType | AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
                     "name": "visibility_when_not_null_full",
-                    "type": "AsEnum<typeof Visibility> | VisibilityType | null",
+                    "type": "VisibilityType | AsEnum<typeof Visibility> | null",
                     "optional": false
                 },
                 {
@@ -20648,6 +21488,31 @@
                 {
                     "name": "control_arms",
                     "type": "CrmUser | { c: WorkbenchUser | null } | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\SameNamed\\AddressKindsResource": {
+            "name": "AddressKindsResource",
+            "properties": [
+                {
+                    "name": "data",
+                    "type": "{ address: WorkbenchAddress | null; raw: WorkbenchAddress2 | null }",
+                    "optional": false
+                },
+                {
+                    "name": "either",
+                    "type": "WorkbenchAddress2 | WorkbenchAddress | null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\SameNamed\\DeclaredStatusesResource": {
+            "name": "DeclaredStatusesResource",
+            "properties": [
+                {
+                    "name": "statuses",
+                    "type": "{ a: WorkbenchStatusType; b: CrmStatusType; c: WorkbenchStatusType | null }",
                     "optional": false
                 }
             ]
@@ -21442,6 +22307,950 @@
                 }
             ]
         },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ArmBesideMapResource": {
+            "name": "ArmBesideMapResource",
+            "properties": [
+                {
+                    "name": "map_before_unfit_key",
+                    "type": "Omit<Record<string, string>, 'a'> & { a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "model_key_before_map",
+                    "type": "{ user: WorkbenchUser | string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "arm_before_map",
+                    "type": "Omit<TitleFlagArmResource, keyof Record<string, string>> & Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "map_before_arm",
+                    "type": "Omit<Record<string, string>, keyof TitleFlagArmResource> & TitleFlagArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "arm_then_two_maps",
+                    "type": "Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "map_arm_map",
+                    "type": "Omit<IdTitleArmResource, keyof Record<string, string | number>> & Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "two_maps_then_arm",
+                    "type": "Omit<Record<string, string | number>, keyof IdTitleArmResource> & IdTitleArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "key_arm_two_maps",
+                    "type": "Omit<IdTitleArmResource, 'n' | 'id' | 'by' | keyof Record<string, string | number>> & Omit<Record<string, string | number>, 'n' | 'id' | 'by'> & { n: number | string; id: number | string; by: string | number }",
+                    "optional": false
+                },
+                {
+                    "name": "two_maps_then_null_arm",
+                    "type": "Omit<Record<string, string | number>, keyof NullNoteArmResource> & NullNoteArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "null_arm_then_two_maps",
+                    "type": "Omit<NullNoteArmResource, keyof Record<string, string | number>> & Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "maybe_map_before_user_arm",
+                    "type": "UserResource",
+                    "optional": false
+                },
+                {
+                    "name": "arm_then_maybe_map",
+                    "type": "TitleFlagArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "maybe_map_then_arm",
+                    "type": "TitleFlagArmResource",
+                    "optional": false
+                },
+                {
+                    "name": "signature_arm_then_map",
+                    "type": "Omit<TagSignatureArmResource, keyof Record<string, string>> & Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "signature_arm_then_maybe_key",
+                    "type": "Omit<TagSignatureArmResource, 'name'> & { name?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_arm_then_map",
+                    "type": "Omit<StatusWrapArmResource, keyof Record<string, string>> & Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "wrap_arm_then_maybe_key",
+                    "type": "Omit<StatusWrapArmResource, 'name'> & { name?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "same_named_arm_after_map",
+                    "type": "Omit<Record<string, WorkbenchUser>, keyof CrmUser> & CrmUser",
+                    "optional": false
+                },
+                {
+                    "name": "three_model_spreads",
+                    "type": "Omit<CrmUser, keyof WorkbenchUser> & CrmUser",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource": {
+            "name": "BaseFormsSpreadResource",
+            "properties": [
+                {
+                    "name": "ternary_local_coalesced",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_local_given_key",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "match_local_given_key",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "elvis_local_given_key",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "elvis_base_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "plus_assigned_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_base_in_if_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "merged_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "copied_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_coalesced_helper",
+                    "type": "{ row: { id: number; by: { name: string | null; email: string | null } } }",
+                    "optional": false
+                },
+                {
+                    "name": "static_coalesced_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "flag_then_coalesced_helper",
+                    "type": "{ id: number; by: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesced_under_exact_return",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "documented_coalesced_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_only_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "match_base_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "returned_ternary_helper",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "old_coalesce_idiom_helper",
+                    "type": "{ id: number; by: string }",
+                    "optional": false
+                },
+                {
+                    "name": "plus_default_over_ternary",
+                    "type": "{ by: string }",
+                    "optional": false
+                },
+                {
+                    "name": "joined_local_base",
+                    "type": "{ c: number }",
+                    "optional": false
+                },
+                {
+                    "name": "returned_whole_ternary",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "ternary_base_unheld_coalesce",
+                    "type": "{ id: number; by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "literal_base_unheld_coalesce",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_base_unheld_coalesce",
+                    "type": "{ id: number; by: { name: string | null; email: string | null }; n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "unheld_coalesce",
+                    "type": "{ a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "credited_title",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "number",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\BlockReadSpreadResource": {
+            "name": "BlockReadSpreadResource",
+            "properties": [
+                {
+                    "name": "one_return_after_block",
+                    "type": "{ n?: number; by?: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "unconditional_write_in_block",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_read_in_block",
+                    "type": "{ row?: { by: { name: string | null; email: string | null } }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_else",
+                    "type": "{ n?: number; by?: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_elseif",
+                    "type": "{ n?: number; by?: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_switch_case",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_try",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_two_deep",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_when_closure",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": true
+                },
+                {
+                    "name": "read_in_loop_return",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_switch_one_path",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "read_in_try_rethrow",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "value_read_in_writing_block",
+                    "type": "{ early?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "maybe_local_value_in_block",
+                    "type": "{ row?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "condition_rewrites_local",
+                    "type": "{ v?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guard_throws",
+                    "type": "{ row?: Record<string, number> | never[]; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guard_returns",
+                    "type": "{ n?: number; row?: Record<string, number> | never[] }",
+                    "optional": false
+                },
+                {
+                    "name": "conditional_unset_in_block",
+                    "type": "{ row?: unknown; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "key_write_in_exiting_block",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "exiting_key_write_nested",
+                    "type": "{ row?: { by: { name: string | null; email: string | null } }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "exiting_maybe_key_write",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                },
+                {
+                    "name": "whole_write_nested_in_exiting_block",
+                    "type": "{ early?: { a: number }; late?: { a: number } }",
+                    "optional": false
+                },
+                {
+                    "name": "nested_whole_write_then_spread",
+                    "type": "{ by?: { name: string | null; email: string | null }; n?: number }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\BranchedLocalSpreadResource": {
+            "name": "BranchedLocalSpreadResource",
+            "properties": [
+                {
+                    "name": "by",
+                    "type": "{ name: string | null; email: string | null }",
+                    "optional": true
+                },
+                {
+                    "name": "n",
+                    "type": "number",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ClosureCollectReadsResource": {
+            "name": "ClosureCollectReadsResource",
+            "properties": [
+                {
+                    "name": "values_of_keyed_local",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_keyed_local",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "values_of_nullable_map",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable_map",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "values_of_nullable_shape",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable_shape",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "values_of_nullable_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_nullable_list",
+                    "type": "string[]",
+                    "optional": false
+                },
+                {
+                    "name": "collected_split_or_empty",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "merged_when_lone_variable",
+                    "type": "number",
+                    "optional": true
+                },
+                {
+                    "name": "merged_literal_beside_variable",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "merged_literal_beside_appended",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "merged_when_literal_beside_variable",
+                    "type": "number",
+                    "optional": true
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\CoalescedHelperSpreadResource": {
+            "name": "CoalescedHelperSpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "{ name: string | null; email: string | null }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\CreditArmResource": {
+            "name": "CreditArmResource",
+            "properties": [
+                {
+                    "name": "credited_title",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "credited_flag",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\IdTitleArmResource": {
+            "name": "IdTitleArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "string",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ListSpreadsResource": {
+            "name": "ListSpreadsResource",
+            "properties": [
+                {
+                    "name": "labels_method_then_ints",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "ints_then_labels",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_ints_under_return",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_array_values",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_helper_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_local_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_other_list_method",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_keyless_count",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_nullable_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_rows",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "labels_then_static_helper_list",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "ints_plus_key",
+                    "type": "{ x: number }",
+                    "optional": false
+                },
+                {
+                    "name": "local_built_labels_then_ints",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "local_ints_then_key_over_key",
+                    "type": "{ by: string; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "keyless_item_beside_key",
+                    "type": "{ a: number }",
+                    "optional": false
+                },
+                {
+                    "name": "list_plus_keyed",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "keyed_plus_list",
+                    "type": "{ a: string }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesced_map_alone",
+                    "type": "Record<string, unknown>",
+                    "optional": false
+                },
+                {
+                    "name": "local_map_list_over_key",
+                    "type": "{ by: { name: string | null; email: string | null } | string }",
+                    "optional": false
+                },
+                {
+                    "name": "map_bool_key_list",
+                    "type": "Omit<Record<string, string>, 'x'> & { x: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "map_list_bool_key",
+                    "type": "Omit<Record<string, string>, 'x'> & { x: boolean }",
+                    "optional": false
+                },
+                {
+                    "name": "map_list_nullable_key",
+                    "type": "Omit<Record<string, string>, 'note'> & { note: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "map_nullable_key",
+                    "type": "Omit<Record<string, string>, 'note'> & { note: string | null }",
+                    "optional": false
+                },
+                {
+                    "name": "labels_method_plus_key",
+                    "type": "{ by: number | string }",
+                    "optional": false
+                },
+                {
+                    "name": "empty_default_map_alone",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "preset_default_map_alone",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "literal_body_map_alone",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "literal_body_map_then_counts",
+                    "type": "Record<string, string | number>",
+                    "optional": false
+                },
+                {
+                    "name": "literal_body_map_then_labels",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guarded_spread_throws",
+                    "type": "{ row: Record<string, unknown> }",
+                    "optional": false
+                },
+                {
+                    "name": "emptiness_guarded_spread_returns",
+                    "type": "{ n?: number; row?: Record<string, unknown> }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\MapSpreadsResource": {
+            "name": "MapSpreadsResource",
+            "properties": [
+                {
+                    "name": "named_key_over_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "list_after_map",
+                    "type": "Record<string, string>",
+                    "optional": false
+                },
+                {
+                    "name": "list_beside_key",
+                    "type": "{ x: string }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\NullNoteArmResource": {
+            "name": "NullNoteArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "note",
+                    "type": "null",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\ReturnedTernaryResource": {
+            "name": "ReturnedTernaryResource",
+            "properties": []
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\StatusWrapArmResource": {
+            "name": "StatusWrapArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "status",
+                    "type": "AsEnum<typeof Status>",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TagSignatureArmResource": {
+            "name": "TagSignatureArmResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "[key: `${string}_tag`]",
+                    "type": "string | undefined",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TitleFlagArmResource": {
+            "name": "TitleFlagArmResource",
+            "properties": [
+                {
+                    "name": "name",
+                    "type": "string",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "boolean",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TypedSeedSourceResource": {
+            "name": "TypedSeedSourceResource",
+            "properties": [
+                {
+                    "name": "overridable_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "overridable_map_local",
+                    "type": "{ by: { name: string | null; email: string | null } | string; z: number | string }",
+                    "optional": false
+                },
+                {
+                    "name": "overridable_map_spread",
+                    "type": "{ by: { name: string | null; email: string | null } | string; z: number | string }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_other_call",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_property",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_coalesced",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_static_call",
+                    "type": "{ seen: boolean; [key: string]: unknown }",
+                    "optional": false
+                },
+                {
+                    "name": "seed_from_other_call_nested",
+                    "type": "{ row: unknown }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\TypedSeedSpreadResource": {
+            "name": "TypedSeedSpreadResource",
+            "properties": [
+                {
+                    "name": "tones_given_key_under_map_return",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "shape_method_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_property_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "local_receiver_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "static_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "filtered_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_plus_assigned_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_with_key_unset",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "own_delegate_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "docblock_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "coalesced_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "helper_built_map_given_key",
+                    "type": "{ by: string; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "shape_property_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "collected_map_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "number_map_given_key_on_one_path",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_over_earlier_tone",
+                    "type": "{ tone: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "map_given_two_keys",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_written_in_if_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "string_map_given_key_on_one_path",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "map_given_number_key_as_value",
+                    "type": "unknown",
+                    "optional": false
+                },
+                {
+                    "name": "map_given_number_key_spread",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "typed_open_local_over_keys",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "top_tones_given_key",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                },
+                {
+                    "name": "top_map_over_earlier_tone",
+                    "type": "{ tone: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "top_shape_method_given_key",
+                    "type": "{ by: { name: string | null; email: string | null } }",
+                    "optional": false
+                },
+                {
+                    "name": "returned_map_given_number_key",
+                    "type": "{ n: number }",
+                    "optional": false
+                },
+                {
+                    "name": "top_typed_open_local_over_keys",
+                    "type": "{ by: { name: string | null; email: string | null }; z: number }",
+                    "optional": false
+                }
+            ]
+        },
+        "Workbench\\App\\Http\\Resources\\Spreads\\WhenKeySpreadResource": {
+            "name": "WhenKeySpreadResource",
+            "properties": [
+                {
+                    "name": "id",
+                    "type": "number",
+                    "optional": false
+                },
+                {
+                    "name": "by",
+                    "type": "string",
+                    "optional": true
+                }
+            ]
+        },
         "Workbench\\App\\Http\\Resources\\StaticCallResource": {
             "name": "StaticCallResource",
             "properties": [
@@ -22140,7 +23949,7 @@
                 },
                 {
                     "name": "status_type_or_resource",
-                    "type": "AsEnum<typeof Status> | StatusType",
+                    "type": "StatusType | AsEnum<typeof Status>",
                     "optional": false
                 },
                 {
@@ -23603,7 +25412,7 @@
                 },
                 {
                     "name": "status",
-                    "type": "WorkbenchStatusType",
+                    "type": "StatusType",
                     "optional": false
                 },
                 {

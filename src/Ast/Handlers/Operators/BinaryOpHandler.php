@@ -8,6 +8,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
@@ -271,11 +272,9 @@ final class BinaryOpHandler implements ExpressionHandler
     private function operandKind(array $result): string
     {
         $type = TsTypeString::withoutNullArm(VisibleGaps::aside($result['type'])[0]);
-        // An enum's import channel rides a list of the enum too, so only the enum's own token counts as a scalar.
-        $enumTokens = array_map(
-            ValueResult::enumTypeName(...),
-            array_values(array_filter([$result['directEnumFqcn'] ?? null, $result['enumFqcn'] ?? null])),
-        );
+        // An enum's import channel rides a list of the enum too, so only the enum's own token counts as a scalar; a
+        // wrap sends an object, whatever it is spelled.
+        $enumTokens = isset($result['directEnumFqcn']) ? [EnumNames::typeName($result['directEnumFqcn'])] : [];
 
         return match (true) {
             $type === 'unknown' => self::UNTYPED,

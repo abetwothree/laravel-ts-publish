@@ -290,8 +290,13 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             }
 
             unset($result['keepsKeys']);
+            $filtered = [...$result, 'optional' => false];
+            $type = implode(' | ', array_values(array_unique($arms)));
 
-            return [...$result, 'type' => implode(' | ', array_values(array_unique($arms))), 'optional' => false];
+            // A list filtered alone spells its element twice, in the list arm and the Record arm.
+            return ArrayArms::listElement($result['type']) === null
+                ? [...$filtered, 'type' => $type]
+                : ValueResult::spelledTwice($filtered, $type);
         });
     }
 
@@ -313,15 +318,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
         $this->warnOfCollection('array_values', $array, $scope);
 
         return ValueResult::gapTransparent($engine->resolve($array), static function (array $result): ?array {
-            $arms = ArrayArms::arms($result['type'], ArrayArms::valuesOf(...));
-
-            if ($arms === null || $arms === []) {
-                return null;
-            }
-
             unset($result['keepsKeys'], $result['unnamedKeys']);
+            $listed = ValueResult::retypedByClass($result, static function (string $type): ?string {
+                $arms = ArrayArms::arms($type, ArrayArms::valuesOf(...));
 
-            return [...$result, 'type' => RedundantArms::joined($arms), 'optional' => false, 'listKeys' => true];
+                return $arms === null || $arms === [] ? null : RedundantArms::joined($arms);
+            });
+
+            return $listed === null ? null : [...$listed, 'optional' => false, 'listKeys' => true];
         });
     }
 
@@ -457,6 +461,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      * `null` callback, else what the callback returns, each element `| null` as a shorter array pads with it, and
      * each parameter bound to the classes its array declares its elements as.
      *
+     * An element nothing types leaves its parameter what the parameter declares, as the one-array form does; a tuple
+     * of it declines.
+     *
      * @param  non-empty-list<ValueExpressionResult>  $inputs
      * @param  non-empty-list<Expr>  $arrays
      * @return ValueExpressionResult|null
@@ -469,8 +476,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $elements = ArrayArms::arms($input['type'], ArrayArms::elementOf(...));
             $elements = $elements === null ? [] : array_values(array_diff(array_unique($elements), ['never']));
 
-            if ($elements === [] || in_array('unknown', $elements, true)) {
+            if ($elements === [] || ($zips && in_array('unknown', $elements, true))) {
                 return null;
+            }
+
+            if (in_array('unknown', $elements, true)) {
+                $parameters[] = ValueResult::unknown();
+
+                continue;
             }
 
             // An array's gap is an element no rule typed, so it stays in the element's union.

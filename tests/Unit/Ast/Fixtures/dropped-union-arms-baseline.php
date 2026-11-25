@@ -64,4 +64,14 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 59, 'expression' => '$this->opaqueValue()', 'site' => 'walk-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\UnionHonestyResource', 'line' => 67, 'expression' => '$this->opaqueValue()', 'site' => 'merge-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\Discriminated\\DiscriminantFormsResource', 'line' => 102, 'expression' => 'json_decode($this->title)', 'site' => 'ternary-narrowed'],
+    // Probes (GH-161): each arm has no type beside a typed one, under a docblock that types the key `mixed` or not at
+    // all, so the published type rejects the `null` Laravel sends; #161 decides what these publish.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideDropResource', 'line' => 25, 'expression' => 'cache(\'cb\')', 'site' => 'ternary-narrowed'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideDropResource', 'line' => 26, 'expression' => 'cache(\'cb\')', 'site' => 'ternary-narrowed'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideDropResource', 'line' => 29, 'expression' => 'cache(\'u\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\ArmBesideTypedKeyResource', 'line' => 27, 'expression' => 'cache(\'u\')', 'site' => 'closure-union'],
+    ['subject' => 'Workbench\\App\\Http\\Resources\\DroppedArms\\WalkedArmDropResource', 'line' => 28, 'expression' => 'cache(\'u\')', 'site' => 'closure-union'],
+    // Probe (GH-161): `$d['by'] ?? 'z'` reads a key of the local the walk builds, which it cannot type; the default
+    // stands alone, and the title it drops is a string too, so `by: string` holds (YD1, a guard B1 and B2a keep).
+    ['subject' => 'Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource', 'line' => 245, 'expression' => '$d[\'by\']', 'site' => 'coalesce-left'],
 ];

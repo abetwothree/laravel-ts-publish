@@ -104,9 +104,8 @@ needs (`ClassCastOverMethodCastResource`). Two fits run at analysis time: `Inlin
 members it folds into one value, whose casts no outer cast can retype, and a key `ReturnShapeRefiner` fills from a
 method's `@return`, which held only a vague value ([ResourceAstAnalyzer](resource-ast-analyzer.md#what-the-methods-return-may-fill)).
 
-`dropOverriddenEnumResources()` stays as the guard for the one record the fit never sees: a later spread's key over an
-earlier spread's `EnumResource`, which would make `rewriteEnumResourceTypes()` throw. `SpreadOverSpreadEnumResource`
-pins it.
+A later spread's key over an earlier spread's `EnumResource` keeps none of the wrap's channels, so the file imports
+neither its const nor `AsEnum`. `SpreadOverSpreadEnumResource` pins it.
 
 ## Imports
 

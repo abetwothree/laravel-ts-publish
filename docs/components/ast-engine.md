@@ -21,6 +21,7 @@ folder by role, and a new class joins the folder whose role it shares:
 | `Docblocks/` | Docblock tags read by family (`@return`, `@var`, `@param`, `@property`, `@extends`, `@mixin`, `@use`, `@template`) in PHPStan's order, and the forms an inline `@var` may bind |
 | `Effects/` | What code between two reads may change: an `instanceof` proof's chain ([`ThisPathWrites`]) and a discriminant's read ([`InterveningWrites`]), which share the code `Trust/` knows only reads. For a discriminant: what a callable value may run ([`ClosureReach`], [`ValueUse`]), the method a callable names ([`CallableTargets`]), the `$this` method and hook bodies read, three levels deep and once a run ([`BodyReads`]), and property hooks and model set mutators ([`PropertyHooks`]) |
 | `Effects/Trust/` | What the write checks trust to only read: the framework calls they know ([`ReadOnlyCalls`]), and a resource helper or Eloquent reader walked as the runtime class dispatches it ([`FrameworkDispatch`]), by its family's rules ([`FrameworkFamily`], [`LiteralGetter`]): [Variants § The dispatch walk](variants.md#the-dispatch-walk) |
+| `Enums/` | An enum's names and case values, and how an `EnumResource` wrap is read, spelled and imported |
 | `Handlers/` | One handler per expression family, grouped as `Values/`, `Operators/`, `Calls/`, `Members/`, `Collections/`, `Resources/`, `Inertia/` |
 | `Members/` | Typing a class's own methods and properties |
 | `Parsing/` | php-parser access: parsing, locating methods and render calls, matching call syntax, literal returns |
@@ -42,6 +43,7 @@ These are the classes a change to the engine usually touches:
 | [`src/Ast/Handlers/`](../../src/Ast/Handlers) | One handler per expression family |
 | [`AnalysisScope`] | The mutable state of one analysis: subject, backing model and the name-keyed binding tables |
 | [`MethodAnalysis`] | The analysis DTO: property rows plus the FQCN channels |
+| [`ClassIdentity`], [`TokenKind`] | Which class stands behind each token of a value's type, read per token kind: a model, a resource, an enum read and a wrap's const. A union holding two classes that print one name keeps each arm's own (`membersByClass()`), and a rewrite of its text keeps each token's (`retyped()`) |
 | [`AnalysisComposer`], [`AnalysisImports`] | Turn a `MethodAnalysis` into import maps, and the composer also aliases and wraps |
 | [`AstParser`], [`MethodLocator`] | Parse a file, cached and recorded as a cache dependency, with a call argument's docblock moved onto the closure it holds, and find one method's AST node, under a trait alias too |
 | [`ParentCallChain`] | The classes whose declaration of a method a call returns the keys of, through `parent::` calls |
@@ -166,8 +168,8 @@ it; `Reading::encodes()` groups the three encoded ones. Either Inertia reading r
   `ReadsNullablePayloads` asks before a resource around a nullable payload takes that null: under either filtered
   reading in any body, under `Encoded` only in a `JsonResource` subject's own, and never inside a `map()` kept as a
   `Collection`, where a call's body reads unfiltered. An `EnumResource` wrap it does not reach, a page's, an event's
-  or a kept map's, sends a null payload as `[]`, its `never[]` arm (`ResolvesEnumPropertyArgTypes::enumWrapValue()`);
-  `ValueResult::filledArms()` and `isListShaped()` read past that arm where a union's enum arms are counted or shaped.
+  or a kept map's, sends a null payload as `[]`, its `never[]` arm (`EnumWrapPayload::value()`);
+  `ValueResult::filledArms()` and `isListShaped()` read past that arm where a payload's shape is read.
   `TernaryHandler`'s `?:` rule applies only under `Inertia`.
 - **A `->resolve()`d resource**: `StaticCallHandler` publishes R, or R's list, with each key Inertia reads otherwise
   than R's own reading does restated over it, `Omit<R, 'k'> & { k: … }` ([`ResolvedResourceBody`]). A key a cast
@@ -431,8 +433,8 @@ green with either mechanism alone, so it pins neither.
 
 #### A called method's parameters
 
-A method body read apart from its call, such as a spread helper, the body fallback, a method read as a value,
-`SubjectHelperReturnResolver`'s helper or any analyzer that builds its own scope, binds its parameters with
+A method body read apart from its call, such as a spread helper, the body fallback, a method read as a value or any
+analyzer that builds its own scope, binds its parameters with
 [`ParameterBinder`]'s `bindCall()`, by the type they declare: the native type, else a whitelisted `@phpstan-param`,
 `@psalm-param` or `@param` where the native type is vague. One concrete, non-null model goes in `varModelBindings`; a
 `@param` collection generic naming a concrete model the run publishes goes in `varCollectionBindings` with its classes
@@ -614,9 +616,10 @@ no reader binds from, for the join to name. `VariableWrites` classifies each wri
 cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so
 `$s = $s . 'x'` reads the value `$s` held before.
 
-Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague or the `null` a
-dropped arm left. It also replaces a `never[]` a drop left where it lists, and fills a literal's member that its own
-item's drop left `null` or `never[]` where `T`'s member admits that, importing only what the filled member spells.
+Inside the span the assigned value's reading merges with `T` position by position ([§ Declared arms](#declared-arms)),
+and `T` fills whole where that reading is vague or only the `null` a dropped arm left. It also replaces a `never[]` a
+drop left where it lists, and fills a literal's member that its own item's drop left `null` or `never[]` where `T`'s
+member admits that, importing only what the filled member spells.
 A union `T` gives the member every arm's type but `null`'s, in one fixed order, and none where an arm lacks the key.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
@@ -635,7 +638,9 @@ a by-reference parameter of a callee the scan cannot name.
 `array-key` key and an alias the file's class sees among them. An alias admits only what its definition would, spelled
 directly in the file that wrote it, so one naming an unimported global class declines. A callable inside a shape reads
 `unknown` by design, so `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the
-tag has callables, and no more. A collection local's bare read is what its `all()` sends, so a record keyed of either
+tag has callables, and no more. A `@var` with no reading, an interface's, passes too, since it still names a receiver,
+and a closure's `@param` read for its class (`extractParamTag()`'s `$namesReceiver`) passes in any whitelisted form,
+its reading partial or absent. A collection local's bare read is what its `all()` sends, so a record keyed of either
 kind keeps its list arm.
 
 ### By-reference calls
@@ -763,6 +768,7 @@ no backing model, only a `Model` root hands off to the relation walk. On a model
 Every file an analyzer parses goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records
 the file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too.
 A read that bypasses it leaves the generation cache serving stale output when that file changes.
+The 256-file AST cache never evicts a dependency's file (`DependencyFiles`), so a framework file is parsed once per run.
 `AstParser::parseSource()` records nothing, so use it only for source that is not on disk.
 
 A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and
@@ -896,6 +902,26 @@ spells. Every read position hands them on, from `$this->accessor` and relation c
 A key the resource's own `only()` or `except()` selects keeps only part of these channels, and
 [ResourceAstAnalyzer § A resource's imports follow its published types][resource-imports] covers the rest.
 
+## Enum wraps
+
+An `EnumResource` wrap spells itself where it is read ([`EnumWrapPayload`]`::spelledWrap()`). With the tolki package
+on, `make()`, `new` and a `whenHas()` or `whenAppended()` wrap print `AsEnum<typeof C>`, and `::collection()` prints
+`AsEnum<typeof C>[]`, where `C` is the enum's own const name and the publisher aliases it. With it off, the wrap prints
+the enum's `…Type` on the enum queue and never sets `directEnumFqcn`. A null payload keeps `| null` where `filter()`
+reaches the wrap and takes `| never[]` where it does not (`EnumWrapPayload::value()`). The wrap carries two channels:
+
+- `embeddedEnumResourceFqcns`, the const queue: the enum behind each `typeof` token, in print order. It answers only
+  which const each token names, and `TsTypeString::aliasTypeofConst()` respells those tokens by it.
+- `wrappedEnumFqcns`, the set of enums a value wraps, never printed. A reader asking which enums a key wraps reads it:
+  `DiscriminantValues`, which never splits on such a key, `CastChannels`, the redundant-arm rules and the model bridge.
+
+A union publishes each arm as it publishes alone, in arm order (`ValueResult::unionResults()`). Two members are one only
+where their text and the class behind every token match, over all four [`TokenKind`]s, so a wrap beside a read of its
+enum keeps both arms, and wraps of two enums that print one name keep both consts. A file imports `type AsEnum` from
+`@tolki/ts` where a type spells `AsEnum<`, and, as values, exactly the consts its types spell after `typeof`
+([`EnumWrapImports`]); every publisher reads its imports through it. The globals file folds each wrap to its enum's
+value type ([known gaps][gap-globals-wrap]).
+
 ## Dropped union arms
 
 A union arm the engine cannot type is left out, never widened to `unknown`, so `$cond ? <untypable> : null` publishes
@@ -1006,6 +1032,30 @@ gaps. `replaceable()` and `provisional()` settle a held warning as they settle a
 warning: its drop entry records the arm whether a merge fills it or not, and a silent gap records nothing, as its join
 records nothing out of the mode, so the audit baseline is the same in both.
 
+#### Declared arms
+
+An outer declaration, an inline `@var`, a `toArray()` `@return` key or a closure's `@return`, replaces each arm only a
+declaration produced and keeps each arm the body proves. In the declaration mode (`AnalysisMemo::markingDeclared()`,
+keyed `@declared`), which the gap mode brings and `hidingGaps()` and `rememberFact()` end, [`DeclaredArms`] marks such
+an arm at its source: `$declNull` for a nullable column's, cast's or relation's `null`, a `?T` return's or parameter's
+(`AnalysisScope::$declaredParameters` keeps a parameter's declared value for the read), a query's `find()`,
+`first()`, `firstWhere()` and `value()`, `auth()->user()` and `auth()->id()`, `tryFrom()`, a `$resource` a docblock
+declares nullable, and that of `?->` over a receiver holding no proven `null`; `$declKeys` beside the `Record` a map
+over an untyped array hedges its keys with. An accessor's `null`, whatever its body read, runtime nulls and every
+source not listed stay proven. A source that adds its `null` beside a value it read, a lookup, `?->` or `whenLoaded()`,
+appends the mark (`DeclaredArms::withDeclaredNull()`), so a `null` the value itself holds stays proven.
+
+`VisibleGaps::isGap()` matches both marks, but `aside()` reads `$declNull` as the `null` it stands for and `carried()`
+and `ValueResult::gapTransparent()` mark again a `null` the read keeps, so every reader decides as out of the mode.
+`DeclaredTypeMerge` sets marks aside: a `$declNull` takes only the declaration's own `null`, and a `$declKeys` drops the
+`Record` arms where the declaration names no keyed arm. [`DeclaredFill`] lays an inline `@var` or a closure's `@return`
+over a reading as a `@return` merges a key, its gaps aside, and its classes requeued as `ReturnShapeRefiner`'s are; a
+merge that reads as the declaration takes it whole with what the reading says the value is
+(`ValueResult::withValueFactsOf()`), such as `keepsKeys`. The outermost fill turns the marks it left back into what they
+stand for; a nested one keeps them and marks its own declaration's top-level `null`. A frame read in the mode, a
+helper's, keeps them past its strip (`MethodAnalysis::stripGaps()`) for the declaration it is read under; any other strip
+turns them back as `stripped()` does, and a variant reads its arms unmarked, so none publishes.
+
 Forcing every key into the mode moves no published byte, as
 [Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.
 
@@ -1019,16 +1069,13 @@ rule, and it admits only two kinds of arm. Neither spells a class, so leaving on
   `AsEnum<…>`, a named collection and an intersection keep the `never[]` beside them, since `tsc` rejects it against
   each.
 - **A case literal** beside an enum alias whose literals hold it. [`EnumValueTypes::aliasLiterals()`] maps each alias of
-  the enums a key reads directly to the literals it admits. An alias admits none when the key wraps its enum in an
-  `EnumResource` anywhere, when a model or resource on the key prints its name, or when `EnumValueTypes::aliasUsable()`
-  rules that it does not spell what PHP sends. Two enums printing one alias name admit only the literals both hold, so
-  `App\Status` beside `Crm\Status` admits none.
+  the enums a key reads directly to the literals it admits. An alias admits none when a model or resource on the key
+  prints its name, or when `EnumValueTypes::aliasUsable()` rules that it does not spell what PHP sends. A wrap spells its
+  const, never the alias, so a key that wraps the enum absorbs too: `v` beside `w: AsEnum<typeof MediaType>` publishes
+  `MediaTypeType`, not `'image' | MediaTypeType`. Two enums printing one alias name admit only the literals both hold,
+  so `App\Status` beside `Crm\Status` admits none ([known gaps][gap-alike-alias]).
 
-A literal leaves only where the key's channels are final. An inner union can still meet an `EnumResource` wrap of the
-same enum, whose join drops the alias arm (#160). In
-`$c ? EnumResource::make($this->kind) : ($d ? MediaType::Image->value : $this->kind->value)`, the key keeps its
-`'image'` only because the inner ternary left the literal in. [Known gaps][gap-wrapped-case] records the literal a key
-keeps beside the alias of an enum it wraps. The rule runs at three points:
+A literal leaves only where the key's channels are final, so the rule runs at three points:
 
 - Each publisher's last key pass calls `MethodAnalysis::absorbRedundantArms()`: [`AnalysisComposer`],
   `ResourceTransformer`, `BroadcastEventTransformer`, `InertiaPageAnalyzer`, `InertiaSharedDataAnalyzer` and
@@ -1037,7 +1084,7 @@ keeps beside the alias of an enum it wraps. The rule runs at three points:
 - `ModelTransformer::withRedundantArmsAbsorbed()` absorbs an accessor's type where the model publishes it, as a column,
   a mutator or an append. [AccessorBodyAnalyzer](accessor-body-analyzer.md) hands every reader the body unabsorbed, so
   a resource or getter reading the attribute absorbs at its own publisher's pass. `ResultTypeInfoBridge` copies the
-  result's wrap channels onto `wrappedEnumFqcns`, so the wrap rule holds at the model too.
+  result's `wrappedEnumFqcns`, so the model's dedupe below counts a wrapped enum's names too.
 - `ValueResult::unionResults()` and `RedundantArms::joined()`, which the `(array)` cast, `array_values()` and
   `ResourceReindexing::reindexedType()` call, drop only a top-level `never[]`, with no alias map. `joined()` also merges
   arms spelled alike, as those joins did before. Neither rewrites an arm's inside, because `armsKeyPresence()` keys each
@@ -1046,8 +1093,8 @@ keeps beside the alias of an enum it wraps. The rule runs at three points:
 Absorbing can leave two arms alike: two returns writing `{ s: 0 | StatusType }` and `{ s: StatusType }` leave
 `{ s: StatusType }` twice. The publisher pass and the model keep only the first where all three of these hold:
 
-- No printed name on the key spells two classes. `EnumValueTypes::namesTwoClasses()` decides it over the key's enum,
-  model and resource channels.
+- No printed name on the key spells two classes. `EnumValueTypes::namesTwoClasses()` decides it over the key's enums,
+  read or wrapped, and its model and resource channels.
 - The key keeps no list of the class behind each token: no `declaredTokenFqcns` entry at a publisher, and no
   `classTokenFqcns` token queue at the model.
 - The publisher queues no class on the key after the pass. `ResourceTransformer::queuesAccessorClasses()` answers it
@@ -1082,8 +1129,8 @@ either kind of arm, or two arms spelled alike.
 [Known gaps][gap-non-goals] records why the engine offers no extension point.
 
 `analyze()` re-indexes an API resource's `toArray()` as `ts:publish` does, then hands `analyzeMethod()`'s DTO to
-[`AnalysisComposer`], which aliases same-basename collisions, rewrites `EnumResource` wraps to `AsEnum<typeof X>`, and
-imports only the names the rewritten types spell.
+[`AnalysisComposer`], which aliases same-basename collisions, the consts after `typeof` among them, and imports only the
+names the types spell.
 
 `AnalysisComposer` tests each name with `TsTypeString::typeNameOccursIn()`, which keeps the import of a name only a
 string or a comment spells, unused at worst. See [known gaps][gap-spelled-name]. Where its identifier boundary departs
@@ -1155,10 +1202,15 @@ These pages cover the engine's neighbors:
 [`ByReferenceArguments`]: ../../src/Ast/Calls/ByReferenceArguments.php
 [`ByReferenceEffect`]: ../../src/Ast/Calls/ByReferenceEffect.php
 [`CallableTargets`]: ../../src/Ast/Effects/CallableTargets.php
+[`ClassIdentity`]: ../../src/Ast/Values/ClassIdentity.php
 [`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
+[`DeclaredArms`]: ../../src/Ast/Analysis/DeclaredArms.php
+[`DeclaredFill`]: ../../src/Ast/Composition/ReturnShape/DeclaredFill.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
-[`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Values/EnumValueTypes.php
+[`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Enums/EnumValueTypes.php
+[`EnumWrapImports`]: ../../src/Ast/Enums/EnumWrapImports.php
+[`EnumWrapPayload`]: ../../src/Ast/Enums/EnumWrapPayload.php
 [`ExpressionDispatcher`]: ../../src/Ast/Dispatch/ExpressionDispatcher.php
 [`ExpressionEngine`]: ../../src/Ast/Contracts/ExpressionEngine.php
 [`ExpressionHandler`]: ../../src/Ast/Contracts/ExpressionHandler.php
@@ -1186,6 +1238,7 @@ These pages cover the engine's neighbors:
 [`RuntimeClass`]: ../../src/Ast/Analysis/RuntimeClass.php
 [`SubjectPropertyTypeResolver`]: ../../src/Ast/Members/SubjectPropertyTypeResolver.php
 [`ThisPathWrites`]: ../../src/Ast/Effects/ThisPathWrites.php
+[`TokenKind`]: ../../src/Ast/Values/TokenKind.php
 [`ValueUse`]: ../../src/Ast/Effects/ValueUse.php
 [`VisibleGaps`]: ../../src/Support/TypeStrings/VisibleGaps.php
 [accessor-reads]: accessor-body-analyzer.md#a-getter-that-reads-another-models-accessor
@@ -1194,12 +1247,13 @@ These pages cover the engine's neighbors:
 [built-payload]: resource-ast-analyzer.md#a-method-called-on-a-new-resource-types-its-payload
 [collection-pipelines]: resource-ast-analyzer.md#collection-pipelines
 [gap-narrowing]: ../known-gaps.md#instanceof-narrowing-depends-on-the-spelling-in-four-different-ways
+[gap-alike-alias]: ../known-gaps.md#a-case-value-beside-two-enums-that-print-one-alias-name-stays-in-the-union
 [gap-alike-arms]: ../known-gaps.md#a-key-holding-two-classes-of-one-name-can-publish-one-union-arm-twice
+[gap-globals-wrap]: ../known-gaps.md#in-laravel-ts-globalts-an-enumresource-wrap-publishes-its-enums-value-type
 [gap-non-goals]: ../known-gaps.md#deliberate-non-goals
 [gap-ordering]: ../known-gaps.md#handler-ordering-is-pinned-pairwise-corpus-bounded
 [gap-spelled-name]: ../known-gaps.md#a-tscasts-value-that-spells-an-imported-name-inside-a-string-template-or-comment-keeps-the-import
 [gap-union-arm]: ../known-gaps.md#a-union-arm-the-engine-cannot-type-is-left-out-so-the-union-publishes-the-other-arm
-[gap-wrapped-case]: ../known-gaps.md#a-case-value-beside-its-enums-alias-stays-in-a-key-that-wraps-that-enum-in-an-enumresource
 [merge-branches]: resource-ast-analyzer.md#mergereturnbranches-carries-every-methodanalysismerge-channel-plus-two-flat-scalars
 [metadata-consumer]: model-metadata.md#body-inference-is-an-engine-consumer
 [published-models]: model-attribute-resolver.md#models-a-run-publishes

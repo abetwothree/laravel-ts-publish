@@ -404,6 +404,15 @@ describe('aliasPropertyType', function () {
         expect($this->service->aliasPropertyType('User | Post', ['App\\Models\\Team'], $nameMap, []))
             ->toBe('User | Post');
     });
+
+    test('leaves the name a `typeof` reads, which is a const\'s, and aliases the type token spelled like it', function () {
+        expect($this->service->aliasPropertyType(
+            'AsEnum<typeof Grade> | Grade',
+            ['Workbench\\App\\Models\\Grade'],
+            ['Workbench\\App\\Models\\Grade' => 'Grade'],
+            ['Workbench\\App\\Models\\Grade' => 'WorkbenchGrade'],
+        ))->toBe('AsEnum<typeof Grade> | WorkbenchGrade');
+    });
 });
 
 describe('aliasTypeofConst', function () {
@@ -422,7 +431,7 @@ describe('aliasTypeofConst', function () {
         ))->toBe('AsEnum<typeof CrmClearanceType>[] | AsEnum<typeof   CrmClearanceType>');
     });
 
-    // aliasPropertyType() would alias both tokens here, which writes one enum's const alias into another enum's type.
+    // The bare token is another enum's type, which only aliasPropertyType() respells.
     test('leaves a bare token spelled like the const, which is another enum\'s type', function () use ($constNames) {
         $aliases = ['Crm\\Enums\\ClearanceType' => 'CrmClearanceType'];
 
@@ -492,12 +501,31 @@ describe('queuedTokenPattern', function () {
 
     test('puts an anchor before every name, and a \K in it keeps the anchor out of the match', function () {
         preg_match_all(
-            $this->service->queuedTokenPattern(['Status', 'Role'], 'typeof\s+\K'),
+            $this->service->queuedTokenPattern(['Status', 'Role'], TsTypeString::TYPEOF_ANCHOR),
             'typeof Status | Role | typeof  Role',
             $matches,
         );
 
         expect($matches[0])->toBe(['Status', 'Role']);
+    });
+
+    test('with no anchor, reads no name a `typeof` reads, however much space follows it', function () {
+        preg_match_all($this->service->queuedTokenPattern(['Grade']), 'AsEnum<typeof Grade> | Grade', $matches, PREG_OFFSET_CAPTURE);
+        preg_match_all($this->service->queuedTokenPattern(['Grade']), "typeof\n  Grade | Grade[] | typeofGrade", $spaced);
+
+        expect($matches[0])->toBe([['Grade', 23]])
+            ->and($spaced[0])->toBe(['Grade']);
+    });
+
+    test('names the anchor a const token follows', function () {
+        preg_match_all(
+            $this->service->queuedTokenPattern(['Grade'], TsTypeString::TYPEOF_ANCHOR),
+            'AsEnum<typeof Grade> | Grade',
+            $matches,
+            PREG_OFFSET_CAPTURE,
+        );
+
+        expect($matches[0])->toBe([['Grade', 14]]);
     });
 });
 
@@ -1069,9 +1097,8 @@ describe('rewriteAsEnumToType', function () {
         expect($result)->toBe('foo.StatusType | app.enums.StatusType');
     });
 
-    // A heterogeneous mixed union — ResourceTransformer::rewriteEnumResourceTypes()'s isCollection
-    // branch — is not the redundant same-shaped pair the fold exists for: the trailing
-    // `[]` makes the two members genuinely different, so both must survive, not collapse to one.
+    // A wrap beside a list of its enum is not the redundant same-shaped pair the fold exists for: the trailing `[]`
+    // makes the two members genuinely different, so both must survive, not collapse to one.
     test('does not fold a pair whose bare arm is itself array-shaped', function () {
         $result = $this->service->rewriteAsEnumToType(
             'AsEnum<typeof Status> | StatusType[]',
@@ -1080,6 +1107,62 @@ describe('rewriteAsEnumToType', function () {
 
         expect($result)->toBe('enums.StatusType | StatusType[]');
     });
+
+    // After the fold, two arms that name one class print one arm; a wrap list and a bare list are one such pair.
+    test('collapses the identical arms the fold leaves, at every depth', function (string $type, string $folded) {
+        expect($this->service->rewriteAsEnumToType($type, ['Status' => 'app.enums.StatusType']))->toBe($folded);
+    })->with([
+        'a list of wraps beside a list of the value type' => ['AsEnum<typeof Status>[] | StatusType[]', 'app.enums.StatusType[]'],
+        'the pair reversed' => ['StatusType[] | AsEnum<typeof Status>[]', 'app.enums.StatusType[]'],
+        'a member union' => ['{ s: AsEnum<typeof Status> | StatusType }', '{ s: app.enums.StatusType }'],
+        'a member union of lists' => ['{ s: AsEnum<typeof Status>[] | StatusType[] }', '{ s: app.enums.StatusType[] }'],
+        'arms apart' => ['AsEnum<typeof Status> | RoleType | StatusType', 'app.enums.StatusType | RoleType'],
+        'two wraps' => ['AsEnum<typeof Status> | AsEnum<typeof Status>[] | AsEnum<typeof Status>', 'app.enums.StatusType | app.enums.StatusType[]'],
+        'a list of wraps beside the value type' => ['AsEnum<typeof Status>[] | StatusType', 'app.enums.StatusType[] | StatusType'],
+    ]);
+
+    // The file's own names say which class a bare token is: an alias of the folded enum's type is that enum, and a
+    // same-named type of another enum stays beside the fold.
+    test('reads a bare name through the file\'s names before it collapses an arm', function (string $type, string $folded) {
+        $references = ['WorkbenchStatusType' => 'app.enums.StatusType', 'StatusType' => 'crm.enums.StatusType'];
+
+        expect($this->service->rewriteAsEnumToType($type, ['WorkbenchStatus' => 'app.enums.StatusType'], $references))
+            ->toBe($folded);
+    })->with([
+        'an alias of the folded enum\'s type' => ['AsEnum<typeof WorkbenchStatus> | WorkbenchStatusType', 'app.enums.StatusType'],
+        'another enum\'s type of the same name' => ['AsEnum<typeof WorkbenchStatus> | StatusType', 'app.enums.StatusType | StatusType'],
+    ]);
+
+    // A type folding two same-named enums still reads a bare name through the file's names, and without one it
+    // names neither, however many of that name it folds.
+    test('reads a bare name beside two or more folded enums of its name only through the file\'s names', function (array $consts, array $references, string $type, string $folded) {
+        expect($this->service->rewriteAsEnumToType($type, $consts, $references))->toBe($folded);
+    })->with([
+        'two folded, the bare name the app\'s' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType'],
+            ['StatusType' => 'app.enums.StatusType', 'CrmStatusType' => 'crm.enums.StatusType'],
+            'AsEnum<typeof Status> | StatusType | AsEnum<typeof CrmStatus>',
+            'app.enums.StatusType | crm.enums.StatusType',
+        ],
+        'two folded, the aliased name the CRM\'s' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType'],
+            ['StatusType' => 'app.enums.StatusType', 'CrmStatusType' => 'crm.enums.StatusType'],
+            'AsEnum<typeof Status> | CrmStatusType | AsEnum<typeof CrmStatus>',
+            'app.enums.StatusType | crm.enums.StatusType',
+        ],
+        'two folded, no name for the bare one' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType'],
+            [],
+            'AsEnum<typeof Status> | StatusType | AsEnum<typeof CrmStatus>',
+            'app.enums.StatusType | StatusType | crm.enums.StatusType',
+        ],
+        'three folded, no name for the bare one' => [
+            ['Status' => 'app.enums.StatusType', 'CrmStatus' => 'crm.enums.StatusType', 'ShipStatus' => 'ship.enums.StatusType'],
+            [],
+            'AsEnum<typeof Status> | AsEnum<typeof CrmStatus> | AsEnum<typeof ShipStatus> | StatusType',
+            'app.enums.StatusType | crm.enums.StatusType | ship.enums.StatusType | StatusType',
+        ],
+    ]);
 });
 
 describe('splitTopLevelUnion', function () {

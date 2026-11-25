@@ -10,6 +10,8 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Concerns\ParsesTsCasts;
@@ -33,7 +35,9 @@ use Throwable;
  * @phpstan-import-type CastMap from MethodAnalysis
  * @phpstan-import-type Slots from TokenSlots
  *
- * @phpstan-type ComposedTypes array{types: array<string, string>, typeImports: TypesImportMap}
+ * @phpstan-type ComposedTypes array{
+ *     types: array<string, string>, typeImports: TypesImportMap, valueImports: TypesImportMap,
+ * }
  * @phpstan-type DeclaredTypes array{
  *     overrides: array<string, string>, imports: array<string, TypesImportMap>, tokens?: array<string, Slots>,
  *     requiredKeys: array<string, true>, optionalKeys: array<string, true>,
@@ -74,6 +78,7 @@ class ModelMetadataAnalyzer
             $result->importPaths,
             $file['typeImports'],
             $result->docblockImports,
+            $file['valueImports'],
         );
     }
 
@@ -138,7 +143,10 @@ class ModelMetadataAnalyzer
         $payload = array_flip($payloadKeys);
         $published = array_intersect_key($result->types, $payload);
 
-        foreach (array_keys($analysis->enumResources + $analysis->directEnumFqcns + $analysis->inlineEnumFqcns) as $name) {
+        $enumKeys = $analysis->directEnumFqcns + $analysis->inlineEnumFqcns + $analysis->inlineEnumResourceFqcns
+            + $analysis->wrappedEnums;
+
+        foreach (array_keys($enumKeys) as $name) {
             // DispatchesFqcnResults keys an embedded enum by its own FQCN, so key-equals-value marks a channel
             // with no property name to prune by; the still-spelled filter below owns those instead.
             if (isset($published[$name]) || ($analysis->directEnumFqcns[$name] ?? null) === $name) {
@@ -146,9 +154,8 @@ class ModelMetadataAnalyzer
             }
 
             unset(
-                $analysis->enumResources[$name], $analysis->directEnumFqcns[$name],
-                $analysis->multiEnumResourceFqcns[$name], $analysis->inlineEnumFqcns[$name],
-                $analysis->inlineEnumResourceFqcns[$name],
+                $analysis->directEnumFqcns[$name], $analysis->inlineEnumFqcns[$name],
+                $analysis->inlineEnumResourceFqcns[$name], $analysis->wrappedEnums[$name],
             );
         }
 
@@ -172,10 +179,16 @@ class ModelMetadataAnalyzer
         }
 
         $file = FileImportNames::compose($members, ImportMaps::merge($analysis->customImports, $declared), $namespacePath);
+        $typeImports = $file['typeImports'];
+
+        if (EnumWrapSpelling::enabled() && EnumWrapImports::needsAsEnum(...$file['types']) && ! in_array('AsEnum', $brought, true)) {
+            $typeImports = ImportMaps::merge($typeImports, ['@tolki/ts' => ['AsEnum']]);
+        }
 
         return [
             'types' => array_combine($keys, $file['types']),
-            'typeImports' => $this->inferredOnlyImports($file['typeImports'], $declared, $analysis, $namespacePath),
+            'typeImports' => $this->inferredOnlyImports($typeImports, $declared, $analysis, $namespacePath),
+            'valueImports' => $file['valueImports'],
         ];
     }
 

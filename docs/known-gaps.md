@@ -58,7 +58,24 @@ branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->
 `k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
 the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
 override's among them, are left out with no warning. In a spread helper, a `@return` that types the key, the helper's
-own or `toArray()`'s, types the dropped branch in place instead.
+own or `toArray()`'s, types the dropped branch in place instead. A join that keeps such a fill, beside branches sending
+two same-named models or enums of other names, such as the app's and the CRM's `User`, keeps one arm for that pair.
+
+### An outer declaration keeps some `null`s only a declaration produced
+
+An inline `@var`, a `toArray()` `@return` key or a closure's `@return` that leaves `null` out replaces a `null` only a
+declaration produced, and keeps every `null` the body proves. Three more stay:
+
+- An accessor's `null`, which counts as its body's whatever the body read: `/** @var string $e */ $e = $post->excerpt;`
+  over a getter returning `?string` publishes `string | null`.
+- A `null` nested in a shape that a helper's `@return`, an inner `@var` or a closure's `@return` spells: over a helper
+  documented `@return array{a: string|null}`, `/** @var array{a: string} $x */ $x = $this->meta();` publishes
+  `{ a: string | null }`. A top-level one is replaced: over `@return string|null`, `@var string` publishes `string`.
+- A `null` beside two classes that print one name, such as the app's and the CRM's `User`:
+  `/** @var User|CrmUser $u */ $u = $c ? $w->manager : $w->primaryContact;` over two nullable relations publishes both
+  classes beside `| null`.
+
+Drop the `null` with `??` or a type that admits none, and the declaration's type stands.
 
 ### A list literal holding an element no rule types publishes `unknown[]`
 
@@ -147,14 +164,6 @@ as `DeclaredPropsEvent::$label`. `AstEngine::analyzePublicProperties()` and
 `readonly` property cannot have a default. Promote the property or give it a default. A fix that reads constructor
 bodies moves `DeferredAssignmentDto::$assignedLater`, which `NestedOptionalKeyDto` uses for a nested `?:`.
 
-### A merge whose two sides name same-basename classes publishes only one of them
-
-`$this->mergeWhen($cond, ['party' => $this->sender], ['party' => $this->receiver])`, over an app `User` and a CRM
-`User`, types `party` with the app `User` alone, though either can arrive. `ResourceAstAnalyzer::mergeReturnBranches()`
-unions the two sides by type text, as it unions a method's return branches and the branches a returned variable's walk
-joins, so the one `User` token takes the first side's class. A ternary or `when()` keeps both classes, so spell the key
-that way.
-
 ### A returned variable is read flat: an early return sees later writes, and some writes are not followed
 
 A method that builds an array in a variable and returns it publishes the keys its writes set
@@ -190,9 +199,9 @@ Return a literal on each path, or state the keys in `#[TsCasts]`.
 A helper that returns a parameter it writes keys into joins its writes onto the keys of the array it is passed, or of a
 declared `array{…}`. It publishes only the keys it writes, beside `[key: string]: unknown` where it is read as a value
 and alone where its result is the method's own return, when the argument is not one object literal (a `Record`, a list,
-a `{…} | null`, or an array `json_decode()` returns), names a model no generated file exports, or holds an
-`EnumResource` wrap or two same-named enums a level apart. An assignment inside another expression, a top-level
-`unset()`, destructuring, `foreach` target or by-reference call of the parameter leaves only the helper's own writes,
+a `{…} | null`, or an array `json_decode()` returns) or names a model no generated file exports. An assignment inside
+another expression, a top-level `unset()`, destructuring, `foreach` target or by-reference call of the parameter leaves
+only the helper's own writes,
 and so does a rewrite of its values in place, `array_walk()`, a by-reference `foreach` or `Arr::set()`, inside a block
 too; a `??=`, a key-keeping sort such as `ksort()`, `array_push()` and `array_unshift()` keep the argument's keys.
 Inside a block, such a write, or an `=` of a value the walk cannot read, makes each key held before it optional, a
@@ -236,8 +245,6 @@ writes stay outside that reading:
 - A value spread the walk cannot read leaves the key before it as it was, as a local written and spread inside one
   block, or a map local given a named key: `['k' => 1, ...$map]` after `$map['k'] = 'x'` publishes `k: number`.
 - The keys an open value holds besides its named ones never replace an earlier key of their name.
-- A same-named enum a later write may set beside an `EnumResource` wrap publishes the wrap alone, as a ternary of the
-  two does.
 
 Write the key once, or type it with `#[TsCasts]`.
 
@@ -346,29 +353,6 @@ tokenable is any `HasApiTokens` model), a `viaRequest()` or `Auth::extend()` gua
 provider over another table. A named guard, `auth('admin')` or `Auth::guard('admin')`, publishes `unknown`. Type the
 key with `#[TsCasts]`.
 
-### Some unions of `EnumResource` arms publish the wrong enum shape
-
-With `enums.use_tolki_package` on, the default, each of these misses what Laravel sends, in an API resource as on an
-Inertia page or in shared data. `ValueResult::mergeUnion()` records no channel that tells their arms apart, so the
-`AsEnum` rewrite cannot spell each arm as it is sent:
-
-- A wrap beside a bare case of another enum, `$c ? EnumResource::make(Role::Admin) : Status::Published`, publishes
-  `RoleType | StatusType`, though the wrap arm sends the `Role` object.
-- A wrap beside a nested nullable bare read, `$c ? EnumResource::make(Status::Draft) : ($d ? Status::Published : null)`,
-  publishes `AsEnum<typeof Status> | null` and misses the `1` the bare arm sends.
-- A nested ternary over three enums' wraps publishes `AsEnum<typeof Role> | StatusType | VisibilityType` and imports
-  neither bare name, which is `TS2304` in a consumer's build.
-- Wraps of two enums that share a name fold into one `StatusType`, though each arm sends its enum's object.
-- A wrap beside an array holding a bare case of its enum, such as `['s' => Status::Published]` in the other arm,
-  publishes `{ s: AsEnum<typeof Status> }` for the array, which sends `{ s: 1 }`.
-- Ternary arms of nested literals that wrap two enums sharing a name, one of them in two arms, publish the first enum
-  in every arm and import the other unused: `$a ? ['e' => EnumResource::make($this->status), 'x' => 1] : ($b ?
-  ['e' => EnumResource::make($this->status), 'x' => 1] : ['e' => EnumResource::make(CrmStatus::Lead), 'x' => 'a'])`
-  publishes `{ e: AsEnum<typeof WorkbenchStatus>; x: number } | { e: AsEnum<typeof WorkbenchStatus>; x: string }`.
-
-No workbench fixture has these shapes, so the token gate cannot see them. Override the key with a `#[TsCasts]` entry
-that has an `import`.
-
 ### An `EnumResource` resolved to an array inside another API resource loses its numeric keys
 
 `'priority' => EnumResource::make($this->priority)->resolve()` publishes `AsEnum<typeof Priority>`, but the outer
@@ -384,43 +368,21 @@ serializes a kept collection item by item, so a null enum's wrap arrives as `[]`
 helper builds, and `R::make($user)->toArray(request())` read for its value. End the chain with `->all()`, which sends
 the `null` the type admits, or build the wrap inline in the callback, which publishes `| never[]`.
 
-### A broadcast event's `EnumResource` publishes the enum's type, not `AsEnum<typeof X>`
+### In `laravel-ts-global.ts`, an `EnumResource` wrap publishes its enum's value type
 
-`'role' => EnumResource::make($this->role)` in an event's `broadcastWith()` publishes `RoleType` for every enum, though
-the payload sends the resource object, `{ name, value, backed, … }`. API resources, pages and shared data rewrite such a
-key to `AsEnum<typeof Role>`, but `BroadcastEventTransformer` spells every enum by its `…Type`. Under a nested key, a
-single wrap publishes `{ w: AsEnum<typeof Status> }` instead and imports neither `AsEnum` nor `Status`, which is
-`TS2304` in a consumer's build. An enum whose
-`#[TsType]` or `custom_ts_mappings` entry types its values still publishes its own `…Type` here. Override the key with
-an import-aware `#[TsCasts]`, typed by a name your own module exports, such as
-`export type RoleResource = AsEnum<typeof Role>`.
+The globals file has no `AsEnum` import, so `TsTypeString::rewriteAsEnumToType()` folds every `AsEnum<typeof X>` a
+resource, an event or a model accessor spells into `X`'s qualified value type: a resource's own file prints
+`status: AsEnum<typeof Status>`, and `laravel-ts-global.ts` prints `status: app.enums.StatusType`, though Laravel sends
+the enum object (#109). Where the fold leaves two arms alike, as `AsEnum<typeof Status>[] | StatusType[]` does, the
+union keeps one; `AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` stay two arms. Import the resource's own
+module where code reads a wrapped key.
 
-### A mixed enum ternary whose arms are both array-shaped ships a duplicated union member in the globals
+### A case value beside two enums that print one alias name stays in the union
 
-Each tree's `laravel-ts-global.ts` carries `app.enums.StatusType[] | app.enums.StatusType[]` twice, from
-`EnumCollectionResource` and `TeamStatusAuditResource`, whose own files spell `AsEnum<typeof Status>[] | StatusType[]`.
-The globals file has no `AsEnum` import, and `TsTypeString::rewriteAsEnumToType()` folds such a pair into one name
-only when no `[]` follows either arm. `A[] | A[]` means `A[]`, so `tsc` and the gates pass, and the cost is a line that
-looks like a bug. Keep the fold's `(?![A-Za-z0-9_$\[])` lookahead when you fix it, since it stops the differing pairs
-`AsEnum<typeof X> | XType[]` and `AsEnum<typeof X>[] | XType` from folding, and add the both-array case as a shape of
-its own.
-
-### A case value beside its enum's alias stays in a key that wraps that enum in an `EnumResource`
-
-The enum's alias absorbs a case's value beside a read of that enum, except in a key that wraps the same enum in an
-`EnumResource` anywhere. There every literal of that enum stays, so
-`'k' => ['w' => EnumResource::make($this->kind), 'v' => $c ? MediaType::Image->value : $this->kind->value]` publishes
-`{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }`. The type admits what PHP sends, but `'image'` adds
-nothing beside `MediaTypeType`. In a key holding two enums that print one alias name, such as `App\Enums\Status` and
-`Crm\Enums\Status`, a literal stays too unless both enums hold it.
-
-The literal stays because a wrap's join can still drop the alias arm beside it (#160). Beside the wrap alone the
-literal is needed: `$c ? EnumResource::make($this->kind) : MediaType::Image->value` publishes
-`AsEnum<typeof MediaType> | 'image'`. The nested ternary
-`$c ? EnumResource::make($this->kind) : ($d ? MediaType::Image->value : $this->kind->value)` publishes the same,
-missing the other values the read sends, and absorbing the literal first would lose `'image'` too. To drop the literal,
-wrap the enum and read it under separate keys, where the read's key publishes `MediaTypeType`, or type the key with an
-import-aware `#[TsCasts]`.
+The alias of an enum a key reads absorbs that enum's case values beside it, but where the key holds two enums that print
+one alias name, such as `App\Enums\Status` and `Crm\Enums\Status`, a literal stays unless both enums hold it:
+`$c ? Status::Draft->value : ($d ? $this->status->value : $this->crmStatus->value)` publishes
+`0 | WorkbenchStatusType | CrmStatusType`. The type admits what PHP sends, and the cost is an arm that adds nothing.
 
 ### A key holding two classes of one name can publish one union arm twice
 
@@ -432,6 +394,15 @@ Until the imports alias the two models apart, the text cannot tell which arm nam
 resource key named after a model attribute whose type names a class or two enums keeps both copies too. `X | X` means
 `X`, so `tsc` passes, and the cost is a line that looks like a bug. No workbench fixture has the shape, so the
 redundant-arm gate, which fails on two arms spelled alike, does not see it.
+
+### A hand-written `StatusType` in a cast or an extends clause fails `tsc` beside two enums of that name
+
+A `#[TsCasts]` value or a `#[TsExtends]` clause that spells an enum's type by hand, such as
+`'k' => 'StatusType | null'`, keeps its text as written. Where the file also reads two enums that print that name, such
+as `App\Enums\Status` and `Crm\Enums\Status`, both imports take aliases (`WorkbenchStatusType`, `CrmStatusType`) and
+nothing records which enum the hand-written token means, so the bare `StatusType` is `TS2304` in a consumer's build.
+With one such enum in the file it compiles. Give one enum a distinct name with `#[TsEnum]`, or type the key with an
+import-aware `#[TsCasts]` entry that names a type your own module exports.
 
 ### A pure enum's `->value` read through an API resource wrapping it publishes `string | number`
 
@@ -720,8 +691,8 @@ a model or enum beside an override, such as `Person|User`, is `unknown` too.
 A value object's public properties keep a published model or an enum with its import, but read as that docblock shape
 does where a member names an API resource or spells an override like the model or enum beside it, or where two enums
 sharing a name alternate: `public Status $first; public CrmStatus $crm; public ?Status $last` publishes each `unknown`,
-since a resolved type lists each enum once. A member spelling two same-named models, one of them unpublished, is
-`unknown` too.
+since not every reader of a value object's type follows the enum behind each token yet. A member spelling two
+same-named models, one of them unpublished, is `unknown` too.
 
 A helper read as a value publishes what the same literal publishes in place, but for a member whose class publishes
 under a name another member's override imports, such as an enum typed `ChartType` beside a composed `Chart`: the key

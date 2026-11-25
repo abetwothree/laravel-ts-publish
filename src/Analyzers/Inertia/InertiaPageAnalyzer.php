@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\PrintsTopLevelMembers;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
@@ -19,12 +18,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\IndexSignatureReconciler;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TsCastsReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Handlers\Inertia\InertiaTableHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\CallMatcher;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\InertiaRenderLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodContext;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\TokenKind;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsCasts;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
@@ -79,7 +79,6 @@ class InertiaPageAnalyzer
 {
     use InspectsAstNodes;
     use PrintsTopLevelMembers;
-    use RewritesEnumResourceProps;
 
     /** Depth cap for `$props = $other;` chains, which the flat bindings cannot prove acyclic. */
     private const MAX_VARIABLE_HOPS = 8;
@@ -415,7 +414,7 @@ class InertiaPageAnalyzer
             $analysis->absorbRedundantArms();
             resolve(CastChannels::class)->fit($analysis, $this->castsInForce($analysis, $casts, $paths));
 
-            $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
+            $props = $this->collectProps($analysis);
             $members = $this->buildMembersWithOverrides(
                 $props,
                 $casts,
@@ -538,14 +537,13 @@ class InertiaPageAnalyzer
     {
         /** @var list<class-string> $candidates */
         $candidates = [
-            ...array_values($analysis->enumResources),
             ...array_values($analysis->directEnumFqcns),
             ...array_values($analysis->nestedResources),
             ...array_values($analysis->modelFqcns),
             ...$analysis->allCarriedFqcns(),
         ];
 
-        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
+        foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
             foreach ($map as $fqcns) {
                 $candidates = [...$candidates, ...$fqcns];
             }
@@ -555,7 +553,7 @@ class InertiaPageAnalyzer
             array_unique($candidates),
             // An enum's type name follows #[TsEnum(name:)]; its bare name is the const, which only a `typeof` reads.
             fn (string $fqcn): bool => enum_exists($fqcn)
-                ? array_any(ValueResult::enumNames($fqcn), fn (string $name): bool => $this->typeSpells($pageType, $name))
+                ? array_any(EnumNames::names($fqcn), fn (string $name): bool => $this->typeSpells($pageType, $name))
                 : $this->typeSpells($pageType, class_basename($fqcn)) || $this->typeSpells($pageType, TsNaming::resourceTypeName($fqcn)),
         ));
     }
@@ -567,18 +565,10 @@ class InertiaPageAnalyzer
      */
     protected function spelledEnumConsts(MethodAnalysis $analysis, string $pageType): array
     {
-        $candidates = array_values($analysis->enumResources);
-
-        foreach ([$analysis->multiEnumResourceFqcns, $analysis->inlineEnumResourceFqcns] as $map) {
-            foreach ($map as $fqcns) {
-                $candidates = [...$candidates, ...$fqcns];
-            }
-        }
-
         return array_values(array_filter(
-            array_unique($candidates),
+            $analysis->allWrapConstFqcns(),
             fn (string $fqcn): bool => preg_match(
-                TsTypeString::queuedTokenPattern([ValueResult::enumConstName($fqcn)], 'typeof\s+\K'),
+                TsTypeString::queuedTokenPattern([EnumNames::constName($fqcn)], TokenKind::WrapConst->anchor()),
                 $pageType,
             ) === 1,
         ));

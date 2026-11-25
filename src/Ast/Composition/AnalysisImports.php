@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
-use Illuminate\Support\Facades\Config;
 
 /**
  * Turns a MethodAnalysis's FQCN channels into resolved type/value import maps.
@@ -35,6 +36,16 @@ final class AnalysisImports
     protected string $namespacePath = '';
 
     /**
+     * The enums an analysis reads, each once: those that need a TypeScript type import.
+     *
+     * @return list<class-string>
+     */
+    public static function enumTypeFqcns(MethodAnalysis $analysis): array
+    {
+        return array_values(array_unique($analysis->directEnumFqcns));
+    }
+
+    /**
      * Build the type and value import maps for one analysis.
      *
      * $fromNamespacePath is the importing file's namespace path (e.g. 'workbench/app/events').
@@ -48,24 +59,20 @@ final class AnalysisImports
 
         $enumFqcnMap = [];
 
-        foreach ($this->enumTypeFqcns($analysis) as $fqcn) {
-            $enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
-            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
+        foreach (self::enumTypeFqcns($analysis) as $fqcn) {
+            $enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
+            $this->enumConstMap[$fqcn] = EnumNames::constName($fqcn);
         }
 
-        foreach ($this->constOnlyEnumFqcns($analysis) as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
-        }
-
-        foreach ($this->asEnumWrappedOnlyFqcns($analysis) as $fqcn) {
-            unset($enumFqcnMap[$fqcn]);
+        foreach ($this->writtenWrapConsts($analysis) as $fqcn) {
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         // Every caller keeps only the names its type spells, so a backed enum offers its `…Kind` beside its `…Type`.
         $this->siblingImportNames = [];
 
         foreach (array_keys($enumFqcnMap) as $fqcn) {
-            foreach (ValueResult::enumSiblingNames($fqcn) as $name) {
+            foreach (EnumNames::siblingNames($fqcn) as $name) {
                 $this->siblingImportNames[$fqcn][$name] = $name;
             }
         }
@@ -126,98 +133,29 @@ final class AnalysisImports
     }
 
     /**
-     * Enum FQCNs that need a TypeScript type import.
-     *
-     * @return list<class-string>
-     */
-    private function enumTypeFqcns(MethodAnalysis $analysis): array
-    {
-        $fqcns = [...array_values($analysis->enumResources), ...array_values($analysis->directEnumFqcns)];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
-    }
-
-    /**
-     * Enum FQCNs reachable only through an inline object type, which need the const name but no type import.
-     *
-     * @return list<class-string>
-     */
-    private function constOnlyEnumFqcns(MethodAnalysis $analysis): array
-    {
-        $fqcns = [];
-
-        foreach ($analysis->inlineEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
-    }
-
-    /**
-     * Enums the AsEnum rewrite leaves with no bare `XType` token anywhere, so their type import is dead.
-     *
-     * Mirrors ResourceTransformer::rewriteEnumResourceTypes()'s GC; without it a wrapped-only enum
-     * emits an unused `import type` that fails a consumer's noUnusedLocals.
-     *
-     * @return list<class-string>
-     */
-    private function asEnumWrappedOnlyFqcns(MethodAnalysis $analysis): array
-    {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
-            return [];
-        }
-
-        $directFqcns = array_values($analysis->directEnumFqcns);
-        $inlineFqcns = [];
-
-        foreach ($analysis->inlineEnumFqcns as $branchFqcns) {
-            $inlineFqcns = [...$inlineFqcns, ...$branchFqcns];
-        }
-
-        $dead = [];
-
-        foreach ($analysis->enumResources as $propName => $fqcn) {
-            if (! isset($analysis->directEnumFqcns[$propName])
-                && ! in_array($fqcn, $directFqcns, true)
-                && ! in_array($fqcn, $inlineFqcns, true)) {
-                $dead[] = $fqcn;
-            }
-        }
-
-        // The multi-enum ternary rewrite replaces every branch token, and unlike the wrap above it
-        // does not spare an enum that only an inline object type reads.
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            foreach ($branchFqcns as $fqcn) {
-                if (! in_array($fqcn, $directFqcns, true)) {
-                    $dead[] = $fqcn;
-                }
-            }
-        }
-
-        return array_values(array_unique($dead));
-    }
-
-    /**
      * Build the const/value import map, which only the tolki package's AsEnum wrapper consumes.
      *
      * @return TypesImportMap
      */
     private function buildValueImports(MethodAnalysis $analysis): array
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return [];
         }
 
-        $fqcns = [...array_values($analysis->enumResources), ...$this->constOnlyEnumFqcns($analysis)];
+        return $this->collectModularValueImports($this->writtenWrapConsts($analysis));
+    }
 
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return $this->collectModularValueImports(array_values(array_unique($fqcns)));
+    /**
+     * The enums whose const a property's type writes after `typeof`, which need the const name but no type import.
+     *
+     * @return list<class-string>
+     */
+    private function writtenWrapConsts(MethodAnalysis $analysis): array
+    {
+        return EnumWrapImports::writtenIn(
+            array_column($analysis->properties, 'type', 'name'),
+            $analysis->inlineEnumResourceFqcns,
+        );
     }
 }

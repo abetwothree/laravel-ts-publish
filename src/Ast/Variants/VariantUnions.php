@@ -19,7 +19,7 @@ final class VariantUnions
 {
     /**
      * Replace the rows of each group that still holds for the analysis, none of whose keys a cast the publisher lays
-     * over it retypes, and whose objects queue their enums apart, with one variant row after every other row.
+     * over it retypes, with one variant row after every other row.
      *
      * @param  list<string>  $declinedKeys  the keys a later cast retypes, whose arms would describe rows not published
      */
@@ -33,11 +33,6 @@ final class VariantUnions
 
         foreach ($groups as $group) {
             $objects = array_map(static fn (Variant $variant): MethodAnalysis => self::object($group, $variant), $group->variants);
-
-            if (! array_all($objects, InlineObjectResult::queuesEnumsApart(...))) {
-                continue;
-            }
-
             $union = ValueResult::unionResults(array_map(resolve(InlineObjectResult::class)->of(...), $objects));
 
             $analysis->dropKeys($group->keys);

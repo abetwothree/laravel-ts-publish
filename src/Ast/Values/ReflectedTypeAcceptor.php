@@ -44,7 +44,7 @@ final class ReflectedTypeAcceptor
         if (count($tsInfo['enumFqcns']) === 1 && $tsInfo['classFqcns'] === []) {
             $result['directEnumFqcn'] = $tsInfo['enumFqcns'][0];
         } elseif ($tsInfo['enumFqcns'] !== []) {
-            $result['embeddedEnumFqcns'] = $tsInfo['enumFqcns'];
+            $result['embeddedEnumFqcns'] = $tsInfo['enumTokenFqcns'] ?? $tsInfo['enumFqcns'];
         }
 
         if (count($tsInfo['classFqcns']) === 1 && $tsInfo['enumFqcns'] === []) {
@@ -70,6 +70,8 @@ final class ReflectedTypeAcceptor
         if ($tsInfo['typedByClass'] ?? false) {
             $result['typedByClass'] = true;
         }
+
+        $result = ValueResult::withWrapChannels($result, $tsInfo);
 
         return ($tsInfo['closedToDottedKeys'] ?? false) ? ValueResult::closeToDottedKeys($result) : $result;
     }

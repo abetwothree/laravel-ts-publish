@@ -122,7 +122,8 @@ use ReflectionMethod;
  *      passedValues: ClosureParamExprBindingsMap,
  *      relativeParameters: array<string, true>,
  *      guardedParameters: array<string, ParameterGuard>,
- *      leftOutParameters: LeftOutParametersMap
+ *      leftOutParameters: LeftOutParametersMap,
+ *      declaredParameters: VarValueBindingsMap
  * }
  * @phpstan-type ScopeState array{
  *      bindings: NameBindingsSnapshot,
@@ -172,6 +173,7 @@ final class AnalysisScope
         'relativeParameters' => [],
         'guardedParameters' => [],
         'leftOutParameters' => [],
+        'declaredParameters' => [],
     ];
 
     /**
@@ -385,6 +387,14 @@ final class AnalysisScope
      * @var VarValueBindingsMap
      */
     public array $varValueBindings = [];
+
+    /**
+     * The value each parameter's own declaration bound in varValueBindings: while a read takes that value, its `null`
+     * is only the declaration's (DeclaredArms).
+     *
+     * @var VarValueBindingsMap
+     */
+    public array $declaredParameters = [];
 
     /**
      * Top-level `$var = expr;` bindings for the method last analyzed, so a bare `Variable` value
@@ -1362,6 +1372,7 @@ final class AnalysisScope
             'relativeParameters' => $this->relativeParameters,
             'guardedParameters' => $this->guardedParameters,
             'leftOutParameters' => $this->leftOutParameters,
+            'declaredParameters' => $this->declaredParameters,
         ];
     }
 
@@ -1392,6 +1403,7 @@ final class AnalysisScope
         $this->relativeParameters = $snapshot['relativeParameters'];
         $this->guardedParameters = $snapshot['guardedParameters'];
         $this->leftOutParameters = $snapshot['leftOutParameters'];
+        $this->declaredParameters = $snapshot['declaredParameters'];
     }
 
     /**
@@ -1629,6 +1641,10 @@ final class AnalysisScope
                 $this->varValueBindings[$to] = $snapshot['varValueBindings'][$from];
             }
 
+            if (isset($snapshot['declaredParameters'][$from])) {
+                $this->declaredParameters[$to] = $snapshot['declaredParameters'][$from];
+            }
+
             if (isset($snapshot['requestVarNames'][$from])) {
                 $this->requestVarNames[$to] = $snapshot['requestVarNames'][$from];
             }
@@ -1850,6 +1866,7 @@ final class AnalysisScope
             $this->relativeParameters,
             $this->guardedParameters,
             $this->leftOutParameters,
+            $this->declaredParameters,
         ];
     }
 
@@ -1905,6 +1922,7 @@ final class AnalysisScope
                 $this->relativeParameters[$name],
                 $this->guardedParameters[$name],
                 $this->leftOutParameters[$name],
+                $this->declaredParameters[$name],
             );
         }
     }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -424,6 +426,27 @@ final class ParameterBinder
     }
 
     /**
+     * The one type a native declaration spells, alone or beside `null`, with whether `null` is there; null for any
+     * other type, a lone `null` included.
+     *
+     * @return array{Node, bool}|null
+     */
+    public static function nativeArm(Node $type): ?array
+    {
+        if ($type instanceof NullableType) {
+            return [$type->type, true];
+        }
+
+        $arms = $type instanceof UnionType ? $type->types : [$type];
+        $named = array_values(array_filter(
+            $arms,
+            static fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
+        ));
+
+        return count($named) === 1 ? [$named[0], count($arms) > 1] : null;
+    }
+
+    /**
      * Bind a method's parameters for a read of its body: by what each declares, then by what its call passes.
      *
      * @param  array<string, PassedBinding>  $passed  each parameter's binding, from passedBinding()
@@ -478,7 +501,7 @@ final class ParameterBinder
         }
 
         if ($value !== null) {
-            $scope->varValueBindings[$name] = $value;
+            $scope->varValueBindings[$name] = $scope->declaredParameters[$name] = $value;
         }
     }
 
@@ -790,18 +813,25 @@ final class ParameterBinder
     }
 
     /**
-     * The classes an array declares its element as, for a parameter that declares no class of its own, natively or by
-     * `@param`, which ClosureHandler binds instead; null for a model, which binds by the model the element carries.
+     * The classes an array declares its element as, for a parameter with no native type whose `@param` names no class
+     * or one they narrow; null for a model, which binds by the model the element carries, and for any other
+     * declaration, which ClosureHandler binds instead.
      *
      * @return non-empty-list<class-string>|null
      */
     private static function undeclaredElementClasses(?Param $param, ?ReceiverType $declared, AnalysisScope $scope, ?string $docComment): ?array
     {
-        if ($declared === null || $param === null || $param->type !== null || self::declaredClass($param, $scope, $docComment) !== null) {
+        if ($declared === null || $param === null || $param->type !== null) {
             return null;
         }
 
-        return array_any($declared->classes, static fn (string $class): bool => is_a($class, Model::class, true)) ? null : $declared->classes;
+        $documented = self::declaredClass($param, $scope, $docComment)[0] ?? null;
+        $narrows = $documented === null
+            || ($declared->within([$documented]) && ! new ReceiverType([$documented])->within($declared->classes));
+
+        return ! $narrows || array_any($declared->classes, static fn (string $class): bool => is_a($class, Model::class, true))
+            ? null
+            : $declared->classes;
     }
 
     /**
@@ -880,11 +910,11 @@ final class ParameterBinder
      */
     private static function enumArmFits(string $arm, string $enum, array $scalars): bool
     {
-        if ($arm === ValueResult::enumKindName($enum)) {
+        if ($arm === EnumNames::kindName($enum)) {
             return isset($scalars['string']);
         }
 
-        $backing = $arm === ValueResult::enumTypeName($enum) && enum_exists($enum)
+        $backing = $arm === EnumNames::typeName($enum) && enum_exists($enum)
             ? new ReflectionEnum($enum)->getBackingType()?->getName()
             : null;
 
@@ -1024,17 +1054,9 @@ final class ParameterBinder
      */
     private static function classArm(Node $type): array
     {
-        if ($type instanceof NullableType) {
-            return [$type->type instanceof Name ? $type->type : null, true];
-        }
+        [$arm, $nullable] = self::nativeArm($type) ?? [null, false];
 
-        $arms = $type instanceof UnionType ? $type->types : [$type];
-        $named = array_values(array_filter(
-            $arms,
-            fn (Node $arm): bool => ! $arm instanceof Identifier || $arm->toLowerString() !== 'null',
-        ));
-
-        return count($named) === 1 && $named[0] instanceof Name ? [$named[0], count($arms) > 1] : [null, false];
+        return $arm instanceof Name ? [$arm, $nullable] : [null, false];
     }
 
     /**
@@ -1048,7 +1070,9 @@ final class ParameterBinder
     {
         $name = $param->var instanceof Variable && is_string($param->var->name) ? $param->var->name : null;
         $context = $scope->declaringFileClass;
-        $tag = $name === null ? null : resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context);
+        $tag = $name === null
+            ? null
+            : resolve(PropertyDocblockTypeReader::class)->extractParamTag($docComment, $name, $context, namesReceiver: true);
 
         if ($tag === null || preg_match('/(?<![\\w\\\\$])(?:self|static|parent|\\$this)(?![\\w\\\\])/i', $tag) === 1) {
             return null;
@@ -1131,7 +1155,7 @@ final class ParameterBinder
             }
 
             if ($value !== null) {
-                $scope->varValueBindings[$name] = $value;
+                $scope->varValueBindings[$name] = $scope->declaredParameters[$name] = $value;
             }
         }
     }
@@ -1264,8 +1288,8 @@ final class ParameterBinder
         }
 
         return $variadic
-            ? [...$value, 'type' => ValueResult::arrayWrapType($value['type']), 'optional' => false]
-            : [...$value, 'optional' => false];
+            ? [...$value, 'type' => ValueResult::arrayWrapType(DeclaredArms::markedNull($value['type'])), 'optional' => false]
+            : [...$value, 'type' => DeclaredArms::markedNull($value['type']), 'optional' => false];
     }
 
     /**

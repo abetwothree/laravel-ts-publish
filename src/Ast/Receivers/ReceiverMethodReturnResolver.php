@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
@@ -764,7 +765,7 @@ final class ReceiverMethodReturnResolver
         }
 
         return match (true) {
-            $call !== null && CollectionSteps::elementCall($call, $methodName) => [...$item, 'type' => "{$name} | null"],
+            $call !== null && CollectionSteps::elementCall($call, $methodName) => [...$item, 'type' => DeclaredArms::withDeclaredNull($name)],
             in_array($methodName, self::ITEMS_LIST, true) && $class !== Collection::class => $this->heldItems(
                 new ReceiverType([Collection::class], collectedItems: true, collectedElement: $element),
                 $scope,
@@ -908,7 +909,7 @@ final class ReceiverMethodReturnResolver
         }
 
         if ($nullable) {
-            $result['type'] = TsTypeString::withNullArm($result['type']);
+            $result['type'] = DeclaredArms::withDeclaredNull($result['type']);
         }
 
         return $result;

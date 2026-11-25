@@ -55,8 +55,8 @@ The result holds two invariants:
 ## Rewriting aliased type references
 
 `applyResolvedImportNames()` aliases a type and a const each on its own account, since an enum reached only through an
-inline `EnumResource::make()` has no type import to alias. It calls the consumer's `rewriteTypeReferences()` once if a
-type was aliased.
+`EnumResource` wrap has no type import to alias. It calls the consumer's `rewriteTypeReferences()` once if a type was
+aliased.
 
 `rewriteTypeReferences()` hands each property's type and FQCN list to `TsTypeString::aliasPropertyType()`. A cast key's
 list holds only the classes its text spells and its import does not bring, so a name its import brings is never aliased
@@ -73,14 +73,27 @@ In `mergeTypeScriptInfos()`, a decorated arm such as `User[]` repeats an earlier
 behind its tokens both match, so `User[]|CrmUser[]` merges to `User[] | User[]`. `classFqcns` lists each class once, so
 when two classes share a name the merged info also carries `classTokenFqcns`, the class behind each token it kept.
 Consumers read the queue through [`ClassTokenQueue::fqcnsOf()`](../../src/Support/ClassTokenQueue.php), which falls back
-to `classFqcns`.
+to `classFqcns`. Where two of its enums share a name, a `TypeScriptTypeInfo` carries `enumTokenFqcns` the same way, the
+enum behind each enum token, which a reader aliasing enum tokens reads before `enumFqcns`.
 
 Two more builders write one queue entry per token. `ValueResult::unionResults()` reads a union by class, one member per
 class, when its arms spell one name for two classes, and keeps the merge by text when an arm queues a name for two
-classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineObjectResult::memberFqcns()`
+classes more often than it spells it (`ClassTokenQueue::outrunsItsTokens()`). `InlineObjectResult::memberClasses()`
 queues each member of an inline array through `ClassTokenQueue::perToken()`, as `mergeTypeScriptInfos()` does for each
 decorated arm. It repairs a queue to one entry per token only for a name with one class behind it that a model and a
-resource do not both queue, so `User[] | Record<string, User>` queues its class twice.
+resource do not both queue, so `User[] | Record<string, User>` queues its class twice. A keyed list spells its list
+arm's tokens again in its `Record` arm, so `ValueResult::keyedList()` and `spelledTwice()` read each queue twice and
+the `Record` arm names the classes the list arm names. A later rewrite that merges those arms, such as a resource's
+re-index, `array_values()`, `values()` or an `(array)` cast, goes through `ValueResult::retypedByClass()`: each token
+carries its class through the text (`ClassIdentity::retyped()`), so arms merge only where their classes match and
+each queue keeps the classes of the tokens left.
+
+A model and a resource can print one name, as `Address` and `AddressResource` do. Each kind's channel keeps its own
+tokens' order only, so a union or an inline object holding both records which of those tokens is whose
+(`alikeClassFqcns`), and `ClassIdentity::queueByToken()` reorders a key's queue by that record wherever it still lines
+up with the channels. Where no record lines up, the queue stays as it came. A reader that takes members off such a
+value, a spread or a key read back, takes each member's tokens off `ClassIdentity::alikeQueue()` too, so the member
+keeps its own record.
 
 Callers fill their queues in one of three ways:
 
@@ -120,7 +133,10 @@ gate](../testing/type-inference-gates.md) depends on it, because a bare `User` i
 `User as ModelsUser` and `User as CrmUser` is a `TS2304`.
 
 The trailing `(?![A-Za-z0-9_$])` lookahead, not the longest-first order of the alternation, is what stops `User` from
-matching the start of `UserProfile`.
+matching the start of `UserProfile`. A name right after `typeof` is a const's: with no anchor, `queuedTokenPattern()`
+skips it, so no `aliasPropertyType()`, type `ClassTokenQueue` or `TokenSlots` class token reads it, and only
+`TsTypeString::TYPEOF_ANCHOR` does. A composed module's shadowing import is the one rename that reaches it too, since an
+import alias renames a value and a type alike.
 
 ## Consumers
 
@@ -177,14 +193,14 @@ transformed is never registered.
 - **A declared key's tokens**: a key whose `MethodAnalysis::$declaredTokenFqcns` hold an override's null respells each
   token by its own slot (`aliasSlottedTokens()`), since its per-name queue cannot hold that null.
 
-- **Inline-only consts**: an enum reached only through `EnumResource::make()` inside an inline array never enters
-  `$enumFqcnMap`, because it needs no bare type import. A second loop registers those leftover consts, so two with one
-  name resolve apart instead of shipping as two identical value imports from different files (`TS2300`).
-- **The inline wrap's own token**: aliasing the import does not rename the const inside `AsEnum<typeof …>`.
-  `rewriteEnumResourceTypes()` substitutes it later, through its own `aliasTypeofConst()` call keyed on the const
-  maps. [ResourceAstAnalyzer § The inline wrap's own const token is aliased by the transformer, not
-  here](resource-ast-analyzer.md#the-inline-wraps-own-const-token-is-aliased-by-the-transformer-not-here) explains why
-  it cannot reuse `rewriteTypeReferences()`.
+- **Wrap-only consts**: an enum reached only through an `EnumResource` wrap never enters `$enumFqcnMap`, because it
+  needs no bare type import. A second loop registers those consts, so two with one name resolve apart instead of
+  shipping as two identical value imports from different files (`TS2300`).
+- **A wrap's own token**: aliasing the import does not rename the const inside `AsEnum<typeof …>`.
+  `rewriteEnumResourceTypes()` respells it later, through its own `aliasTypeofConst()` call over the key's const queue.
+  [ResourceAstAnalyzer § A wrap's const token is aliased by the
+  transformer](resource-ast-analyzer.md#a-wraps-const-token-is-aliased-by-the-transformer) explains why it cannot reuse
+  `rewriteTypeReferences()`.
 
 ### `FileImportNames`
 
@@ -207,9 +223,10 @@ composed class and a cast that import one name still collide, and the transforme
 
 ### `BroadcastEventTransformer`
 
-It has no const registry. Broadcast payloads reference enums as types, never as `AsEnum<typeof Const>` values, so its
-`$enumConstMap` is always empty and no const alias is ever resolved. Before aliasing, it reserves every name its custom
-imports bring: its casts' imports, its `#[TsExtends]` imports and the analysis's own custom imports.
+A payload's wrap spells `AsEnum<typeof Const>`, so it keeps a const registry beside the type registry, and respells
+each key's const tokens with `aliasTypeofConst()` over its const queue, as `ResourceTransformer` does. Before aliasing,
+it reserves every name its custom imports bring: its casts' imports, its `#[TsExtends]` imports and the analysis's own
+custom imports.
 
 ## Related
 

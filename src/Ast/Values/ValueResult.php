@@ -9,19 +9,17 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
-use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
-use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\ArrayArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
-use BackedEnum;
 use Closure;
 use PhpParser\Node\Expr;
 use ReflectionClass;
@@ -37,28 +35,28 @@ use ReflectionClass;
  *
  * @phpstan-type AttributeChannels = array{
  *      enumFqcns: list<class-string>,
+ *      enumTokenFqcns?: list<class-string>,
  *      classFqcns: list<class-string>,
  *      classTokenFqcns?: list<class-string|null>,
  *      customImports?: TypesImportMap,
  *      keepsKeys?: bool,
- *      typedByClass?: true
+ *      typedByClass?: true,
+ *      wrappedEnumFqcns?: list<class-string>,
+ *      wrapConstFqcns?: list<class-string>
  * }
  *
  * @internal
  */
 final class ValueResult
 {
-    /** The members that send no value of their own: `null`, and the `[]` an enum wrap around null may be sent as. */
-    public const array EMPTY_ARMS = ['null', 'never[]'];
+    /** The members that send no value of their own: `null` or its mark, and the `[]` a wrap around null may send. */
+    public const array EMPTY_ARMS = ['null', VisibleGaps::DECLARED_NULL, 'never[]'];
 
     /** The keys of a result that say what the value is, not which classes or keys its printed objects hold. */
     private const array VALUE_FACTS = [
         'optional', 'absent', 'removed', 'unnamedKeys', 'listKeys', 'absentReadsNull', 'absentKeys', 'heldObject',
         'mayHoldObject', 'heldProp', 'returnsCallable', 'closedToDottedKeys', 'resolvedFqcn',
     ];
-
-    /** @var array<string, string> enum FQCN => the name its own file exports it under, read once per run */
-    private static array $enumNames = [];
 
     /**
      * The fallback result for an expression that resolves to no useful type.
@@ -134,7 +132,7 @@ final class ValueResult
 
         $enums = array_values(array_unique($list['embeddedEnumFqcns'] ?? []));
 
-        if (count($enums) === 1 && self::enumTypeName($enums[0]) === $element) {
+        if (count($enums) === 1 && EnumNames::typeName($enums[0]) === $element) {
             $value['directEnumFqcn'] = $enums[0];
         }
 
@@ -156,6 +154,80 @@ final class ValueResult
     }
 
     /**
+     * A list result as json_encode() writes it once a step left its keys out of 0..n-1: ArrayArms::keyedList()'s type.
+     *
+     * @param  ValueExpressionResult  $list
+     * @return ValueExpressionResult
+     */
+    public static function keyedList(array $list): array
+    {
+        return self::spelledTwice($list, ArrayArms::keyedList($list['type']));
+    }
+
+    /**
+     * A result retyped by a rewrite of its text that may merge, drop or repeat arms, each queue kept to the tokens the
+     * new text spells (ClassIdentity::retyped()), or the text alone where a token's class cannot be told; null where
+     * the rewrite reads no type.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  Closure(string): ?string  $rewrite
+     * @return ValueExpressionResult|null
+     */
+    public static function retypedByClass(array $result, Closure $rewrite): ?array
+    {
+        $type = $rewrite($result['type']);
+
+        if ($type === null) {
+            return null;
+        }
+
+        $queuesNoClass = static fn (): bool => array_all(
+            TokenKind::cases(),
+            static fn (TokenKind $kind): bool => $kind->channelFqcns($result) === [],
+        );
+
+        if ($type === $result['type'] || $queuesNoClass()) {
+            return [...$result, 'type' => $type];
+        }
+
+        return ClassIdentity::retyped($result, $rewrite) ?? [...$result, 'type' => $type];
+    }
+
+    /**
+     * A result retyped by a text spelling its type's tokens twice, as `X[] | Record<string, X>` spells `X[]`'s: each
+     * queue of the classes behind its tokens reads twice, or the second copy would take the last class of each name.
+     *
+     * @param  ValueExpressionResult  $result
+     * @return ValueExpressionResult
+     */
+    public static function spelledTwice(array $result, string $type): array
+    {
+        $twice = [...$result, 'type' => $type];
+
+        if (($result['embeddedModelFqcns'] ?? []) !== []) {
+            $twice['embeddedModelFqcns'] = [...$result['embeddedModelFqcns'], ...TokenKind::Model->channelFqcns($result)];
+        }
+
+        if (($result['embeddedResourceFqcns'] ?? []) !== []) {
+            $twice['embeddedResourceFqcns'] = [...$result['embeddedResourceFqcns'], ...TokenKind::Resource->channelFqcns($result)];
+        }
+
+        if (($result['embeddedEnumFqcns'] ?? []) !== []) {
+            $twice['embeddedEnumFqcns'] = [...$result['embeddedEnumFqcns'], ...TokenKind::Enum->channelFqcns($result)];
+        }
+
+        if (($result['embeddedEnumResourceFqcns'] ?? []) !== []) {
+            $twice['embeddedEnumResourceFqcns'] = [...$result['embeddedEnumResourceFqcns'], ...$result['embeddedEnumResourceFqcns']];
+        }
+
+        if (($result['alikeClassFqcns'] ?? []) !== []) {
+            $twice['alikeClassFqcns'] = [...$result['alikeClassFqcns'], ...$result['alikeClassFqcns']];
+        }
+
+        return $twice;
+    }
+
+    /**
      * Whether a generated file exports every class a result names on its model channels, as far as this run knows.
      *
      * A token with no file behind it would be emitted without an import, so MethodAnalysis::addProperty() declines it.
@@ -164,7 +236,7 @@ final class ValueResult
      */
     public static function namesOnlyExportedClasses(array $result): bool
     {
-        return array_all(self::modelChannelFqcns($result), PublishedClasses::exports(...));
+        return array_all(TokenKind::Model->channelFqcns($result), PublishedClasses::exports(...));
     }
 
     /**
@@ -175,7 +247,7 @@ final class ValueResult
      */
     public static function namesOnlyPublishedModels(array $result): bool
     {
-        return self::everyModelPublished(self::modelChannelFqcns($result));
+        return self::everyModelPublished(TokenKind::Model->channelFqcns($result));
     }
 
     /**
@@ -224,7 +296,7 @@ final class ValueResult
     public static function withAttributeChannels(array $result, array $attribute): array
     {
         if (count($attribute['enumFqcns']) > 1) {
-            $result['embeddedEnumFqcns'] = $attribute['enumFqcns'];
+            $result['embeddedEnumFqcns'] = $attribute['enumTokenFqcns'] ?? $attribute['enumFqcns'];
         } elseif ($attribute['enumFqcns'] !== []) {
             $result['directEnumFqcn'] = $attribute['enumFqcns'][0];
         }
@@ -245,6 +317,26 @@ final class ValueResult
 
         if ($attribute['typedByClass'] ?? false) {
             $result['typedByClass'] = true;
+        }
+
+        return self::withWrapChannels($result, $attribute);
+    }
+
+    /**
+     * Carry the enums a type info's wraps send and the const behind each `typeof` token it spells onto a result.
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  array{wrappedEnumFqcns?: list<class-string>, wrapConstFqcns?: list<class-string>}  $info
+     * @return ValueExpressionResult
+     */
+    public static function withWrapChannels(array $result, array $info): array
+    {
+        if (($info['wrappedEnumFqcns'] ?? []) !== []) {
+            $result['wrappedEnumFqcns'] = $info['wrappedEnumFqcns'];
+        }
+
+        if (($info['wrapConstFqcns'] ?? []) !== []) {
+            $result['embeddedEnumResourceFqcns'] = $info['wrapConstFqcns'];
         }
 
         return $result;
@@ -354,7 +446,7 @@ final class ValueResult
         }
 
         return isset($result['mayHoldObject']) && $result['type'] !== 'unknown'
-            ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]], countMembers: true)
+            ? self::unionResults([$result, ['type' => 'never[]', 'optional' => false]])
             : $result;
     }
 
@@ -419,6 +511,25 @@ final class ValueResult
     }
 
     /**
+     * A result with what another says the value is beside its own type and classes: each of the other's VALUE_FACTS and
+     * whether it keeps its keys, as a declaration laid whole over a reading takes them (DeclaredFill).
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  ValueExpressionResult  $of
+     * @return ValueExpressionResult
+     */
+    public static function withValueFactsOf(array $result, array $of): array
+    {
+        foreach ([...self::VALUE_FACTS, 'keepsKeys'] as $fact) {
+            if (array_key_exists($fact, $of)) {
+                $result[$fact] = $of[$fact];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Whether a result is a literal printed one object per variant, each an array PHP holds, while its type is still
      * that union.
      *
@@ -478,8 +589,9 @@ final class ValueResult
     }
 
     /**
-     * What a read makes of a value with its top-level gap arms set aside, those gaps given back to the type it makes; a
-     * read that declines stays null, and the gaps' warnings stay held for the strip or the extent that raises them.
+     * What a read makes of a value with its top-level gap arms set aside, those gaps given back to the type it makes,
+     * as VisibleGaps::carried() gives them, a declared null's mark with them; a read that declines stays null, and the
+     * gaps' warnings stay held for the strip or the extent that raises them.
      *
      * @param  ValueExpressionResult  $input
      * @param  Closure(ValueExpressionResult): (ValueExpressionResult|null)  $read
@@ -489,13 +601,16 @@ final class ValueResult
     {
         [$rest, $gaps] = VisibleGaps::aside($input['type']);
 
-        if ($gaps === []) {
+        if ($rest === $input['type']) {
             return $read($input);
         }
 
         $result = $read([...$input, 'type' => $rest]);
 
-        return $result === null ? null : [...$result, 'type' => VisibleGaps::restored($result['type'], $gaps)];
+        return $result === null ? null : [
+            ...$result,
+            'type' => VisibleGaps::restored(VisibleGaps::remarked($input['type'], $result['type']), $gaps),
+        ];
     }
 
     /**
@@ -542,7 +657,6 @@ final class ValueResult
      *
      * A branch the engine could not type is dropped rather than widening the union to `unknown` (D1);
      * a caller that resolves its arms under its own narrowing enters here instead of resolving twice.
-     * With $countMembers, a union of enum resources is recognised by the count of its members, not of its arms' types.
      *
      * The union is optional when any arm, typed or not, is: an arm's `optional` means its key can be absent. A
      * `never[]` beside a list or the empty tuple `[]` is no member of its own, as either admits it. Its held-object
@@ -551,15 +665,15 @@ final class ValueResult
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
-    public static function unionResults(array $results, bool $countMembers = false): array
+    public static function unionResults(array $results): array
     {
         // Text alone keeps two same-named classes apart only while no strip collapses one of them onto the other.
         if (array_any($results, static fn (array $inner): bool => VisibleGaps::stripped($inner['type'])[0] !== $inner['type'])
-            && self::spellsTwoClassesAlike(array_values(array_filter($results, static fn (array $inner): bool => $inner['type'] !== 'unknown')))) {
-            return self::unionLiftingGaps($results, $countMembers);
+            && ClassIdentity::spellsTwoClassesAlike(array_values(array_filter($results, static fn (array $inner): bool => $inner['type'] !== 'unknown')))) {
+            return self::unionLiftingGaps($results);
         }
 
-        /** @var list<string> $types the types mergeUnion() counts: each arm's whole type, or each member of it */
+        /** @var list<string> $types each arm's type, which mergeUnion() splits into its members */
         $types = [];
         /** @var list<ValueExpressionResult> $branchResults every non-unknown branch, for channel merging */
         $branchResults = [];
@@ -569,7 +683,7 @@ final class ValueResult
                 continue;
             }
 
-            array_push($types, ...($countMembers ? TsTypeString::splitTopLevelUnion($inner['type']) : [$inner['type']]));
+            $types[] = $inner['type'];
             $branchResults[] = $inner;
         }
 
@@ -589,7 +703,7 @@ final class ValueResult
 
         // Arms that spell one name for two classes cannot be told apart by their text, so the members are read again
         // arm by arm, one member per class.
-        $result = self::spellsTwoClassesAlike($branchResults) ? self::withMembersByClass($result, $branchResults) : $result;
+        $result = ClassIdentity::spellsTwoClassesAlike($branchResults) ? ClassIdentity::membersByClass($result, $branchResults) : $result;
 
         $union = [...$result, 'type' => self::withTopLevelArmsAbsorbed($result['type']), 'optional' => $optional];
         $union = self::withArmObjects($closed ? self::closeToDottedKeys($union) : $union, $results);
@@ -603,185 +717,13 @@ final class ValueResult
     }
 
     /**
-     * Record which arm of a union that mixes an EnumResource wrap with a direct read of one enum is a list.
-     *
-     * The merged type spells both arms as one bare name, so only the arms' own results still tell them apart. The union
-     * stays as it is when an arm carries both channels, or when the wrap arms, or the direct arms, disagree on their
-     * shape. A Closure defers resolving the arms again until the union proves mixed, the only case worth the cost.
-     *
-     * @param  ValueExpressionResult  $union
-     * @param  list<ValueExpressionResult>|Closure(): list<ValueExpressionResult>  $arms
-     * @return ValueExpressionResult
-     */
-    public static function withEnumArmShapes(array $union, array|Closure $arms): array
-    {
-        if (! isset($union['enumFqcn'], $union['directEnumFqcn']) || $union['enumFqcn'] !== $union['directEnumFqcn']) {
-            return $union;
-        }
-
-        /** @var list<bool> $wrapIsList one entry per arm that wraps */
-        $wrapIsList = [];
-        /** @var list<bool> $directIsList one entry per arm that reads directly */
-        $directIsList = [];
-
-        foreach ($arms instanceof Closure ? $arms() : $arms as $arm) {
-            $wraps = isset($arm['enumFqcn']);
-            $reads = self::readsEnumType($arm);
-
-            // An arm carrying both is itself mixed, so it cannot say which of its members is the wrap.
-            if ($wraps && $reads) {
-                return $union;
-            }
-
-            $isList = self::isListShaped($arm['type']);
-
-            if ($wraps) {
-                $wrapIsList[] = $isList;
-            } elseif ($reads) {
-                $directIsList[] = $isList;
-            }
-        }
-
-        $wrapShapes = array_values(array_unique($wrapIsList));
-        $directShapes = array_values(array_unique($directIsList));
-
-        if (count($wrapShapes) !== 1 || count($directShapes) !== 1) {
-            return $union;
-        }
-
-        $union['wrapIsCollection'] = $wrapShapes[0];
-        $union['directIsArray'] = $directShapes[0];
-
-        return $union;
-    }
-
-    /**
-     * The result's model queue, when two of its models share a name and the queue does not outrun the type's tokens.
-     *
-     * Reads the model channels only. ResultTypeInfoBridge hands the queue on as a type info's classTokenFqcns.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return list<class-string>|null
-     */
-    public static function modelQueueByToken(array $result): ?array
-    {
-        $models = self::modelChannelFqcns($result);
-        $nameOf = class_basename(...);
-
-        if (! self::sharesAName($models, $nameOf)) {
-            return null;
-        }
-
-        $queue = new ClassTokenQueue($models, $nameOf);
-        $queue->take($result['type']);
-
-        return $queue->outrunsItsTokens() ? null : $models;
-    }
-
-    /**
-     * The name an enum's type is spelled with.
-     */
-    public static function enumTypeName(string $fqcn): string
-    {
-        return self::enumConstName($fqcn).'Type';
-    }
-
-    /**
-     * The name a backed enum's case-name union is spelled with: its published const name and `Kind`.
-     */
-    public static function enumKindName(string $fqcn): string
-    {
-        return self::enumConstName($fqcn).'Kind';
-    }
-
-    /**
-     * The name an enum's const is spelled with, as the enum's own file exports it, whatever #[TsType] it carries.
-     */
-    public static function enumConstName(string $fqcn): string
-    {
-        // On a memo hit too: each consumer's cache entry depends on the files the name is read from.
-        DependencyRecorder::recordClass($fqcn);
-
-        return self::$enumNames[$fqcn] ??= TsNaming::enumName($fqcn);
-    }
-
-    /**
-     * The names beside its type name that an enum's tokens are spelled with: a backed enum's `…Kind`.
-     *
-     * An import channel carries the enum behind each of these tokens too, so a queue reads them as the enum's own.
-     *
-     * @return list<string>
-     */
-    public static function enumSiblingNames(string $fqcn): array
-    {
-        return enum_exists($fqcn) && is_a($fqcn, BackedEnum::class, true) ? [self::enumKindName($fqcn)] : [];
-    }
-
-    /**
-     * Whether a result spells its enum's `…Type`, the name the AsEnum rewrite of a wrap of the enum replaces.
-     *
-     * @param  ValueExpressionResult  $result
-     */
-    public static function readsEnumType(array $result): bool
-    {
-        return isset($result['directEnumFqcn'])
-            && TsTypeString::typeNameOccursIn(self::enumTypeName($result['directEnumFqcn']), $result['type']);
-    }
-
-    /**
-     * Every name an enum's tokens are spelled with: its type name, then each sibling name.
-     *
-     * @return non-empty-list<string>
-     */
-    public static function enumNames(string $fqcn): array
-    {
-        return [self::enumTypeName($fqcn), ...self::enumSiblingNames($fqcn)];
-    }
-
-    /**
-     * The classes behind a result's tokens, one queue per kind: its models, its resources and its enums read directly.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return array{ClassTokenQueue, ClassTokenQueue, ClassTokenQueue}
-     */
-    public static function tokenQueues(array $result): array
-    {
-        return [
-            new ClassTokenQueue(self::modelChannelFqcns($result), class_basename(...)),
-            new ClassTokenQueue(
-                self::resourceChannelFqcns($result),
-                static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn),
-            ),
-            self::enumTokens(self::directEnumChannelFqcns($result)),
-        ];
-    }
-
-    /**
-     * A queue of enum classes, each read by every name its tokens spell.
-     *
-     * @param  list<class-string>  $enums
-     */
-    public static function enumTokens(array $enums): ClassTokenQueue
-    {
-        return new ClassTokenQueue($enums, self::enumTypeName(...), self::enumSiblingNames(...));
-    }
-
-    /**
-     * Forget each enum's name, so a run reads every enum's `#[TsEnum]` afresh.
-     */
-    public static function forgetEnumNames(): void
-    {
-        self::$enumNames = [];
-    }
-
-    /**
      * The union of results spelling two classes alike, read on their texts with gaps and markers stripped, every gap
      * their arms held lifted to the union's top, where a strip leaves the arms spelled alike as they are.
      *
      * @param  list<ValueExpressionResult>  $results
      * @return ValueExpressionResult
      */
-    private static function unionLiftingGaps(array $results, bool $countMembers): array
+    private static function unionLiftingGaps(array $results): array
     {
         $gaps = [];
         $bare = [];
@@ -792,7 +734,7 @@ final class ValueResult
             $bare[] = [...$inner, 'type' => $type];
         }
 
-        $union = self::unionResults($bare, $countMembers);
+        $union = self::unionResults($bare);
 
         return [...$union, 'type' => VisibleGaps::restored($union['type'], $gaps)];
     }
@@ -876,94 +818,15 @@ final class ValueResult
     }
 
     /**
-     * Whether one name spells two different models, two different resources or two different enums read directly,
-     * among the given results.
-     *
-     * @param  list<ValueExpressionResult>  $results
-     */
-    private static function spellsTwoClassesAlike(array $results): bool
-    {
-        /** @var list<class-string> $models */
-        $models = [];
-        /** @var list<class-string> $resources */
-        $resources = [];
-        /** @var list<class-string> $enums */
-        $enums = [];
-
-        foreach ($results as $result) {
-            array_push($models, ...self::modelChannelFqcns($result));
-            array_push($resources, ...self::resourceChannelFqcns($result));
-            array_push($enums, ...self::directEnumChannelFqcns($result));
-        }
-
-        return self::sharesAName($models, class_basename(...))
-            || self::sharesAName($resources, static fn (string $fqcn): string => TsNaming::resourceTypeName($fqcn))
-            || (! self::wrapsAnEnum($results) && self::sharesAName($enums, self::enumTypeName(...)));
-    }
-
-    /**
-     * Whether two different classes of the list are spelled with one name.
-     *
-     * @param  list<class-string>  $fqcns
-     * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
-     */
-    private static function sharesAName(array $fqcns, Closure $nameOf): bool
-    {
-        /** @var array<string, class-string> $firstOf name => the first class seen under it */
-        $firstOf = [];
-
-        foreach ($fqcns as $fqcn) {
-            if (($firstOf[$nameOf($fqcn)] ??= $fqcn) !== $fqcn) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The FQCNs a result carries on its direct and embedded enum channels.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return list<class-string>
-     */
-    private static function directEnumChannelFqcns(array $result): array
-    {
-        return [...(isset($result['directEnumFqcn']) ? [$result['directEnumFqcn']] : []), ...($result['embeddedEnumFqcns'] ?? [])];
-    }
-
-    /**
-     * Whether an arm wraps an enum resource. Its token holds no queue entry, since the AsEnum rewrite spells it by its
-     * own import channel, so the union's enums cannot be read by class.
-     *
-     * @param  list<ValueExpressionResult>  $results
-     */
-    private static function wrapsAnEnum(array $results): bool
-    {
-        return array_any($results, fn (array $result): bool => isset($result['enumFqcn']) || isset($result['multiEnumResourceFqcns']));
-    }
-
-    /**
      * Whether a result carries an enum on any channel, read directly or wrapped in an enum resource.
      *
      * @param  ValueExpressionResult  $result
      */
     private static function carriesAnEnum(array $result): bool
     {
-        return self::directEnumChannelFqcns($result) !== []
-            || self::wrapsAnEnum([$result])
-            || ($result['embeddedEnumResourceFqcns'] ?? []) !== [];
-    }
-
-    /**
-     * The FQCNs a result carries on its single and embedded model channels.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return list<class-string>
-     */
-    private static function modelChannelFqcns(array $result): array
-    {
-        return [...(isset($result['modelFqcn']) ? [$result['modelFqcn']] : []), ...($result['embeddedModelFqcns'] ?? [])];
+        return TokenKind::Enum->channelFqcns($result) !== []
+            || TokenKind::WrapConst->channelFqcns($result) !== []
+            || ($result['wrappedEnumFqcns'] ?? []) !== [];
     }
 
     /**
@@ -976,21 +839,17 @@ final class ValueResult
      */
     private static function mergeUnion(array $types, array $branchResults): array
     {
-        /** @var list<class-string> $enumResourceFqcns FQCNs from EnumResource::make() / new EnumResource() branches */
-        $enumResourceFqcns = [];
         /** @var list<class-string> $enumDirectFqcns FQCNs from direct $this->prop enum-access branches */
         $enumDirectFqcns = [];
-        /** @var list<class-string> $enumTypeReadFqcns the direct branches that spell their enum's type name */
-        $enumTypeReadFqcns = [];
-        /** @var list<class-string> $enumOtherReadFqcns the direct branches that spell no `…Type` */
-        $enumOtherReadFqcns = [];
         // Never deduped: aliasPropertyType() walks this list positionally against left-to-right
         // occurrences of each bare enum name in the merged union's rendered type.
         /** @var list<class-string> $embeddedEnumFqcns FQCNs embedded inside nested inline-object types */
         $embeddedEnumFqcns = [];
         // Never deduped either: aliasTypeofConst() walks it against each `typeof X` an arm's object spells, in order.
-        /** @var list<class-string> $embeddedEnumResourceFqcns the enums nested objects wrap in an enum resource */
+        /** @var list<class-string> $embeddedEnumResourceFqcns the enum behind each wrap's const token */
         $embeddedEnumResourceFqcns = [];
+        /** @var list<class-string> $wrappedEnumFqcns */
+        $wrappedEnumFqcns = [];
         // One queue entry per rendered token, built in branch order because aliasPropertyType() walks it
         // against the rendered type left to right. A whole-branch model is appended in loop position, and
         // deduped: analyzeClosureUnion() collapses branches rendering the same string, leaving no token.
@@ -1006,25 +865,8 @@ final class ValueResult
         $carried = [];
 
         foreach ($branchResults as $inner) {
-            // EnumResource branches are tracked apart from direct-access ones, so the result can
-            // propagate the correct FQCN metadata.
-            if (isset($inner['enumFqcn'])) {
-                $enumResourceFqcns[] = $inner['enumFqcn'];
-            }
-
             if (isset($inner['directEnumFqcn'])) {
                 $enumDirectFqcns[] = $inner['directEnumFqcn'];
-
-                if (self::readsEnumType($inner)) {
-                    $enumTypeReadFqcns[] = $inner['directEnumFqcn'];
-                } else {
-                    $enumOtherReadFqcns[] = $inner['directEnumFqcn'];
-                }
-            }
-
-            // No rewrite can place an arm's own wraps inside this union, so their tokens read bare and need importing.
-            if (isset($inner['multiEnumResourceFqcns'])) {
-                array_push($embeddedEnumFqcns, ...$inner['multiEnumResourceFqcns']);
             }
 
             if (isset($inner['embeddedEnumFqcns'])) {
@@ -1032,6 +874,7 @@ final class ValueResult
             }
 
             array_push($embeddedEnumResourceFqcns, ...$inner['embeddedEnumResourceFqcns'] ?? []);
+            array_push($wrappedEnumFqcns, ...$inner['wrappedEnumFqcns'] ?? []);
 
             if (isset($inner['modelFqcn']) && ! in_array($inner['modelFqcn'], $branchModelFqcns, true)) {
                 $branchModelFqcns[] = $inner['modelFqcn'];
@@ -1061,50 +904,30 @@ final class ValueResult
 
         $result = ['type' => TsTypeString::hoistNull($types), 'optional' => false];
 
-        $enumResourceFqcns = array_values(array_unique($enumResourceFqcns));
         $enumDirectFqcns = array_values(array_unique($enumDirectFqcns));
         // Safe to dedupe: one class per name reads alike at every entry, and two under one name are read by class
         // unless an arm outruns its tokens, where the merge by text stands.
         $embeddedResourceFqcns = array_values(array_unique($embeddedResourceFqcns));
 
-        if ($enumResourceFqcns !== []) {
-            // An arm spelling no `…Type`, such as a `…Kind` or an override, reads no type the AsEnum rewrite
-            // replaces, so it rides the embedded queue.
-            $enumDirectFqcns = array_values(array_unique($enumTypeReadFqcns));
-            $embeddedEnumFqcns = [...$enumOtherReadFqcns, ...$embeddedEnumFqcns];
-            $allBranchFqcns = array_values(array_unique([...$enumResourceFqcns, ...$enumDirectFqcns]));
-
-            if ($enumDirectFqcns === [] && count($enumResourceFqcns) === 1) {
-                // Pure EnumResource, single FQCN.
-                $result['enumFqcn'] = $enumResourceFqcns[0];
-            } elseif ($enumDirectFqcns !== [] && count($allBranchFqcns) === 1) {
-                // Mixed: same FQCN via EnumResource and via direct access.
-                $result['enumFqcn'] = $allBranchFqcns[0];
-                $result['directEnumFqcn'] = $allBranchFqcns[0];
-            } elseif ($enumDirectFqcns === []
-                && count($enumResourceFqcns) > 1
-                && count($enumResourceFqcns) === count($types)
-            ) {
-                // All non-null branches are EnumResource with different FQCNs.
-                // Emit ordered list so the transformer can do per-token AsEnum rewrite.
-                $result['multiEnumResourceFqcns'] = $enumResourceFqcns;
-            } else {
-                // Multiple different FQCNs or complex mixed branches: fall back to embedded imports.
-                // Never deduped, same positional reasoning as $embeddedEnumFqcns's own @var above.
-                $embeddedEnumFqcns = [...$allBranchFqcns, ...$embeddedEnumFqcns];
-            }
-        } elseif ($enumDirectFqcns !== []) {
-            // Only direct-access enum branches: existing embedded behaviour. Never deduped,
-            // same positional reasoning as $embeddedEnumFqcns's own @var above.
-            $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
-        }
+        // Never deduped past the direct reads, same positional reasoning as $embeddedEnumFqcns's own @var above.
+        $embeddedEnumFqcns = [...$enumDirectFqcns, ...$embeddedEnumFqcns];
 
         if ($embeddedEnumFqcns !== []) {
             $result['embeddedEnumFqcns'] = $embeddedEnumFqcns;
         }
 
+        // Two arms wrapping one enum print one token, so a const with one class behind it gets one entry per token.
         if ($embeddedEnumResourceFqcns !== []) {
-            $result['embeddedEnumResourceFqcns'] = $embeddedEnumResourceFqcns;
+            $result['embeddedEnumResourceFqcns'] = ClassTokenQueue::perToken(
+                $embeddedEnumResourceFqcns,
+                $result['type'],
+                TokenKind::WrapConst->nameOf(...),
+                anchor: TokenKind::WrapConst->anchor(),
+            );
+        }
+
+        if ($wrappedEnumFqcns !== []) {
+            $result['wrappedEnumFqcns'] = array_values(array_unique($wrappedEnumFqcns));
         }
 
         if ($embeddedModelFqcns !== []) {
@@ -1149,91 +972,5 @@ final class ValueResult
         }
 
         return $result;
-    }
-
-    /**
-     * Give a union one member per class where its arms spell one name for two: a member repeats an earlier one only
-     * when its text and the classes behind its tokens both match, and the queues carry one FQCN per token, in order.
-     * The merge by text stands when an arm's own queue does not line up with its tokens.
-     *
-     * @param  ValueExpressionResult  $union  the arms as merged by their text
-     * @param  list<ValueExpressionResult>  $arms
-     * @return ValueExpressionResult
-     */
-    private static function withMembersByClass(array $union, array $arms): array
-    {
-        /** @var array<string, string> $members identity => text */
-        $members = [];
-        $nullable = false;
-        /** @var list<class-string> $modelFqcns */
-        $modelFqcns = [];
-        /** @var list<class-string> $resourceFqcns */
-        $resourceFqcns = [];
-        /** @var list<class-string> $enumFqcns */
-        $enumFqcns = [];
-        // A union wrapping an enum resource keeps the enum queue mergeUnion() built for the AsEnum rewrite.
-        $wraps = self::wrapsAnEnum($arms);
-
-        foreach ($arms as $arm) {
-            [$models, $resources, $enums] = self::tokenQueues($arm);
-            $enums = $wraps ? self::enumTokens([]) : $enums;
-
-            foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
-                if ($member === 'null') {
-                    $nullable = true;
-
-                    continue;
-                }
-
-                $memberModels = $models->take($member);
-                $memberResources = $resources->take($member);
-                $memberEnums = $enums->take($member);
-                $identity = implode("\0", [$member, ...$memberModels, '', ...$memberResources, '', ...$memberEnums]);
-
-                if (isset($members[$identity])) {
-                    continue;
-                }
-
-                $members[$identity] = $member;
-                array_push($modelFqcns, ...$memberModels);
-                array_push($resourceFqcns, ...$memberResources);
-                array_push($enumFqcns, ...$memberEnums);
-            }
-
-            // An arm that queues a name for two classes more often than it spells it holds a class behind another's
-            // token, and does not say which token is whose (a merge by text is such an arm): the merge by text stands.
-            if ($models->outrunsItsTokens() || $resources->outrunsItsTokens() || $enums->outrunsItsTokens()) {
-                return $union;
-            }
-        }
-
-        unset($union['embeddedModelFqcns'], $union['embeddedResourceFqcns']);
-
-        if ($enumFqcns !== []) {
-            $union['embeddedEnumFqcns'] = $enumFqcns;
-        }
-
-        $union['type'] = implode(' | ', [...array_values($members), ...($nullable ? ['null'] : [])]);
-
-        if ($modelFqcns !== []) {
-            $union['embeddedModelFqcns'] = $modelFqcns;
-        }
-
-        if ($resourceFqcns !== []) {
-            $union['embeddedResourceFqcns'] = $resourceFqcns;
-        }
-
-        return $union;
-    }
-
-    /**
-     * The FQCNs a result carries on its single and embedded resource channels.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return list<class-string>
-     */
-    private static function resourceChannelFqcns(array $result): array
-    {
-        return [...(isset($result['resourceFqcn']) ? [$result['resourceFqcn']] : []), ...($result['embeddedResourceFqcns'] ?? [])];
     }
 }

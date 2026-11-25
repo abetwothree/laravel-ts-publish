@@ -23,6 +23,7 @@ final readonly class ModelMetadataAnalysis
      * @param  array<string, string>  $importPaths  #[TsCasts] import path per key
      * @param  TypesImportMap  $typeImports  imports the inferred types need, relative to the companion file
      * @param  array<string, TypesImportMap>  $docblockImports  per key the docblock types, its overrides' imports
+     * @param  TypesImportMap  $valueImports  the enum consts the inferred types spell after `typeof`
      */
     public function __construct(
         public array $types,
@@ -31,18 +32,23 @@ final readonly class ModelMetadataAnalysis
         public array $importPaths,
         public array $typeImports = [],
         public array $docblockImports = [],
+        public array $valueImports = [],
     ) {}
 
     /**
-     * Local names the inferred imports bring into the file (`X as Y` counts as `Y`), with those a docblock key's own
-     * imports bring for that key, so one key never borrows another's.
+     * Local names the inferred imports bring into the file, consts too (`X as Y` counts as `Y`), with those a docblock
+     * key's own imports bring for that key, so one key never borrows another's.
      *
      * @return list<string>
      */
     public function importedNames(?string $key = null): array
     {
         $docblock = $key === null ? [] : $this->docblockImports[$key] ?? [];
-        $names = [...ImportMaps::localNames($this->typeImports), ...ImportMaps::localNames($docblock)];
+        $names = [
+            ...ImportMaps::localNames($this->typeImports),
+            ...ImportMaps::localNames($this->valueImports),
+            ...ImportMaps::localNames($docblock),
+        ];
 
         return array_values(array_unique($names));
     }

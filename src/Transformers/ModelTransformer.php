@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Transformers;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
 use AbeTwoThree\LaravelTsPublish\Attributes\TsExclude;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -21,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\RelationMap;
 use AbeTwoThree\LaravelTsPublish\RelationNullable;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
+use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\RedundantArms;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
@@ -52,6 +56,13 @@ use ReflectionClass;
  * @phpstan-type TsTypeOverrides = array<string, string>
  * @phpstan-type EnumFqcnInfo = array{fqcn: string, nullable: bool, isCollection: bool, alsoBare: bool}
  * @phpstan-type EnumListFlags = array{isCollection: bool, alsoBare: bool}
+ * @phpstan-type EnumPropertyRow = array{
+ *    constName: string,
+ *    nullable: bool,
+ *    isCollection?: bool,
+ *    alsoBare?: bool,
+ *    asEnumType?: string,
+ * }
  * @phpstan-type ResolvedImports = array{
  *    typeImports: TypesImportMap,
  *    valueImports: ValuesImportMap,
@@ -132,6 +143,9 @@ class ModelTransformer extends CoreTransformer
     /** @var array<string, list<string>> relation_name => target FQCNs, one per occurrence, in type-string order */
     protected array $relationFqcns = [];
 
+    /** @var array<string, list<class-string>> attribute name => the enum behind each `typeof` const its type spells */
+    protected array $attributeConstFqcns = [];
+
     /** @var array<string, EnumFqcnInfo> column_name => enum property info */
     protected array $enumColumnProperties = [];
 
@@ -166,9 +180,9 @@ class ModelTransformer extends CoreTransformer
     {
         $hasEnums = $this->shouldGenerateHasEnums();
         $imports = $this->buildResolvedImports();
-        $enumColumns = $hasEnums ? $this->buildEnumColumns() : [];
-        $enumMutators = $hasEnums ? $this->buildEnumMutators() : [];
-        $enumAppends = $hasEnums ? $this->buildEnumAppends() : [];
+        $enumColumns = $hasEnums ? array_map($this->withAsEnumType(...), $this->buildEnumColumns()) : [];
+        $enumMutators = $hasEnums ? array_map($this->withAsEnumType(...), $this->buildEnumMutators()) : [];
+        $enumAppends = $hasEnums ? array_map($this->withAsEnumType(...), $this->buildEnumAppends()) : [];
 
         return new TsModelDto(
             modelName: $this->modelName,
@@ -340,6 +354,17 @@ class ModelTransformer extends CoreTransformer
             + ComposedClassTypes::globalReferences($this->composedClassTypes());
     }
 
+    /**
+     * Map each enum const the attributes' types spell after `typeof`, as the file names it, to its enum's qualified
+     * value type, which the globals file spells the wrap as.
+     *
+     * @return array<string, string> constName|alias => 'dot.separated.namespace.NameType'
+     */
+    public function globalEnumConstMap(): array
+    {
+        return $this->qualifiedConstTypes($this->wrapConstFqcns());
+    }
+
     protected function initInstance(): self
     {
         /** @var Model $modelInstance */
@@ -434,6 +459,13 @@ class ModelTransformer extends CoreTransformer
             foreach ($typings['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $typings['enumTypes'][$i];
                 $this->enumConstMap[$fqcn] = $typings['enums'][$i];
+            }
+
+            foreach ($typings['enumTokenFqcns'] ?? $typings['enumFqcns'] as $fqcn) {
+                $this->columnFqcns[$name][] = $fqcn;
+            }
+
+            foreach ($this->registerWrappedEnums($name, $typings, $type) as $fqcn) {
                 $this->columnFqcns[$name][] = $fqcn;
             }
 
@@ -507,7 +539,17 @@ class ModelTransformer extends CoreTransformer
             foreach ($resolved['enumFqcns'] as $i => $fqcn) {
                 $this->enumFqcnMap[$fqcn] = $resolved['enumTypes'][$i];
                 $this->enumConstMap[$fqcn] = $resolved['enums'][$i];
+            }
 
+            foreach ($resolved['enumTokenFqcns'] ?? $resolved['enumFqcns'] as $fqcn) {
+                if ($isAppended) {
+                    $this->appendsFqcns[$name][] = $fqcn;
+                } else {
+                    $this->mutatorFqcns[$name][] = $fqcn;
+                }
+            }
+
+            foreach ($this->registerWrappedEnums($name, $resolved, $resolved['type']) as $fqcn) {
                 if ($isAppended) {
                     $this->appendsFqcns[$name][] = $fqcn;
                 } else {
@@ -717,6 +759,49 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * Register the enums an attribute's value wraps in an `EnumResource`, so the file imports what its type spells:
+     * the const after each `typeof`, and the type of a wrap printed as its enum's value type that no read of it names.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return list<class-string> the wrapped enums its type spells by type name, which its type queue walks
+     */
+    protected function registerWrappedEnums(string $name, array $info, string $type): array
+    {
+        $wrapped = $info['wrappedEnumFqcns'] ?? [];
+        $consts = EnumWrapImports::written($type, $info['wrapConstFqcns'] ?? []);
+
+        if ($consts !== []) {
+            $this->attributeConstFqcns[$name] = $consts;
+        }
+
+        $typed = array_values(array_filter(
+            $wrapped,
+            static fn (string $fqcn): bool => ! in_array(EnumNames::typeName($fqcn), $info['enumTypes'], true)
+                && TsTypeString::typeNameOccursIn(EnumNames::typeName($fqcn), $type),
+        ));
+
+        foreach ($typed as $fqcn) {
+            $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
+        }
+
+        foreach ([...$consts, ...$typed] as $fqcn) {
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
+        }
+
+        return $typed;
+    }
+
+    /**
+     * Every enum whose const an attribute's type spells after `typeof`, once each.
+     *
+     * @return list<class-string>
+     */
+    protected function wrapConstFqcns(): array
+    {
+        return array_values(array_unique(array_merge([], ...array_values($this->attributeConstFqcns))));
+    }
+
+    /**
      * Each relation's key with the given suffix, unless an attribute or a relation already publishes it.
      *
      * @return list<string>
@@ -901,6 +986,11 @@ class ModelTransformer extends CoreTransformer
             }
         }
 
+        // A wrapped enum whose type no attribute spells has only its const to name.
+        foreach (array_diff_key($this->enumConstMap, $this->enumFqcnMap) as $fqcn => $constName) {
+            $constRegistry->register($fqcn, $constName);
+        }
+
         foreach ($this->modelFqcnMap as $fqcn => $typeName) {
             if ($fqcn === $this->findable) {
                 continue;
@@ -925,7 +1015,38 @@ class ModelTransformer extends CoreTransformer
             $this->customImports,
         );
 
+        if ($this->constImportAliases !== []) {
+            $this->aliasWrapConsts();
+        }
+
         return $this;
+    }
+
+    /**
+     * Rewrite the consts the attributes' types spell after `typeof` to the aliases the file gives them.
+     */
+    protected function aliasWrapConsts(): void
+    {
+        foreach ($this->attributeConstFqcns as $name => $fqcns) {
+            $alias = fn (string $type): string => TsTypeString::aliasTypeofConst(
+                $type,
+                $fqcns,
+                $this->enumConstMap,
+                $this->constImportAliases,
+            );
+
+            if (isset($this->columns[$name])) {
+                $this->columns[$name]['type'] = $alias($this->columns[$name]['type']);
+            }
+
+            if (isset($this->mutators[$name])) {
+                $this->mutators[$name]['type'] = $alias($this->mutators[$name]['type']);
+            }
+
+            if (isset($this->appends[$name])) {
+                $this->appends[$name]['type'] = $alias($this->appends[$name]['type']);
+            }
+        }
     }
 
     /**
@@ -1014,6 +1135,12 @@ class ModelTransformer extends CoreTransformer
             );
         }
 
+        $valueImports = ImportMaps::merge($valueImports, $this->collectModularValueImports($this->wrapConstFqcns(), $ownTypes));
+        $combinedValueImports = ImportMaps::merge(
+            $combinedValueImports,
+            $this->collectModularValueImports($this->wrapConstFqcns(), $types),
+        );
+
         $typeImports = ComposedClassTypes::resolveImports($this->customImports, $this->namespacePath, $typeImports);
         $combinedTypeImports = ComposedClassTypes::resolveImports(
             $this->customImportsSpelledIn($types),
@@ -1042,61 +1169,68 @@ class ModelTransformer extends CoreTransformer
     }
 
     /**
+     * The enum columns' rows of the model's Resource interface.
+     *
      * @return array<string, EnumPropertyInfo>
      */
     protected function buildEnumColumns(): array
     {
-        $result = [];
-
-        foreach ($this->enumColumnProperties as $name => $info) {
-            $result[$name] = [
-                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
-                'nullable' => $info['nullable'],
-                'isCollection' => $info['isCollection'],
-                'alsoBare' => $info['alsoBare'],
-            ];
-        }
-
-        return $result;
+        return array_map($this->enumPropertyInfo(...), $this->enumColumnProperties);
     }
 
     /**
+     * The enum mutators' rows of the model's Resource interface.
+     *
      * @return array<string, EnumPropertyInfo>
      */
     protected function buildEnumMutators(): array
     {
-        $result = [];
-
-        foreach ($this->enumMutatorProperties as $name => $info) {
-            $result[$name] = [
-                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
-                'nullable' => $info['nullable'],
-                'isCollection' => $info['isCollection'],
-                'alsoBare' => $info['alsoBare'],
-            ];
-        }
-
-        return $result;
+        return array_map($this->enumPropertyInfo(...), $this->enumMutatorProperties);
     }
 
     /**
-     * Build the enum appends properties for the Tolki package variant.
+     * The enum appends' rows of the model's Resource interface.
      *
      * @return array<string, EnumPropertyInfo>
      */
     protected function buildEnumAppends(): array
     {
-        $result = [];
+        return array_map($this->enumPropertyInfo(...), $this->enumAppendsProperties);
+    }
 
-        foreach ($this->enumAppendsProperties as $name => $info) {
-            $result[$name] = [
-                'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
-                'nullable' => $info['nullable'],
-                'isCollection' => $info['isCollection'],
-                'alsoBare' => $info['alsoBare'],
-            ];
+    /**
+     * One enum property's row of the model's Resource interface.
+     *
+     * @param  EnumFqcnInfo  $info
+     * @return EnumPropertyInfo
+     */
+    protected function enumPropertyInfo(array $info): array
+    {
+        // Spelled here too: an override of data() written before the key builds its rows from these methods alone.
+        return $this->withAsEnumType([
+            'constName' => $this->constImportAliases[$info['fqcn']] ?? $this->enumConstMap[$info['fqcn']],
+            'nullable' => $info['nullable'],
+            'isCollection' => $info['isCollection'],
+            'alsoBare' => $info['alsoBare'],
+        ]);
+    }
+
+    /**
+     * An enum row with the `AsEnum` type the model templates print, spelled from its keys where it has none, as a row
+     * an override builds by hand.
+     *
+     * @param  EnumPropertyRow  $row
+     * @return EnumPropertyInfo
+     */
+    protected function withAsEnumType(array $row): array
+    {
+        if (isset($row['asEnumType'])) {
+            return $row;
         }
 
-        return $result;
+        $row['asEnumType'] = EnumWrapSpelling::of($row['constName'], $row['isCollection'] ?? false)
+            .(($row['alsoBare'] ?? false) ? ' | '.EnumWrapSpelling::of($row['constName']) : '');
+
+        return $row;
     }
 }

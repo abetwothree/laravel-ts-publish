@@ -88,8 +88,9 @@ The helpers and the test that pins them live in these files:
   prints without `listType()`'s `array_unique()`, since two arms spelled alike may name two classes. Static and
   `@internal`.
 - [`Support\TypeStrings\VisibleGaps`](../../src/Support/TypeStrings/VisibleGaps.php): the spelling of a visible gap,
-  a `$gapN` union arm and the open marker `#$open: unknown`, and the readers that set gaps aside, carry them over a
-  read, read an object without its marker, and strip both at any depth through `TypeRewriter`. Static and `@internal`.
+  a `$gapN` union arm and the open marker `#$open: unknown`, and of the declared-arm marks `$declNull` and `$declKeys`,
+  and the readers that set gaps aside, carry them over a read, read an object without its marker, and strip all of them
+  at any depth through `TypeRewriter`. Static and `@internal`.
 - [`Support\TypeStrings\RedundantArms`](../../src/Support/TypeStrings/RedundantArms.php): whether one union arm admits
   another, and a type with each admitted arm left out at every depth through `TypeRewriter`'s `$union` callback:
   `never[]` beside a list or `[]`, and a case literal beside an enum alias the caller's map says holds it. It drops no
@@ -97,6 +98,9 @@ The helpers and the test that pins them live in these files:
   [AST engine § Redundant arms](ast-engine.md#redundant-arms) says who calls it and with which map.
 - [`Support\TypeStrings\LiteralArm`](../../src/Support/TypeStrings/LiteralArm.php): the scalar a literal union arm
   spells, a quoted string, a JSON number, `true` or `false`, or null for any other arm. Static and `@internal`.
+- [`Support\TypeStrings\AsEnumSpelling`](../../src/Support/TypeStrings/AsEnumSpelling.php): the tolki package's
+  `AsEnum<typeof Const>` type, written and read back by pattern; the one string in `src/` that spells it, which
+  `EnumWrapSpellingTest` guards. Static and `@internal`.
 - [`Support\TypeStrings\TsLibGlobals`](../../src/Support/TypeStrings/TsLibGlobals.php): every global name declared
   by the TypeScript lib files that the repo's tsconfigs load, which a type spells with no import: `TYPES`;
   `NAMESPACES` (`Temporal`, and `globalThis`, which no lib file declares), which only a qualifier or a `typeof`
@@ -180,8 +184,8 @@ The last row is the real test. A helper whose answer needs the engine's config m
 belongs to the engine, however string-shaped its signature looks. Reflection alone does not decide it.
 `TsNaming::resourceTypeName()` reads a `#[TsResource]` attribute, but only to get a name, and `TsNaming::enumName()`
 reads `#[TsEnum]` the same way. `toTsType()`'s enum step and every enum reference read it, so an enum whose `#[TsType]`
-answers `toTsType()` first keeps its own names. `ValueResult::enumConstName()` memoizes it per run and records the
-enum for the generation cache.
+answers `toTsType()` first keeps its own names. `EnumNames::constName()` memoizes it per run and records the enum
+for the generation cache.
 
 ### `JsEmitter`
 
@@ -224,7 +228,8 @@ publishes as `null` for that case. Model metadata keeps `normalizeMetadataValue(
 The engine calls `TsTypeString`, and `TsTypeString` never calls back. Its only outward dependencies are
 `TsTypeShape::splitTopLevel()`, `TsTypeShape::recordArguments()`, `TsTypeShape::isWrapped()`,
 `TsTypeShape::unionArm()`, `TypeScanner::literalSpans()`, `TypeScanner::maskLiterals()`, `IndexSignatureKey::PATTERN`,
-`VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and `TypeTokens`;
+`AsEnumSpelling::pattern()`, `VisibleGaps` (`MARKER_KEY`, `isGap()`, `holds()`), `ImportMaps::localNames()` and
+`TypeTokens`;
 `TsTypeShape`'s are `TypeScanner`, `PrintedKey` and `PhpArrayKey`, and `VisibleGaps`' are `TypeRewriter` and
 `TsTypeShape`. That one-way dependency is
 what made the class safe to lift out. A gap arm is no importable name and no unimportable token to it, and
@@ -338,7 +343,7 @@ is a Support helper, since both call the engine, which `SupportBoundaryTest` for
 | Space | The list | One entry per |
 | --- | --- | --- |
 | A | `TypeScriptTypeInfo['classTokenFqcns']` | class token, by the `classes` labels; one holding a null is in space B |
-| B | `TokenSlots`' `Slots`: `ShapeTypeInfo['tokenFqcns']`, `CastInForce['tokenFqcns']`, `$declaredTokenFqcns` | token of a declaration's own names, a literal's and one after `typeof` too; null for an override's |
+| B | `TokenSlots`' `Slots`: `ShapeTypeInfo['tokenFqcns']`, `CastInForce['tokenFqcns']`, `$declaredTokenFqcns` | token of a declaration's own names, a literal's too, never the name after `typeof`; null for an override's |
 | C | `FileImportNames`' `TokenQueue` | token a channel reads |
 | D | `MethodAnalysis::channelFqcns($name)` | class on a key's channels, by kind, not per token |
 

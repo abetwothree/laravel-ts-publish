@@ -30,6 +30,7 @@ use Workbench\App\Http\Controllers\InertiaNamedCollectionsController;
 use Workbench\App\Http\Controllers\InertiaPaginationsController;
 use Workbench\App\Http\Controllers\InertiaPaginatorKindsController;
 use Workbench\App\Http\Controllers\InertiaPreserveKeysController;
+use Workbench\App\Http\Controllers\InertiaPropsWalkController;
 use Workbench\App\Http\Controllers\InertiaRedundantArmsController;
 use Workbench\App\Http\Controllers\InertiaResourceSharedTemplate;
 use Workbench\App\Http\Controllers\InertiaSameNamedEnumsController;
@@ -131,6 +132,12 @@ Route::get('/addresses/{address}', [InertiaAddressController::class, 'show'])->n
 Route::get('/shirts/{image}', [InertiaShirtSizeController::class, 'show'])->name('shirts.show');
 Route::get('/posts/{post}/enum-case', [InertiaEnumCaseController::class, 'show'])->name('posts.enum-case');
 Route::get('/posts/{post}/redundant-arms', [InertiaRedundantArmsController::class, 'show'])->name('posts.redundant-arms');
+Route::get('/props-walk/block-built', [InertiaPropsWalkController::class, 'blockBuilt'])->name('props-walk.block-built');
+Route::get('/props-walk/exiting-key-write', [InertiaPropsWalkController::class, 'exitingKeyWrite'])->name('props-walk.exiting-key-write');
+Route::get('/props-walk/exiting-nested-whole', [InertiaPropsWalkController::class, 'exitingNestedWhole'])->name('props-walk.exiting-nested-whole');
+Route::get('/props-walk/coalesced-self-read', [InertiaPropsWalkController::class, 'coalescedSelfRead'])->name('props-walk.coalesced-self-read');
+Route::get('/props-walk/plus-operator', [InertiaPropsWalkController::class, 'plusOperator'])->name('props-walk.plus-operator');
+Route::get('/props-walk/resolved-when-spread', [InertiaPropsWalkController::class, 'resolvedWhenSpread'])->name('props-walk.resolved-when-spread');
 Route::get('/posts/{post}/discriminated', [InertiaDiscriminatedController::class, 'show'])->name('posts.discriminated');
 Route::get('/posts/{post}/discriminated/read-back', [InertiaDiscriminatedController::class, 'readBack'])->name('posts.discriminated.read-back');
 Route::get('/deals/{deal}/same-named-enums', [InertiaSameNamedEnumsController::class, 'pair'])->name('deals.same-named-enums');
@@ -138,6 +145,7 @@ Route::get('/deals/{deal}/same-named-enum-names', [InertiaSameNamedEnumsControll
 Route::get('/enum-resources/statuses', [InertiaEnumResourceController::class, 'index'])->name('enum-resources.statuses');
 Route::get('/enum-resources/unions', [InertiaEnumResourceController::class, 'unions'])->name('enum-resources.unions');
 Route::get('/enum-resources/{post}/visibility', [InertiaEnumResourceController::class, 'visibility'])->name('enum-resources.visibility');
+Route::get('/enum-resources/{post}/mixes', [InertiaEnumResourceController::class, 'mixes'])->name('enum-resources.mixes');
 Route::get('/key-edges', [InertiaKeyEdgesController::class, 'show'])->name('key-edges.show');
 Route::get('/list-props', [InertiaListPropsController::class, 'show'])->name('list-props.show');
 

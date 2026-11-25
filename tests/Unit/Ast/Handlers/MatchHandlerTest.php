@@ -84,70 +84,57 @@ it('skips a throw arm without recording a drop', function () {
         ->and($dropped)->toBe([]);
 });
 
-it('keeps an EnumResource arm on the enum-resource channel', function () {
+it('keeps an EnumResource arm spelled as its wrap, its const queued', function () {
     expect(matchHandlerResolveOnPost('match (true) { $this->id > 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->status), default => null }'))
-        ->toMatchArray(['type' => 'StatusType | null', 'enumFqcn' => Status::class]);
+        ->toMatchArray(['type' => 'AsEnum<typeof Status> | null', 'embeddedEnumResourceFqcns' => [Status::class]]);
 });
 
-// The merged type spells both arms of a mixed enum union as one bare name, so each arm's own `[]` is recorded beside
-// it.
-it('records the arm shapes of a mixed enum match as its ternary twin does', function (string $match, string $ternary, bool $wrapIsCollection, bool $directIsArray) {
+// Each arm of a mixed enum union publishes as it does alone, in arm order, so its own `[]` stays on it.
+it('spells each arm of a mixed enum match as its ternary twin does', function (string $match, string $ternary, string $type) {
     $result = matchHandlerResolveOnTeam($match);
 
     expect($result)->toBe(matchHandlerResolveOnTeam($ternary))
-        ->and($result)->toMatchArray(['wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
+        ->and($result['type'])->toBe($type);
 })->with([
     'a collection wrap and a scalar direct read' => [
         'match (true) { $this->is_active => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->latest_status }',
         '$this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->latest_status',
-        true,
-        false,
+        'AsEnum<typeof Status>[] | StatusType',
     ],
     'a collection wrap and an array direct read' => [
         'match (true) { $this->is_active => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->status_history }',
         '$this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history) : $this->status_history',
-        true,
-        true,
+        'AsEnum<typeof Status>[] | StatusType[]',
     ],
 ]);
 
-// A ternary has two arms and a match any number, so these have no twin: every arm counts, and an arm with no enum does
-// not.
-it('reads the shape of every arm of a mixed enum match', function (string $php, bool $wrapIsCollection, bool $directIsArray) {
-    expect(matchHandlerResolveOnTeam($php))->toMatchArray(['wrapIsCollection' => $wrapIsCollection, 'directIsArray' => $directIsArray]);
+// A ternary has two arms and a match any number, so these have no twin: every arm keeps its own spelling.
+it('spells every arm of a mixed enum match', function (string $php, string $type) {
+    expect(matchHandlerResolveOnTeam($php)['type'])->toBe($type);
 })->with([
     'two wraps that agree' => [
         'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), 2 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->latest_status }',
-        true,
-        false,
+        'AsEnum<typeof Status>[] | StatusType',
     ],
     'two direct reads that agree' => [
         'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status), 2 => $this->status_history, default => $this->status_history }',
-        false,
-        true,
+        'AsEnum<typeof Status> | StatusType[]',
     ],
     'an arm that holds no enum' => [
         'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), 2 => $this->latest_status, default => null }',
-        true,
-        false,
+        'AsEnum<typeof Status>[] | StatusType | null',
     ],
-]);
-
-// Each row is still a mixed union, so the shapes are left out for want of an attribution, not for want of a mix.
-it('leaves a mixed enum match\'s arm shapes unrecorded when it cannot attribute them', function (string $php) {
-    $result = matchHandlerResolveOnTeam($php);
-
-    expect($result)->toHaveKeys(['enumFqcn', 'directEnumFqcn'])
-        ->and(array_intersect(['wrapIsCollection', 'directIsArray'], array_keys($result)))->toBe([]);
-})->with([
     'an arm that is itself mixed' => [
         'match ($this->id) { 1 => ($this->is_active ? \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status) : $this->latest_status), default => $this->latest_status }',
+        'AsEnum<typeof Status> | StatusType',
     ],
     'wrap arms that disagree' => [
         'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status), 2 => \AbeTwoThree\LaravelTsPublish\EnumResource::collection($this->status_history), default => $this->latest_status }',
+        'AsEnum<typeof Status> | AsEnum<typeof Status>[] | StatusType',
     ],
     'direct arms that disagree' => [
         'match ($this->id) { 1 => \AbeTwoThree\LaravelTsPublish\EnumResource::make($this->latest_status), 2 => $this->latest_status, default => $this->status_history }',
+        'AsEnum<typeof Status> | StatusType | StatusType[]',
     ],
 ]);
 

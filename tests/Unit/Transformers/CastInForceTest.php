@@ -24,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDisplacedOwnN
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastDroppedEnumBesideSharedNameResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastKeyofTypeofImportResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastMorphUnionResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOneOfSameNamedWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOneOfTwoWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverAttributeImportOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastOverAttributeImportResource;
@@ -36,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoClassAcces
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTwoEnumAccessorOnlyResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastTypeofWithoutWrapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\CastWrapTypeImportResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperCastSameNamedWrapsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCarriedEnumResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineCarriedModelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\InlineSpreadCastCarriedEnumResource;
@@ -122,6 +124,15 @@ describe('a cast that spells an enum resource\'s own type', function () {
             CastOneOfTwoWrapsResource::class,
             ["import type { StatusType } from '../../../../../../workbench/app/enums';", '    k: StatusType | null;'],
         ],
+        'the cast spells one name over wraps of two same-named enums' => [
+            CastOneOfSameNamedWrapsResource::class,
+            [
+                "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+                "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+                '    crm_first: CrmStatusType | null;',
+                '    app_first: WorkbenchStatusType | null;',
+            ],
+        ],
         'the cast writes the const after `typeof` without the wrap' => [
             CastTypeofWithoutWrapResource::class,
             ["import { Status } from '../../../../../../workbench/app/enums';", '    k: (typeof Status)[keyof typeof Status];'],
@@ -132,7 +143,7 @@ describe('a cast that spells an enum resource\'s own type', function () {
         ],
     ]);
 
-    // No cast is involved: the later spread's value takes the key, and the earlier spread's wrap must not be rewritten.
+    // No cast is involved: the later spread's value takes the key, and the earlier spread's wrap leaves no const.
     it('publishes a later spread\'s key over an earlier spread\'s enum resource with no wrap and no import', function () {
         expect(castInForceLines(SpreadOverSpreadEnumResource::class))->toBe(['    k: string;']);
     });
@@ -615,22 +626,50 @@ describe('two same-basename models, one of them displaced', function () {
 });
 
 describe('CastChannels', function () {
-    it('keeps a class its key\'s cast spells as an embedded name, and carries one it does not', function () {
+    // A wrap rides its const queue, not a type queue, so the enums a key wraps are offered for its cast's text.
+    it('keeps an enum the key wraps as the class behind the value type its cast spells', function (string $cast, array $kept, array $carried) {
         $analysis = new MethodAnalysis(
-            properties: [['name' => 'k', 'type' => 'StatusType', 'optional' => false, 'description' => '']],
-            enumResources: ['k' => Status::class],
-            multiEnumResourceFqcns: ['k' => [Status::class, Visibility::class]],
+            properties: [['name' => 'k', 'type' => 'AsEnum<typeof Status> | AsEnum<typeof Visibility> | null', 'optional' => false, 'description' => '']],
+            inlineEnumResourceFqcns: ['k' => [Status::class, Visibility::class]],
+            wrappedEnums: ['k' => [Status::class, Visibility::class]],
         );
 
-        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => 'StatusType | null', 'import' => null]]);
+        resolve(CastChannels::class)->fit($analysis, ['k' => ['type' => $cast, 'import' => null]]);
 
-        expect($analysis->enumResources)->toBe([])
-            ->and($analysis->multiEnumResourceFqcns)->toBe([])
-            ->and($analysis->inlineEnumFqcns)->toBe(['k' => [Status::class]])
-            ->and($analysis->directEnumFqcns)->toBe([Status::class => Status::class])
-            ->and($analysis->carried)->toBe(['enums' => [Visibility::class]])
-            ->and($analysis->inlineEnumResourceFqcns)->toBe(['k' => [Status::class, Visibility::class]]);
-    });
+        expect($analysis->inlineEnumFqcns['k'] ?? [])->toBe($kept)
+            ->and($analysis->directEnumFqcns)->toBe(array_combine($kept, $kept))
+            ->and($analysis->carried['enums'] ?? [])->toBe($carried)
+            ->and($analysis->wrappedEnumFqcns('k'))->toBe([Status::class, Visibility::class])
+            ->and($analysis->wrapConstFqcns('k'))->toBe([Status::class, Visibility::class]);
+    })->with([
+        'one of the two names' => ['StatusType | null', [Status::class], [Visibility::class]],
+        'the other name' => ['VisibilityType | null', [Visibility::class], [Status::class]],
+        'both names' => ['StatusType | VisibilityType | null', [Status::class, Visibility::class], []],
+    ]);
+
+    // A helper's cast keeps its wraps on the const queue in both modes, so every enum token after them reads its own.
+    it('reads each enum token by class past a helper\'s cast over wraps of two same-named enums', function (bool $tolki, array $lines) {
+        config()->set('ts-publish.enums.use_tolki_package', $tolki);
+
+        expect(castInForceLines(HelperCastSameNamedWrapsResource::class))->toBe($lines);
+    })->with([
+        'with the tolki package' => [true, [
+            "import { type AsEnum } from '@tolki/ts';",
+            "import { Status as CrmStatus } from '../../../../../../workbench/crm/enums';",
+            "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+            "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+            '    k: { a: { w: WorkbenchStatusType; v: CrmStatusType | null; x: CrmStatusType | null }; '
+                .'b: AsEnum<typeof CrmStatus> | null; c: WorkbenchStatusType | null };',
+            '    m: { a: { w: string; y: AsEnum<typeof CrmStatus> | null }; c: CrmStatusType | null };',
+        ]],
+        'without the tolki package' => [false, [
+            "import type { StatusType as WorkbenchStatusType } from '../../../../../../workbench/app/enums';",
+            "import type { StatusType as CrmStatusType } from '../../../../../../workbench/crm/enums';",
+            '    k: { a: { w: WorkbenchStatusType; v: CrmStatusType | null; x: CrmStatusType | null }; '
+                .'b: CrmStatusType | null; c: WorkbenchStatusType | null };',
+            '    m: { a: { w: string; y: CrmStatusType | null }; c: CrmStatusType | null };',
+        ]],
+    ]);
 
     it('drops a class whose name the cast\'s import brings, unless another key reads it', function () {
         $analysis = new MethodAnalysis(

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Analyzers\Inertia;
 
 use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\PrintsTopLevelMembers;
-use AbeTwoThree\LaravelTsPublish\Analyzers\Concerns\RewritesEnumResourceProps;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
@@ -52,7 +51,6 @@ use ReflectionClass;
 class InertiaSharedDataAnalyzer
 {
     use PrintsTopLevelMembers;
-    use RewritesEnumResourceProps;
 
     /**
      * Inertia sets `page.props.errors` itself and `@inertiajs/core` types it, so an inferred entry
@@ -157,7 +155,7 @@ class InertiaSharedDataAnalyzer
         $castsInForce = $this->castsInForce($analysis, $mergedOverrides, $castPaths, $docblockByKey);
         resolve(CastChannels::class)->fit($analysis, $castsInForce);
 
-        $props = $this->rewriteEnumResourceTypes($this->collectProps($analysis), $analysis);
+        $props = $this->collectProps($analysis);
         $members = $this->buildMembersWithOverrides(
             $props,
             $mergedOverrides,

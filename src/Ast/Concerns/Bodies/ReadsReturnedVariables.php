@@ -1315,12 +1315,6 @@ trait ReadsReturnedVariables
         $this->untypedKeyWrites = [...$before, ...$added];
         $this->keyPaths = $this->pathsPastJoin($branches, $records);
 
-        foreach ($branches as $index => $branch) {
-            foreach (array_slice($branches, 0, $index) as $earlier) {
-                $branch->dropRepeatsOf($earlier);
-            }
-        }
-
         $joined = $this->joinedBranches($branches);
         $this->recordJoinDrops($joined, $branches, $notes, fn (Expr $write): array => [$write, 'walk-branch-join']);
         $into->replaceWith($joined);
@@ -1652,12 +1646,6 @@ trait ReadsReturnedVariables
         [$heldBare, $heldGaps] = VisibleGaps::aside($held['type']);
         $onlyNull = ! $paths['objectNull'] && TsTypeString::splitTopLevelUnion($heldBare) === ['null'];
         $branches = $isConditional ? [clone $into, $filled] : ($onlyNull ? [$filled] : [$kept, $filled]);
-
-        foreach ($branches as $index => $branch) {
-            foreach (array_slice($branches, 0, $index) as $earlier) {
-                $branch->dropRepeatsOf($earlier);
-            }
-        }
 
         $joined = $this->joinedBranches($branches);
         $untyped = (! $onlyNull && $keptType === 'unknown') || $default['type'] === 'unknown';

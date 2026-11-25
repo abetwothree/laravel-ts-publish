@@ -36,12 +36,21 @@ final class ClassTokenQueue
      * Queue each class under its name. A token spelling one of its sibling names, as an enum's `…Kind` is beside its
      * `…Type`, reads the same queue, so two same-named enums' tokens of either name keep one order.
      *
+     * With `$hands`, a token whose class it refuses is read and passed over: two queues over one list split its tokens.
+     *
      * @param  list<class-string>  $fqcns  one per token, in the order the arm's type spells them
      * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
      * @param  (Closure(class-string): list<string>)|null  $alsoSpelledAs  the class's sibling names
+     * @param  string  $anchor  the pattern each token follows, as TsTypeString::queuedTokenPattern() reads it
+     * @param  (Closure(class-string): bool)|null  $hands  the classes whose tokens it hands out; null for every class
      */
-    public function __construct(array $fqcns, Closure $nameOf, ?Closure $alsoSpelledAs = null)
-    {
+    public function __construct(
+        array $fqcns,
+        Closure $nameOf,
+        ?Closure $alsoSpelledAs = null,
+        string $anchor = '',
+        private readonly ?Closure $hands = null,
+    ) {
         foreach ($fqcns as $fqcn) {
             $name = $nameOf($fqcn);
             $this->queues[$name][] = $fqcn;
@@ -53,7 +62,7 @@ final class ClassTokenQueue
         }
 
         if ($this->queueOf !== []) {
-            $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queueOf));
+            $this->pattern = TsTypeString::queuedTokenPattern(array_keys($this->queueOf), $anchor);
         }
     }
 
@@ -81,10 +90,16 @@ final class ClassTokenQueue
      * @param  list<class-string>  $queue
      * @param  Closure(class-string): string  $nameOf  the name a class's token is spelled with
      * @param  list<string>  $leave  names to leave as they came: a queue joined to this one gives them a class too
+     * @param  string  $anchor  the pattern each token follows, as TsTypeString::queuedTokenPattern() reads it
      * @return list<class-string>
      */
-    public static function perToken(array $queue, string $type, Closure $nameOf, array $leave = []): array
-    {
+    public static function perToken(
+        array $queue,
+        string $type,
+        Closure $nameOf,
+        array $leave = [],
+        string $anchor = '',
+    ): array {
         /** @var array<string, list<class-string>> $classesOf name => the classes queued for it, in order */
         $classesOf = [];
 
@@ -98,7 +113,7 @@ final class ClassTokenQueue
         foreach ($classesOf as $name => $classes) {
             if (count(array_unique($classes)) === 1 && ! in_array($name, $leave, true)) {
                 // At least one: this rule leaves an entry for a class the type does not spell as it came.
-                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name]), $type));
+                $room[$name] = max(1, (int) preg_match_all(TsTypeString::queuedTokenPattern([$name], $anchor), $type));
             }
         }
 
@@ -147,7 +162,9 @@ final class ClassTokenQueue
             return [];
         }
 
-        return array_map(fn (string $spelled): array => [$this->classFor($spelled), $spelled], $matches[0]);
+        $spellings = array_map(fn (string $spelled): array => [$this->classFor($spelled), $spelled], $matches[0]);
+
+        return array_values(array_filter($spellings, fn (array $spelling): bool => $this->handsOut($spelling[0])));
     }
 
     /**
@@ -167,11 +184,29 @@ final class ClassTokenQueue
 
         foreach ($matches[0] as [$spelled, $at]) {
             $end = $at + strlen($spelled);
-            $rewritten .= substr($text, $from, $at - $from).$spell($this->classFor($spelled), $spelled, substr($text, $end, 1));
+            $class = $this->classFor($spelled);
+            $respelled = $this->handsOut($class) ? $spell($class, $spelled, substr($text, $end, 1)) : $spelled;
+            $rewritten .= substr($text, $from, $at - $from).$respelled;
             $from = $end;
         }
 
         return $rewritten.substr($text, $from);
+    }
+
+    /**
+     * The classes this queue hands out that no token has read, name by name: each name's entries past its tokens.
+     *
+     * @return list<class-string>
+     */
+    public function unread(): array
+    {
+        $unread = [];
+
+        foreach ($this->queues as $name => $fqcns) {
+            array_push($unread, ...array_filter(array_slice($fqcns, $this->seen[$name] ?? 0), $this->handsOut(...)));
+        }
+
+        return $unread;
     }
 
     /**
@@ -185,6 +220,16 @@ final class ClassTokenQueue
             fn (int $read, string $name): bool => $read < count($this->queues[$name])
                 && count(array_unique($this->queues[$name])) > 1,
         );
+    }
+
+    /**
+     * Whether this queue hands out the token of a class it read.
+     *
+     * @param  class-string  $fqcn
+     */
+    private function handsOut(string $fqcn): bool
+    {
+        return $this->hands === null || ($this->hands)($fqcn);
     }
 
     /**

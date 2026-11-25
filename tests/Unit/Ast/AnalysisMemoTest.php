@@ -430,6 +430,35 @@ test('remembers a fact under its plain key, computed with gaps hidden, so one an
         ->and($memo->keys())->toBe(['read-inside', 'fact']);
 });
 
+test('keeps an answer read in the declaration mode apart, and the gap mode, which brings the mode, keys both', function () use ($counting) {
+    $memo = new AnalysisMemo;
+    $runs = new ArrayObject;
+    $read = fn (): int => $memo->remember('k', $counting($runs));
+
+    expect([$read(), $memo->markingDeclared($read), $memo->showingGaps($read), $memo->markingDeclared($read)])->toBe([1, 2, 3, 2])
+        ->and($memo->keys())->toBe(['k', 'k@declared', 'k@gaps']);
+});
+
+test('the declaration mode restores itself around a read, a throw included, and hiding gaps or a fact ends it', function () {
+    $memo = new AnalysisMemo;
+    $modes = [$memo->marksDeclared()];
+
+    $memo->markingDeclared(function () use ($memo, &$modes): void {
+        $modes[] = $memo->marksDeclared();
+        $modes[] = $memo->hidingGaps(fn (): bool => $memo->marksDeclared());
+        $modes[] = $memo->rememberFact('fact', fn (): bool => $memo->marksDeclared());
+
+        try {
+            $memo->markingDeclared(fn () => throw new RuntimeException('read failed'));
+        } catch (RuntimeException) {
+            $modes[] = $memo->marksDeclared();
+        }
+    });
+
+    expect([...$modes, $memo->showingGaps(fn (): bool => $memo->marksDeclared()), $memo->marksDeclared()])
+        ->toBe([false, true, false, false, true, true, false]);
+});
+
 test('computes an answer again once the published resource set changes', function () use ($counting) {
     $memo = new AnalysisMemo;
     $runs = new ArrayObject;

@@ -7,8 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Tests;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\OutputRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
@@ -78,7 +78,7 @@ class TestCase extends Orchestra
         RoutedControllers::flush();
         TypeAliases::flush();
         CallArguments::reset();
-        ValueResult::forgetEnumNames();
+        EnumNames::forget();
         QueryForwarding::forget();
         CoreCollector::flushClassMapCache();
 

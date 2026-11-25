@@ -27,9 +27,8 @@ enum Status: int
     case Published = 1;
 
     /**
-     * Exercises resolveEnumFromPropertyArg()'s StaticCall branch (Task 10):
-     * EnumResource::make(Status::defaultCase()) should resolve to StatusType
-     * from the class name alone, without evaluating the call.
+     * Exercises EnumWrapPayload::fromArgument()'s StaticCall branch: EnumResource::make(Status::defaultCase()) reads
+     * its enum from the class name alone, without evaluating the call, so the wrap spells `AsEnum<typeof Status>`.
      */
     public static function defaultCase(): self
     {

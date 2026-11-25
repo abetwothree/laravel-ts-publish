@@ -11,9 +11,9 @@ use Workbench\App\Models\Post;
 use Workbench\Crm\Enums\Status as CrmStatus;
 
 /**
- * Objects holding two same-named enums, one of them inside a nested value: each literal stays flat, since a union of
- * such objects reads one object's enum for the next one's token. Swapped at the top level, swapped nested with
- * another text, and a shared key beside a dependent's nested enum (GH-157).
+ * Objects holding two same-named enums, one of them inside a nested value: each literal splits, every token naming its
+ * own enum. Swapped at the top level, swapped nested with another text, and a shared key beside a dependent's nested
+ * enum (GH-157, GH-76).
  *
  * @mixin Post
  */

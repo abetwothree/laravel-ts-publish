@@ -7,8 +7,8 @@ namespace AbeTwoThree\LaravelTsPublish\Runners;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\QueryForwarding;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\Contracts\ProvidesCacheSignature;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\GenerationManifest;
@@ -193,7 +193,7 @@ abstract class BaseRunner
         ComposedClassTypes::flush();
         RoutedControllers::flush();
         TypeAliases::flush();
-        ValueResult::forgetEnumNames();
+        EnumNames::forget();
         QueryForwarding::forget();
         RelationMap::reset();
         $this->forgetRenderedViews();

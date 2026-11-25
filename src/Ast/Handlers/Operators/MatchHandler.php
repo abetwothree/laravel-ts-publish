@@ -68,9 +68,7 @@ final class MatchHandler implements ExpressionHandler, KeepsHeldObjects, SplitsO
             return null;
         }
 
-        $union = DroppedUnionArms::leftOut(ValueResult::unionResults($results), $left, $scope);
-
-        return ValueResult::withEnumArmShapes($union, $results);
+        return DroppedUnionArms::leftOut(ValueResult::unionResults($results), $left, $scope);
     }
 
     /**

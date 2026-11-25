@@ -310,10 +310,11 @@ generic arguments, tuple elements, parenthesized groups and arrow returns), and 
   A `Record`, an object, a non-empty tuple, `AsEnum<…>`, a named collection, an intersection and a conditional type
   do not admit `never[]`, so it stays beside them.
 - **A literal beside its enum alias**: a string or number literal the alias's `export type X = …` lists. `'image'`
-  and `"image"` match, and `1` and `'1'` do not. A property that also wraps that enum in `AsEnum<typeof X>` keeps the
-  literal, as the package does, so `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }` passes. A property is
-  an interface's key, a member of an inline type alias such as a page's props, or a member of one arm of a split
-  resource, read in a scope of its own, `X[i]`, since two arms' values joined would form a union nothing publishes.
+  and `"image"` match, and `1` and `'1'` do not. A wrap spells its const, never the alias, so the literal fails even in
+  a property that wraps that enum, as the package absorbs it there too:
+  `{ w: AsEnum<typeof MediaType>; v: 'image' | MediaTypeType }` reports `'image'`. A property is an interface's key, a
+  member of an inline type alias such as a page's props, or a member of one arm of a split resource, read in a scope of
+  its own, `X[i]`, since two arms' values joined would form a union nothing publishes.
 - **Two arms spelled alike**.
 
 A name, an alias or an enum's const, resolves through the file's relative `import` to the one enum file in that
@@ -338,16 +339,13 @@ types. Run both self-tests after changing it.
 
 ### The baseline
 
-`BASELINE` excuses the findings the package publishes on purpose. Each entry names a file path suffix, a scope, a key
-and a kind, beside its reason, and excuses only that kind on that key, in a file whose path ends with the suffix. A
-scope may leave out its outer namespaces, such as `workbench.` in the testing tree.
-
-- `laravel-ts-global.ts` spells an enum resource by the enum's value type (#109), so
-  `EnumCollectionResource.wrapped_history_or_array` and `TeamStatusAuditResource.audit.status` print one arm twice in
-  each tree. Their entries excuse only that duplicate, so a `never[]` or a literal on either key still fails. Remove
-  them once #109 is fixed.
-- A module file takes an entry for another arm the package keeps by rule, such as a literal it keeps because another
-  enum of the same name is on the key, with a suffix such as `analysis-probe/same-named-kinds-payload.ts`.
+`BASELINE` excuses the findings the package publishes on purpose, and it is empty: the globals file keeps one of two
+arms its wrap fold leaves alike, so the two #109 duplicates it once excused are gone. An entry names a file path suffix,
+a scope, a key and a kind, beside its reason, and excuses only that kind on that key, in a file whose path ends with the
+suffix. A scope may leave out its outer namespaces, such as `workbench.` in the testing tree. A module file takes an
+entry for an arm the package keeps by rule, such as a literal it keeps because another enum of the same name is on the
+key, with a suffix such as `analysis-probe/same-named-kinds-payload.ts`. `--parsetest` keeps a baseline of its own for
+each kind of file, `GLOBAL_BASELINE` and `PROBE_BASELINE`, so it still checks how an entry matches.
 
 ### What the redundant-arm gate does not cover
 
@@ -356,9 +354,9 @@ scope may leave out its outer namespaces, such as `workbench.` in the testing tr
   alias (`Status = StatusType`) admit nothing, so a literal beside one passes.
 - **A property spread over several lines**: the parser reads one line per property, as the regression gate does.
 - **A wrap in the globals file**: through #109, `laravel-ts-global.ts` prints `AsEnum<typeof MediaType>` as
-  `…MediaTypeType`, so the gate cannot see that a key wraps the enum, and it fails a literal the key keeps beside the
-  alias. No fixture publishes such a key to the globals file today. One that does needs a `literal` entry in
-  `BASELINE` citing #109, not a wider rule.
+  `…MediaTypeType`, so the gate cannot tell a wrap from its alias. A literal a key keeps beside a wrap alone, as
+  `AsEnum<typeof MediaType> | 'image'`, prints `…MediaTypeType | 'image'` there and fails. No fixture publishes such a
+  key to the globals file today. One that does needs a `literal` entry in `BASELINE` citing #109, not a wider rule.
 
 ## `gap-gate.sh`
 

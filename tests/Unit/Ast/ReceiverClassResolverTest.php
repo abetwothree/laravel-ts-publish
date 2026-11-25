@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies\CollectsLocalVarBindings;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
@@ -10,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\OpenSelfGenericVarResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PostWrappingChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ProxyMediaOrStringResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RecipientElementsResource;
@@ -22,6 +24,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\Builders\PublishedPostBui
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\BuiltPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ListingPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\NameLengthMember;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OpenCategoryBranch;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\OverriddenBuilderPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ProxyShadowPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\ScopedPost;
@@ -47,8 +50,11 @@ use Illuminate\Support\LazyCollection;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\Return_;
 use Workbench\App\Enums\Grade;
 use Workbench\App\Enums\Priority;
+use Workbench\App\Http\Resources\DocblockReads\SelfGenericVarResource;
 use Workbench\App\Http\Resources\FluentSelfResource;
 use Workbench\App\Http\Resources\NarrowedImageableResource;
 use Workbench\App\Http\Resources\TeamSubscriberResource;
@@ -60,9 +66,11 @@ use Workbench\App\Models\Post;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Profile;
 use Workbench\App\Models\RosterSlot;
+use Workbench\App\Models\TaggedImage;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
 use Workbench\App\Services\UrlService;
+use Workbench\App\ValueObjects\DocblockReads\CategoryBranch;
 use Workbench\App\ValueObjects\MailRecipient;
 use Workbench\App\ValueObjects\PostStats;
 use Workbench\Crm\Models\User as CrmUser;
@@ -77,6 +85,53 @@ function receiverExpr(string $php): Expr
 function postScope(): AnalysisScope
 {
     return new AnalysisScope(new ReflectionClass(ReceiverProbeResource::class), Post::class);
+}
+
+/**
+ * What `$x` holds in a body of $class past an inline `@var` of $type over $value, by default one that names no class,
+ * the body seeded as the analyzer seeds it.
+ *
+ * @param  class-string<Model>  $class
+ */
+function relativeTagReceiver(string $class, string $type, string $value = 'json_decode("")'): ?ReceiverType
+{
+    $scope = new AnalysisScope(new ReflectionClass($class), $class);
+    /** @var list<Stmt> $stmts */
+    $stmts = new AstParser()->parseSource('<?php /** @var '.$type.' $x */ $x = '.$value.'; return $x;');
+    $host = new class
+    {
+        use CollectsLocalVarBindings;
+
+        /**
+         * Seed the scope from the body, as the analyzer does.
+         *
+         * @param  list<Stmt>  $stmts
+         */
+        public function run(array $stmts, AnalysisScope $scope): void
+        {
+            $this->seedBody($stmts, $scope);
+        }
+    };
+    $host->run($stmts, $scope);
+    $returned = $stmts[1];
+    assert($returned instanceof Return_ && $returned->expr instanceof Expr);
+
+    return resolve(ReceiverClassResolver::class)->resolve($returned->expr, $scope);
+}
+
+/**
+ * What Laravel sends for SelfGenericVarResource over a saved root branch, whose one kid is `kid` with sort order 4,
+ * and over that kid, which has none.
+ *
+ * @return array{root: array<string, mixed>, leaf: array<string, mixed>}
+ */
+function selfGenericVarSends(): array
+{
+    $root = CategoryBranch::create(['name' => 'root', 'slug' => 'root']);
+    $leaf = CategoryBranch::create(['name' => 'kid', 'slug' => 'kid', 'parent_id' => $root->id, 'sort_order' => 4]);
+    $sent = fn (CategoryBranch $branch): array => (array) json_decode((string) json_encode(new SelfGenericVarResource($branch)->resolve(request())), true);
+
+    return ['root' => $sent($root), 'leaf' => $sent($leaf)];
 }
 
 // A list is no object, so resolve() names nothing for it; its declaration names what each element holds (GH-154).
@@ -838,6 +893,87 @@ describe('ReceiverClassResolver visibility, @var types and class names', functio
             ->and($resolver->resolve(receiverExpr('new parent'), $inherited))->toBeNull()
             ->and($resolver->resolve(receiverExpr('new static'), $inherited)?->classes)->toBe([ReceiverChildDto::class])
             ->and($resolver->resolve(receiverExpr('static::fresh()'), $inherited)?->classes)->toBe([ReceiverChildDto::class]);
+    });
+});
+
+// A final class has no subclass, so a `self` or `static` standing for it reads as the class named there (GH-134).
+describe('ReceiverClassResolver::resolveDeclared() over self, static and parent', function () {
+    test('reads a self or static a final class spells in an inline @var as the class named there', function (string $spelled, string $named, ?string $element) {
+        $held = relativeTagReceiver(CategoryBranch::class, $spelled);
+
+        expect($held)->toEqual(relativeTagReceiver(CategoryBranch::class, $named))
+            ->and([$held?->elementModel, $held?->declaredOnly])->toBe([$element, false]);
+    })->with([
+        'self inside a collection' => ['\\'.Collection::class.'<int, self>', '\\'.Collection::class.'<int, \\'.CategoryBranch::class.'>', CategoryBranch::class],
+        'static inside an Eloquent collection' => [
+            '\\'.EloquentCollection::class.'<int, static>',
+            '\\'.EloquentCollection::class.'<int, \\'.CategoryBranch::class.'>',
+            CategoryBranch::class,
+        ],
+        'a bare self' => ['self', '\\'.CategoryBranch::class, null],
+    ]);
+
+    test('names no element through a self or parent standing for a class a subclass may extend', function (string $class, string $spelled, string $named, string $element) {
+        $held = relativeTagReceiver($class, $spelled);
+
+        expect([$held?->elementModel, $held?->declaredOnly])->toBe([null, true])
+            ->and(relativeTagReceiver($class, $named)?->elementModel)->toBe($element);
+    })->with([
+        'self in a class that is not final' => [
+            OpenCategoryBranch::class,
+            '\\'.Collection::class.'<int, self>',
+            '\\'.Collection::class.'<int, \\'.OpenCategoryBranch::class.'>',
+            OpenCategoryBranch::class,
+        ],
+        'parent in a final class' => [
+            TaggedImage::class,
+            '\\'.EloquentCollection::class.'<int, parent>',
+            '\\'.EloquentCollection::class.'<int, \\'.Image::class.'>',
+            Image::class,
+        ],
+    ]);
+
+    // An Eloquent collection value that names no element takes the one its tag lists.
+    test('fills in the element an Eloquent collection value leaves unnamed from a final class\'s self, not from another\'s', function () {
+        $value = 'new \\'.EloquentCollection::class.'()';
+        $tag = fn (string $element): string => '\\'.EloquentCollection::class.'<int, '.$element.'>';
+        $final = relativeTagReceiver(CategoryBranch::class, $tag('self'), $value);
+        $open = relativeTagReceiver(OpenCategoryBranch::class, $tag('self'), $value);
+
+        expect($final)->toEqual(relativeTagReceiver(CategoryBranch::class, $tag('\\'.CategoryBranch::class), $value))
+            ->and([$final?->classes, $final?->elementModel, $final?->declaredOnly])->toBe([[EloquentCollection::class], CategoryBranch::class, false])
+            ->and([$open?->classes, $open?->elementModel])->toBe([[EloquentCollection::class], null])
+            ->and(relativeTagReceiver(OpenCategoryBranch::class, $tag('\\'.OpenCategoryBranch::class), $value)?->elementModel)->toBe(OpenCategoryBranch::class);
+    });
+
+    test('publishes a final class\'s kids read through self in an inline @var as through the class\'s name', function (string $key, string $type, mixed $root, mixed $leaf) {
+        $sent = selfGenericVarSends();
+        $self = str_replace('{}', 'self', $key);
+        $named = str_replace('{}', 'named', $key);
+
+        expect(analyzedKeyTypes(SelfGenericVarResource::class))->toHaveKey($self, $type)->toHaveKey($named, $type)
+            ->and($sent['root'])->toHaveKey($self, $root)->toHaveKey($named, $root)
+            ->and($sent['leaf'])->toHaveKey($self, $leaf)->toHaveKey($named, $leaf);
+    })->with([
+        'a trait\'s names' => ['{}_kid_names', 'string[]', ['kid'], []],
+        'a trait\'s first name' => ['{}_first_kid_name', 'string | null', 'kid', null],
+        'a trait\'s names re-indexed' => ['{}_kid_name_list', 'string[]', ['kid'], []],
+        'a trait\'s sort orders' => ['{}_kid_sort_orders', 'number[]', [4], []],
+        'its own body\'s names re-indexed' => ['own_{}_kid_name_list', 'string[]', ['kid'], []],
+        'its own body\'s first name' => ['own_{}_first_kid_name', 'string | null', 'kid', null],
+        'its own body\'s sort orders' => ['own_{}_kid_sort_orders', 'number[]', [4], []],
+    ]);
+
+    test('keeps unknown what a class a subclass may extend reads through self in an inline @var', function () {
+        expect(analyzedKeyTypes(OpenSelfGenericVarResource::class))->toBe([
+            'self_kid_names' => 'unknown',
+            'self_first_kid_name' => 'unknown',
+            'self_kid_name_list' => 'unknown',
+            'self_kid_sort_orders' => 'unknown',
+            'own_self_kid_name_list' => 'unknown',
+            'own_self_first_kid_name' => 'unknown',
+            'own_self_kid_sort_orders' => 'unknown',
+        ]);
     });
 });
 

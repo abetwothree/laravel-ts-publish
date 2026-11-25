@@ -17,11 +17,13 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  * position an answer: a reading left `unknown` takes the declaration, a shape keeps the members the body sends, a list
  * or record merges its element or value, and a declaration within the reading refines it arm by arm, else it stays.
  *
- * Each side is a type beside the class behind each token of the names in play, in print order, so classes compare by
- * identity, never by spelling, and an enum the body wraps in an `EnumResource` is never that enum.
+ * Each side is a type beside the class behind each token of the names in play, and the enum behind each const a wrap
+ * spells, in print order, so classes compare by identity, never by spelling.
  *
  * A gap the body kept (VisibleGaps) stands for an arm no rule typed, so it takes each declared arm the other arms leave
- * out; a shape with the open marker may hold keys the body cannot name, so it keeps a member only declared.
+ * out; a shape with the open marker may hold keys the body cannot name, so it keeps a member only declared. A mark is
+ * read as a gap: a `null` only a declaration produced stays only where this declaration has one too, and a `Record` an
+ * untyped array's keys hedge goes where it declares no keyed arm.
  *
  * @phpstan-import-type Slots from TokenSlots
  * @phpstan-import-type TupleElement from TsTypeShape
@@ -40,16 +42,19 @@ final readonly class DeclaredTypeMerge
     /** The declared container kind a body list or record of the other kind pairs with, merging its contents with it. */
     private const array PAIRS_ACROSS = ['list' => 'record', 'record' => 'list'];
 
+    /** A `null` arm, and the mark of one only a declaration produced, which a nested fill's declaration spells. */
+    private const array NULLS = ['null', VisibleGaps::DECLARED_NULL];
+
     /**
      * @param  list<string>  $names  the names whose every token a side's slots give a class, or null
-     * @param  list<class-string>  $bodyWraps  the enums the body wraps in an `EnumResource` where it spells them bare
      * @param  bool  $relists  whether the client gets an array keyed only by ints as the list of its values in the
      *                         order it holds them, as `filter()` re-lists one in a resource that keeps no keys
+     * @param  list<string>  $consts  the consts whose every token after `typeof` a side's slots give a wrapped enum
      */
     public function __construct(
         private array $names,
-        private array $bodyWraps = [],
         private bool $relists = false,
+        private array $consts = [],
     ) {}
 
     /**
@@ -67,6 +72,23 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
+     * Whether one arm, spelled as the class its token stands for, names a subclass of the other's class, or any class
+     * `object` admits, an enum aside, which is sent as its value.
+     */
+    public static function classWithin(string $arm, string $of): bool
+    {
+        $class = self::spelledClass($arm);
+
+        if ($class === null) {
+            return false;
+        }
+
+        $other = $of === 'object' ? null : self::spelledClass($of);
+
+        return $of === 'object' ? ! enum_exists($class) : $other !== null && is_subclass_of($class, $other);
+    }
+
+    /**
      * How much a type tells of its value, its `null` aside: 0 for `unknown` or `mixed`, 1 for no more than its
      * container, as `unknown[]` or a `Record` of `unknown` does, and 2 for any other type.
      *
@@ -74,7 +96,7 @@ final readonly class DeclaredTypeMerge
      */
     public static function tells(string $type): int
     {
-        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), ['null']));
+        $arms = array_values(array_diff(TsTypeString::splitTopLevelUnion($type), self::NULLS));
 
         return match (true) {
             $type === 'mixed' || $arms === ['unknown'] => 0,
@@ -85,7 +107,8 @@ final readonly class DeclaredTypeMerge
 
     /**
      * The type to publish at a position: the body's reading merged with the declared type there. Each gap at its top
-     * takes the declared arms its other arms leave out, after them; one the declaration tells nothing of stays.
+     * takes the declared arms its other arms leave out, after them; one the declaration tells nothing of stays. A
+     * declared `null`'s mark alone takes only the declaration's own `null`.
      *
      * @param  Typed  $body
      * @param  Typed  $declared
@@ -93,10 +116,17 @@ final readonly class DeclaredTypeMerge
      */
     public function merge(array $body, array $declared): array
     {
-        [$rest, $gaps] = VisibleGaps::aside($body[0]);
+        $body = $this->unhedged($body, $declared[0]);
+        [$rest, $gaps] = VisibleGaps::aside($body[0], marks: true);
 
         if ($gaps === [] || self::tells($declared[0]) === 0) {
             return $this->mergeReading($body, $declared);
+        }
+
+        if (array_diff($gaps, [VisibleGaps::DECLARED_NULL]) === []) {
+            $merged = $this->mergeReading([$rest, $body[1]], $declared);
+
+            return [TsTypeString::withNullArmOf($declared[0], $merged[0]), $merged[1]];
         }
 
         // A gap spells no class, so the rest keeps the body's slots; beside only `null` it is the base's whole fill.
@@ -107,13 +137,28 @@ final readonly class DeclaredTypeMerge
         $merged = $this->arms($this->mergeReading([$rest, $body[1]], $declared));
         $arms = [...$merged, ...array_filter(
             $this->arms($declared),
-            fn (array $arm): bool => self::kindOf($arm[0]) !== null || ! $this->within([$arm], self::atoms($merged), false),
+            fn (array $arm): bool => self::kindOf($arm[0]) !== null || ! $this->within([$arm], self::atoms($merged)),
         )];
 
         // The rest prints a lone arrow bare, whose return type would take in every arm joined after it.
         $grouped = count($arms) > 1 ? array_map(static fn (array $arm): array => [TsTypeShape::unionArm($arm[0]), $arm[1]], $arms) : $arms;
 
         return $this->joined($grouped, $body);
+    }
+
+    /**
+     * The class an arm spells as its identity(), `\` and a name a loaded class or interface answers to; null for any
+     * other arm.
+     *
+     * @return class-string|null
+     */
+    private static function spelledClass(string $arm): ?string
+    {
+        $class = substr($arm, 1);
+
+        return str_starts_with($arm, '\\') && preg_match('/^[\w\\\\]+$/', $class) === 1 && (class_exists($class) || interface_exists($class))
+            ? $class
+            : null;
     }
 
     /**
@@ -224,7 +269,7 @@ final readonly class DeclaredTypeMerge
      */
     private static function tupleElementsOf(string $declared): ?array
     {
-        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), ['null']));
+        $tuples = array_values(array_diff(TsTypeString::splitTopLevelUnion($declared), self::NULLS));
         $elements = count($tuples) === 1 && TsTypeShape::isWrapped($tuples[0], '[', ']') ? TsTypeShape::tupleElements($tuples[0]) : [];
 
         return $elements === [] || array_any($elements, static fn (array $element): bool => str_starts_with($element[0], '...')) ? null : $elements;
@@ -278,7 +323,7 @@ final readonly class DeclaredTypeMerge
                 )), ...(isset($pairs[$index]) ? [] : [$printedArms[$index]]));
             } elseif ($verdict === 'declared') {
                 // A body arm the declaration refines none of stays, so it never stops admitting what the body sends.
-                $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm], false)));
+                $refined = array_values(array_filter($declaredAtoms, fn (array $declared): bool => $this->within([$declared], [$arm])));
                 array_push($merged, ...($refined === [] ? [$arm] : $refined));
             } else {
                 array_push($merged, ...($verdict === 'unknown' && $arm[0] === 'unknown' ? $this->uncovered($bodyArms, $declaredArms, $pairs) : [$arm]));
@@ -287,7 +332,7 @@ final readonly class DeclaredTypeMerge
 
         // The arm a declaration adds, its `null` beside a body that reads none, as verdict() only takes such a one.
         if ($verdict === 'declared') {
-            array_push($merged, ...array_filter($declaredAtoms, fn (array $declared): bool => ! $this->within([$declared], self::atoms($bodyArms), false)));
+            array_push($merged, ...array_filter($declaredAtoms, fn (array $declared): bool => ! $this->within([$declared], self::atoms($bodyArms))));
         }
 
         return $this->joined($merged, $body);
@@ -311,7 +356,7 @@ final readonly class DeclaredTypeMerge
             return null;
         }
 
-        $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body[0]), ['null']));
+        $shapes = array_values(array_diff(TsTypeString::splitTopLevelUnion($body[0]), self::NULLS));
         $relisting = self::relisting(count($shapes) === 1 ? TsTypeShape::members($shapes[0]) ?? [] : []);
 
         if ($relisting === null || count($elements) !== count($relisting[0])) {
@@ -368,31 +413,59 @@ final readonly class DeclaredTypeMerge
         $bodyAtoms = self::atoms($bodyArms);
         $declaredAtoms = self::atoms($declaredArms);
         $leftUnknown = in_array('unknown', array_column($bodyAtoms, 0), true);
-        $declaredBesideNull = array_values(array_filter($declaredAtoms, static fn (array $arm): bool => $arm[0] !== 'null'));
+        $declaredBesideNull = array_values(array_filter($declaredAtoms, static fn (array $arm): bool => ! in_array($arm[0], self::NULLS, true)));
 
         return match (true) {
             $bodyAtoms === [] || $declaredAtoms === [] => $leftUnknown && $this->uncovered($bodyArms, $declaredArms, $pairs) !== [] ? 'unknown' : 'body',
-            $this->within($declaredAtoms, $bodyAtoms, false) => 'declared',
-            $this->within($bodyAtoms, $declaredAtoms, true) => 'body',
-            ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms, false) => 'declared',
+            $this->within($declaredAtoms, $bodyAtoms) => 'declared',
+            $this->within($bodyAtoms, $declaredAtoms) => 'body',
+            ! $leftUnknown && $declaredBesideNull !== [] && $this->within($declaredBesideNull, $bodyAtoms) => 'declared',
             $leftUnknown => 'unknown',
             default => 'body',
         };
     }
 
     /**
-     * Whether every arm of one side is within some arm of the other.
+     * Whether every arm of one side is within some arm of the other: a subtype of it, a subclass of its class included.
      *
      * @param  list<Typed>  $arms
      * @param  list<Typed>  $of
-     * @param  bool  $armsAreBody  whether $arms is the body's side and $of the declared one
      */
-    private function within(array $arms, array $of, bool $armsAreBody): bool
+    private function within(array $arms, array $of): bool
     {
         return array_all($arms, fn (array $arm): bool => array_any(
             $of,
-            fn (array $other): bool => self::armWithin($this->identity($arm, $armsAreBody), $this->identity($other, ! $armsAreBody)),
+            fn (array $other): bool => self::armWithin($this->identity($arm), $this->identity($other))
+                || self::classWithin($this->identity($arm), $this->identity($other)),
         ));
+    }
+
+    /**
+     * A body whose top-level `Record` arms only hedge an untyped array's keys, as its key mark says: without them
+     * where the declaration, which tells something there, names no keyed arm, and without the mark itself.
+     *
+     * @param  Typed  $body
+     * @return Typed
+     */
+    private function unhedged(array $body, string $declared): array
+    {
+        // Every merge passes here and few bodies spell the mark, so one scan spares the split.
+        if (! str_contains($body[0], VisibleGaps::DECLARED_KEYS)
+            || ! in_array(VisibleGaps::DECLARED_KEYS, TsTypeString::splitTopLevelUnion($body[0]), true)
+            || self::tells($declared) === 0) {
+            return $body;
+        }
+
+        $keyed = array_any(
+            TsTypeString::splitTopLevelUnion($declared),
+            static fn (string $arm): bool => in_array(self::kindOf($arm), ['record', 'object'], true),
+        );
+        $kept = array_values(array_filter(
+            $this->arms($body),
+            static fn (array $arm): bool => $arm[0] !== VisibleGaps::DECLARED_KEYS && ($keyed || self::kindOf($arm[0]) !== 'record'),
+        ));
+
+        return $kept === [] ? $body : [implode(' | ', array_column($kept, 0)), array_merge([], ...array_column($kept, 1))];
     }
 
     /**
@@ -411,7 +484,7 @@ final readonly class DeclaredTypeMerge
         return array_values(array_filter(
             $declaredArms,
             fn (array $arm, int $index): bool => self::kindOf($arm[0]) === null
-                ? ! $this->within([$arm], $typed, false)
+                ? ! $this->within([$arm], $typed)
                 : ! in_array($index, array_merge([], ...array_values($pairs)), true),
             ARRAY_FILTER_USE_BOTH,
         ));
@@ -700,7 +773,7 @@ final readonly class DeclaredTypeMerge
     private function admitting(array $signature, array $member): array
     {
         $arms = $this->arms($signature);
-        $added = array_values(array_filter($this->arms($member), fn (array $arm): bool => ! $this->within([$arm], $arms, false)));
+        $added = array_values(array_filter($this->arms($member), fn (array $arm): bool => ! $this->within([$arm], $arms)));
 
         return $added === [] ? $signature : [
             implode(' | ', array_column([...$arms, ...$added], 0)),
@@ -779,22 +852,23 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * An arm with each read token a class stands behind spelled as that class, so arms compare by identity: a class
-     * the body wraps in an `EnumResource` apart from the enum itself.
+     * An arm with each read token a class stands behind spelled as that class, so arms compare by identity, and a
+     * wrap's const as the enum behind it.
      *
      * @param  Typed  $arm
      */
-    private function identity(array $arm, bool $isBody): string
+    private function identity(array $arm): string
     {
         $text = '';
         $from = 0;
 
-        foreach ($this->names === [] ? [] : TokenSlots::tokens('classes', $this->names, $arm[0]) as $index => [$token, $offset, $read]) {
+        $tokens = TokenSlots::slottedTokens($this->names, $this->consts, $arm[0]);
+
+        foreach ($tokens as $index => [$token, $offset, $read]) {
             $class = $arm[1][$index] ?? null;
 
             if ($read && $class !== null) {
-                $wrapped = $isBody && in_array($class, $this->bodyWraps, true);
-                $text .= substr($arm[0], $from, $offset - $from).'\\'.($wrapped ? 'EnumResource<'.$class.'>' : $class);
+                $text .= substr($arm[0], $from, $offset - $from).'\\'.$class;
                 $from = $offset + strlen($token);
             }
         }
@@ -803,10 +877,10 @@ final readonly class DeclaredTypeMerge
     }
 
     /**
-     * How many tokens of the names in play a part of a type spells, each of which takes one slot.
+     * How many tokens of the names and consts in play a part of a type spells, each of which takes one slot.
      */
     private function count(string $text): int
     {
-        return $this->names === [] ? 0 : count(TokenSlots::tokens('classes', $this->names, $text));
+        return count(TokenSlots::slottedTokens($this->names, $this->consts, $text));
     }
 }

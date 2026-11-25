@@ -212,7 +212,8 @@ jobs:
           fi
           echo "Comparing $base..HEAD"
           git worktree add /tmp/base "$base"
-          cp composer.lock /tmp/base/composer.lock
+          # The head's composer.json comes too: a constraint the head changed would otherwise reject the head's lock.
+          cp composer.json composer.lock /tmp/base/
           composer install --prefer-dist --no-interaction --working-dir=/tmp/base
           echo "base: $(composer show laravel/framework --working-dir=/tmp/base | grep '^versions')"
           echo "head: $(composer show laravel/framework | grep '^versions')"

@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Workbench\App\Enums\Role;
 
-/** The same enum reached both wrapped and bare, so its type import has to outlive the AsEnum rewrite. */
+/** The same enum reached both wrapped and bare, so its file imports both the enum's const and its type. */
 final class MiddlewareWithWrappedAndBareEnum extends Middleware
 {
     public function share(Request $request): array

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -116,7 +116,7 @@ final class FileImportNames
                     'text' => $piece['text'],
                     'typed' => true,
                     'classes' => $analysis->channelFqcns($source),
-                    'consts' => $analysis->wrappedEnumFqcns($source),
+                    'consts' => $analysis->wrapConstFqcns($source),
                     ...($declared === null ? [] : ['declared' => $declared]),
                 ];
             }
@@ -125,7 +125,7 @@ final class FileImportNames
         // A class a cast displaced is carried off every channel, but another key's text may still spell it.
         $held = array_values(array_unique([...$analysis->allChannelFqcns(), ...$analysis->allCarriedFqcns()]));
         $classes = self::soleClasses('classes', $held, $brought);
-        $consts = self::soleClasses('consts', $analysis->allWrappedEnumFqcns(), $brought);
+        $consts = self::soleClasses('consts', $analysis->allWrapConstFqcns(), $brought);
 
         return ['classes' => self::queue($pieces, 'classes', $classes), 'consts' => self::queue($pieces, 'consts', $consts)];
     }
@@ -240,8 +240,8 @@ final class FileImportNames
         $tokens = $names === [] ? [] : TokenSlots::tokens($channel, $names, $piece['text']);
 
         $own = $channel === 'classes'
-            ? new ClassTokenQueue($piece[$channel], TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))
-            : new ClassTokenQueue($piece[$channel], ValueResult::enumConstName(...));
+            ? new ClassTokenQueue($piece[$channel], TokenSlots::typeName(...), EnumNames::siblingNames(...))
+            : new ClassTokenQueue($piece[$channel], EnumNames::constName(...));
 
         foreach ($tokens as [$token, , $read]) {
             if ($read) {
@@ -308,14 +308,14 @@ final class FileImportNames
             if (isset(TolkiTypes::MAP[$fqcn])) {
                 $customImports[TolkiTypes::MODULE][] = TolkiTypes::MAP[$fqcn];
             } elseif (enum_exists($fqcn)) {
-                $enumTypeNames[$fqcn] = ValueResult::enumTypeName($fqcn);
+                $enumTypeNames[$fqcn] = EnumNames::typeName($fqcn);
             } else {
                 $typeNames[$fqcn] = TsNaming::resourceTypeName($fqcn);
             }
         }
 
         foreach ([...array_keys($enumTypeNames), ...$consts] as $enum) {
-            $this->enumConstMap[$enum] ??= ValueResult::enumConstName($enum);
+            $this->enumConstMap[$enum] ??= EnumNames::constName($enum);
         }
 
         $this->resolveImportNames($enumTypeNames, $typeNames, $customImports);

@@ -8,9 +8,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ReadsNullablePayloads;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\FrameworkClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Resources\ResourceCollectionBody;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResolver;
@@ -33,7 +33,6 @@ final class NewResourceHandler implements ExpressionHandler
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
-    use ResolvesEnumPropertyArgTypes;
 
     /** @return list<class-string<Expr>> */
     public function nodeClasses(): array
@@ -75,7 +74,7 @@ final class NewResourceHandler implements ExpressionHandler
                 return $result;
             }
 
-            return $this->enumWrapValue($payload, $scope, $engine) ?? $result;
+            return resolve(EnumWrapPayload::class)->value($payload, $scope, $engine) ?? $result;
         }
 
         // `new parent(...)` over JsonResource or ResourceCollection builds a resource no file publishes.

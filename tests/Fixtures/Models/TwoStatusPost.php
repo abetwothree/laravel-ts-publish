@@ -47,4 +47,20 @@ class TwoStatusPost extends Model
     {
         return Attribute::get(fn (): Status|CrmStatus => $this->status);
     }
+
+    /** A getter whose literal alternates the two enums. */
+    protected function alternatingStatuses(): Attribute
+    {
+        return Attribute::get(fn () => ['a' => $this->status, 'b' => CrmStatus::Lead, 'c' => $this->status]);
+    }
+
+    /**
+     * A getter whose declared shape alternates the two enums over an untyped read.
+     *
+     * @return Attribute<array{a: Status, b: CrmStatus, c: Status|null}, never>
+     */
+    protected function declaredStatuses(): Attribute
+    {
+        return Attribute::get(fn () => cache('statuses'));
+    }
 }

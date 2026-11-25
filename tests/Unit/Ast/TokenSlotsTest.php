@@ -3,11 +3,15 @@
 declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\TokenSlots;
+use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish as LaravelTsPublishFacade;
+use AbeTwoThree\LaravelTsPublish\LaravelTsPublish;
+use AbeTwoThree\LaravelTsPublish\Support\ResourceReindexing;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 use Workbench\App\Enums\Priority;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Comment;
+use Workbench\App\Models\Grade;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
@@ -28,6 +32,41 @@ test('declaredTokens() reads no token where the slots hold no class and no other
     expect(TokenSlots::declaredTokens('User | Post', []))->toBe([]);
 });
 
+test('retyped() keeps each slot on its token through a rewrite that merges, drops or repeats arms', function (string $type, array $slots, string $retyped, array $kept) {
+    expect(TokenSlots::retyped($type, $slots, ResourceReindexing::reindexedType(...)))->toBe([$retyped, $kept]);
+})->with([
+    'a filtered list re-indexed beside a later token and an override' => [
+        '{ list: (StatusType | StatusType)[] | Record<number, StatusType | StatusType>; one: StatusType; a: User | null; b: User }',
+        [CrmStatus::class, Status::class, CrmStatus::class, Status::class, Status::class, User::class, null],
+        '{ list: (StatusType | StatusType)[]; one: StatusType; a: User | null; b: User }',
+        [CrmStatus::class, Status::class, Status::class, User::class, null],
+    ],
+    'arms of one text whose slots name other classes stay two' => [
+        'User[] | Record<number, User>',
+        [CrmUser::class, User::class],
+        'User[] | User[]',
+        [CrmUser::class, User::class],
+    ],
+    'a literal\'s token keeps its slot' => [
+        "{ kind: 'User'; r: Record<number, User> }",
+        [null, User::class],
+        "{ kind: 'User'; r: User[] }",
+        [null, User::class],
+    ],
+    'an override\'s slots alone, which no token reads, stay' => [
+        '{ r: Record<number, User> }',
+        [null],
+        '{ r: User[] }',
+        [null],
+    ],
+    'a text the rewrite leaves as it is keeps its slots' => [
+        '{ r: User[]; s: StatusType }',
+        [User::class, Status::class, CrmStatus::class],
+        '{ r: User[]; s: StatusType }',
+        [User::class, Status::class, CrmStatus::class],
+    ],
+]);
+
 test('declaredSlots() gives the slot declaredTokens() gives each token', function () {
     expect(TokenSlots::declaredSlots("{ kind: 'User'; r: User | User; p: Post }", [null, null, User::class], ['Post']))
         ->toBe([null, null, User::class, null])
@@ -38,6 +77,23 @@ test('queueRead() gives each token the next class the queue spells it with, the 
     expect(TokenSlots::queueRead([User::class, CrmUser::class], 'User | Post | User | User', ['User', 'Post']))
         ->toBe([User::class, null, CrmUser::class, CrmUser::class])
         ->and(TokenSlots::queueRead([User::class], 'User', []))->toBe([]);
+});
+
+test('reads back the class a docblock shape writes behind a token spelled like the name a `typeof` reads', function () {
+    $type = 'AsEnum<typeof Grade> | Grade';
+    $shape = new ReflectionMethod(LaravelTsPublish::class, 'docblockTypeInfo')->invoke(resolve(LaravelTsPublish::class), [
+        ...LaravelTsPublishFacade::emptyTypeScriptInfo(),
+        'type' => $type,
+        'classes' => ['Grade'],
+        'classFqcns' => [Grade::class],
+    ]);
+    $tokens = TokenSlots::declaredTokens($type, $shape['tokenFqcns']);
+
+    expect($shape['tokenFqcns'])->toBe([Grade::class])
+        ->and(array_map(fn (array $token): array => [$token['offset'], $token['slot'], $token['read']], $tokens))
+        ->toBe([[23, Grade::class, true]])
+        ->and(TokenSlots::typeLeftToImports($type, $shape['tokenFqcns']))->toBe('AsEnum<typeof Grade> |  ')
+        ->and(TokenSlots::queueRead([Grade::class], $type, ['Grade']))->toBe([Grade::class]);
 });
 
 test('ownSlots() keeps the slot of each token of a name its slots hold a class of', function () {

@@ -6,7 +6,10 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\AnalysisResult;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapImports;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapSpelling;
+use AbeTwoThree\LaravelTsPublish\Ast\Values\ClassIdentity;
 use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -16,22 +19,19 @@ use AbeTwoThree\LaravelTsPublish\Support\ImportNameRegistry;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\BuildsImportMaps;
 use AbeTwoThree\LaravelTsPublish\Transformers\Concerns\ResolvesImportConflicts;
 use Closure;
-use Illuminate\Support\Facades\Config;
 
 /**
  * Turns one MethodAnalysis into an AnalysisResult whose three fields agree with each other.
  *
  * AnalysisImports resolves *what* to import from the raw channels and stops there, which leaves a
- * caller holding types the imports do not match: an `EnumResource::make()` property still spelled
- * `XType`, two same-basename models both spelled by their bare name. This runs the remaining
- * rewrites over the properties themselves — collision aliases first, then the AsEnum wrap — and
- * then imports exactly the tokens the rewritten types spell.
+ * caller holding types the imports do not match: two same-basename models both spelled by their bare
+ * name. This aliases the names in the properties themselves, each class's and then each const a wrap's
+ * `typeof` reads, and then imports exactly the tokens the rewritten types spell.
  *
  * @phpstan-import-type TypesImportMap from Datable
  * @phpstan-import-type ResourcePropertyInfoList from AnalysisResult
  *
  * @phpstan-type ComposedProperty = array{type: string, optional: bool, description: string}
- * @phpstan-type EnumResourceArm = array{fqcn: class-string, nullable: bool, wrapIsCollection: bool, directIsArray: bool}
  *
  * @internal
  */
@@ -62,36 +62,6 @@ final class AnalysisComposer
     private array $propertyFqcnQueues = [];
 
     /**
-     * Each EnumResource property's arm shape, for the AsEnum rewrite here and on an Inertia page or in shared data.
-     *
-     * @param  array<array-key, string>  $types  property name => its type before the rewrite
-     * @return array<array-key, EnumResourceArm>
-     */
-    public static function enumResourceArms(MethodAnalysis $analysis, array $types): array
-    {
-        $arms = [];
-
-        foreach ($analysis->enumResources as $propName => $fqcn) {
-            if (! isset($types[$propName])) {
-                continue;
-            }
-
-            $type = $types[$propName];
-            $isCollection = ValueResult::isListShaped($type);
-            $armShape = $analysis->enumResourceArmShapes[$propName] ?? null;
-
-            $arms[$propName] = [
-                'fqcn' => $fqcn,
-                'nullable' => TsTypeString::hasNullArm($type),
-                'wrapIsCollection' => $armShape['wrapIsCollection'] ?? false,
-                'directIsArray' => $armShape['directIsArray'] ?? $isCollection,
-            ];
-        }
-
-        return $arms;
-    }
-
-    /**
      * Compose one analysis into properties, type imports and value imports that agree.
      *
      * $fromNamespacePath is the importing file's namespace path (e.g. 'workbench/app/events').
@@ -112,7 +82,7 @@ final class AnalysisComposer
         $this->registerCarried($analysis);
 
         $this->resolveImportConflicts($analysis->customImports);
-        $this->rewriteEnumResourceTypes($analysis);
+        $this->aliasWrapConsts($analysis);
 
         return new AnalysisResult(
             properties: $this->composedProperties(),
@@ -172,13 +142,13 @@ final class AnalysisComposer
         $this->resourceFqcnMap = [];
         $this->modelFqcnMap = [];
 
-        foreach ($this->enumTypeFqcns($analysis) as $fqcn) {
-            $this->enumFqcnMap[$fqcn] = ValueResult::enumTypeName($fqcn);
-            $this->enumConstMap[$fqcn] = ValueResult::enumConstName($fqcn);
+        foreach (AnalysisImports::enumTypeFqcns($analysis) as $fqcn) {
+            $this->enumFqcnMap[$fqcn] = EnumNames::typeName($fqcn);
+            $this->enumConstMap[$fqcn] = EnumNames::constName($fqcn);
         }
 
-        foreach ($this->inlineEnumResourceFqcns($analysis) as $fqcn) {
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+        foreach ($analysis->allWrapConstFqcns() as $fqcn) {
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         foreach ($analysis->nestedResources as $fqcn) {
@@ -195,11 +165,11 @@ final class AnalysisComposer
      */
     private function registerCarried(MethodAnalysis $analysis): void
     {
-        $enumTypeName = ValueResult::enumTypeName(...);
+        $enumTypeName = EnumNames::typeName(...);
 
         foreach ($this->carriedInUse($analysis->carried['enums'] ?? [], $this->enumFqcnMap, $enumTypeName) as $fqcn => $name) {
             $this->enumFqcnMap[$fqcn] ??= $name;
-            $this->enumConstMap[$fqcn] ??= ValueResult::enumConstName($fqcn);
+            $this->enumConstMap[$fqcn] ??= EnumNames::constName($fqcn);
         }
 
         foreach ($this->carriedInUse($analysis->carried['models'] ?? [], $this->modelFqcnMap, class_basename(...)) as $fqcn => $name) {
@@ -286,60 +256,26 @@ final class AnalysisComposer
     }
 
     /**
-     * Rewrite every EnumResource-wrapped property to `AsEnum<typeof Const>`, the shape the tolki
-     * package publishes. With the package off the bare enum type name is already the answer.
+     * Respell each const a wrap's `AsEnum<typeof Const>` writes by the alias this file gives it.
+     *
+     * rewriteTypeReferences() cannot, as its name map holds type names, never const ones; the same name bare is another
+     * enum's type, so it stays.
      */
-    private function rewriteEnumResourceTypes(MethodAnalysis $analysis): void
+    private function aliasWrapConsts(MethodAnalysis $analysis): void
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return;
         }
 
-        $types = array_map(static fn (array $property): string => $property['type'], $this->properties);
-
-        foreach (self::enumResourceArms($analysis, $types) as $propName => $arm) {
-            $constName = $this->constImportAliases[$arm['fqcn']] ?? $this->enumConstMap[$arm['fqcn']];
-            $typeName = $this->importAliases[$arm['fqcn']] ?? $this->enumFqcnMap[$arm['fqcn']];
-
-            if (isset($analysis->directEnumFqcns[$propName])) {
-                // A mixed ternary collapsed both arms to one deduped token, so substitution cannot
-                // tell them apart — synthesize the union from each arm's own recorded shape.
-                $type = 'AsEnum<typeof '.$constName.'>'.($arm['wrapIsCollection'] ? '[]' : '')
-                    .' | '.$typeName.($arm['directIsArray'] ? '[]' : '')
-                    .($arm['nullable'] ? ' | null' : '');
-            } else {
-                $type = TsTypeString::substituteEnumType(
-                    $this->properties[$propName]['type'],
-                    $typeName,
-                    'AsEnum<typeof '.$constName.'>',
-                );
-            }
-
-            $this->properties[$propName]['type'] = $type;
-        }
-
-        foreach ($analysis->multiEnumResourceFqcns as $propName => $fqcns) {
-            if (! isset($this->properties[$propName])) {
-                continue;
-            }
-
-            $this->properties[$propName]['type'] = $this->rewriteMultiEnumUnion(
-                $this->properties[$propName]['type'],
-                $fqcns,
-            );
-        }
-
-        // analyzeInlineArray() already wrote `AsEnum<typeof {bare}>` into the inline object type, and
-        // rewriteTypeReferences() cannot alias it: its name map holds type names, never const ones. Only the name after
-        // `typeof` is a const; the same name bare is another enum's type, so it stays.
         foreach ($analysis->inlineEnumResourceFqcns as $propName => $fqcns) {
             if (! isset($this->properties[$propName])) {
                 continue;
             }
 
+            $type = $this->properties[$propName]['type'];
             $this->properties[$propName]['type'] = TsTypeString::aliasTypeofConst(
-                $this->properties[$propName]['type'],
-                $fqcns,
+                $type,
+                EnumWrapImports::written($type, $fqcns, $this->constImportAliases),
                 $this->enumConstMap,
                 $this->constImportAliases,
             );
@@ -347,34 +283,10 @@ final class AnalysisComposer
     }
 
     /**
-     * Replace each non-null arm of a ternary whose branches wrap different enums, in branch order.
-     *
-     * @param  list<class-string>  $fqcns
-     */
-    private function rewriteMultiEnumUnion(string $type, array $fqcns): string
-    {
-        $rewritten = [];
-        $index = 0;
-
-        foreach (TsTypeString::splitTopLevelUnion($type) as $token) {
-            if ($token === 'null' || ! isset($fqcns[$index])) {
-                $rewritten[] = $token;
-
-                continue;
-            }
-
-            $fqcn = $fqcns[$index++];
-            $rewritten[] = 'AsEnum<typeof '.($this->constImportAliases[$fqcn] ?? $this->enumConstMap[$fqcn]).'>';
-        }
-
-        return implode(' | ', $rewritten);
-    }
-
-    /**
      * Build the type imports, keeping only the names the rewritten properties actually spell.
      *
-     * An enum the AsEnum wrap replaced, and one a `#[TsCasts]` override displaced, both leave a
-     * live FQCN channel behind; importing either is a dead `import type` under noUnusedLocals.
+     * An enum a `#[TsCasts]` override displaced leaves a live FQCN channel behind; importing it is a dead
+     * `import type` under noUnusedLocals.
      *
      * @return TypesImportMap
      */
@@ -402,20 +314,15 @@ final class AnalysisComposer
      */
     private function buildValueImports(MethodAnalysis $analysis): array
     {
-        if (! Config::boolean('ts-publish.enums.use_tolki_package')) {
+        if (! EnumWrapSpelling::enabled()) {
             return [];
         }
 
-        $fqcns = [
-            ...array_values($analysis->enumResources),
-            ...$this->inlineEnumResourceFqcns($analysis),
-        ];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        $valueImports = $this->collectModularValueImports(array_values(array_unique($fqcns)));
+        $valueImports = $this->collectModularValueImports(EnumWrapImports::writtenIn(
+            array_map(static fn (array $property): string => $property['type'], $this->properties),
+            $analysis->inlineEnumResourceFqcns,
+            $this->constImportAliases,
+        ));
 
         return $this->deduplicateAndSortImports($this->pruneUnspelledImports($valueImports));
     }
@@ -453,7 +360,8 @@ final class AnalysisComposer
      *
      * A property in more than one map gets each map's entries concatenated, so the queue can be
      * longer than the type's real occurrences; aliasPropertyType() consumes only the matching
-     * prefix, which is also why a repeat must survive as a repeat.
+     * prefix, which is also why a repeat must survive as a repeat. A name a model and a resource
+     * both print reads the key's record of its tokens (ClassIdentity::queueByToken()).
      *
      * @return array<array-key, list<class-string>>
      */
@@ -462,57 +370,23 @@ final class AnalysisComposer
         /** @var array<array-key, list<class-string>> $queues */
         $queues = [];
 
-        foreach ([
-            $analysis->enumResources,
-            $analysis->directEnumFqcns,
-            $analysis->nestedResources,
-            $analysis->modelFqcns,
-        ] as $map) {
+        foreach ([$analysis->directEnumFqcns, $analysis->nestedResources, $analysis->modelFqcns] as $map) {
             foreach ($map as $propName => $fqcn) {
                 $queues[$propName][] = $fqcn;
             }
         }
 
-        // The inline lists go models first, then resources: InlineObjectResult::sharedNames() relies on that order.
         foreach ([$analysis->inlineEnumFqcns, $analysis->inlineModelFqcns, $analysis->inlineResourceFqcns] as $map) {
             foreach ($map as $propName => $fqcns) {
                 $queues[$propName] = [...($queues[$propName] ?? []), ...$fqcns];
             }
         }
 
+        foreach ($analysis->alikeClassFqcns as $propName => $alike) {
+            $queues[$propName] = ClassIdentity::queueByToken($queues[$propName] ?? [], $alike);
+        }
+
         return $queues;
-    }
-
-    /**
-     * Enum FQCNs that need a bare TypeScript type name.
-     *
-     * @return list<class-string>
-     */
-    private function enumTypeFqcns(MethodAnalysis $analysis): array
-    {
-        $fqcns = [...array_values($analysis->enumResources), ...array_values($analysis->directEnumFqcns)];
-
-        foreach ($analysis->multiEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
-    }
-
-    /**
-     * Enum FQCNs reachable only through an inline object type, which need a const name but no type.
-     *
-     * @return list<class-string>
-     */
-    private function inlineEnumResourceFqcns(MethodAnalysis $analysis): array
-    {
-        $fqcns = [];
-
-        foreach ($analysis->inlineEnumResourceFqcns as $branchFqcns) {
-            $fqcns = [...$fqcns, ...$branchFqcns];
-        }
-
-        return array_values(array_unique($fqcns));
     }
 
     /**

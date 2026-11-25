@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Composition;
 
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TolkiTypes;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
+use AbeTwoThree\LaravelTsPublish\Support\TsTypeString as TsTypeStringService;
+use Closure;
 
 /**
  * Reads a declaration's `tokenFqcns`: one slot per token of the names of the classes its slots hold, in print order,
@@ -17,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
  *
  * @phpstan-type Slots = list<class-string|null>
  * @phpstan-type Token = array{string, int, bool}
+ * @phpstan-type SlottedToken = array{string, int, bool, bool}
  * @phpstan-type DeclaredToken = array{token: string, offset: int, slot: class-string|null, own: bool, read: bool}
  * @phpstan-type DeclaredArm = array{0: string, 1: Slots, 2?: list<string>}
  *
@@ -24,13 +27,15 @@ use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
  */
 final class TokenSlots
 {
-    /** The name a `typeof` reads, which is a const's and never a class channel's type. */
-    private const string AFTER_TYPEOF = '/(?<![A-Za-z0-9_$.])typeof\s+\K[A-Za-z_$\x80-\xff][A-Za-z0-9_$\x80-\xff]*/';
+    /** The byte around the index of the slot a token carries through retyped()'s rewrite. */
+    private const string MARK = "\x1E";
+
+    private const string MARK_PATTERN = '/\x1E(\d+)\x1E/';
 
     /**
      * Each token in a type of a declaration's own names, the names of the classes its slots hold, and of `$names`, in
-     * print order. An own name's token takes the next slot, an unread one's in a literal or after `typeof` too, and
-     * any other token takes none: the one reading of `tokenFqcns` every builder and reader of it shares.
+     * print order. An own name's token takes the next slot, an unread one's in a literal too, and any other token takes
+     * none: the one reading of `tokenFqcns` every builder and reader of it shares. A name a `typeof` reads is no token.
      *
      * @param  Slots  $slots
      * @param  list<string>  $names
@@ -39,6 +44,50 @@ final class TokenSlots
     public static function declaredTokens(string $type, array $slots, array $names = []): array
     {
         return self::declaredTokensOf($type, $slots, self::ownNames($slots), $names);
+    }
+
+    /**
+     * A type rewritten with its slots kept to the tokens the new text spells: each token of the declaration's own names
+     * carries its slot through the rewrite, so a token the rewrite drops, merges or repeats takes its slot along. Slots
+     * no token reads, as an override's alone are, and those of a text the rewrite leaves as it is stay as they came.
+     *
+     * @param  Slots  $slots
+     * @param  Closure(string): string  $rewrite  it must read a token and the mark after it as one opaque name
+     * @return array{string, Slots}
+     */
+    public static function retyped(string $type, array $slots, Closure $rewrite): array
+    {
+        $tokens = self::declaredTokens($type, $slots);
+
+        if ($tokens === []) {
+            return [$rewrite($type), $slots];
+        }
+
+        /** @var Slots $values the slot each mark's index names */
+        $values = [];
+        $marked = '';
+        $from = 0;
+
+        foreach ($tokens as $token) {
+            $index = array_search($token['slot'], $values, true);
+
+            if ($index === false) {
+                $index = count($values);
+                $values[] = $token['slot'];
+            }
+
+            $end = $token['offset'] + strlen($token['token']);
+            $marked .= substr($type, $from, $end - $from).self::MARK.$index.self::MARK;
+            $from = $end;
+        }
+
+        $rewritten = $rewrite($marked.substr($type, $from));
+        $retyped = (string) preg_replace(self::MARK_PATTERN, '', $rewritten);
+        preg_match_all(self::MARK_PATTERN, $rewritten, $matches);
+
+        $kept = array_map(static fn (string $index): ?string => $values[(int) $index], $matches[1]);
+
+        return [$retyped, $retyped === $type ? $slots : $kept];
     }
 
     /**
@@ -63,15 +112,92 @@ final class TokenSlots
      */
     public static function queueRead(array $queue, string $text, array $names): array
     {
-        $spellings = new ClassTokenQueue($queue, self::typeName(...), ValueResult::enumSiblingNames(...))->spellings($text);
+        $queued = new ClassTokenQueue($queue, self::typeName(...), EnumNames::siblingNames(...));
+
+        return self::readOff($queued, 'classes', $text, $names);
+    }
+
+    /**
+     * The enum a queue of wrapped enums, as a key's const channel lists them, gives each const of $consts a text spells
+     * after `typeof`, as the publisher's const walk hands them out; null for a const the queue holds no enum of.
+     *
+     * @param  list<class-string>  $queue
+     * @param  list<string>  $consts
+     * @return Slots
+     */
+    public static function constRead(array $queue, string $text, array $consts): array
+    {
+        $queued = new ClassTokenQueue($queue, EnumNames::constName(...), anchor: TsTypeStringService::TYPEOF_ANCHOR);
+
+        return self::readOff($queued, 'consts', $text, $consts);
+    }
+
+    /**
+     * Each token of $names, and of $consts after `typeof`, in print order, beside whether it is a const's: a merge
+     * slots both, so a wrap's const keeps its enum as a class's token keeps its class.
+     *
+     * @param  list<string>  $names
+     * @param  list<string>  $consts
+     * @return list<SlottedToken>
+     */
+    public static function slottedTokens(array $names, array $consts, string $text): array
+    {
+        $classTokens = $names === [] ? [] : self::tokens('classes', $names, $text);
+        $constTokens = $consts === [] ? [] : self::tokens('consts', $consts, $text);
+        $tokens = [
+            ...array_map(static fn (array $token): array => [...$token, false], $classTokens),
+            ...array_map(static fn (array $token): array => [...$token, true], $constTokens),
+        ];
+        usort($tokens, static fn (array $a, array $b): int => $a[1] <=> $b[1]);
+
+        return $tokens;
+    }
+
+    /**
+     * One slot per token slottedTokens() reads, in print order: a token of $names takes the next class slot, and a
+     * const of $consts the next const slot.
+     *
+     * @param  Slots  $classSlots
+     * @param  Slots  $constSlots
+     * @param  list<string>  $names
+     * @param  list<string>  $consts
+     * @return Slots
+     */
+    public static function withConstSlots(
+        string $text,
+        array $classSlots,
+        array $constSlots,
+        array $names,
+        array $consts,
+    ): array {
         $slots = [];
 
-        foreach ($names === [] ? [] : self::tokens('classes', $names, $text) as [$token]) {
-            $next = $spellings === [] || $spellings[0][1] !== $token ? null : array_shift($spellings);
-            $slots[] = $next[0] ?? null;
+        foreach (self::slottedTokens($names, $consts, $text) as [, , , $isConst]) {
+            $slots[] = $isConst ? array_shift($constSlots) : array_shift($classSlots);
         }
 
         return $slots;
+    }
+
+    /**
+     * The class slots among slots withConstSlots() joined, each const's left out.
+     *
+     * @param  Slots  $slots
+     * @param  list<string>  $names
+     * @param  list<string>  $consts
+     * @return Slots
+     */
+    public static function withoutConstSlots(string $text, array $slots, array $names, array $consts): array
+    {
+        $classes = [];
+
+        foreach (self::slottedTokens($names, $consts, $text) as $index => [, , , $isConst]) {
+            if (! $isConst) {
+                $classes[] = $slots[$index] ?? null;
+            }
+        }
+
+        return $classes;
     }
 
     /**
@@ -195,7 +321,7 @@ final class TokenSlots
         $names = array_map(self::typeName(...), $enums);
 
         return count(array_unique($names)) === count($names)
-            || new ClassTokenQueue($enums, self::typeName(...), ValueResult::enumSiblingNames(...))->take($type) === $enumSlots;
+            || new ClassTokenQueue($enums, self::typeName(...), EnumNames::siblingNames(...))->take($type) === $enumSlots;
     }
 
     /**
@@ -239,12 +365,6 @@ final class TokenSlots
 
         $unread = TsTypeString::literalSpans($text);
 
-        if ($channel === 'classes' && preg_match_all(self::AFTER_TYPEOF, $text, $consts, PREG_OFFSET_CAPTURE) > 0) {
-            foreach ($consts[0] as [$const, $at]) {
-                $unread[] = [$at, $at + strlen($const)];
-            }
-        }
-
         return array_map(static fn (array $match): array => [
             $match[0],
             $match[1],
@@ -258,7 +378,7 @@ final class TokenSlots
     public static function typeName(string $fqcn): string
     {
         return TolkiTypes::MAP[$fqcn]
-            ?? (enum_exists($fqcn) ? ValueResult::enumTypeName($fqcn) : TsNaming::resourceTypeName($fqcn));
+            ?? (enum_exists($fqcn) ? EnumNames::typeName($fqcn) : TsNaming::resourceTypeName($fqcn));
     }
 
     /**
@@ -272,10 +392,10 @@ final class TokenSlots
     {
         $names = $channel === 'classes'
             ? array_merge([], ...array_map(
-                static fn (string $fqcn): array => [self::typeName($fqcn), ...ValueResult::enumSiblingNames($fqcn)],
+                static fn (string $fqcn): array => [self::typeName($fqcn), ...EnumNames::siblingNames($fqcn)],
                 $fqcns,
             ))
-            : array_map(ValueResult::enumConstName(...), $fqcns);
+            : array_map(EnumNames::constName(...), $fqcns);
 
         return array_values(array_unique($names));
     }
@@ -425,13 +545,36 @@ final class TokenSlots
     }
 
     /**
-     * The pattern a channel's tokens are read with: a const only after `typeof`.
+     * The class a queue gives each token of a channel's names in a text, in print order; null for a token of a name
+     * the queue holds no class of.
+     *
+     * @param  'classes'|'consts'  $channel
+     * @param  list<string>  $names
+     * @return Slots
+     */
+    private static function readOff(ClassTokenQueue $queued, string $channel, string $text, array $names): array
+    {
+        $spellings = $queued->spellings($text);
+        $slots = [];
+
+        foreach ($names === [] ? [] : self::tokens($channel, $names, $text) as [$token]) {
+            $next = $spellings === [] || $spellings[0][1] !== $token ? null : array_shift($spellings);
+            $slots[] = $next[0] ?? null;
+        }
+
+        return $slots;
+    }
+
+    /**
+     * The pattern a channel's tokens are read with: a const only after `typeof`, a class never there.
      *
      * @param  'classes'|'consts'  $channel
      * @param  non-empty-list<string>  $names
      */
     private static function patternOf(string $channel, array $names): string
     {
-        return TsTypeString::queuedTokenPattern($names, $channel === 'classes' ? '' : 'typeof\s+\K');
+        $anchor = $channel === 'classes' ? '' : TsTypeStringService::TYPEOF_ANCHOR;
+
+        return TsTypeString::queuedTokenPattern($names, $anchor);
     }
 }

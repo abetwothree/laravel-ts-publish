@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use Illuminate\Support\Facades\Config;
 use PhpParser\Node\Expr;
@@ -43,7 +44,9 @@ trait ResolvesModelRelationTypes
             return ['type' => 'unknown', 'modelFqcn' => null, 'morphFqcns' => []];
         }
 
-        return resolve(ModelAttributeResolver::class)->resolveRelation($scope->modelClass, $name);
+        $relation = resolve(ModelAttributeResolver::class)->resolveRelation($scope->modelClass, $name);
+
+        return [...$relation, 'type' => DeclaredArms::markedNull($relation['type'])];
     }
 
     /**

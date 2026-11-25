@@ -7,7 +7,9 @@ use AbeTwoThree\LaravelTsPublish\Dtos\TsBroadcastEventDto;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\ModelAttributeResolver;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\AppAndCrmWrapsEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\ConditionableWrapEvent;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NestedEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\NullEnumWrapEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\PostOwnJsonEvent;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Events\RedundantArmsEvent;
@@ -37,6 +39,7 @@ use Illuminate\Filesystem\Filesystem;
 use Workbench\App\Events\ComputedNameEvent;
 use Workbench\App\Events\DeclaredPropsEvent;
 use Workbench\App\Events\EnumBroadcastEvent;
+use Workbench\App\Events\EnumWrapsBroadcast;
 use Workbench\App\Events\MixedTypesEvent;
 use Workbench\App\Events\MultiModelEvent;
 use Workbench\App\Events\OrderShipped;
@@ -814,10 +817,10 @@ it('publishes the [] an event sends for an EnumResource over a null enum, alone 
     $transformer = app(BroadcastEventTransformer::class, ['findable' => NullEnumWrapEvent::class]);
 
     expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
-        'wrap' => 'GradeType | never[]',
-        'kept' => '(GradeType | never[])[]',
-        'all' => '(GradeType | never[])[]',
-        'helper' => 'StatusType | never[]',
+        'wrap' => 'AsEnum<typeof Grade> | never[]',
+        'kept' => '(AsEnum<typeof Grade> | never[])[]',
+        'all' => '(AsEnum<typeof Grade> | never[])[]',
+        'helper' => 'AsEnum<typeof Status> | never[]',
     ])->and(json_encode(new NullEnumWrapEvent()->broadcastWith()))->toBe('{"wrap":[],"kept":[[]],"all":[[]],"helper":[]}');
 });
 
@@ -852,6 +855,74 @@ test('an event publishes no case value beside its enum\'s alias and no empty lis
     expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
         'status' => 'StatusType',
         'tags' => '(PriorityType | null)[]',
-        'kept' => 'StatusType | 0',
-    ])->and($transformer->typeImports)->toBe(['../../../../../workbench/app/enums' => ['PriorityType', 'StatusType']]);
+        'kept' => 'AsEnum<typeof Status> | 0',
+    ])->and($transformer->typeImports)->toBe([
+        '@tolki/ts' => ['AsEnum'],
+        '../../../../../workbench/app/enums' => ['PriorityType', 'StatusType'],
+    ]);
+});
+
+// An inline array spells its wrap `AsEnum<typeof Status>`, so the event imports the const and `AsEnum` (GH-109).
+test('an event imports the const and the AsEnum type a nested enum resource spells', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NestedEnumWrapEvent::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect($transformer->properties['probe']['type'])->toBe('{ w: AsEnum<typeof Status> }')
+        ->and($transformer->data()->typeImports)->toBe(['@tolki/ts' => ['AsEnum']])
+        ->and($transformer->data()->valueImports)->toBe(['../../../../../workbench/app/enums' => ['Status']])
+        ->and(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+            "import type { AsEnum } from '@tolki/ts';",
+            "import { Status } from '../../../../../workbench/app/enums';",
+        ]);
+});
+
+// A top-level wrap spells itself as a nested one does, so the event imports its const and `AsEnum`.
+test('the workbench event publishes each wrap as AsEnum, importing its const', function () {
+    config()->set('ts-publish.output_to_files', false);
+
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => EnumWrapsBroadcast::class]);
+    $content = new BroadcastEventWriter(new Filesystem)->write($transformer);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'status' => 'AsEnum<typeof Status>',
+        'visibility' => 'AsEnum<typeof Visibility> | never[]',
+    ])
+        ->and(array_values(preg_grep('/^import /', explode("\n", $content)) ?: []))->toBe([
+            "import type { AsEnum } from '@tolki/ts';",
+            "import { Status, Visibility } from '../enums';",
+        ]);
+});
+
+// Each `typeof` token names the const of its own wrap's enum, so two app wraps before a CRM one stay apart.
+test('an event names each wrap\'s own const where the app\'s and the CRM\'s Status print alike, each imported once', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => AppAndCrmWrapsEvent::class]);
+
+    expect(array_map(fn (array $property): string => $property['type'], $transformer->properties))->toBe([
+        'pair' => '{ a: AsEnum<typeof AppStatus>; b: AsEnum<typeof AppStatus>; c: AsEnum<typeof CrmStatus> }',
+        'either' => 'AsEnum<typeof AppStatus> | AsEnum<typeof CrmStatus>',
+    ])
+        ->and($transformer->data()->valueImports)->toBe([
+            '../../../../../workbench/app/enums' => ['Status as AppStatus'],
+            '../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+        ]);
+});
+
+// The globals file has no `AsEnum` import, so an event's wrap folds to its enum's value type, as a resource's does.
+test('the globals file folds an event\'s nested wrap to its enum\'s value type', function () {
+    $transformer = app(BroadcastEventTransformer::class, ['findable' => NestedEnumWrapEvent::class]);
+
+    $content = view('laravel-ts-publish::globals', [
+        'globalTypesByNamespace' => [],
+        'globalAliasMap' => [],
+        'externalTypeImports' => [],
+        'groupedModels' => collect(),
+        'groupedEnums' => collect(),
+        'groupedResources' => collect(),
+        'groupedFormRequests' => collect(),
+        'groupedBroadcastEvents' => collect(['stub.events' => collect([$transformer])]),
+    ])->render();
+
+    expect($content)->toContain('probe: { w: workbench.app.enums.StatusType };')->not->toContain('AsEnum');
 });

@@ -13,13 +13,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\DocblockTags;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\PropertyDocblockTypeReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Docblocks\TypeAliases;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\CastCasters;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\ReturnLiteralReader;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\DeclaredClasses;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedClasses;
 use AbeTwoThree\LaravelTsPublish\Collectors\PublishedEnums;
@@ -90,12 +90,14 @@ use UnitEnum;
  *    enumFqcns: list<class-string>,
  *    classFqcns: list<class-string>,
  *    classTokenFqcns?: list<class-string|null>,
+ *    enumTokenFqcns?: list<class-string>,
  *    omit?: bool,
  *    keepsKeys?: bool,
  *    closedToDottedKeys?: bool,
  *    listKeys?: bool,
  *    sendsEnumScalar?: true,
  *    wrappedEnumFqcns?: list<class-string>,
+ *    wrapConstFqcns?: list<class-string>,
  *    typedByClass?: true,
  * }
  * @phpstan-type DateArm = array{class: string, nullable: bool}
@@ -115,6 +117,7 @@ use UnitEnum;
  * `classTokenFqcns` is the queue aliasing walks against the class tokens of `type`, left to right, set only where
  * `classFqcns`, each class once, cannot say which token is whose: one name spelled for two classes, the queue not
  * outrunning its tokens, or an override spelling a class's name, whose token is null, which fqcnsOf() leaves out.
+ * `enumTokenFqcns` is that queue for the enum tokens, set only where two enums of `enumFqcns` share a name.
  * `omit`, when true, signals a property that resolved to nothing useful and should be dropped from
  * generated output entirely rather than emitted as `unknown` (see omittedTypeScriptInfo()).
  *
@@ -128,6 +131,7 @@ use UnitEnum;
  * `sendsEnumScalar` says the enum alias in `type` stands for a scalar the value sends, a `->value` or `->name` read or
  * a case literal the alias took in, so a model's Resource interface keeps the alias rather than `AsEnum<typeof X>`.
  * `wrappedEnumFqcns` lists each enum the value wraps in an `EnumResource`, whose alias takes in no case literal there.
+ * `wrapConstFqcns` is the enum behind each `typeof` const `type` spells, one per token in print order, for aliasing.
  *
  * `typedByClass` says `type` is what a class's `#[TsType]` or a custom cast declares the value writes, while PHP holds
  * the object or whatever the cast's get() returns, so no guard on the value can be decided by `type`.
@@ -1496,6 +1500,9 @@ class LaravelTsPublish
         /** @var list<class-string> $bareFqcns the classes and enums the kept arms spell bare at their top level */
         $bareFqcns = [];
 
+        /** @var list<class-string> $enumTokenFqcns the enum behind each enum token kept, in order */
+        $enumTokenFqcns = [];
+
         foreach ($infos as $info) {
             if ($info['classFqcns'] !== []) {
                 $isPlainClassUnion = $info['type'] === implode(' | ', $info['classes']);
@@ -1525,6 +1532,7 @@ class LaravelTsPublish
                         $seenTypeTokens[] = $info['type'];
                         $types[] = $info['type'];
                         array_push($classTokenFqcns, ...$queue);
+                        array_push($enumTokenFqcns, ...$this->armEnumTokens($info));
                         array_push($bareFqcns, ...$this->topLevelBareFqcns($info));
                         $kept[] = [
                             'type' => $info['type'],
@@ -1538,12 +1546,14 @@ class LaravelTsPublish
                     $bareFqcns[] = $info['enumFqcns'][0];
                     $seenTypeTokens[] = $info['type'];
                     $types[] = $info['type'];
+                    $enumTokenFqcns[] = $info['enumFqcns'][0];
                     $kept[] = ['type' => $info['type'], 'customImports' => []];
                 }
             } elseif (! in_array($info['type'], $seenTypeTokens, true)) {
                 $seenTypeTokens[] = $info['type'];
                 $types[] = $info['type'];
                 array_push($bareFqcns, ...$this->topLevelBareFqcns($info));
+                array_push($enumTokenFqcns, ...$this->armEnumTokens($info));
                 $kept[] = ['type' => $info['type'], 'customImports' => $info['customImports']];
             }
 
@@ -1584,6 +1594,10 @@ class LaravelTsPublish
             $result['classTokenFqcns'] = $classTokenFqcns;
         }
 
+        if (EnumNames::shareAName($enumFqcns)) {
+            $result['enumTokenFqcns'] = $enumTokenFqcns;
+        }
+
         // The re-index rewrites only an arm holding an object, so the union keeps its keys when each such arm does.
         $keyed = array_filter($infos, fn (array $info): bool => TsTypeShape::holdsKeyedObject($info['type']));
 
@@ -1609,6 +1623,12 @@ class LaravelTsPublish
 
         if ($wrapped !== []) {
             $result['wrappedEnumFqcns'] = $wrapped;
+        }
+
+        $consts = array_merge(...array_map(fn (array $info): array => $info['wrapConstFqcns'] ?? [], $infos));
+
+        if ($consts !== []) {
+            $result['wrapConstFqcns'] = $consts;
         }
 
         return $result;
@@ -1717,10 +1737,11 @@ class LaravelTsPublish
      * {@see TsTypeString::rewriteAsEnumToType()}
      *
      * @param  array<string, string>  $constToTypeMap  constAlias => 'namespace.TypeName'
+     * @param  array<string, string>  $references  name the file spells => 'namespace.TypeName' it names
      */
-    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap): string
+    public function rewriteAsEnumToType(string $typeStr, array $constToTypeMap, array $references = []): string
     {
-        return TsTypeString::rewriteAsEnumToType($typeStr, $constToTypeMap);
+        return TsTypeString::rewriteAsEnumToType($typeStr, $constToTypeMap, $references);
     }
 
     /**
@@ -3307,6 +3328,7 @@ class LaravelTsPublish
         $enums = array_values(array_filter($named, enum_exists(...)));
         $classes = array_values(array_diff($named, $enums));
         $names = array_map(class_basename(...), $classes);
+        $enumTokens = array_values(array_filter($tokens, enum_exists(...)));
 
         return [
             ...$this->emptyTypeScriptInfo(),
@@ -3320,6 +3342,7 @@ class LaravelTsPublish
             ...(count(array_unique($names)) < count($names)
                 ? ['classTokenFqcns' => array_values(array_diff($tokens, $enums))]
                 : []),
+            ...(EnumNames::shareAName($enums) ? ['enumTokenFqcns' => $enumTokens] : []),
         ];
     }
 
@@ -3350,12 +3373,12 @@ class LaravelTsPublish
         $classTokens = $info['classTokenFqcns'] ?? [];
 
         if (! in_array(null, $classTokens, true)) {
-            $queued = [...ClassTokenQueue::fqcnsOf($info), ...$info['enumFqcns']];
+            $queued = [...ClassTokenQueue::fqcnsOf($info), ...($info['enumTokenFqcns'] ?? $info['enumFqcns'])];
             $fqcns = array_values(array_filter($queued, $exported));
 
             return $fqcns === [] || ($classTokens !== [] && count($fqcns) < count($queued))
                 ? []
-                : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), ValueResult::enumSiblingNames(...))->take($info['type']);
+                : new ClassTokenQueue($fqcns, TokenSlots::typeName(...), EnumNames::siblingNames(...))->take($info['type']);
         }
 
         $classes = array_values(array_unique(array_filter($classTokens)));
@@ -3365,7 +3388,7 @@ class LaravelTsPublish
         }
 
         // ClassTokenQueue cannot hold a null, so the class tokens read their slots and the enums their own queue.
-        $enums = new ClassTokenQueue($info['enumFqcns'], TokenSlots::typeName(...), ValueResult::enumSiblingNames(...));
+        $enums = new ClassTokenQueue($info['enumTokenFqcns'] ?? $info['enumFqcns'], TokenSlots::typeName(...), EnumNames::siblingNames(...));
         $tokens = TokenSlots::declaredTokens($info['type'], $classTokens, TokenSlots::namesOf('classes', $info['enumFqcns']));
 
         return array_map(
@@ -3475,6 +3498,19 @@ class LaravelTsPublish
         $names = array_combine($info['classFqcns'], $info['classes']);
 
         return new ClassTokenQueue($queue, fn (string $fqcn): string => $names[$fqcn])->take($info['type']);
+    }
+
+    /**
+     * The enum behind each enum token an arm spells, in order: its own queue, else its enums read off its type as
+     * aliasing walks them.
+     *
+     * @param  TypeScriptTypeInfo  $info
+     * @return list<class-string>
+     */
+    private function armEnumTokens(array $info): array
+    {
+        return $info['enumTokenFqcns']
+            ?? new ClassTokenQueue($info['enumFqcns'], EnumNames::typeName(...), EnumNames::siblingNames(...))->take($info['type']);
     }
 
     /**

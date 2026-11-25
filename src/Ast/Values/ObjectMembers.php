@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
+use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\TsTypeShape;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\IndexSignatureKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type PresenceFacts from MethodAnalysis
+ * @phpstan-import-type TokenQueues from ClassIdentity
  *
  * @phpstan-type KeyedValues = list<array{string, ValueExpressionResult}>
  * @phpstan-type MemberChannel = array{
@@ -28,6 +30,10 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
  *      embeddedResourceFqcns?: list<class-string>,
  *      directEnumFqcn?: class-string,
  *      embeddedEnumFqcns?: list<class-string>,
+ * }
+ * @phpstan-type WrapChannels = array{
+ *      embeddedEnumResourceFqcns?: list<class-string>,
+ *      wrappedEnumFqcns?: list<class-string>,
  * }
  *
  * @internal
@@ -76,12 +82,6 @@ final class ObjectMembers
     {
         $value = ValueResult::unsplit($value);
 
-        // A wrap spells `AsEnum<typeof X>`, a token no queue here reads, so its member could not keep its value import.
-        if (isset($value['enumFqcn']) || isset($value['embeddedEnumResourceFqcns'])
-            || isset($value['multiEnumResourceFqcns'])) {
-            return null;
-        }
-
         $printed = VisibleGaps::members(VisibleGaps::aside($value['type'])[0])[0] ?? null;
 
         // InlineObjectResult::of() prints an analysis with no keys as a Record, so `{}` has no analysis to read back.
@@ -89,7 +89,9 @@ final class ObjectMembers
             return null;
         }
 
-        [$models, $resources, $enums] = ValueResult::tokenQueues($value);
+        $queues = ClassIdentity::queues($value);
+        $classes = ClassIdentity::alikeQueue($value);
+        $wrapped = $value['wrappedEnumFqcns'] ?? [];
         $members = [];
 
         foreach ($printed as [$key, $type]) {
@@ -99,25 +101,55 @@ final class ObjectMembers
                 return null;
             }
 
-            $holdsObject = TsTypeShape::holdsKeyedObject($type);
+            // A printed `?` cannot tell an unset key from a removed value, so it reads as removed, as a when() is.
+            $member = self::memberValue($type, str_ends_with($key, '?'), $queues, $wrapped, $classes);
 
-            $members[] = [$name, [
-                'type' => $type,
-                // A printed `?` cannot tell an unset key from a removed value, so it reads as removed, as a when() is.
-                'optional' => str_ends_with($key, '?'),
-                ...self::memberChannel($models->take($type), $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
-                ...self::memberChannel($resources->take($type), $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
-                ...self::memberChannel($enums->take($type), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
-                // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
-                ...(($value['keepsKeys'] ?? false) && $holdsObject ? ['keepsKeys' => true] : []),
-            ]];
+            // An object that keeps its keys keeps each member object's too, as InlineObjectResult::of() decides.
+            $members[] = [$name, ($value['keepsKeys'] ?? false) && TsTypeShape::holdsKeyedObject($type)
+                ? [...$member, 'keepsKeys' => true]
+                : $member];
         }
 
-        if ($models->outrunsItsTokens() || $resources->outrunsItsTokens() || $enums->outrunsItsTokens()) {
+        if (array_any($queues, static fn (ClassTokenQueue $queue): bool => $queue->outrunsItsTokens())) {
             return null;
         }
 
         return $members;
+    }
+
+    /**
+     * One member of a printed value as the value it holds, with the classes behind its own tokens taken next off the
+     * printed value's queues, which read its members in the order it spells them.
+     *
+     * A member holding a model and a resource of one name keeps its record of whose each token is, read off the printed
+     * value's `$classes` (ClassIdentity::alikeQueue()).
+     *
+     * @param  TokenQueues  $queues
+     * @param  list<class-string>  $wrapped  the enums the printed value wraps
+     * @return ValueExpressionResult
+     */
+    public static function memberValue(
+        string $type,
+        bool $optional,
+        array $queues,
+        array $wrapped,
+        ?ClassTokenQueue $classes = null,
+    ): array {
+        $holdsObject = TsTypeShape::holdsKeyedObject($type);
+        $taken = static fn (TokenKind $kind): array => $queues[$kind->value]->take($type);
+        $models = $taken(TokenKind::Model);
+        $resources = $taken(TokenKind::Resource);
+        $alike = ClassIdentity::alikeRecord($models, $resources, $classes?->take($type) ?? []);
+
+        return [
+            'type' => $type,
+            'optional' => $optional,
+            ...self::memberChannel($models, $holdsObject, 'modelFqcn', 'embeddedModelFqcns'),
+            ...self::memberChannel($resources, $holdsObject, 'resourceFqcn', 'embeddedResourceFqcns'),
+            ...self::memberChannel($taken(TokenKind::Enum), $holdsObject, 'directEnumFqcn', 'embeddedEnumFqcns'),
+            ...self::wrapChannels($taken(TokenKind::WrapConst), $wrapped),
+            ...($alike === [] ? [] : ['alikeClassFqcns' => $alike]),
+        ];
     }
 
     /**
@@ -291,6 +323,24 @@ final class ObjectMembers
             count($fqcns) === 1 && ! $holdsObject => [$single => $fqcns[0]],
             default => [$embedded => $fqcns],
         };
+    }
+
+    /**
+     * The channels a member's wraps ride: the enum behind each const its type spells, one per token, and among them the
+     * enums the value wraps, once each.
+     *
+     * @param  list<class-string>  $consts
+     * @param  list<class-string>  $wrapped
+     * @return WrapChannels
+     */
+    private static function wrapChannels(array $consts, array $wrapped): array
+    {
+        $own = array_values(array_intersect(array_unique($consts), $wrapped));
+
+        return [
+            ...($consts === [] ? [] : ['embeddedEnumResourceFqcns' => $consts]),
+            ...($own === [] ? [] : ['wrappedEnumFqcns' => $own]),
+        ];
     }
 
     /**

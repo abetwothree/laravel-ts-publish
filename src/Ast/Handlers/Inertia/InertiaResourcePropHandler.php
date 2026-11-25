@@ -12,9 +12,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\ResolvesModelRelationTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\GuessesModelResources;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\InspectsResourceCalls;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ReadsNullablePayloads;
-use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Resources\ResolvesEnumPropertyArgTypes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumWrapPayload;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\PaginatorSteps;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverClassResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Receivers\ReceiverType;
@@ -56,7 +56,6 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     use InspectsAstNodes;
     use InspectsResourceCalls;
     use ReadsNullablePayloads;
-    use ResolvesEnumPropertyArgTypes;
     use ResolvesModelRelationTypes;
 
     /**
@@ -348,7 +347,8 @@ final class InertiaResourcePropHandler implements ExpressionHandler
     private function enumListResponse(Expr $payload, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         // A resource collects `collect($items)` as it collects `$items`.
-        $list = $this->enumCollectionValue(CallArguments::collectArgument($payload) ?? $payload, $scope, $engine);
+        $list = resolve(EnumWrapPayload::class)
+            ->collectionValue(CallArguments::collectArgument($payload) ?? $payload, $scope, $engine);
 
         return $list === null ? null : $this->responses->enumList($list);
     }

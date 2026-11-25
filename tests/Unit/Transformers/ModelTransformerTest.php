@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Support\ComposedClassTypes;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorCastNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AccessorNullWarehouse;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AllBranchesReturnProduct;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AppAndCrmWrapsGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AttributeCardPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\AuthoredPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\CarriedNullProduct;
@@ -36,6 +37,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\TwoStatusPost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UnprovenNullProduct;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\UntypedGetSerializePost;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\VagueSerializeWarehouse;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Models\WrapAccessorGrade;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\AbsorbingModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Transformers\CustomImportsModelTransformer;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Ui\MaybeNode;
@@ -754,9 +756,9 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->toHaveKey('visibility')
             ->toHaveKey('priority');
 
-        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
-        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
-        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false]);
+        expect($data->enumColumns['status'])->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Status>']);
+        expect($data->enumColumns['visibility'])->toBe(['constName' => 'Visibility', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Visibility>']);
+        expect($data->enumColumns['priority'])->toBe(['constName' => 'Priority', 'nullable' => true, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Priority>']);
     });
 
     test('enumColumns is empty when enums_use_tolki_package is disabled', function () {
@@ -800,8 +802,8 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself or the value' => ['status_case_or_value', 'StatusType', true],
         'a read of the value-or-case-value getter' => ['status_or_draft_read', 'StatusType', false],
         'a read of the value-or-case-value getter, or a case' => ['status_or_draft_or_published', 'StatusType', false],
-        'a wrap, the value or a case\'s value of one enum' => ['priority_wrap_value_or_low', 'PriorityType | never[] | 0', false],
-        'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'PriorityType | 0', false],
+        'a wrap, the value or a case\'s value of one enum' => ['priority_wrap_value_or_low', 'AsEnum<typeof Priority> | never[] | PriorityType', false],
+        'a case\'s wrap, a value or a case\'s value of its enum' => ['priority_high_wrap_value_or_low', 'AsEnum<typeof Priority> | PriorityType', false],
     ]);
 
     test('a column\'s getter absorbs a case value into its enum\'s alias, with no AsEnum wrap', function (string $column, string $type) {
@@ -814,7 +816,7 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         'the enum itself or a case\'s value' => ['category', 'StatusType'],
     ]);
 
-    test('the model\'s absorbing keeps a case literal of an enum the key wraps, or beside a name a class on the key prints', function () {
+    test('the model\'s absorbing keeps a case literal beside a name a class on the key prints, whatever it wraps', function () {
         $transformer = new AbsorbingModelTransformer(Post::class);
         $info = [
             ...LaravelTsPublish::emptyTypeScriptInfo(),
@@ -823,13 +825,18 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             'enumTypes' => ['StatusType'],
             'enumFqcns' => [Status::class],
         ];
+        $wrapped = [...$info, 'wrappedEnumFqcns' => [Status::class]];
 
         expect($transformer->absorbed($info))->toBe([...$info, 'type' => 'StatusType', 'sendsEnumScalar' => true])
-            ->and($transformer->absorbed([...$info, 'wrappedEnumFqcns' => [Status::class]])['type'])->toBe('0 | StatusType')
+            ->and($transformer->absorbed($wrapped))->toBe([...$wrapped, 'type' => 'StatusType', 'sendsEnumScalar' => true])
             ->and($transformer->absorbed([...$info, 'classes' => ['StatusType'], 'classFqcns' => [User::class]])['type'])
             ->toBe('0 | StatusType')
             ->and($transformer->absorbed([...$info, 'classes' => ['Report'], 'classFqcns' => ['Some\\Models\\StatusType']])['type'])
             ->toBe('StatusType');
+
+        config()->set('ts-publish.enums.use_tolki_package', false);
+
+        expect($transformer->absorbed($wrapped)['type'])->toBe('StatusType');
     });
 
     test('the model\'s absorbing keeps one of two arms it made alike, unless a name spells two classes or a token queue is kept', function () {
@@ -935,6 +942,17 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
             ->and($data->enumMutators)->toBeEmpty();
     });
 
+    // The type info names the enum behind each token, so alternating same-named enums keep their own aliases.
+    test('a getter alternating two same-named enums names each token\'s own, from its body or its declared shape', function () {
+        config()->set('ts-publish.namespace_strip_prefix', 'Workbench\\');
+
+        $data = (new ModelTransformer(TwoStatusPost::class))->data();
+
+        expect($data->mutators['alternating_statuses']['type'])->toBe('{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType }')
+            ->and($data->mutators['declared_statuses']['type'])
+            ->toBe('{ a: EnumsStatusType; b: CrmStatusType; c: EnumsStatusType | null }');
+    });
+
     test('a cast\'s list<Dto> keeps the DTO\'s enum members with their imports', function () {
         $data = (new ModelTransformer(StatusLegsPost::class))->data();
         $post = (new StatusLegsPost)->setRawAttributes(['content' => '[{"code":"A","status":1,"priority":null},{"code":"B","status":0,"priority":2}]']);
@@ -1032,14 +1050,14 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
         $data = (new ModelTransformer(Team::class))->data();
 
         expect($data->enumColumns['week_days'])
-            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false]);
+            ->toBe(['constName' => 'WeekDays', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof WeekDays>[]']);
     });
 
     test('enumColumns marks a scalar enum column as not a collection', function () {
         $data = (new ModelTransformer(Post::class))->data();
 
         expect($data->enumColumns['status'])
-            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]);
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Status>']);
     });
 
     test('keeps the enum of a column or accessor that publishes a list of it or the enum alone', function () {
@@ -1047,10 +1065,10 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
 
         expect($data->columns['meta_info']['type'])->toBe('StatusType[] | StatusType | null')
             ->and($data->enumColumns['meta_info'])
-            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true, 'asEnumType' => 'AsEnum<typeof Status>[] | AsEnum<typeof Status>'])
             ->and($data->appends['grades']['type'])->toBe('StatusType[] | StatusType')
             ->and($data->enumAppends['grades'])
-            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => true, 'alsoBare' => true]);
+            ->toBe(['constName' => 'Status', 'nullable' => false, 'isCollection' => true, 'alsoBare' => true, 'asEnumType' => 'AsEnum<typeof Status>[] | AsEnum<typeof Status>']);
     });
 
     test('prints a list of the AsEnum wrap or the wrap alone in the Resource interface', function (string $template) {
@@ -1074,10 +1092,10 @@ describe('ModelTransformer HasEnums enum column/mutator properties', function ()
 
         expect($data->columns['meta_info']['type'])->toBe('StatusType | StatusType[] | null')
             ->and($data->enumColumns['meta_info'])
-            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => true, 'asEnumType' => 'AsEnum<typeof Status>[] | AsEnum<typeof Status>'])
             ->and($data->columns['tags']['type'])->toBe('StatusType[] | null')
             ->and($data->enumColumns['tags'])
-            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false])
+            ->toBe(['constName' => 'Status', 'nullable' => true, 'isCollection' => true, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Status>[]'])
             ->and($content)
             ->toContain("export interface EnumListUnionModelResource extends Omit<EnumListUnionModel, 'tags' | 'meta_info'>")
             ->toContain('    meta_info: AsEnum<typeof Status>[] | AsEnum<typeof Status> | null;')
@@ -1940,7 +1958,7 @@ describe('ModelTransformer with keys an attribute and a relation both publish', 
             ->and($data->combinedMutators)->toBe([])
             ->and($data->combinedAppends)->toBe([])
             ->and($data->combinedEnums)
-            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false]])
+            ->toBe(['priority' => ['constName' => 'Priority', 'nullable' => false, 'isCollection' => false, 'alsoBare' => false, 'asEnumType' => 'AsEnum<typeof Priority>']])
             ->and($data->combinedTypeImports)->toBe(['../enums' => ['PriorityType'], '.' => ['Order', 'User']])
             ->and($data->combinedValueImports)->toBe(['../enums' => ['Priority']]);
     });
@@ -2325,4 +2343,50 @@ test('a getter reading getAttribute() of a literal key publishes the attribute i
     $data = (new ModelTransformer(AttributeCardPost::class))->data();
 
     expect($data->mutators['shout']['type'] ?? null)->toBe('string');
+});
+
+// A wrap spells its enum's const after `typeof`, alone or in a shape, so the model imports the const and `AsEnum`,
+// though no column reads the enum (GH-96).
+test('a model imports AsEnum and the const its accessors\' wraps spell', function (string $template) {
+    config()->set('ts-publish.output_to_files', false);
+    config()->set('ts-publish.models.template', 'laravel-ts-publish::'.$template);
+
+    $content = (new ModelWriter(new Filesystem))->write(new ModelTransformer(WrapAccessorGrade::class));
+
+    expect(array_values(preg_grep('/^(import |    (shape|wrap): )/', explode("\n", $content)) ?: []))->toBe([
+        "import { type AsEnum } from '@tolki/ts';",
+        "import { Priority } from '../../../../../workbench/app/enums';",
+        '    shape: { a: AsEnum<typeof Priority>; b: number };',
+        '    wrap: AsEnum<typeof Priority>;',
+    ]);
+})->with(['model-full', 'model-split']);
+
+// The alias pass reads one const per `typeof` token in print order, so a CRM wrap after two app ones names it.
+test('an accessor names each wrap\'s own const where the app\'s and the CRM\'s Status print alike, each imported once', function () {
+    $data = (new ModelTransformer(AppAndCrmWrapsGrade::class))->data();
+
+    expect($data->appends['statuses']['type'])
+        ->toBe('{ a: AsEnum<typeof WorkbenchStatus>; b: AsEnum<typeof WorkbenchStatus>; c: AsEnum<typeof CrmStatus> }')
+        ->and($data->valueImports)->toBe([
+            '../../../../../workbench/app/enums' => ['Status as WorkbenchStatus'],
+            '../../../../../workbench/crm/enums' => ['Status as CrmStatus'],
+        ]);
+});
+
+// The globals file has no `AsEnum` import, so an accessor's wrap folds to its enum's value type there (GH-96).
+test('the globals file folds an accessor\'s wrap to its enum\'s value type', function () {
+    $content = view('laravel-ts-publish::globals', [
+        'globalTypesByNamespace' => [],
+        'globalAliasMap' => [],
+        'externalTypeImports' => [],
+        'groupedModels' => collect(['stub.models' => collect([new ModelTransformer(WrapAccessorGrade::class)])]),
+        'groupedEnums' => collect(),
+        'groupedResources' => collect(),
+        'groupedFormRequests' => collect(),
+        'groupedBroadcastEvents' => collect(),
+    ])->render();
+
+    expect($content)->toContain('shape: { a: workbench.app.enums.PriorityType; b: number };')
+        ->toContain('wrap: workbench.app.enums.PriorityType;')
+        ->not->toContain('AsEnum');
 });

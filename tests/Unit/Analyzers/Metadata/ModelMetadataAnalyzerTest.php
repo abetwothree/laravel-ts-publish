@@ -25,15 +25,18 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\EnumAndScalar
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\HelperOverrideMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\InheritedModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\MismatchedModelMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NestedEnumWrapMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NinthTierMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericCastKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\NumericShapeKeyMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalDocblockEnumMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\OptionalModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\RedundantArmsMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\SameNamedEnumUnionMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitHelperMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\TraitModelMetadataProvider;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\UnionEnumMetadataProvider;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\TsPublish\Metadata\WrapOutsidePayloadMetadataProvider;
 use Workbench\App\Enums\Role;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
@@ -275,6 +278,21 @@ test('a union of direct enums keeps both imports, which the engine keys by FQCN'
         ->and($analysis->typeImports)->toBe(['../enums' => ['RoleType', 'StatusType']]);
 });
 
+// The engine keys both enums by FQCN too, so only the key's own queue says which token is whose.
+test('a union of two same-named enums aliases each token by its own class', function () {
+    $analysis = resolve(ModelMetadataAnalyzer::class)
+        ->analyze(SameNamedEnumUnionMetadataProvider::class, ['either', 'pair', 'last'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe([
+        'either' => 'CrmStatusType | WorkbenchStatusType',
+        'pair' => '{ crm: CrmStatusType; app: WorkbenchStatusType }',
+        'last' => 'WorkbenchStatusType',
+    ])->and($analysis->typeImports)->toBe([
+        '../../crm/enums' => ['StatusType as CrmStatusType'],
+        '../enums' => ['StatusType as WorkbenchStatusType'],
+    ]);
+});
+
 test('a trait-supplied provide() in its own file infers its body and keeps its declared sources', function () {
     $analysis = analyzeMetadataTypesFor(TraitModelMetadataProvider::class, ['label', 'table', 'flag']);
 
@@ -317,6 +335,29 @@ test('keeps a numeric provide() cast key on its own key', function () {
 test('publishes no case value beside its enum\'s alias and no empty list beside a list', function () {
     $analysis = analyzeMetadataTypesFor(RedundantArmsMetadataProvider::class, ['status', 'tags', 'kept']);
 
-    expect($analysis->types)->toBe(['status' => 'StatusType', 'tags' => '(PriorityType | null)[]', 'kept' => 'StatusType | 0'])
-        ->and($analysis->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType']]);
+    expect($analysis->types)->toBe(['status' => 'StatusType', 'tags' => '(PriorityType | null)[]', 'kept' => 'AsEnum<typeof Status> | 0'])
+        ->and($analysis->typeImports)->toBe(['./workbench/app/enums' => ['PriorityType', 'StatusType'], '@tolki/ts' => ['AsEnum']])
+        ->and($analysis->valueImports)->toBe(['./workbench/app/enums' => ['Status']]);
+});
+
+// A key the payload leaves out lends no class to a published token, a wrap's const included: the cast's `typeof Status`
+// finds no const behind it, as at the base, rather than the enum the left-out key wraps (GH-160).
+test('a companion reads no const of a wrap under a key its payload leaves out', function () {
+    $analysis = resolve(ModelMetadataAnalyzer::class)
+        ->analyze(WrapOutsidePayloadMetadataProvider::class, ['shown'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe(['shown' => '{ w: AsEnum<typeof Status> }'])
+        ->and($analysis->typeImports)->toBe(['@tolki/ts' => ['AsEnum']])
+        ->and($analysis->valueImports)->toBe([]);
+});
+
+// The engine spells a nested wrap `AsEnum<typeof Status>`, so the companion imports the const and `AsEnum` (GH-96).
+test('a companion that spells a wrap imports its const and the AsEnum type', function () {
+    $analysis = resolve(ModelMetadataAnalyzer::class)
+        ->analyze(NestedEnumWrapMetadataProvider::class, ['probe'], 'workbench/app/models');
+
+    expect($analysis->types)->toBe(['probe' => '{ w: AsEnum<typeof Status> }'])
+        ->and($analysis->typeImports)->toBe(['@tolki/ts' => ['AsEnum']])
+        ->and($analysis->valueImports)->toBe(['../enums' => ['Status']])
+        ->and($analysis->importedNames())->toBe(['AsEnum', 'Status']);
 });

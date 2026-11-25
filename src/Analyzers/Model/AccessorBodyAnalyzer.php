@@ -11,9 +11,9 @@ use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallArguments;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
+use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumNames;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\MethodLocator;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ResultTypeInfoBridge;
-use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Concerns\NamesAccessorMethods;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
@@ -68,10 +68,13 @@ final class AccessorBodyAnalyzer
         $key = 'accessor-body:'.$modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless')
             .($casesAsLiterals ? '@casesAsLiterals' : '').$reading->memoKey();
 
-        return resolve(AnalysisMemo::class)->remember(
+        $info = resolve(AnalysisMemo::class)->remember(
             $key,
             fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $key, $reading),
         );
+
+        // An accessor's `null` is its body's to prove, whatever it read: an outer declaration never replaces it.
+        return $info === null ? null : [...$info, 'type' => VisibleGaps::nullUnmarked($info['type'])];
     }
 
     /**
@@ -162,7 +165,7 @@ final class AccessorBodyAnalyzer
 
         foreach ($info['enumFqcns'] as $i => $fqcn) {
             $name = $info['enumTypes'][$i];
-            $spellings[$name] = [...($spellings[$name] ?? []), ...ValueResult::enumNames($fqcn)];
+            $spellings[$name] = [...($spellings[$name] ?? []), ...EnumNames::names($fqcn)];
         }
 
         foreach ([[$info['enumTypes'], $spellings], [$info['classes'], []]] as [$names, $spelledAs]) {
