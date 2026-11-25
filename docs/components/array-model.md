@@ -12,7 +12,12 @@ and each channel map's order). See the [ADR](../decisions/2026-11-22-one-array-m
 - **Presence.** `KeyPresence` splits a key's `?` into absent and removed, beside the printed `?` a cast may set alone.
   Each derivation keeps its own default for a bare `?`: `fromRow()` reads it as absent, `fromValue()` as removed.
 - **Who builds it.** [`ArrayShapes::ofAnalysis()`](../../src/Ast/Arrays/Read/ArrayShapes.php) lifts a
-  `MethodAnalysis`, and `ShapeJoin` joins shapes; nothing else builds one yet.
+  `MethodAnalysis`, `ShapeJoin` joins shapes, and `ArrayWalk::shape()` gives the walk's.
+- **The walk.** [`ArrayWalk`](../../src/Ast/Arrays/Build/ArrayWalk.php) lands the returned-variable walk's whole
+  writes, `+=`, key writes, `??=`, `unset()`s, loosenings and exclusive joins, still over `MethodAnalysis` rows (the
+  ADR's fallback), with what each path leaves a key holding in `WalkKeyState`; `ReadsReturnedVariables` decides what
+  each statement writes. Every cause of unread keys records an `OpaquePart` with its site; an unnamed `unset()`
+  records none.
 - **Who reads it.** [`ShapeLowering::into()`](../../src/Ast/Arrays/Print/ShapeLowering.php) writes a shape back into
   the `MethodAnalysis` publishers read; `BranchJoin::joinInto()` lifts its branches, joins and lowers them.
 - **The per-key join.** [`KeyValue::joined()`](../../src/Ast/Arrays/Shape/KeyValue.php) joins one key's values across
@@ -24,7 +29,8 @@ and each channel map's order). See the [ADR](../decisions/2026-11-22-one-array-m
   write of a key another branch spells unalike as untyped, or as a gap in the gap mode, the one such rule for branches
   and a fold's sources. The wide data joins as `MethodAnalysis::merge()` merges it, each channel map in merge order.
 - **Print rules.** `Arrays/Print` is their home. `ShapeLowering` holds the top-level one: entries become rows, extras
-  become `holdsUnreadKeys`, and the spread arms stay as the analysis held them.
+  and the walk's opaque parts become `holdsUnreadKeys`, and the spread arms stay as the analysis held them. An opaque
+  kind no rule lowers yet throws rather than vanish, and no field holds the never-empty proof.
 - **The guard.** `BranchJoin::joinInto()`, `LiteralWrites::applyTo()` and the walk hand each analysis to the
   `ShapeObserver`. The package binds `NullShapeObserver`; `tests/Pest.php` binds `RoundTripShapeObserver`, which lifts,
   lowers and fails on any field that differs, for `tests/Unit/Analyzers`, `tests/Unit/Ast` and the publish command's

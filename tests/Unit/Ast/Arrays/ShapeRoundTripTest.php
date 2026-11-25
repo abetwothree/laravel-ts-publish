@@ -10,10 +10,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\ArrayShapes;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ArrayShape;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaqueKind;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaquePart;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeKey;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeWide;
 use AbeTwoThree\LaravelTsPublish\Ast\Variants\LiteralVariants;
 use AbeTwoThree\LaravelTsPublish\Tests\Support\RoundTripShapeObserver;
+use PhpParser\Node\Expr\Variable;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
@@ -156,6 +159,22 @@ it('lowers a shape\'s extras as unread keys, which no row can say', function () 
     expect($analysis->properties)->toBe([['name' => 'id', 'type' => 'number', 'optional' => false, 'description' => '']])
         ->and($analysis->holdsUnreadKeys)->toBeTrue();
 });
+
+it('lowers a walk\'s opaque parts as unread keys, which no row can say', function (OpaqueKind $kind) {
+    $analysis = new ResourceAnalysis;
+    ShapeLowering::into($analysis, new ArrayShape(opaque: [new OpaquePart(new Variable('rest'), $kind)]));
+
+    expect($analysis->holdsUnreadKeys)->toBeTrue()
+        ->and($analysis->readsCompletely)->toBeFalse()
+        ->and($analysis->holdsUnnamedKeys)->toBeFalse();
+})->with([OpaqueKind::UnreadWholeWrite, OpaqueKind::UnnamedKeyWrite, OpaqueKind::ByReferenceAppend]);
+
+it('refuses to lower an opaque part no rule lowers yet, rather than drop it', function (OpaqueKind $kind) {
+    $shape = new ArrayShape(opaque: [new OpaquePart(new Variable('rest'), $kind)]);
+
+    expect(fn () => ShapeLowering::into(new ResourceAnalysis, $shape))
+        ->toThrow(LogicException::class, "No rule lowers an opaque part of kind {$kind->name} yet.");
+})->with([OpaqueKind::UnreadSpread, OpaqueKind::UntypedMap, OpaqueKind::OpenValue, OpaqueKind::UnreadMerge]);
 
 it('lowers an entry\'s presence over the one its value was read with', function () {
     $analysis = new ResourceAnalysis;

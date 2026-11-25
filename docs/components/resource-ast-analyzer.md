@@ -85,9 +85,10 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   their flag onto it and onto the document `resolve()` wraps it in.
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
-  are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
-  written in a branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=`
-  included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
+  are also the base of a variable `ReadsReturnedVariables` walks;
+  [`ArrayWalk`](../../src/Ast/Arrays/Build/ArrayWalk.php) holds the write rules, such as a key first written in a
+  branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=` included. A
+  parameter that no top-level write replaces, whether an assignment, one inside another expression,
   destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
   object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
   A local whose read sees one write reads as its value (`writtenLocal()`), and the walk names a key such a local holds
@@ -98,7 +99,7 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop resolves to; a ternary,
   `??` or `match` with only some such arms (`mayHoldObject`) keeps the null its objects resolve to, and joins the
   default only past its plain arms' null; the default joins only past a plain `null`, or where a path may leave the key
-  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal
+  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`WalkKeyState`); a seed's or a non-literal
   write's keys count as set. A written value that reads the variable itself reads the keys the walk holds there
   (`readAgainstWalk()`), or, where the walk cannot spell them, reads as the body's other reads do, which a page
   declines. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the

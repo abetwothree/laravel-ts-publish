@@ -105,6 +105,14 @@ final readonly class KeyPresence
     }
 
     /**
+     * The presence of a key no write has set: printed `?` and absent, never removed.
+     */
+    public static function missing(): self
+    {
+        return new self(true, true);
+    }
+
+    /**
      * Whether the key is missing on some path and never removed: a value held before it survives wherever it is.
      */
     public function isAbsentOnly(): bool
@@ -149,5 +157,16 @@ final readonly class KeyPresence
     public function facts(): array
     {
         return MethodAnalysis::presenceFacts($this->absent, $this->removed);
+    }
+
+    /**
+     * A row with this presence: its printed `?` and the two facts behind it.
+     *
+     * @param  AnalyzedProperty  $row
+     * @return AnalyzedProperty
+     */
+    public function onRow(array $row): array
+    {
+        return MethodAnalysis::withPresence($row, $this->optional, $this->absent, $this->removed);
     }
 }

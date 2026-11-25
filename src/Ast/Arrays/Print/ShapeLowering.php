@@ -8,12 +8,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ArrayShape;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaqueKind;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeKey;
+use LogicException;
 
 /**
  * Writes a shape into the analysis publishers read: each entry a row in its order, each value's channels under its
  * name in the order the shape keeps, and what the shape holds beside its keys. No row can say the typed keys extras
- * bring, so the analysis holds them as unread keys.
+ * or an opaque part bring, so the analysis holds them as unread keys; no field holds a proof the array is never empty.
  *
  * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  *
@@ -21,6 +23,13 @@ use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeKey;
  */
 final class ShapeLowering
 {
+    /** The opaque kinds a walk records, whose keys the analysis holds unread, as the walk held them. */
+    private const array UNREAD_KINDS = [
+        OpaqueKind::UnreadWholeWrite,
+        OpaqueKind::UnnamedKeyWrite,
+        OpaqueKind::ByReferenceAppend,
+    ];
+
     /**
      * Write a shape's rows, channels and wide data into an analysis, replacing what it held.
      */
@@ -130,6 +139,15 @@ final class ShapeLowering
         $target->flatTypeAliasFqcn = $wide->flatTypeAliasFqcn;
         $target->variants = $wide->variants;
         $target->setSpreadArms($wide->spreadArms);
+
+        foreach ($shape->opaque as $part) {
+            // A literal's kinds wait for the rule their builder brings, so none lowers as a walk's would.
+            if (! in_array($part->kind, self::UNREAD_KINDS, true)) {
+                throw new LogicException("No rule lowers an opaque part of kind {$part->kind->name} yet.");
+            }
+
+            $target->holdUnreadKeys();
+        }
     }
 
     /**
@@ -172,7 +190,7 @@ final class ShapeLowering
             return $row;
         }
 
-        return MethodAnalysis::withPresence($row, $presence->optional, $presence->absent, $presence->removed);
+        return $presence->onRow($row);
     }
 
     /**

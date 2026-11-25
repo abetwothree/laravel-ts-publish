@@ -32,11 +32,14 @@ final readonly class ArrayShape
     ) {}
 
     /**
-     * Whether the array holds a key: yes where an entry sends it on every path, no only where a sealed shape lacks it.
+     * Whether the array holds a key: yes where the last entry of its name, the one MethodAnalysis::sliceOf() reads,
+     * sends it on every path; no only where a sealed shape lacks it.
      */
     public function certainty(string $key): Certainty
     {
-        foreach ($this->entries as $entry) {
+        for ($index = count($this->entries) - 1; $index >= 0; $index--) {
+            $entry = $this->entries[$index];
+
             if ($entry instanceof ShapeKey && $entry->name === $key) {
                 return $entry->presence->isSure() ? Certainty::Yes : Certainty::Maybe;
             }

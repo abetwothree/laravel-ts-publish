@@ -84,7 +84,17 @@ describe('KeyPresence', function () {
         'a conditional write keeps a removed held key\'s' => [new KeyPresence, new KeyPresence(true, false, true), true, [true, false, true]],
         'a removed value stays removed' => [new KeyPresence(true, false, true), new KeyPresence, true, [true, false, true]],
         'an absent value stays absent' => [new KeyPresence(true, true, false), new KeyPresence, false, [true, true, false]],
+        'a conditional write of a key no write set' => [new KeyPresence, KeyPresence::missing(), true, [true, true, false]],
+        'an unconditional write of a key no write set' => [new KeyPresence(true, false, true), KeyPresence::missing(), false, [true, false, true]],
     ]);
+
+    it('lays itself on a row, replacing the presence the row held', function () {
+        $row = ['name' => 'k', 'type' => 'number', 'optional' => true, 'description' => '', 'absent' => true];
+
+        expect(new KeyPresence(true, false, true)->onRow($row))
+            ->toBe(['name' => 'k', 'type' => 'number', 'optional' => true, 'description' => '', 'removed' => true])
+            ->and(new KeyPresence()->onRow($row))->toBe(['name' => 'k', 'type' => 'number', 'optional' => false, 'description' => '']);
+    });
 
     it('holds a key on the path a `+` reads it held, keeping its removal', function (KeyPresence $left, array $presence) {
         expect(presenceOf($left->held()))->toBe($presence);
@@ -125,6 +135,14 @@ describe('ArrayShape', function () {
             ->and($sealed->certainty('c'))->toBe(Certainty::No)
             ->and($open->certainty('a'))->toBe(Certainty::Yes)
             ->and($open->certainty('c'))->toBe(Certainty::Maybe);
+    });
+
+    it('reads a key from the last entry of its name, as a read of the key sees it', function () {
+        $sure = shapeKey('a');
+        $missing = shapeKey('a', new KeyPresence(true, true, false));
+
+        expect(new ArrayShape([$sure, $missing])->certainty('a'))->toBe(Certainty::Maybe)
+            ->and(new ArrayShape([$missing, $sure])->certainty('a'))->toBe(Certainty::Yes);
     });
 
     it('is sealed with no extras, opaque part, signature, or unread or unnamed key', function (ArrayShape $shape, bool $sealed) {
