@@ -616,9 +616,10 @@ no reader binds from, for the join to name. `VariableWrites` classifies each wri
 cycle guard, `AnalysisScope::resolvingBinding()`, keys a binding by its name and the bound expression, so
 `$s = $s . 'x'` reads the value `$s` held before.
 
-Inside the span the assigned value's reading wins, and `T` fills in only where that reading is vague or the `null` a
-dropped arm left. It also replaces a `never[]` a drop left where it lists, and fills a literal's member that its own
-item's drop left `null` or `never[]` where `T`'s member admits that, importing only what the filled member spells.
+Inside the span the assigned value's reading merges with `T` position by position ([§ Declared arms](#declared-arms)),
+and `T` fills whole where that reading is vague or only the `null` a dropped arm left. It also replaces a `never[]` a
+drop left where it lists, and fills a literal's member that its own item's drop left `null` or `never[]` where `T`'s
+member admits that, importing only what the filled member spells.
 A union `T` gives the member every arm's type but `null`'s, in one fixed order, and none where an arm lacks the key.
 `VariableHandler::declaredLocalValue()` applies that to a value, and `ReceiverClassResolver::fromVariable()` to a
 receiver. Each states its own test for vague. A parameter's own binding holds until the body's first write that replaces
@@ -637,7 +638,9 @@ a by-reference parameter of a callee the scan cannot name.
 `array-key` key and an alias the file's class sees among them. An alias admits only what its definition would, spelled
 directly in the file that wrote it, so one naming an unimported global class declines. A callable inside a shape reads
 `unknown` by design, so `extractVarTag()` and `extractParamTag()` accept a reading with as many `unknown` leaves as the
-tag has callables, and no more. A collection local's bare read is what its `all()` sends, so a record keyed of either
+tag has callables, and no more. A `@var` with no reading, an interface's, passes too, since it still names a receiver,
+and a closure's `@param` read for its class (`extractParamTag()`'s `$namesReceiver`) passes in any whitelisted form,
+its reading partial or absent. A collection local's bare read is what its `all()` sends, so a record keyed of either
 kind keeps its list arm.
 
 ### By-reference calls
@@ -765,6 +768,7 @@ no backing model, only a `Model` root hands off to the relation walk. On a model
 Every file an analyzer parses goes through `AstParser::parseFile()`, directly or through [`MethodLocator`]. It records
 the file with `DependencyRecorder::record()` before it checks its AST cache, so a cache hit records the dependency too.
 A read that bypasses it leaves the generation cache serving stale output when that file changes.
+The 256-file AST cache never evicts a dependency's file (`DependencyFiles`), so a framework file is parsed once per run.
 `AstParser::parseSource()` records nothing, so use it only for source that is not on disk.
 
 A type read from reflection records the class it reads with `DependencyRecorder::recordClass()`, parents, traits and
@@ -1028,6 +1032,30 @@ gaps. `replaceable()` and `provisional()` settle a held warning as they settle a
 warning: its drop entry records the arm whether a merge fills it or not, and a silent gap records nothing, as its join
 records nothing out of the mode, so the audit baseline is the same in both.
 
+#### Declared arms
+
+An outer declaration, an inline `@var`, a `toArray()` `@return` key or a closure's `@return`, replaces each arm only a
+declaration produced and keeps each arm the body proves. In the declaration mode (`AnalysisMemo::markingDeclared()`,
+keyed `@declared`), which the gap mode brings and `hidingGaps()` and `rememberFact()` end, [`DeclaredArms`] marks such
+an arm at its source: `$declNull` for a nullable column's, cast's or relation's `null`, a `?T` return's or parameter's
+(`AnalysisScope::$declaredParameters` keeps a parameter's declared value for the read), a query's `find()`,
+`first()`, `firstWhere()` and `value()`, `auth()->user()` and `auth()->id()`, `tryFrom()`, a `$resource` a docblock
+declares nullable, and that of `?->` over a receiver holding no proven `null`; `$declKeys` beside the `Record` a map
+over an untyped array hedges its keys with. An accessor's `null`, whatever its body read, runtime nulls and every
+source not listed stay proven. A source that adds its `null` beside a value it read, a lookup, `?->` or `whenLoaded()`,
+appends the mark (`DeclaredArms::withDeclaredNull()`), so a `null` the value itself holds stays proven.
+
+`VisibleGaps::isGap()` matches both marks, but `aside()` reads `$declNull` as the `null` it stands for and `carried()`
+and `ValueResult::gapTransparent()` mark again a `null` the read keeps, so every reader decides as out of the mode.
+`DeclaredTypeMerge` sets marks aside: a `$declNull` takes only the declaration's own `null`, and a `$declKeys` drops the
+`Record` arms where the declaration names no keyed arm. [`DeclaredFill`] lays an inline `@var` or a closure's `@return`
+over a reading as a `@return` merges a key, its gaps aside, and its classes requeued as `ReturnShapeRefiner`'s are; a
+merge that reads as the declaration takes it whole with what the reading says the value is
+(`ValueResult::withValueFactsOf()`), such as `keepsKeys`. The outermost fill turns the marks it left back into what they
+stand for; a nested one keeps them and marks its own declaration's top-level `null`. A frame read in the mode, a
+helper's, keeps them past its strip (`MethodAnalysis::stripGaps()`) for the declaration it is read under; any other strip
+turns them back as `stripped()` does, and a variant reads its arms unmarked, so none publishes.
+
 Forcing every key into the mode moves no published byte, as
 [Type inference gates § `gap-gate.sh`](../testing/type-inference-gates.md#gap-gatesh) proves.
 
@@ -1177,6 +1205,8 @@ These pages cover the engine's neighbors:
 [`ClassIdentity`]: ../../src/Ast/Values/ClassIdentity.php
 [`ClosureReach`]: ../../src/Ast/Effects/ClosureReach.php
 [`CollectsInstanceofGuards`]: ../../src/Ast/Concerns/Narrowing/CollectsInstanceofGuards.php
+[`DeclaredArms`]: ../../src/Ast/Analysis/DeclaredArms.php
+[`DeclaredFill`]: ../../src/Ast/Composition/ReturnShape/DeclaredFill.php
 [`DroppedUnionArms`]: ../../src/Ast/Analysis/DroppedUnionArms.php
 [`EnumValueTypes::aliasLiterals()`]: ../../src/Ast/Enums/EnumValueTypes.php
 [`EnumWrapImports`]: ../../src/Ast/Enums/EnumWrapImports.php

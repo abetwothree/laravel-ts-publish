@@ -546,11 +546,11 @@ final class ReceiverClassResolver
 
         if ($assigned !== null && array_any($assigned->classes, $this->isNameable(...))) {
             $assigned = $this->keysAsDeclared($assigned, $span);
-            $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class] && ! isset($span['relative'])
+            $element = $assigned->elementModel === null && $assigned->classes === [EloquentCollection::class]
                 ? $this->declaredElementModel($span, $assigned)
                 : null;
 
-            if ($element === null) {
+            if ($element === null || $this->spellsExtendableClass($span, [$element], $scope)) {
                 return $assigned;
             }
 
@@ -573,13 +573,13 @@ final class ReceiverClassResolver
             return $assigned;
         }
 
-        // A `self`, `static` or `parent` names a class whose object, an element's too, may be any subclass, so members
-        // read by their declarations and the tag names no element.
-        if (isset($span['relative'])) {
+        $element = $this->declaredElementModel($span, $declared);
+        $held = $element === null ? $declared->classes : [...$declared->classes, $element];
+
+        if ($this->spellsExtendableClass($span, $held, $scope)) {
             return $declared->asDeclaredOnly();
         }
 
-        $element = $this->declaredElementModel($span, $declared);
         [$keyed, $stringKeyed] = ReceiverType::declaredKeys($this->declaredGeneric($span, $declared)['key'] ?? null);
 
         return $element === null && ! $keyed
@@ -883,6 +883,26 @@ final class ReceiverClassResolver
     private function declaredGeneric(array $span, ReceiverType $declared): ?array
     {
         return $declared->within([Enumerable::class]) ? DeclaredClasses::collectionGeneric($span['type'], $span['context']) : null;
+    }
+
+    /**
+     * Whether a `self`, `static` or `parent` an inline `@var` spells may stand for a subclass, so members read by their
+     * declarations and the tag names no element: unless it stands for one of $held and each class it so stands for is
+     * final, which no subclass extends.
+     *
+     * @param  VarDocBinding  $span
+     * @param  list<string>  $held  the classes and the element the tag gives the receiver
+     */
+    private function spellsExtendableClass(array $span, array $held, AnalysisScope $scope): bool
+    {
+        if (! isset($span['relative'])) {
+            return false;
+        }
+
+        $standsFor = array_intersect($scope->relativeClassNames(), $held);
+
+        return $standsFor === []
+            || array_any($standsFor, static fn (string $class): bool => ! new ReflectionClass($class)->isFinal());
     }
 
     /**

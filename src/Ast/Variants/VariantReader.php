@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Variants;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Fold\LiteralWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
@@ -464,10 +465,11 @@ final class VariantReader
                 return null;
             }
 
+            // A variant prints apart from the rows a declaration fills, so its arm sends each declared `null` as is.
             $result = $arm->result;
             $arms[] = $result === null
                 ? $arm
-                : new ConditionalArm($arm->guard, $arm->body, ($this->arrayValue)($result), $arm->throws);
+                : new ConditionalArm($arm->guard, $arm->body, DeclaredArms::unmarked(($this->arrayValue)($result)), $arm->throws);
         }
 
         return ['arms' => $arms, 'drops' => DroppedUnionArms::dropped() !== $dropped];

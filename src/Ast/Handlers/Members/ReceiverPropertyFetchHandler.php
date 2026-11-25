@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Members;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Enums\EnumValueTypes;
@@ -87,7 +88,7 @@ final class ReceiverPropertyFetchHandler implements ExpressionHandler
         $merged = $receivers->warnOfLeftOut($receiver, $merged, $scope, $engine);
 
         if ($expr instanceof NullsafePropertyFetch || $receiver->shortCircuits) {
-            $merged['type'] = TsTypeString::withNullArm($merged['type']);
+            $merged['type'] = DeclaredArms::nullsafe($merged['type'], $expr->var, $engine);
         }
 
         return $merged;

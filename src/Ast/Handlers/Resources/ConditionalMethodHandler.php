@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Resources;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
@@ -661,7 +662,10 @@ final class ConditionalMethodHandler implements ExpressionHandler, SplitsOnCondi
             return $value;
         }
 
-        return [...$value, 'type' => TsTypeString::withNullArm($value['type'])];
+        // A relation its model declares nullable loads null by that declaration; an undeclared one by what was stored.
+        return [...$value, 'type' => $loadsNull === true
+            ? DeclaredArms::withDeclaredNull($value['type'])
+            : TsTypeString::withNullArm($value['type'])];
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AbeTwoThree\LaravelTsPublish\Ast\Parsing;
 
+use AbeTwoThree\LaravelTsPublish\Ast\Members\DependencyFiles;
 use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use PhpParser\Error;
 use PhpParser\Node;
@@ -33,11 +34,17 @@ class AstParser
     /** @var array<string, array<Node>> */
     protected array $fileAsts = [];
 
+    /** @var array<string, array<Node>> each dependency's file, which the cap never evicts: see parseFile() */
+    protected array $dependencyAsts = [];
+
     /** @var array<string, array{array<Node>, MethodsByName}> each file's AST with its methods by lowercased name */
     protected array $fileMethods = [];
 
     /** Built once and reused: a run parses hundreds of files, and a fresh parser for each one adds up. */
     protected Parser $parser;
+
+    /** The directories whose files are a dependency's, read on the first parse. */
+    private ?DependencyFiles $dependencies = null;
 
     /**
      * Build the one parser every parse reuses.
@@ -56,14 +63,23 @@ class AstParser
     {
         DependencyRecorder::record($path);
 
+        if (isset($this->dependencyAsts[$path])) {
+            return $this->dependencyAsts[$path];
+        }
+
         if (isset($this->fileAsts[$path])) {
             $stmts = $this->fileAsts[$path];
 
-            // Re-inserted last so eviction drops the least recently read file: a model or framework file read across
-            // many classes would otherwise be re-parsed whenever enough newer files pushed it out.
+            // Re-inserted last so eviction drops the least recently read file: a model read across many classes would
+            // otherwise be re-parsed whenever enough newer files pushed it out.
             unset($this->fileAsts[$path]);
 
             return $this->fileAsts[$path] = $stmts;
+        }
+
+        // A framework file is large, read across many classes and one of few a run reads, so the cap never evicts it.
+        if (($this->dependencies ??= DependencyFiles::ofApplication())->contains($path)) {
+            return $this->dependencyAsts[$path] = $this->parseSource((string) file_get_contents($path), $path);
         }
 
         if (count($this->fileAsts) >= self::MAX_CACHED_FILES) {

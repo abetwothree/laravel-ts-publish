@@ -6,6 +6,7 @@ namespace AbeTwoThree\LaravelTsPublish\Support;
 
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\PrintedKey;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\TypeScanner;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 
 /**
  * Answer structural questions about a TypeScript type string without a full parser.
@@ -368,7 +369,8 @@ final class TsTypeShape
     }
 
     /**
-     * Top-level union arms with null and undefined removed and a leading `readonly` stripped.
+     * Top-level union arms with null, a declared null's mark (VisibleGaps) and undefined removed, and a leading
+     * `readonly` stripped.
      *
      * @return list<string>
      */
@@ -377,7 +379,7 @@ final class TsTypeShape
         $arms = [];
 
         foreach (self::splitTopLevel($type, ['|']) as $arm) {
-            if ($arm === 'null' || $arm === 'undefined') {
+            if ($arm === 'null' || $arm === 'undefined' || $arm === VisibleGaps::DECLARED_NULL) {
                 continue;
             }
 

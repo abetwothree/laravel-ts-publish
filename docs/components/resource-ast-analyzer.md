@@ -179,10 +179,14 @@ A key the body typed merges with its member at every position (`DeclaredTypeMerg
   declared arms of its kind a body arm merges with the ones whose members match it best, the discriminant literals
   both spell first, then the keys both name (`DeclaredTypeMerge::bestMatches()`), each result an arm of its own;
 - the other arms decide by subtyping: where the member's arms are each within one of the body's, as `'a' | 'b'` is
-  within `string`, or all but its `null` are and the body's are not within the member's, each body arm takes the
-  member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a class of a
-  union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms no other
-  body arm covers (`DeclaredTypeMerge::armWithin()`).
+  within `string` and a declared subclass within a body class (any class is within `object`,
+  `DeclaredTypeMerge::classWithin()`), or all but its `null` are and the body's are not within the member's, each body
+  arm takes the member's arms within it and keeps itself where none is, so a member never drops the body's `null` or a
+  class of a union, and the member's `null` is added; else the body's, with an `unknown` arm taking the member's arms
+  no other body arm covers (`DeclaredTypeMerge::armWithin()`);
+- an arm only a declaration produced ([AST engine § Declared arms](ast-engine.md#declared-arms)) is set aside first: a
+  declared `null` comes back only where the member has a `null`, and the key hedge beside an untyped array's `Record`
+  drops each `Record` arm where the member names no keyed arm (`DeclaredTypeMerge::unhedged()`).
 
 A shape is open only where the engine cannot name every key it holds: the array literal walk flags a key no literal
 or constant names and a spread whose value is no closed shape (`MethodAnalysis::$holdsUnnamedKeys`), and a variable's
@@ -638,10 +642,12 @@ Both read the steps that keep the items from `CollectionSteps`, so they agree on
   [AST engine § A closure parameter owns its name](ast-engine.md#a-closure-parameter-owns-its-name) says.
 - **`array_map()` keeps one array's keys and lists two or more**: `KnownFunctionCallHandler` maps one array as a
   `collect()` pipeline does, and two or more into a list, each parameter bound to its array's element `| null`, as a
-  shorter array pads with `null`. A `null` callback returns the one array, or zips several into tuples. An object,
-  a `Collection` included, declines, since PHP throws a `TypeError` on it, and a `Collection` records a warning naming
-  the line and its `all()`. `array_values()` and `array_filter()` of a `Collection` warn the same way, yet keep its
-  items' type. `array_values()` marks its list keyed 0..n-1, so `array_keys()` of it lists numbers.
+  shorter array pads with `null`. An element nothing types leaves its parameter what it declares, as with one array,
+  and an inline `@var` around the call merges with what the body leaves partly `unknown`. A `null` callback returns
+  the one array, or zips several into tuples. An object, a `Collection` included, declines, since PHP throws a
+  `TypeError` on it, and a `Collection` records a warning naming the line and its `all()`. `array_values()` and
+  `array_filter()` of a `Collection` warn the same way, yet keep its items' type. `array_values()` marks its list keyed
+  0..n-1, so `array_keys()` of it lists numbers.
 - **`data_get($target, 'a.b')` is the chain `$target?->a?->b`**: `KnownFunctionCallHandler` unions an explicit default
   in beside the chain's `null` arm, since `data_get()` returns the default only for a missing key. A key with a `*`
   segment declines, because it returns a list of every match.

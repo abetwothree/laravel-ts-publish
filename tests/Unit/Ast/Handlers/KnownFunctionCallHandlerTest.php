@@ -19,6 +19,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\EnumCaseHelperRes
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\RecipientElementsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ZippedModelsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\ArrayValuesArms;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\ValueObjects\MapOption;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use PhpParser\Node\Expr;
@@ -230,6 +231,50 @@ it('types array_map() as collect()->map()->all() does, keeping one array\'s keys
         '{ id: number }[] | Record<string, { id: number }>',
     ],
 ]);
+
+// A parameter declaring a class holds it over an array nothing types, with two arrays as with one (GH-134).
+it('binds a typed two-array array_map() parameter over an untyped array as the one-array form does', function (string $php, string $expected) {
+    expect(knownFunctionCallType($php, ArrayMapSourcesResource::class))->toBe($expected);
+})->with([
+    'one array, the control' => ['array_map(fn (\\'.Post::class.' $p) => $p->title, $this->opaque())', 'string[] | Record<string, string>'],
+    'the untyped array second' => [
+        'array_map(fn (\\'.Comment::class.' $c, \\'.Post::class.' $p) => [\'content\' => $c->content, \'title\' => $p->title], '
+        .'$this->comments->all(), $this->opaque())',
+        '{ content: string; title: string }[]',
+    ],
+    'the untyped array first' => [
+        'array_map(fn (\\'.Post::class.' $p, \\'.Comment::class.' $c) => $p->title, $this->opaque(), $this->comments->all())',
+        'string[]',
+    ],
+    'both arrays untyped' => [
+        'array_map(fn (\\'.MapOption::class.' $a, \\'.MapOption::class.' $b) => $a->doubled() + $b->itemId, $this->opaque(), $this->opaque())',
+        'number[]',
+    ],
+    'a nullable parameter' => [
+        'array_map(fn (\\'.Comment::class.' $c, ?\\'.Post::class.' $p) => $p?->title, $this->comments->all(), $this->opaque())',
+        '(string | null)[]',
+    ],
+    'a @param' => [
+        'array_map(/** @param \\'.Post::class.' $p */ fn ($c, $p) => $p->title, $this->comments->all(), $this->opaque())',
+        'string[]',
+    ],
+    'an untyped parameter over the untyped array, unread' => [
+        'array_map(fn (\\'.Comment::class.' $c, $p) => $c->content, $this->comments->all(), $this->opaque())',
+        'string[]',
+    ],
+]);
+
+// An inline `@var` around the call merges with the body position by position, so a body left partly `unknown` stands.
+it('reads a two-array body an untyped array leaves partly unknown, which an inline @var fills', function () {
+    $map = 'array_map(fn (\\'.Comment::class.' $c, $p) => [\'content\' => $c->content, \'other\' => $p], '
+        .'$this->comments->all(), $this->opaque())';
+
+    expect(knownFunctionCallType($map, ArrayMapSourcesResource::class))->toBe('{ content: string; other: unknown }[]')
+        ->and(knownFunctionCallType(
+            'function () { /** @var list<array{content: string, other: int}> $z */ $z = '.$map.'; return $z; }',
+            ArrayMapSourcesResource::class,
+        ))->toBe('{ content: string; other: number }[]');
+});
 
 it('publishes array_map() over an @var local and int-keyed arrays as the lists a resource sends', function () {
     expect(publishedResourceKeyTypes(ArrayMapSourcesResource::class, Post::class))->toMatchArray([
@@ -495,6 +540,10 @@ it('leaves array_map() over a Collection, or a callable it cannot read, to unkno
     'a callable variable nothing reads' => ['array_map($callback, $this->names())'],
     'a function no one declares' => ["array_map('no_such_function_anywhere', \$this->names())"],
     'an untyped body over a vague root' => ['array_map(fn ($v) => $v, $this->opaque())'],
+    'an untyped parameter read over a vague root, beside a typed array' => [
+        'array_map(fn ($c, $p) => $p->title, $this->comments->all(), $this->opaque())',
+    ],
+    'a null callback zipping a vague root' => ['array_map(null, $this->comments->all(), $this->opaque())'],
 ]);
 
 // array_values() and array_filter() keep the type the items publish, and array_map() and array_keys() never had one.

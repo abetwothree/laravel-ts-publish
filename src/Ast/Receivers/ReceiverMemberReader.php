@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Receivers;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
@@ -248,7 +249,7 @@ final class ReceiverMemberReader
         if ($attribute !== null) {
             return $filled !== null && ! in_array($name, $filled, true) && self::readsNullWithoutAttributes($resolver, $modelFqcn, $name)
                 ? [...$attribute, 'type' => TsTypeString::withNullArm($attribute['type'])]
-                : $attribute;
+                : [...$attribute, 'type' => DeclaredArms::attribute($attribute['type'], $modelFqcn, $name)];
         }
 
         $relation = $relations ? $resolver->resolveRelation($modelFqcn, $name) : null;
@@ -260,7 +261,7 @@ final class ReceiverMemberReader
         // A relation to many reads empty, which its list admits.
         $type = $filled !== null && ! str_ends_with($relation['type'], '[]') && self::findsNoRow($resolver, $modelFqcn, $name, $filled)
             ? TsTypeString::withNullArm($relation['type'])
-            : $relation['type'];
+            : DeclaredArms::markedNull($relation['type']);
 
         /** @var ValueExpressionResult $result */
         $result = [...ValueResult::unknown(), 'type' => $type];

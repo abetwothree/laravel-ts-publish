@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Handlers\Calls;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallSite;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\MacroCallResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models\FiltersAttributeKeys;
@@ -96,7 +97,9 @@ final class ReceiverMethodCallHandler implements ExpressionHandler
 
         // `$this` is never null, so `$this?->m()` short-circuits nothing.
         if (($expr instanceof NullsafeMethodCall && ! $onThis) || $receiver->shortCircuits) {
-            $result['type'] = TsTypeString::withNullArm($result['type']);
+            $result['type'] = $expr instanceof StaticCall
+                ? TsTypeString::withNullArm($result['type'])
+                : DeclaredArms::nullsafe($result['type'], $expr->var, $engine);
         }
 
         return $result;

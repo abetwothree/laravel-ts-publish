@@ -5,11 +5,13 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\ReturnShape\DeclaredTypeMerge;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
+use Illuminate\Database\Eloquent\Model;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 use Workbench\App\Enums\Status;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\App\ValueObjects\PostStats;
 use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\User as CrmUser;
 
@@ -380,6 +382,42 @@ test('a filled position keeps the declared class beside each class the body read
     'members declared in another order' => ['{ other: User | null; by: User; ed: User }', [User::class, CrmUser::class, User::class]],
     'other classes declared where the body reads its own' => ['{ by: User; ed: User; other: User | null }', [User::class, CrmUser::class, User::class]],
 ]);
+
+// A mark stands for an arm only a declaration produced, which a declaration over it replaces.
+test('a declared null\'s mark takes only the declaration\'s own null, and a proven null beside it stays', function (string $body, string $declared, string $expected) {
+    expect(mergedType($body, $declared))->toBe($expected);
+})->with([
+    'a declaration omitting null' => ['string | $declNull', 'string', 'string'],
+    'a declaration keeping null' => ['string | $declNull', 'string | null', 'string | null'],
+    'a proven null beside it' => ['string | null | $declNull', 'string', 'string | null'],
+    'a list\'s element' => ['(string | $declNull)[]', 'string[]', 'string[]'],
+    'a declaration typing nothing' => ['string | $declNull', 'mixed', 'string | $declNull'],
+    'a nested fill\'s marked null' => ['string | $declNull', 'string | $declNull', 'string | $declNull'],
+    'a declared arm the rest leaves out' => ['string | $declNull', 'number', 'string'],
+    'a narrower literal' => ['string | $declNull', "'a' | 'b'", "'a' | 'b'"],
+]);
+
+test('the key hedge an untyped array\'s map marks goes where the declaration names no keyed arm', function (string $declared, string $expected) {
+    expect(mergedType('string[] | Record<string, string> | $declKeys', $declared))->toBe($expected);
+})->with([
+    'a list' => ['string[]', 'string[]'],
+    'a record' => ['Record<string, string>', 'string[] | Record<string, string>'],
+    'a list or a record' => ['string[] | Record<string, string>', 'string[] | Record<string, string>'],
+    'a declaration typing nothing' => ['mixed', 'string[] | Record<string, string> | $declKeys'],
+]);
+
+test('a declared subclass refines the body\'s class, and any class but an enum refines object', function () {
+    $merge = new DeclaredTypeMerge(['Model', 'Post', 'PostStats']);
+
+    expect($merge->merge(['(Model | $declNull)[]', [Model::class]], ['Post[]', [Post::class]]))->toBe(['Post[]', [Post::class]])
+        ->and($merge->merge(['Model', [Model::class]], ['Post', [Post::class]]))->toBe(['Post', [Post::class]])
+        ->and($merge->merge(['Post', [Post::class]], ['Model', [Model::class]]))->toBe(['Post', [Post::class]])
+        ->and($merge->merge(['object', []], ['PostStats', [PostStats::class]]))->toBe(['PostStats', [PostStats::class]])
+        ->and(DeclaredTypeMerge::classWithin('\\'.Post::class, '\\'.Model::class))->toBeTrue()
+        ->and(DeclaredTypeMerge::classWithin('\\'.Model::class, '\\'.Post::class))->toBeFalse()
+        ->and(DeclaredTypeMerge::classWithin('\\'.Status::class, 'object'))->toBeFalse()
+        ->and(DeclaredTypeMerge::classWithin('Post', 'object'))->toBeFalse();
+});
 
 // R7 rule 7.
 test('a literal is within its scalar, null only within null, and a wrapped enum is never its enum', function () {

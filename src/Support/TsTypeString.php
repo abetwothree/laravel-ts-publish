@@ -346,19 +346,20 @@ class TsTypeString
     }
 
     /**
-     * Joins union members with a single trailing `null`, whichever arms the nulls came from.
+     * Joins union members with a single trailing `null`, whichever arms the nulls came from: the mark of a declared one
+     * (VisibleGaps) where no arm is a `null` itself.
      *
      * @param  list<string>  $types
      */
     public function hoistNull(array $types): string
     {
         $members = [];
-        $nullable = false;
+        $nulls = [];
 
         foreach ($types as $type) {
             foreach ($this->splitTopLevelUnion($type) as $member) {
-                if ($member === 'null') {
-                    $nullable = true;
+                if ($member === 'null' || $member === VisibleGaps::DECLARED_NULL) {
+                    $nulls[$member] = true;
 
                     continue;
                 }
@@ -369,8 +370,8 @@ class TsTypeString
 
         $members = array_values(array_unique($members));
 
-        if ($nullable) {
-            $members[] = 'null';
+        if ($nulls !== []) {
+            $members[] = isset($nulls['null']) ? 'null' : VisibleGaps::DECLARED_NULL;
         }
 
         return count($members) === 1 ? $members[0] : implode(' | ', array_map(TsTypeShape::unionArm(...), $members));
@@ -396,11 +397,19 @@ class TsTypeString
     }
 
     /**
-     * Whether a type has a top-level `null` arm; one in a shape, a generic, an element type or literal text does not.
+     * Whether a type has a top-level `null` arm, a declared one's mark (VisibleGaps) included; one in a shape, a
+     * generic, an element type or literal text does not.
      */
     public function hasNullArm(string $type): bool
     {
-        return in_array('null', $this->splitTopLevelUnion($type), true);
+        // A hot read: a type spelling neither is answered without being split.
+        if (! str_contains($type, 'null') && ! str_contains($type, VisibleGaps::DECLARED_NULL)) {
+            return false;
+        }
+
+        $arms = $this->splitTopLevelUnion($type);
+
+        return in_array('null', $arms, true) || in_array(VisibleGaps::DECLARED_NULL, $arms, true);
     }
 
     /**
@@ -412,11 +421,18 @@ class TsTypeString
     }
 
     /**
-     * A type with a `null` arm when another type has a top-level one, as withNullArm() appends it.
+     * A type with a `null` arm when another type has a top-level one, as withNullArm() appends it, or the mark of a
+     * declared one where the other has only that.
      */
     public function withNullArmOf(string $from, string $to): string
     {
-        return $this->hasNullArm($from) ? $this->withNullArm($to) : $to;
+        $arms = $this->splitTopLevelUnion($from);
+
+        return match (true) {
+            in_array('null', $arms, true) => $this->withNullArm($to),
+            in_array(VisibleGaps::DECLARED_NULL, $arms, true) && $to !== 'unknown' => $this->withArm($to, VisibleGaps::DECLARED_NULL),
+            default => $to,
+        };
     }
 
     /**
@@ -429,12 +445,12 @@ class TsTypeString
     }
 
     /**
-     * The type without its top-level `null` arms, `unknown` when no arm or only gap arms are left; a nested `null`
-     * stays.
+     * The type without its top-level `null` arms, a declared one's mark included, `unknown` when no arm or only gap
+     * arms are left; a nested `null` stays.
      */
     public function withoutNullArm(string $type): string
     {
-        $arms = array_values(array_diff($this->splitTopLevelUnion($type), ['null']));
+        $arms = array_values(array_diff($this->splitTopLevelUnion($type), ['null', VisibleGaps::DECLARED_NULL]));
         $onlyGaps = VisibleGaps::holds($type) && array_all($arms, VisibleGaps::isGap(...));
 
         return $arms === [] || $onlyGaps ? 'unknown' : implode(' | ', $arms);
@@ -536,7 +552,7 @@ class TsTypeString
      */
     public function isUnknownOnly(string $type): bool
     {
-        return array_values(array_diff($this->splitTopLevelUnion($type), ['null'])) === ['unknown'];
+        return array_values(array_diff($this->splitTopLevelUnion($type), ['null', VisibleGaps::DECLARED_NULL])) === ['unknown'];
     }
 
     /**
@@ -545,7 +561,7 @@ class TsTypeString
      */
     public function isVagueOnly(string $type): bool
     {
-        $arms = array_diff($this->splitTopLevelUnion($type), ['null']);
+        $arms = array_diff($this->splitTopLevelUnion($type), ['null', VisibleGaps::DECLARED_NULL]);
 
         return $arms !== [] && array_all($arms, static fn (string $arm): bool => in_array($arm, self::VAGUE_ARMS, true));
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Callbacks;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\CallableForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Calls\ParameterBinder;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionEngine;
@@ -269,7 +270,9 @@ trait BindsMapCallbacks
                 $bodies[$element] = $body;
             }
 
-            $mapped[] = (string) ArrayArms::mapped($arm, $bodies[$element]['type']);
+            $mapped[] = $arm === 'unknown'
+                ? DeclaredArms::keysHedged((string) ArrayArms::mapped($arm, $bodies[$element]['type']))
+                : (string) ArrayArms::mapped($arm, $bodies[$element]['type']);
         }
 
         $body = count($bodies) === 1 ? array_values($bodies)[0] : ValueResult::unionResults(array_values($bodies));

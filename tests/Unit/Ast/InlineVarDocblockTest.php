@@ -35,11 +35,13 @@ use Workbench\App\Http\Resources\DeclaredConditionalResource;
 use Workbench\App\Http\Resources\DeclaredPrecedenceResource;
 use Workbench\App\Http\Resources\DeclaredReadingResource;
 use Workbench\App\Http\Resources\PostPinnedCommentsResource;
+use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Comment;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\SubscribedTeam;
 use Workbench\App\Models\Team;
 use Workbench\App\Models\User;
+use Workbench\App\Support\Opaque;
 use Workbench\App\ValueObjects\CartTotals;
 
 /**
@@ -104,6 +106,16 @@ function inlineVarReturned(string $body): array
     $last = $stmts[array_key_last($stmts)];
 
     return [$scope, $last instanceof Return_ && $last->expr instanceof Expr ? $last->expr : throw new LogicException('No return.')];
+}
+
+/**
+ * The type a closure holding a body resolves to through PostResource, which a post backs.
+ */
+function inlineVarClosureType(string $body): string
+{
+    $expr = new AstParser()->parseSource('<?php function () { '.$body.' };')[0]->expr;
+
+    return new ResourceAstAnalyzer(new ReflectionClass(PostResource::class), Post::class)->resolve($expr)['type'];
 }
 
 /**
@@ -973,5 +985,41 @@ describe('an inline @var on a local assignment', function () {
                     author_name?: string;
                 }
                 TS);
+    });
+});
+
+// The tag is an outer declaration over the reading, merged with it position by position.
+describe('an inline @var over a reading it types', function () {
+    test('replaces the arms only a declaration produced and keeps the ones the body proves', function (string $body, string $expected) {
+        expect(inlineVarClosureType($body))->toBe($expected);
+    })->with([
+        'a closure\'s native T|null' => [
+            '/** @var list<\\'.Post::class.'> $z */ $z = collect([1])->map(fn ($i): \\'.Post::class.'|null => \\'.Opaque::class.'::value($i))->all(); return $z;',
+            'Post[]',
+        ],
+        'a nullable column' => ['/** @var string $z */ $z = $this->featured_image_url; return $z;', 'string'],
+        'a nullable column beside a literal null' => [
+            '/** @var string $z */ $z = $this->id > 1 ? $this->featured_image_url : null; return $z;',
+            'string | null',
+        ],
+        'a nullable column ?? null' => ['/** @var string $z */ $z = $this->featured_image_url ?? null; return $z;', 'string | null'],
+    ]);
+
+    test('merges every reading it types, refining a class or a scalar the reading holds', function () {
+        $model = 'collect([1])->map(fn ($i): \\Illuminate\\Database\\Eloquent\\Model => \\'.Opaque::class.'::value($i))->all()';
+
+        expect(inlineVarClosureType('/** @var list<\\'.Post::class.'> $z */ $z = '.$model.'; return $z;'))->toBe('Post[]')
+            ->and(inlineVarClosureType('/** @var list<true> $z */ $z = collect([1])->map(fn (int $i): bool => $i > 0)->all(); return $z;'))
+            ->toBe('true[]')
+            ->and(inlineVarClosureType('/** @var list<string|int> $z */ $z = collect([1])->map(fn (int $i): bool => $i > 0)->all(); return $z;'))
+            ->toBe('boolean[]');
+    });
+
+    test('a @var nested in another one\'s read marks its own null, which the outer one replaces', function () {
+        $inner = 'collect([1])->map(function ($i) { /** @var string|null $inner */ $inner = $this->featured_image_url; return $inner; })->all()';
+
+        expect(inlineVarClosureType('return '.$inner.';'))->toBe('(string | null)[]')
+            ->and(inlineVarClosureType('/** @var list<string> $outer */ $outer = '.$inner.'; return $outer;'))->toBe('string[]')
+            ->and(inlineVarClosureType('/** @var list<string|null> $outer */ $outer = '.$inner.'; return $outer;'))->toBe('(string | null)[]');
     });
 });

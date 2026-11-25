@@ -461,15 +461,15 @@ final class BranchJoin
     {
         /** @var list<DeclaredArm> $joined */
         $joined = [];
-        $nullable = false;
+        $nulls = [];
 
         foreach ($types as $type) {
             $typeArms = $slotted[$type]
                 ?? array_map(static fn (string $arm): array => [$arm, []], TsTypeString::splitTopLevelUnion($type));
 
             foreach ($typeArms as $typeArm) {
-                if ($typeArm[0] === 'null') {
-                    $nullable = true;
+                if ($typeArm[0] === 'null' || $typeArm[0] === VisibleGaps::DECLARED_NULL) {
+                    $nulls[] = $typeArm[0];
                 } elseif ($typeArm[1] !== [] || ! in_array($typeArm[0], array_column($joined, 0), true)) {
                     $joined[] = $typeArm;
                 }
@@ -477,7 +477,7 @@ final class BranchJoin
         }
 
         $arms = array_column($joined, 0);
-        $arms = $nullable ? [...$arms, 'null'] : $arms;
+        $arms = $nulls === [] ? $arms : [...$arms, TsTypeString::hoistNull($nulls)];
 
         // Parentheses add no token, so the slots read the arms as they were declared.
         return [

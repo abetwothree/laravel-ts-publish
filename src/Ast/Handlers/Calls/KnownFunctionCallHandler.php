@@ -461,6 +461,9 @@ final class KnownFunctionCallHandler implements ExpressionHandler
      * `null` callback, else what the callback returns, each element `| null` as a shorter array pads with it, and
      * each parameter bound to the classes its array declares its elements as.
      *
+     * An element nothing types leaves its parameter what the parameter declares, as the one-array form does; a tuple
+     * of it declines.
+     *
      * @param  non-empty-list<ValueExpressionResult>  $inputs
      * @param  non-empty-list<Expr>  $arrays
      * @return ValueExpressionResult|null
@@ -473,8 +476,14 @@ final class KnownFunctionCallHandler implements ExpressionHandler
             $elements = ArrayArms::arms($input['type'], ArrayArms::elementOf(...));
             $elements = $elements === null ? [] : array_values(array_diff(array_unique($elements), ['never']));
 
-            if ($elements === [] || in_array('unknown', $elements, true)) {
+            if ($elements === [] || ($zips && in_array('unknown', $elements, true))) {
                 return null;
+            }
+
+            if (in_array('unknown', $elements, true)) {
+                $parameters[] = ValueResult::unknown();
+
+                continue;
             }
 
             // An array's gap is an element no rule typed, so it stays in the element's union.

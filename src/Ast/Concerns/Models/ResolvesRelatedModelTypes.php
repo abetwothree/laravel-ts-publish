@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Models;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DeclaredArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ReflectedTypeAcceptor;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
@@ -37,7 +38,10 @@ trait ResolvesRelatedModelTypes
             return ValueResult::unknown();
         }
 
-        return ValueResult::withAttributeChannels(['type' => $tsInfo['type'], 'optional' => false], $tsInfo);
+        return ValueResult::withAttributeChannels(
+            ['type' => DeclaredArms::attribute($tsInfo['type'], $modelFqcn, $propertyName), 'optional' => false],
+            $tsInfo,
+        );
     }
 
     /**

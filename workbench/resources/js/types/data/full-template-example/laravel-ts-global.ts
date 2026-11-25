@@ -6527,33 +6527,100 @@ declare global {
             option_ids_by_name_collected: number[];
             option_record: Record<string, { itemId: number }>;
             option_list: { itemId: number }[];
-            zipped_with_untyped_posts: unknown;
+            zipped_with_untyped_posts: { content: string; title: string }[];
             titles_from_untyped_posts: string[] | Record<string, string>;
             zipped_typed_comments: { content: string; id: number }[];
         }
+        /**
+         * An outer declaration over a value, an inline `@var`, a `toArray()` `@return` key or a closure `@return`: it replaces
+         * each arm only a declaration produced, and keeps each arm the body proves (GH-134; plan task T5).
+         *
+         * `featured_image_url` is a nullable string column, `title` a NOT NULL one, and a comment's `parent_id` a nullable key.
+         */
+        export interface DeclaredArmsResource {
+            var_closure_nullable: app.models.Post[];
+            var_closure_model: app.models.Post[];
+            var_closure_model_narrowed: app.models.Post[];
+            var_closure_filtered: app.models.Post[];
+            var_two_array_nullsafe: string[];
+            var_param_nullsafe: string[];
+            var_nullable_return: string[];
+            var_hedged_map: string[];
+            var_first_kid_name: string;
+            var_parent_ids: number[];
+            var_column: string;
+            var_mapped_column: string[];
+            var_zipped: { content: string; other: number }[];
+            var_flags: true[];
+            decl_closure_nullable: app.models.Post[];
+            decl_closure_array: { a: number }[];
+            decl_two_array_nullsafe: string[];
+            decl_param_nullsafe: string[];
+            decl_nullable_return: string[];
+            decl_hedged_map: string[];
+            decl_first_kid_name: string;
+            decl_column: string;
+            when_closure_nullable?: app.models.Post[];
+            when_closure_array?: { a: number }[];
+            when_column?: string;
+            when_first_kid_name?: string;
+            when_flags?: true[];
+            bare_closure_nullable: (app.models.Post | null)[];
+            bare_param_nullsafe: (string | null)[];
+            bare_hedged_map: (string | null)[] | Record<string, string | null>;
+            bare_first_kid_name: string | null;
+            bare_column: string | null;
+            bare_zipped: { content: string; other: unknown }[];
+            var_ternary: string | null;
+            var_coalesce_null: string | null;
+            var_coalesced: string;
+            var_uncovered: { a: number; b: string | null };
+            var_mixed: string | null;
+            var_nullable_column: string | null;
+            var_proven_nullsafe: string | null;
+            var_mapped_coalesce_null: (string | null)[];
+            decl_ternary: string | null;
+            decl_coalesce_null: string | null;
+            decl_nullable_column: string | null;
+            when_ternary?: string | null;
+            when_nullable_column?: string | null;
+        }
         /** A closure `@param` naming a class that is not a model, each beside its native twin (GH-134; plan task T2). */
         export interface ParamTagClassesResource {
-            private_amounts_by_param_tag: unknown;
+            private_amounts_by_param_tag: string[] | Record<string, string>;
             private_amounts_by_native_type: string[] | Record<string, string>;
-            interface_labels_by_param_tag: unknown;
+            interface_labels_by_param_tag: string[] | Record<string, string>;
             interface_labels_by_native_type: string[] | Record<string, string>;
-            backed_enum_values_by_param_tag: unknown;
+            backed_enum_values_by_param_tag: (string | number)[] | Record<string, string | number>;
             backed_enum_values_by_native_type: (string | number)[] | Record<string, string | number>;
-            unit_enum_names_by_param_tag: unknown;
+            unit_enum_names_by_param_tag: string[] | Record<string, string>;
             unit_enum_names_by_native_type: string[] | Record<string, string>;
-            collection_counts_by_param_tag: unknown;
+            collection_counts_by_param_tag: number[] | Record<string, number>;
             collection_counts_by_native_type: number[] | Record<string, number>;
-            abstract_areas_by_param_tag: unknown;
+            abstract_areas_by_param_tag: number[] | Record<string, number>;
             abstract_areas_by_native_type: number[] | Record<string, number>;
-            loose_labels_by_param_tag: unknown;
+            loose_labels_by_param_tag: string[] | Record<string, string>;
             loose_labels_by_native_type: string[] | Record<string, string>;
         }
-        /** `self` inside a generic `@var` in a final class's trait, beside the class named there (GH-134; plan task T3). */
+        /**
+         * `self` inside a generic `@var` in a final class's trait and own body, beside the class named there (GH-134; plan
+         * task T3).
+         */
         export interface SelfGenericVarResource {
-            self_kid_names: unknown;
+            self_kid_names: string[];
             named_kid_names: string[];
-            self_first_kid_name: unknown;
+            self_first_kid_name: string | null;
             named_first_kid_name: string | null;
+            self_kid_name_list: string[];
+            named_kid_name_list: string[];
+            self_kid_sort_orders: number[];
+            named_kid_sort_orders: number[];
+            own_self_kid_name_list: string[];
+            own_named_kid_name_list: string[];
+            own_self_first_kid_name: string | null;
+            own_named_first_kid_name: string | null;
+            own_self_kid_sort_orders: number[];
+            own_named_kid_sort_orders: number[];
         }
     }
     export namespace app.http.resources.droppedArms {

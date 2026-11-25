@@ -201,6 +201,7 @@
     "app\/Http\/Resources\/Discriminated\/WrapOrReadResource.php",
     "app\/Http\/Resources\/Discriminated\/WrappedFlagResource.php",
     "app\/Http\/Resources\/DocblockReads\/BracketVarResource.php",
+    "app\/Http\/Resources\/DocblockReads\/DeclaredArmsResource.php",
     "app\/Http\/Resources\/DocblockReads\/ParamTagClassesResource.php",
     "app\/Http\/Resources\/DocblockReads\/SelfGenericVarResource.php",
     "app\/Http\/Resources\/DocumentedRecipientsResource.php",

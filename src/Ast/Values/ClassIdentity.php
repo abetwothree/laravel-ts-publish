@@ -7,6 +7,7 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Values;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 
 /**
@@ -164,7 +165,8 @@ final class ClassIdentity
     {
         /** @var array<string, string> $members identity => text */
         $members = [];
-        $nullable = false;
+        /** @var array<string, true> $nulls the `null` arms, a declared one's mark (VisibleGaps) apart */
+        $nulls = [];
         /** @var array<value-of<TokenKind>, list<class-string>> $byKind kind => the class behind each member's tokens */
         $byKind = [];
         /** @var list<class-string> $classes the model or resource behind each member's tokens, in print order */
@@ -177,8 +179,8 @@ final class ClassIdentity
             $ordered = $ordered && self::ordersAlike(self::channelClasses($arm), $arm['alikeClassFqcns'] ?? []);
 
             foreach (TsTypeString::splitTopLevelUnion($arm['type']) as $member) {
-                if ($member === 'null') {
-                    $nullable = true;
+                if ($member === 'null' || $member === VisibleGaps::DECLARED_NULL) {
+                    $nulls[$member] = true;
 
                     continue;
                 }
@@ -220,7 +222,12 @@ final class ClassIdentity
             $union['embeddedEnumResourceFqcns'] = $byKind[TokenKind::WrapConst->value];
         }
 
-        $union['type'] = implode(' | ', [...array_values($members), ...($nullable ? ['null'] : [])]);
+        $null = match (true) {
+            isset($nulls['null']) => ['null'],
+            $nulls !== [] => [VisibleGaps::DECLARED_NULL],
+            default => [],
+        };
+        $union['type'] = implode(' | ', [...array_values($members), ...$null]);
         $models = $byKind[TokenKind::Model->value] ?? [];
         $resources = $byKind[TokenKind::Resource->value] ?? [];
         $alike = $ordered ? self::alikeRecord($models, $resources, $classes) : [];

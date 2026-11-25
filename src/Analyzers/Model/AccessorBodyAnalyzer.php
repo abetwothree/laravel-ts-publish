@@ -68,10 +68,13 @@ final class AccessorBodyAnalyzer
         $key = 'accessor-body:'.$modelFqcn.'@'.$attributeName.($carriesImports ? '' : '@importless')
             .($casesAsLiterals ? '@casesAsLiterals' : '').$reading->memoKey();
 
-        return resolve(AnalysisMemo::class)->remember(
+        $info = resolve(AnalysisMemo::class)->remember(
             $key,
             fn (): ?array => $this->analyzeOnce($modelFqcn, $attributeName, $carriesImports, $casesAsLiterals, $key, $reading),
         );
+
+        // An accessor's `null` is its body's to prove, whatever it read: an outer declaration never replaces it.
+        return $info === null ? null : [...$info, 'type' => VisibleGaps::nullUnmarked($info['type'])];
     }
 
     /**

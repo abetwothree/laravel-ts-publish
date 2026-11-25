@@ -61,8 +61,9 @@ final class ReturnShapeRefiner
             $doc = $members->member($name);
             $isSignature = JsEmitter::isIndexSignatureKey($name);
             $resolved = null;
-            // A gap stands for what the body could not type, so the key is vague where the rest of it is.
-            $read = VisibleGaps::aside($property['type'])[0];
+            // A gap stands for what the body could not type, so the key is vague where the rest of it is; a vague key
+            // keeps its declared `null`, as a nullable column's.
+            $read = VisibleGaps::aside(VisibleGaps::unmarked($property['type']))[0];
 
             // A signature fills only through the branch below, which keeps the floor a reconcile can put back; a spread
             // helper's own fill, kept beside a put-back floor, outranks this method's docblock.
@@ -189,8 +190,7 @@ final class ReturnShapeRefiner
 
     /**
      * Queue the classes a merged key names on its channels so the publisher reads each token's class from them, as it
-     * reads a body's: each class no channel imports appended after the ones the key holds, else every class in print
-     * order after the single entries that lead each name's queue.
+     * reads a body's (DeclaredFill::requeue()).
      *
      * False, with no channel touched, where neither reads it so, as for an override spelled like a class beside it.
      *
@@ -199,44 +199,24 @@ final class ReturnShapeRefiner
      */
     private function requeued(MethodAnalysis $analysis, string $name, string $text, array $slots, array $names): bool
     {
-        // A class no channel holds, as an override's, is the custom import's to bring: no queue reads its token.
-        $expected = array_map(
-            static fn (?string $class): ?string => $class !== null && MethodAnalysis::queuesEmbedded($class) ? $class : null,
-            $slots,
-        );
-        $classes = array_values(array_filter($expected));
-        $held = $analysis->channelFqcns($name);
-        $added = array_values(array_unique(array_diff($classes, $held)));
+        $requeue = DeclaredFill::requeue($analysis->channelFqcns($name), $analysis->singleChannelFqcns($name), $text, $slots, $names);
 
-        if (TokenSlots::queueRead([...$held, ...$added], $text, $names) === $expected) {
-            $analysis->queueEmbeddedClasses($name, $added);
-            unset($analysis->declaredTokenFqcns[$name]);
-
-            return true;
-        }
-
-        $singles = $analysis->singleChannelFqcns($name);
-        $leading = [];
-
-        foreach ($singles as $single) {
-            $leading[TokenSlots::typeName($single)][] = $single;
-        }
-
-        $inline = [];
-
-        foreach ($classes as $class) {
-            if (($leading[TokenSlots::typeName($class)][0] ?? null) === $class) {
-                array_shift($leading[TokenSlots::typeName($class)]);
-            } else {
-                $inline[] = $class;
-            }
-        }
-
-        if (TokenSlots::queueRead([...$singles, ...$inline], $text, $names) !== $expected) {
+        if ($requeue === null) {
             return false;
         }
 
-        $analysis->requeueInline($name, $inline);
+        [$classes, $replaces, $alike] = $requeue;
+
+        if ($replaces) {
+            $analysis->requeueInline($name, $classes);
+        } else {
+            $analysis->queueEmbeddedClasses($name, $classes);
+        }
+
+        if ($alike !== []) {
+            $analysis->alikeClassFqcns[$name] = $alike;
+        }
+
         unset($analysis->declaredTokenFqcns[$name]);
 
         return true;

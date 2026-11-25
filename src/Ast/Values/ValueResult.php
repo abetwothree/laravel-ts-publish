@@ -49,8 +49,8 @@ use ReflectionClass;
  */
 final class ValueResult
 {
-    /** The members that send no value of their own: `null`, and the `[]` an enum wrap around null may be sent as. */
-    public const array EMPTY_ARMS = ['null', 'never[]'];
+    /** The members that send no value of their own: `null` or its mark, and the `[]` a wrap around null may send. */
+    public const array EMPTY_ARMS = ['null', VisibleGaps::DECLARED_NULL, 'never[]'];
 
     /** The keys of a result that say what the value is, not which classes or keys its printed objects hold. */
     private const array VALUE_FACTS = [
@@ -511,6 +511,25 @@ final class ValueResult
     }
 
     /**
+     * A result with what another says the value is beside its own type and classes: each of the other's VALUE_FACTS and
+     * whether it keeps its keys, as a declaration laid whole over a reading takes them (DeclaredFill).
+     *
+     * @param  ValueExpressionResult  $result
+     * @param  ValueExpressionResult  $of
+     * @return ValueExpressionResult
+     */
+    public static function withValueFactsOf(array $result, array $of): array
+    {
+        foreach ([...self::VALUE_FACTS, 'keepsKeys'] as $fact) {
+            if (array_key_exists($fact, $of)) {
+                $result[$fact] = $of[$fact];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Whether a result is a literal printed one object per variant, each an array PHP holds, while its type is still
      * that union.
      *
@@ -570,8 +589,9 @@ final class ValueResult
     }
 
     /**
-     * What a read makes of a value with its top-level gap arms set aside, those gaps given back to the type it makes; a
-     * read that declines stays null, and the gaps' warnings stay held for the strip or the extent that raises them.
+     * What a read makes of a value with its top-level gap arms set aside, those gaps given back to the type it makes,
+     * as VisibleGaps::carried() gives them, a declared null's mark with them; a read that declines stays null, and the
+     * gaps' warnings stay held for the strip or the extent that raises them.
      *
      * @param  ValueExpressionResult  $input
      * @param  Closure(ValueExpressionResult): (ValueExpressionResult|null)  $read
@@ -581,13 +601,16 @@ final class ValueResult
     {
         [$rest, $gaps] = VisibleGaps::aside($input['type']);
 
-        if ($gaps === []) {
+        if ($rest === $input['type']) {
             return $read($input);
         }
 
         $result = $read([...$input, 'type' => $rest]);
 
-        return $result === null ? null : [...$result, 'type' => VisibleGaps::restored($result['type'], $gaps)];
+        return $result === null ? null : [
+            ...$result,
+            'type' => VisibleGaps::restored(VisibleGaps::remarked($input['type'], $result['type']), $gaps),
+        ];
     }
 
     /**
