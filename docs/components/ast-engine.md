@@ -971,10 +971,12 @@ answer, and `VariantReader` declines a group whose arm reads grew it
 ([Variants § Where a group declines](variants.md#where-a-group-declines)).
 
 Each site hands its union and each arm it left out, paired with its site, to `DroppedUnionArms::leftOut()`, which
-records each arm. Where a drop leaves the union only `null` and/or `never[]`, it adds one run-output warning per arm
-left out, naming its line and expression. The three join sites call `leftOutOfJoin()` instead: a value a join leaves
-out still reaches the read, so beside a typed arm it warns that the published type may not admit every value the read
-sends. A receiver's
+records each arm and adds one run-output warning per arm left out, naming its line and expression: where the drop
+leaves the union only `null` and/or `never[]`, of that placeholder, and beside a typed arm, that the published type may
+not admit every value the read sends. A union left `unknown` admits every value, so it warns of nothing. The three join
+sites call `leftOutOfJoin()` instead, which words a typed union's warning the same way. Every drop message names a walk
+alias (`AnalysisScope::walkAlias()`) as the variable it stands for, so a local's key that defaults to itself, which the
+walk also reads under the alias, warns once; the audit keeps the alias. A receiver's
 join publishes no type of its own, so a read through it warns through `ReceiverClassResolver::warnOfLeftOut()` once it
 publishes one: `ReceiverPropertyFetchHandler`'s and `ReceiverMethodCallHandler`'s read of any receiver holding
 `leftOut`, and `VariableHandler`'s read of a bound parameter's attribute only where the parameter is in
@@ -995,11 +997,12 @@ cast on the key leaves the reading, and so the warning, as it is.
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
 proves each recording site still fires. A `DroppedUnionArms::record()` call, or an `[$arm, '<site>']` pair an entry
-takes, whose site no baseline row names fails `a new recording site cannot go unpinned`, so a new site brings its own
-`UnionHonestyResource` key and row. Apart from those rows, the baseline only shrinks: teach a rule to type the shape,
-then delete its entries. A recorded arm is a candidate known gap, not a proven loss, because `ClosureHandler` and
-`VariableHandler` fall back to a return-type annotation or to `null`. Read the published property before you call an
-entry a bug.
+takes, or a `leftBeside()` call, whose site no baseline row names fails `a new recording site cannot go unpinned`, so a
+new site brings its own `UnionHonestyResource` key and row, or, where no workbench key reaches it, a class in
+`tests/Fixtures/DroppedArmsCorpus/`, which the audit reads beside the workbench. Apart from those rows, the baseline
+only shrinks: teach a rule to type the shape, then delete its entries. A recorded arm is a candidate known gap, not a
+proven loss, because `ClosureHandler` and `VariableHandler` fall back to a return-type annotation or to `null`. Read the
+published property before you call an entry a bug.
 
 ### Visible gaps
 
@@ -1013,12 +1016,17 @@ return or write, a helper's bound arguments or a `merge()` closure's defaults. A
 strips.
 
 In the mode, a drop entry appends a `$gapN` arm to a union it leaves typed and holds its warning; a union it leaves
-`unknown` takes no gap and warns at once. Four sites that drop with no entry add a silent gap, which holds no warning: a
-spread helper's returns (`merge-branch-join` where no branch names an untyped write, and `unalike-fill`), a literal's
-fold (`fold-join`) and a key of a union spread (`union-spread-key`). `InlineObjectResult::of()` marks an object that may
-hold unnamed keys with the open marker, `#$open: unknown`. [`VisibleGaps`] spells both, and every reader decides on the
-text with both set aside (`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The merge fills a gap
-from the declared type (`DeclaredTypeMerge::merge()`), as
+`unknown` takes no gap and warns at once. Two sites that drop with no entry warn through
+`DroppedUnionArms::leftBeside()`, both at a spread helper's returns: a branch that leaves a key untyped where no branch
+names an untyped write (`merge-branch-join`), and a fill another branch spells unalike, beside a typed value another
+branch keeps (`unalike-fill`). It audits the drop without counting an arm, holds its warning in the mode on a gap of its
+own per key, so a fill of one key leaves another's warning standing, and warns at once out of it, once per site and
+returned value: `AnalysisWarnings::addOnce()` spends that once-key only as it adds the warning, so a read that does not
+stand spends none. Two sites add a silent gap, which holds no
+warning: a literal's fold (`fold-join`) and a key of a union spread (`union-spread-key`). `InlineObjectResult::of()`
+marks an object that may hold unnamed keys with the open marker, `#$open: unknown`. [`VisibleGaps`] spells both, and
+every reader decides on the text with both set aside (`VisibleGaps::aside()`, `members()`, `stripped()`) and carries
+them on. The merge fills a gap from the declared type (`DeclaredTypeMerge::merge()`), as
 [ResourceAstAnalyzer § What the method's `@return` may fill][return-fill] lists, and `ReturnShapeRefiner` marks each
 gap a fill took out as filled. What the merge leaves, the frame that turned the mode on strips
 (`MethodAnalysis::stripGaps()`) before the type publishes.
@@ -1030,8 +1038,8 @@ no merge filled. A read that consumes a gap raises them too, whatever a merge fi
 hands `consumed()` each gap a handler's reads made, replayed or carried in (an inner read's result spelled it) that its
 result no longer spells, skipping one a merge inside those reads filled; a reused answer replays its fills with its
 gaps. `replaceable()` and `provisional()` settle a held warning as they settle a raised one. So a filled gap only stops
-warning: its drop entry records the arm whether a merge fills it or not, and a silent gap records nothing, as its join
-records nothing out of the mode, so the audit baseline is the same in both.
+warning: its drop entry or `leftBeside()` records the drop whether a merge fills it or not, and a silent gap records
+nothing, as its join records nothing out of the mode, so the audit baseline is the same in both.
 
 #### Declared arms
 

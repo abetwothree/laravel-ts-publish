@@ -739,6 +739,14 @@ final class AnalysisScope
     }
 
     /**
+     * The variable a name walkAlias() gave stands for.
+     */
+    public static function walkedName(string $alias): string
+    {
+        return substr($alias, 1);
+    }
+
+    /**
      * Move the scope to another subject and backing model, re-deriving the proxy target and the collection facts from
      * them: the one way a builder rebases a scope after construction.
      *

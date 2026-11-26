@@ -27,23 +27,23 @@ one branch writes, and a member read past such a join: past `if (…) { $user = 
 the old model's member alone, and so does a class only an inline `@var` there names that cannot answer the read, a tag
 over `$this` included; a class a `static`, `self` or `parent` tag over `$this` names that declares the member but cannot
 type it leaves the read `unknown` instead, unless the write ends a parameter's block. Widening the union to `unknown`
-would be more honest but less specific. Where the drop leaves only `null` or `never[]`, the run output warns, naming the
-line and the arm left out, and so does a parameter's, a branch join's or a member read's join drop, whose published type
-may not admit every value Laravel sends; a class the generation cache serves prints nothing until a `--fresh` run. A
-spread helper's key or a model accessor's getter body left with only that `null` publishes `unknown` instead, while a
-getter that only ever returns `null` still publishes `null`. A method read as a value is the exception: one return it
-cannot type leaves the whole call `unknown`, or the vague type it declares. So is `$this->resource` read whole under its
-own `instanceof` test, whose untypable class leaves the whole ternary `unknown`. Type the arm with a return type, a
-`@return` docblock or `#[TsCasts]`, and it comes back; a cast on the key types it but leaves the warning. A local's
-inline `@var` replaces a whole `null` the drop left, a whole `never[]` where the tag lists, and a literal's member
-its own item's drop left where the tag's member admits it; a member a nested literal, a helper or another local left
-stays as it is.
+would be more honest but less specific. The run output warns of the drop, naming the line and the arm left out: that the
+value publishes the placeholder where the drop leaves only `null` or `never[]`, and beside a typed arm, a join's drop
+included, that its published type may not admit every value Laravel sends; a class the generation cache serves prints
+nothing until a `--fresh` run. A spread helper's key or a model accessor's getter body left with only that `null`
+publishes `unknown` instead, while a getter that only ever returns `null` still publishes `null`. A method read as a
+value is the exception: one return it cannot type leaves the whole call `unknown`, or the vague type it declares. So is
+`$this->resource` read whole under its own `instanceof` test, whose untypable class leaves the whole ternary `unknown`.
+Type the arm with a return type, a `@return` docblock or `#[TsCasts]`, and it comes back; a cast on the key types it but
+leaves the warning. A local's inline `@var` replaces a whole `null` the drop left, a whole `never[]` where the tag
+lists, and a literal's member its own item's drop left where the tag's member admits it; a member a nested literal, a
+helper or another local left stays as it is.
 
 A `@return` that types the key, on `toArray()` or a spread helper, types the arm where it stands, beside every arm the
 body proves is sent: `DeclaredGapsResource`'s `score`, which holds `null`, a length or an untypable value, publishes
 `number | null | string` under `int|string|null`. A drop that warned no longer does: `count` in the same resource's
 `summary`, `null` or an untypable value, publishes `number | null` under `int|null` with no warning. Only what the
-docblock leaves untyped, such as a `mixed` member or a key it does not name, is left out as above.
+docblock leaves untyped, such as a `mixed` member or a key it does not name, is left out and warned of as above.
 
 The exception is a key that a spread of a local or of a ternary writes into the literal `toArray()` returns, or into
 the one a spread helper returns under its own `@return` where `toArray()` has none: such a literal writes its keys out
@@ -57,9 +57,10 @@ A spread helper's or a merge call's join drops a branch whose `@return array{…
 branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->user`, or
 `k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
 the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
-override's among them, are left out with no warning. In a spread helper, a `@return` that types the key, the helper's
-own or `toArray()`'s, types the dropped branch in place instead. A join that keeps such a fill, beside branches sending
-two same-named models or enums of other names, such as the app's and the CRM's `User`, keeps one arm for that pair.
+override's among them, are left out. A spread helper's join warns of it, naming the key and the return it left out; a
+merge call's prints nothing. In a spread helper, a `@return` that types the key, the helper's own or `toArray()`'s,
+types the dropped branch in place instead. A join that keeps such a fill, beside branches sending two same-named models
+or enums of other names, such as the app's and the CRM's `User`, keeps one arm for that pair.
 
 ### An outer declaration keeps some `null`s only a declaration produced
 

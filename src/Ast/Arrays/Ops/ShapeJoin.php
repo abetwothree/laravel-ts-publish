@@ -99,7 +99,7 @@ final class ShapeJoin
     public static function value(array $values, JoinOptions $options): KeyValue
     {
         $retypes = $options->dropsUntypedBranches
-            ? self::unalikeRetypes(array_map(static fn (KeyValue $value): array => [$value], $values), $options)
+            ? self::unalikeRetypes(array_map(static fn (KeyValue $value): array => [$value], $values), null, $options)
             : [];
 
         foreach ($values as $index => $value) {
@@ -266,7 +266,7 @@ final class ShapeJoin
         }
 
         foreach ($rows as $name => $byBranch) {
-            $retypes = self::unalikeRetypes($byBranch, $options);
+            $retypes = self::unalikeRetypes($byBranch, (string) $name, $options);
 
             if ($retypes === []) {
                 continue;
@@ -284,12 +284,13 @@ final class ShapeJoin
 
     /**
      * The text each branch's writes of one key are read as where another branch spells one of them unalike: `unknown`,
-     * or in the gap mode, a gap at the branch's returned value.
+     * or in the gap mode, a gap at the branch's returned value. Beside a typed value another branch keeps, the fill
+     * left out at a returned value warns through DroppedUnionArms::leftBeside(), naming the key where one is given.
      *
      * @param  array<int, non-empty-list<KeyValue>>  $rows  every write of the key, by branch
      * @return array<int, string> by branch, each branch holding a write another spells unalike
      */
-    private static function unalikeRetypes(array $rows, JoinOptions $options): array
+    private static function unalikeRetypes(array $rows, ?string $name, JoinOptions $options): array
     {
         $entry = static fn (KeyValue $value): array => [$value->type(), $value->channels['declaredTokenFqcns'] ?? []];
         $unalike = BranchJoin::declaredBranches(array_map($entry, array_merge(...array_values($rows))), true)[1];
@@ -298,21 +299,41 @@ final class ShapeJoin
             return [];
         }
 
-        $returns = $options->returns;
-        $gapScope = $returns !== [] && resolve(AnalysisMemo::class)->showsGaps() ? $options->scope : null;
-        $retypes = [];
+        $fills = [];
 
         foreach ($rows as $index => $values) {
             $fill = array_find($values, static fn (KeyValue $value): bool => in_array($entry($value), $unalike, true));
 
             if ($fill !== null) {
-                $retypes[$index] = $gapScope !== null && isset($returns[$index])
-                    ? VisibleGaps::arm(DroppedUnionArms::gap($gapScope, 'unalike-fill', $returns[$index], $fill->type()))
-                    : 'unknown';
+                $fills[$index] = $fill;
             }
         }
 
+        $typed = array_any(array_merge([], ...array_values(array_diff_key($rows, $fills))), self::typed(...));
+        $showsGaps = resolve(AnalysisMemo::class)->showsGaps();
+        $scope = $options->scope;
+        $retypes = [];
+
+        foreach ($fills as $index => $fill) {
+            $at = $options->returns[$index] ?? null;
+            $id = match (true) {
+                $scope === null || $at === null => null,
+                $typed => DroppedUnionArms::leftBeside($scope, 'unalike-fill', $at, $fill->type(), $name),
+                $showsGaps => DroppedUnionArms::gap($scope, 'unalike-fill', $at, $fill->type()),
+                default => null,
+            };
+            $retypes[$index] = $id === null ? 'unknown' : VisibleGaps::arm($id);
+        }
+
         return $retypes;
+    }
+
+    /**
+     * Whether a value is typed, its gaps set aside.
+     */
+    private static function typed(KeyValue $value): bool
+    {
+        return VisibleGaps::aside($value->type())[0] !== 'unknown';
     }
 
     /**

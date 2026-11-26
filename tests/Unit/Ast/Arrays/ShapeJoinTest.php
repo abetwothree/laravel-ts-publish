@@ -18,6 +18,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaquePart;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeKey;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeSignature;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeWide;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr\Variable;
 use Workbench\App\Http\Resources\PostResource;
@@ -200,10 +201,41 @@ it('leaves a gap for each method return a branch spells unalike in the gap mode,
     $type = resolve(AnalysisMemo::class)->showingGaps(
         fn (): string => DroppedUnionArms::provisional($join, static fn (string $type): bool => true),
     );
+    $join();
+    DroppedUnionArms::stripped(VisibleGaps::ids($type));
 
+    // Neither fill stands beside a typed value, so the key is left `unknown` and nothing is left out.
     expect(VisibleGaps::ids($type))->toHaveCount(2)
-        ->and(VisibleGaps::stripped($type)[0])->toBe('unknown');
+        ->and(VisibleGaps::stripped($type)[0])->toBe('unknown')
+        ->and(AnalysisWarnings::all())->toBe([]);
 });
+
+it('warns that a fill a method return spells unalike is left out beside a typed branch, at once or on its gap', function (bool $shows) {
+    $fill = new ResourceAnalysis(properties: [['name' => 'k', 'type' => 'User | User', 'optional' => false, 'description' => '']]);
+    $fill->declaredTokenFqcns = ['k' => [null, User::class]];
+    $model = new ResourceAnalysis(properties: [['name' => 'k', 'type' => 'User', 'optional' => false, 'description' => '']]);
+    $model->modelFqcns = ['k' => User::class];
+    $options = new JoinOptions(
+        dropsUntypedBranches: true,
+        returns: [new Variable('fill', ['startLine' => 4]), new Variable('model')],
+        scope: new AnalysisScope(new ReflectionClass(PostResource::class)),
+    );
+    $join = static fn (): string => ShapeJoin::exclusive(array_map(ArrayShapes::ofAnalysis(...), [$fill, $model]), $options)
+        ->entries[0]->value->type();
+
+    $type = $shows ? resolve(AnalysisMemo::class)->showingGaps($join) : $join();
+    $held = AnalysisWarnings::all();
+    DroppedUnionArms::stripped(VisibleGaps::ids($type));
+
+    expect(VisibleGaps::stripped($type)[0])->toBe('User')
+        ->and(VisibleGaps::ids($type))->toHaveCount($shows ? 1 : 0)
+        ->and($held)->toHaveCount($shows ? 0 : 1)
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'Key `k` leaves out what `$fill` on line 4 holds there, which could not be typed beside the typed values it '
+            .'joins, so its published type may not admit every value it sends. Give what it reads a return type or a '
+            .'`@return` docblock.',
+        ]);
+})->with(['gaps hidden' => [false], 'gaps shown' => [true]]);
 
 it('orders each channel map as its branches first hold a key, and keeps an entry no key owns where no joined key names it', function () {
     $branch = static fn (array $keys, array $order, array $loose): ArrayShape => joinShape($keys, wide: new ShapeWide(

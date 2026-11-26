@@ -31,6 +31,9 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 35, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 44, 'expression' => 'cache(\'k\')', 'site' => 'walk-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 81, 'expression' => 'cache(\'k\')', 'site' => 'merge-branch-join'],
+    // A returned variable whose key no write the walk saw types, beside the typed return (leftBeside()); the `@return`
+    // member fills its gap, so it prints no warning.
+    ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 95, 'expression' => '$d', 'site' => 'merge-branch-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 57, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
     ['subject' => 'Workbench\\App\\Http\\Resources\\JoinReadingsResource', 'line' => 67, 'expression' => 'cache(\'k\')', 'site' => 'binding-join'],
     // Deliberate: each default reads opaqueTotal(), untyped so that a merge call's join leaves that side out, as that
@@ -74,4 +77,7 @@ return [
     // Probe (GH-161): `$d['by'] ?? 'z'` reads a key of the local the walk builds, which it cannot type; the default
     // stands alone, and the title it drops is a string too, so `by: string` holds (YD1, a guard B1 and B2a keep).
     ['subject' => 'Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource', 'line' => 245, 'expression' => '$d[\'by\']', 'site' => 'coalesce-left'],
+    // The corpus beside the workbench (tests/Fixtures/DroppedArmsCorpus/): a declared CRM `User` beside the author's
+    // `User`, one name for two classes, which no workbench key drops.
+    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnalikeFillDropResource', 'line' => 33, 'expression' => '$declared', 'site' => 'unalike-fill'],
 ];

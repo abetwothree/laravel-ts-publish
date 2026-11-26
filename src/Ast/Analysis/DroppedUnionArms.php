@@ -13,6 +13,10 @@ use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use Closure;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\CloningVisitor;
+use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
 use Throwable;
 use WeakMap;
@@ -22,7 +26,8 @@ use WeakMap;
  *
  * Recording is off until a test calls start(), so a publish run pays one count and one null check per dropped arm.
  * The count is always kept, so leftNullSince() tells a `null` a dropped arm left from a literal one. A drop that
- * leaves a value only `null` or `never[]` also warns in the run output, whether recording or not.
+ * leaves a value only `null` or `never[]`, or a typed arm beside the one it drops, also warns in the run output,
+ * whether recording or not.
  *
  * It also numbers the gap a dropped arm leaves, the same arm the same gap for the run, a file parsed again included,
  * and holds each gap's warnings by its id: a strip or a read that consumes the gap raises them, as does the end of the
@@ -35,8 +40,8 @@ use WeakMap;
  *
  * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string, site: string}
  * @phpstan-type LeftOutArm array{Expr, string}
- * @phpstan-type HeldWarning array{subject: string, message: string, arm?: Expr, gap?: int}
- * @phpstan-type GapWarning array{subject: string, message: string, arm: Expr|null, holds: int}
+ * @phpstan-type HeldWarning array{subject: string, message: string, arm?: Expr, gap?: int, onceKey?: string}
+ * @phpstan-type GapWarning array{subject: string, message: string, arm: Expr|null, holds: int, onceKey: string|null}
  * @phpstan-type DropWarning array{string, Expr|null}
  * @phpstan-type Drop array{Node, string, list<DropWarning>}
  *
@@ -163,22 +168,13 @@ final class DroppedUnionArms
     public static function record(Expr $arm, AnalysisScope $scope, string $site): void
     {
         self::$dropped++;
-
-        if (self::$arms === null) {
-            return;
-        }
-
-        self::$arms[] = [
-            'subject' => $scope->subjectReflection->getName(),
-            'line' => $arm->getStartLine(),
-            'expression' => new Standard()->prettyPrintExpr($arm),
-            'site' => $site,
-        ];
+        self::audit($arm, $scope, $site);
     }
 
     /**
-     * Record each arm a union left out under the site that dropped it, and warn once per arm where the drop left the
-     * union only `null` and/or `never[]`; the union is returned as it is.
+     * Record each arm a union left out under the site that dropped it, and warn once per arm: of the placeholder where
+     * the drop left the union only `null` and/or `never[]`, and as left out where a typed arm stands beside it. A union
+     * left `unknown` admits every value, so it warns of nothing. The union is returned as it is.
      *
      * @param  ValueExpressionResult  $union
      * @param  list<LeftOutArm>  $left  each arm the union left out, beside the site that dropped it
@@ -187,12 +183,42 @@ final class DroppedUnionArms
     public static function leftOut(array $union, array $left, AnalysisScope $scope): array
     {
         $placeholder = self::placeholder($union['type']);
+        $typed = VisibleGaps::aside($union['type'])[0] !== 'unknown';
 
         return self::emitted($union, array_map(static fn (array $pair): array => [
             $pair[0],
             $pair[1],
-            $placeholder === null ? [] : [[self::placeholderMessage($pair[0], $placeholder), $pair[0]]],
+            match (true) {
+                $placeholder !== null => [[self::placeholderMessage($pair[0], $placeholder), $pair[0]]],
+                $typed => [[self::leftOutMessage($pair[0]), null]],
+                default => [],
+            },
         ], self::recordedPairs($left, $scope)), $scope);
+    }
+
+    /**
+     * Warn, once per site, that a join with no union entry left out the value at $at beside typed ones: in the gap mode
+     * the warning waits on the gap it leaves, whose id is returned; outside it, it is raised at once. The drop is
+     * audited under $site but never counted, as no union arm was dropped.
+     */
+    public static function leftBeside(AnalysisScope $scope, string $site, Node $at, string $union, ?string $key = null): ?int
+    {
+        $subject = $scope->subjectReflection->getName();
+        $message = self::leftBesideMessage($at, $key);
+        $onceKey = implode("\0", [$subject, $site, self::place($at)]);
+        self::audit($at, $scope, $site);
+
+        if (! resolve(AnalysisMemo::class)->showsGaps()) {
+            self::warn($subject, $message, null, $onceKey);
+
+            return null;
+        }
+
+        // One gap per key, so a fill of one key at this node leaves another key's warning standing.
+        $id = self::gap($scope, $key === null ? $site : $site."\0".$key, $at, $union);
+        self::hold($id, $message, null, $subject, $onceKey);
+
+        return $id;
     }
 
     /**
@@ -309,10 +335,12 @@ final class DroppedUnionArms
      * Hold a warning a gap's drop raises, to be raised by a strip or its extent, or settled by a replaceable() read
      * under way, which is asked with the arm whose placeholder it names, if it names one.
      */
-    public static function hold(int $id, string $warning, ?Expr $arm, string $subject): void
+    public static function hold(int $id, string $warning, ?Expr $arm, string $subject, ?string $onceKey = null): void
     {
         $key = $subject."\0".$warning;
-        self::$gapWarnings[$id][$key] ??= ['subject' => $subject, 'message' => $warning, 'arm' => $arm, 'holds' => 0];
+        self::$gapWarnings[$id][$key] ??= [
+            'subject' => $subject, 'message' => $warning, 'arm' => $arm, 'holds' => 0, 'onceKey' => $onceKey,
+        ];
         self::$gapWarnings[$id][$key]['holds']++;
         $held = ['subject' => $subject, 'message' => $warning, 'gap' => $id];
         self::holdInRead($arm === null ? $held : [...$held, 'arm' => $arm]);
@@ -357,7 +385,7 @@ final class DroppedUnionArms
             foreach (array_diff(self::gapsSince($mark), $spelled, self::filledSince($mark)) as $id) {
                 // The holds stay for a strip or the extent: a read under way may still discard the warning raised here.
                 foreach (self::$gapWarnings[$id] ?? [] as $warning) {
-                    self::warn($warning['subject'], $warning['message'], $warning['arm']);
+                    self::warn($warning['subject'], $warning['message'], $warning['arm'], $warning['onceKey']);
                 }
             }
         }
@@ -425,7 +453,7 @@ final class DroppedUnionArms
             } elseif (isset($warning['gap'])) {
                 self::holdInRead($warning);
             } else {
-                self::warn($warning['subject'], $warning['message'], $warning['arm'] ?? null);
+                self::warn($warning['subject'], $warning['message'], $warning['arm'] ?? null, $warning['onceKey'] ?? null);
             }
         }
 
@@ -482,6 +510,66 @@ final class DroppedUnionArms
         }
 
         return $left;
+    }
+
+    /**
+     * Add a drop at a node to the audit under the site that dropped it, while recording.
+     */
+    private static function audit(Node $at, AnalysisScope $scope, string $site): void
+    {
+        if (self::$arms === null) {
+            return;
+        }
+
+        self::$arms[] = [
+            'subject' => $scope->subjectReflection->getName(),
+            'line' => $at->getStartLine(),
+            'expression' => self::printed($at),
+            'site' => $site,
+        ];
+    }
+
+    /**
+     * A node as the audit records it: an expression as PHP prints it, any other node by its kind.
+     */
+    private static function printed(Node $at): string
+    {
+        return $at instanceof Expr ? new Standard()->prettyPrintExpr($at) : $at->getType();
+    }
+
+    /**
+     * A node as a warning names it: as printed(), each walk alias read as the variable it stands for, so the walk's own
+     * read of a value and the source's read of it warn alike.
+     */
+    private static function spelled(Node $at): string
+    {
+        $printed = self::printed($at);
+
+        // Only an alias, or a string holding `$@`, prints `$@`, so the copy is made only then.
+        return $at instanceof Expr && str_contains($printed, '$@') ? self::printed(self::unaliased($at)) : $printed;
+    }
+
+    /**
+     * A copy of an expression with each walk alias it reads renamed to the variable it stands for.
+     */
+    private static function unaliased(Expr $at): Expr
+    {
+        [$copy] = new NodeTraverser(new CloningVisitor, new class extends NodeVisitorAbstract
+        {
+            /**
+             * Rename a walk alias the copy holds to its variable.
+             */
+            public function enterNode(Node $node): null
+            {
+                if ($node instanceof Variable && is_string($node->name) && AnalysisScope::isWalkAlias($node)) {
+                    $node->name = AnalysisScope::walkedName($node->name);
+                }
+
+                return null;
+            }
+        })->traverse([$at]);
+
+        return $copy instanceof Expr ? $copy : $at;
     }
 
     /**
@@ -551,7 +639,7 @@ final class DroppedUnionArms
             .'what it reads a return type or a `@return` docblock.',
             $arm->getStartLine(),
             $placeholder,
-            new Standard()->prettyPrintExpr($arm),
+            self::spelled($arm),
         );
     }
 
@@ -564,8 +652,21 @@ final class DroppedUnionArms
             'The value on line %d leaves out `%s`, which could not be typed, so its published type may not admit '
             .'every value it sends. Give what it reads a return type or a `@return` docblock.',
             $arm->getStartLine(),
-            new Standard()->prettyPrintExpr($arm),
+            self::spelled($arm),
         );
+    }
+
+    /**
+     * The warning that a join left out the value at a node beside typed ones, under the key it names, if any.
+     */
+    private static function leftBesideMessage(Node $at, ?string $key): string
+    {
+        $left = $key === null
+            ? sprintf('The value on line %d leaves out `%s`', $at->getStartLine(), self::spelled($at))
+            : sprintf('Key `%s` leaves out what `%s` on line %d holds there', $key, self::spelled($at), $at->getStartLine());
+
+        return $left.', which could not be typed beside the typed values it joins, so its published type may not admit '
+            .'every value it sends. Give what it reads a return type or a `@return` docblock.';
     }
 
     /**
@@ -577,7 +678,7 @@ final class DroppedUnionArms
             'The value on line %d leaves out `%s`, an object whose class could not be named, so its published type '
             .'may not admit every value it sends. Give what it reads a return type or a `@return` docblock naming a class.',
             $arm->getStartLine(),
-            new Standard()->prettyPrintExpr($arm),
+            self::spelled($arm),
         );
     }
 
@@ -591,7 +692,7 @@ final class DroppedUnionArms
             'The value on line %d leaves out `%s`, read as `%s`, %s, so its published type may not admit every '
             .'value it sends. %s',
             $value->getStartLine(),
-            new Standard()->prettyPrintExpr($value),
+            self::spelled($value),
             $class,
             $declared ? "whose `{$member}` could not be typed" : "which does not declare `{$member}`",
             $declared
@@ -626,7 +727,7 @@ final class DroppedUnionArms
         unset(self::$gapWarnings[$id]);
 
         foreach ($warnings as $warning) {
-            self::warn($warning['subject'], $warning['message'], $warning['arm']);
+            self::warn($warning['subject'], $warning['message'], $warning['arm'], $warning['onceKey']);
         }
     }
 
@@ -672,14 +773,15 @@ final class DroppedUnionArms
 
     /**
      * Hold a warning for the innermost replaceable() read under way, with the arm whose placeholder it names, or add it
-     * to the run's warnings.
+     * to the run's warnings, once per once-key where it has one: a read that does not stand spends no key.
      */
-    private static function warn(string $subject, string $message, ?Expr $placeholderArm = null): void
+    private static function warn(string $subject, string $message, ?Expr $placeholderArm = null, ?string $onceKey = null): void
     {
         $warning = ['subject' => $subject, 'message' => $message];
+        $warning = $onceKey === null ? $warning : [...$warning, 'onceKey' => $onceKey];
 
         if (! self::holdInRead($placeholderArm === null ? $warning : [...$warning, 'arm' => $placeholderArm])) {
-            AnalysisWarnings::addOnce($subject, $message);
+            AnalysisWarnings::addOnce($subject, $message, $onceKey);
         }
     }
 }

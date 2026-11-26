@@ -81,10 +81,12 @@ test('the workbench corpus drops no union arm beyond the pinned baseline', funct
     /** @var list<array{subject: string, line: int, expression: string}> $baseline */
     $baseline = require __DIR__.'/Fixtures/dropped-union-arms-baseline.php';
 
+    // The corpus beside the workbench holds a key for each site no workbench key drops at.
+    $corpus = glob(dirname(__DIR__, 2).'/Fixtures/DroppedArmsCorpus/*.php') ?: [];
     DroppedUnionArms::start();
 
     try {
-        foreach (glob(workbench_path('app/Http/Resources/{,*/}*.php'), GLOB_BRACE) ?: [] as $file) {
+        foreach ([...(glob(workbench_path('app/Http/Resources/{,*/}*.php'), GLOB_BRACE) ?: []), ...$corpus] as $file) {
             $class = LaravelTsPublish::resolveClassFromFile($file);
 
             // An excluded class may extend one this Laravel lacks, so it is left out before is_a() loads it.
@@ -137,12 +139,15 @@ test('a new recording site cannot go unpinned', function () {
 
             $entries = $entries || in_array($call->name->toString(), ['leftOut', 'leftOutOfJoin'], true);
 
-            if ($call->name->toString() !== 'record') {
+            // record() takes its site third, leftBeside() second.
+            $at = ['record' => 2, 'leftBeside' => 1][$call->name->toString()] ?? null;
+
+            if ($at === null) {
                 continue;
             }
 
             // A site that is not a string literal cannot be pinned, so its location stands in and fails below.
-            $arg = $call->args[2] ?? null;
+            $arg = $call->args[$at] ?? null;
             $sites[] = $arg instanceof Arg && $arg->value instanceof String_
                 ? $arg->value->value
                 : $file->getRelativePathname().':'.$call->getStartLine();
@@ -164,11 +169,13 @@ test('a new recording site cannot go unpinned', function () {
         array_push($sites, ...($entries && $pairSites === [] ? [$file->getRelativePathname()] : $pairSites));
     }
 
-    $remedy = 'A DroppedUnionArms::record() site, or an `[$arm, \'<site>\']` pair a leftOut() entry takes, that no baseline row '
-        .'names. Give it a permanent UnionHonestyResource key that drops an arm there, then pin that key\'s drop in '
+    $remedy = 'A DroppedUnionArms::record() or leftBeside() site, or an `[$arm, \'<site>\']` pair a leftOut() entry takes, '
+        .'that no baseline row names. Give it a permanent UnionHonestyResource key that drops an arm there, or a class in '
+        .'tests/Fixtures/DroppedArmsCorpus/ where no workbench key can, then pin that drop in '
         .'dropped-union-arms-baseline.php: a bare row fails the corpus test.';
 
     expect($unparsed)->toBe([], 'These src/ files do not parse, so the scan read none of their DroppedUnionArms::record() calls.')
         ->and(in_array('closure-union', $sites, true))->toBeTrue('The scan did not find the closure-union recording site, so it may have read no pair and proves nothing.')
+        ->and(array_intersect(['merge-branch-join', 'unalike-fill'], $sites))->toBe(['merge-branch-join', 'unalike-fill'], 'The scan read no leftBeside() site.')
         ->and(array_values(array_diff($sites, array_column($baseline, 'site'))))->toBe([], $remedy);
 });
