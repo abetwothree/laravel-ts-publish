@@ -11,6 +11,7 @@ use AbeTwoThree\LaravelTsPublish\Cache\DependencyRecorder;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedModelRegistry;
 use AbeTwoThree\LaravelTsPublish\Cache\PublishedResourceRegistry;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
+use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\BaseHelperLevelResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\SevenHelperLevelResource;
 use PhpParser\Node\Expr\Variable;
@@ -360,6 +361,44 @@ test('replays the drop warnings of a reused answer, though the read that compute
     'a replaceable read, gaps hidden' => [false, 'replaceable'],
     'a replaceable read, gaps shown' => [true, 'replaceable'],
 ]);
+
+// A gap's warning a read raised stays raised, whatever a merge filled after it, so an answer reused in place of a read
+// thrown away raises it too.
+test('replays the warning a gap raised before a merge in the same answer filled it', function (string $raise) {
+    AnalysisWarnings::reset();
+    $memo = resolve(AnalysisMemo::class);
+    $memo->reset();
+    $scope = new AnalysisScope(new ReflectionClass(stdClass::class));
+    $arm = new Variable('arm', ['startLine' => 7]);
+    $drop = static fn (): string => DroppedUnionArms::leftOut(
+        [...ValueResult::unknown(), 'type' => 'string'], [[$arm, 'closure-union']], $scope,
+    )['type'];
+    $compute = static function () use ($raise, $drop): string {
+        $mark = DroppedUnionArms::gapMark();
+        $type = $raise === 'extent' ? DroppedUnionArms::extent($drop) : $drop();
+        $ids = VisibleGaps::ids($type);
+
+        match ($raise) {
+            'consumed' => DroppedUnionArms::consumed($mark, 'number'),
+            'stripped' => DroppedUnionArms::stripped($ids),
+            'extent' => null,
+        };
+        DroppedUnionArms::filled($ids);
+
+        return $type;
+    };
+    $read = static fn (): string => $memo->showingGaps(static fn (): string => $memo->remember('k', $compute));
+
+    DroppedUnionArms::replaceable($read, static fn (): bool => false);
+    $withdrawn = AnalysisWarnings::all();
+    DroppedUnionArms::extent($read);
+
+    expect($withdrawn)->toBe([])
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe([
+            'The value on line 7 leaves out `$arm`, which could not be typed, so its published type may not admit every '
+                .'value it sends. Give what it reads a return type or a `@return` docblock.',
+        ]);
+})->with(['a read that consumed it' => ['consumed'], 'a strip' => ['stripped'], 'the end of its extent' => ['extent']]);
 
 test('replays the gap ids a reused answer logged when it was computed, its own and a reused answer\'s inside it', function () {
     $memo = new AnalysisMemo;

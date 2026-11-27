@@ -436,7 +436,7 @@ final class DroppedUnionArms
             foreach (array_diff(self::gapsSince($mark), $spelled, self::filledSince($mark)) as $id) {
                 // The holds stay for a strip or the extent: a read under way may still discard the warning raised here.
                 foreach (self::$gapWarnings[$id] ?? [] as $warning) {
-                    self::warn($warning['subject'], $warning['message'], $warning['arm'], $warning['onceKey']);
+                    self::raised($warning);
                 }
             }
         }
@@ -782,8 +782,20 @@ final class DroppedUnionArms
         unset(self::$gapWarnings[$id]);
 
         foreach ($warnings as $warning) {
-            self::warn($warning['subject'], $warning['message'], $warning['arm'], $warning['onceKey']);
+            self::raised($warning);
         }
+    }
+
+    /**
+     * Raise a warning a gap held, logged as raised, so an answer reused in place of the read that raised it raises it
+     * again even where a merge filled the gap after.
+     *
+     * @param  GapWarning  $warning
+     */
+    private static function raised(array $warning): void
+    {
+        ['subject' => $subject, 'message' => $message, 'arm' => $arm, 'onceKey' => $onceKey] = $warning;
+        self::warn($subject, $message, $arm, $onceKey, self::logged($subject, $message, $arm, $onceKey, null));
     }
 
     /**
