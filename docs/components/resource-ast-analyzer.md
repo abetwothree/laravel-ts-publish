@@ -68,12 +68,12 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A key the branches type with different classes queues each branch's class in branch order, and lists the enums they
-  wrap it in per token, so each keeps its import (`MethodAnalysis::queueSplitClasses()`). The walk joins the bodies of
-  an `if` chain or a loop the same way (`joinedBranches()`), the keys held before them one more branch where none need
-  run, dropping an untypable value beside a typed one and keeping a lone `null`, as a ternary's arms do.
-  `MethodAnalysis::dropRepeatsOf()` first drops what a branch repeats from an earlier one, so a key's queue grows by one
-  entry per write of it, not per join. A body that ends in a `throw`, or a `return` of anything but the variable, stays
-  out of the join, and a whole write that always runs in a branch replaces its keys, as at the top level.
+  wrap it in per token, so each keeps its import (`KeyValue::joined()`). The walk joins the bodies of an `if` chain or
+  a loop the same way (`ArrayWalk::branches()`), the keys held before them one more branch where none need run,
+  dropping an untypable value beside a typed one and keeping a lone `null`, as a ternary's arms do. `ShapeJoin` first
+  drops what a branch repeats from an earlier one, so a key's queue grows by one entry per write of it, not per join.
+  A body that ends in a `throw`, or a `return` of anything but the variable, stays out of the join, and a whole write
+  that always runs in a branch replaces its keys, as at the top level.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
   branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
@@ -220,7 +220,7 @@ slots against the whole text's own names (`declaredArms()`), since the share may
 `{ a: User; p: Post }`'s `[null, Post]` beside `| User`. Where another branch spells those names outside a literal, with
 other slots or none, no join can bind them (`BranchJoin::declaredBranches()`): a strict join publishes the key `unknown`
 with no class, and a dropping one first reads that fill as the untyped value it stood in for
-(`MethodAnalysis::untype()`), so it drops the fill and publishes the other branches, as before the fill.
+(`KeyValue::untyped()`), so it drops the fill and publishes the other branches, as before the fill.
 `ResourceTransformer` reads a key's tokens from its slots where one holds an override's null, so `either: Person|User`
 publishes `User | WorkbenchUser`, each with its import, as an Inertia page does through `FileImportNames`; a per-name
 queue cannot hold that null.

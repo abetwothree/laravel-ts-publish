@@ -163,9 +163,9 @@ answer too where no judge is passed in.
 
 ## Where groups are carried and dropped
 
-Groups are held on [`MethodAnalysis::$variants`][`MethodAnalysis`]. `replaceWith()` carries them, and so does
-`BranchJoin::joinInto()` over one analysis. `merge()` and a join of two or more drop them, since no fold read the
-whole. So return branches, a returned variable's walk, a `mergeWhen()` and a spread of a parent's `toArray()`
+Groups are held on [`MethodAnalysis::$variants`][`MethodAnalysis`]. A lifted shape carries them in `ShapeWide`, and
+`BranchJoin::joinInto()` keeps them over one analysis. `merge()` and a join of two or more drop them, since no fold read
+the whole. So return branches, a returned variable's walk, a `mergeWhen()` and a spread of a parent's `toArray()`
 publish flat. `LiteralVariants` holds the fold's `LiteralWrites`, which holds the scope's reflection and AST
 nodes, so never keep an analysis on a transformer, whose state `SnapshotsTransformerState` serializes.
 

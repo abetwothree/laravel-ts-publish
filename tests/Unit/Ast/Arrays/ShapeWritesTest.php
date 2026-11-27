@@ -256,7 +256,7 @@ function shapeWriteStep(ArrayShape $shape, MethodAnalysis $analysis, Randomizer 
             ));
             $expected = new MethodAnalysis;
             BranchJoin::joinInto($expected, [clone $analysis, $other], dropsUntypedBranches: true, keepsLoneNull: true);
-            $analysis->replaceWith($expected);
+            ShapeLowering::into($analysis, ArrayShapes::ofAnalysis($expected));
 
             return [ArrayShapes::ofAnalysis($joined), "join ({$written})"];
     }

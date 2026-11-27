@@ -126,30 +126,6 @@ it('merges declared token slots as it merges casts', function () {
     expect($target->declaredTokenFqcns)->toBe(['kept' => [$user], 'either' => [null, $user]]);
 });
 
-it('reads a key as untyped: unknown, with no channel, and no custom import only its text spelled', function () {
-    $analysis = new MethodAnalysis(
-        properties: [
-            [
-                'name' => 'either', 'type' => 'User | User', 'optional' => true, 'description' => '',
-                'fillType' => 'User | User', 'removed' => true,
-            ],
-            ['name' => 'chart', 'type' => 'UiNode', 'optional' => false, 'description' => ''],
-        ],
-        customImports: ['@js/types/ui' => ['User', 'UiNode'], '@js/types/other' => ['User as Owner']],
-        inlineModelFqcns: ['either' => ['Workbench\\App\\Models\\User']],
-    );
-    $analysis->declaredTokenFqcns = ['either' => [null, 'Workbench\\App\\Models\\User']];
-
-    $analysis->untype('either');
-
-    expect($analysis->properties[0])->toBe([
-        'name' => 'either', 'type' => 'unknown', 'optional' => true, 'description' => '', 'removed' => true,
-    ])
-        ->and($analysis->inlineModelFqcns)->toBe([])
-        ->and($analysis->declaredTokenFqcns)->toBe([])
-        ->and($analysis->customImports)->toBe(['@js/types/ui' => ['UiNode'], '@js/types/other' => ['User as Owner']]);
-});
-
 it('retypes a key class-less, keeping a custom import its new text still spells', function () {
     $analysis = new MethodAnalysis(
         properties: [
@@ -353,44 +329,6 @@ it('holds unread keys after a merge where either side holds them', function (boo
     'the source' => [false, true, true],
 ]);
 
-it('takes over every field of another analysis, both flags included', function () {
-    $source = new MethodAnalysis(
-        properties: [['name' => 'a', 'type' => 'A', 'optional' => true, 'description' => 'd']],
-        nestedResources: ['a' => 'App\\R'],
-        customImports: ['@/x' => ['X']],
-        directEnumFqcns: ['a' => 'App\\E'],
-        modelFqcns: ['a' => 'App\\M'],
-        inlineEnumFqcns: ['a' => ['App\\E']],
-        inlineModelFqcns: ['a' => ['App\\M']],
-        inlineResourceFqcns: ['a' => ['App\\R']],
-        inlineEnumResourceFqcns: ['a' => ['App\\E']],
-        wrappedEnums: ['a' => ['App\\E']],
-        casts: ['a' => ['type' => 'A', 'import' => null]],
-        carried: ['models' => ['App\\M']],
-        flatTypeAlias: 'A[]',
-        flatTypeAliasFqcn: 'App\\M',
-    );
-    $source->readsCompletely = false;
-    $source->holdsUnreadKeys = true;
-    $source->holdsUnnamedKeys = true;
-    $source->declaredTokenFqcns = ['a' => [null, 'App\\M']];
-    $source->alikeClassFqcns = ['a' => ['App\\R', 'App\\M']];
-    $source->heldObjectKeys = ['a' => true];
-    $source->closedToDottedKeys = ['a' => true];
-    $source->variants = new LiteralVariants([], new LiteralWrites, true, [], []);
-    $target = new MethodAnalysis(properties: [['name' => 'b', 'type' => 'B', 'optional' => false, 'description' => '']]);
-
-    $target->replaceWith($source);
-
-    // A field added later fails the first assertion until this source sets it, then the second until it is copied.
-    expect(array_filter(
-        get_object_vars(new MethodAnalysis),
-        fn (mixed $default, string $field): bool => $source->{$field} === $default,
-        ARRAY_FILTER_USE_BOTH,
-    ))->toBe([])
-        ->and(get_object_vars($target))->toBe(get_object_vars($source));
-});
-
 /**
  * Each key's presence facts, by name.
  *
@@ -422,75 +360,6 @@ it('tells a key whose value may be removed from one a write or a spread member m
         'member' => ['optional' => true, 'absent' => true],
         'when' => ['optional' => true, 'removed' => true],
     ]);
-});
-
-it('drops the queued classes and custom imports a branch of a join only repeats from another', function () {
-    $entry = fn (string $name, string $type): array => ['name' => $name, 'type' => $type, 'optional' => false, 'description' => ''];
-    $first = new MethodAnalysis(
-        properties: [$entry('kept', '{ s: S }'), $entry('aliased', 'User'), $entry('rewritten', '{ s: S }')],
-        customImports: ['@/x' => ['X']],
-        inlineEnumFqcns: ['kept' => ['App\\S'], 'rewritten' => ['App\\S']],
-        inlineModelFqcns: ['aliased' => ['App\\User']],
-        inlineResourceFqcns: ['kept' => ['App\\R']],
-        inlineEnumResourceFqcns: ['kept' => ['App\\S']],
-    );
-    $branch = new MethodAnalysis(
-        properties: [$entry('kept', '{ s: S }'), $entry('aliased', 'User'), $entry('rewritten', '{ s: S } | null')],
-        customImports: ['@/x' => ['X', 'Y']],
-        inlineEnumFqcns: ['kept' => ['App\\S'], 'rewritten' => ['App\\S']],
-        inlineModelFqcns: ['aliased' => ['Crm\\User']],
-        inlineResourceFqcns: ['kept' => ['App\\R']],
-        inlineEnumResourceFqcns: ['kept' => ['App\\S']],
-    );
-
-    $branch->dropRepeatsOf($first);
-
-    // A same-named class with another FQCN is a different occurrence, and a rewritten key spells its type once more.
-    expect($branch->inlineEnumFqcns)->toBe(['rewritten' => ['App\\S']])
-        ->and($branch->inlineModelFqcns)->toBe(['aliased' => ['Crm\\User']])
-        ->and($branch->inlineResourceFqcns)->toBe([])
-        ->and($branch->inlineEnumResourceFqcns)->toBe([])
-        ->and($branch->customImports)->toBe(['@/x' => ['Y']]);
-});
-
-it('queues in branch order each class the branches of a merge type a key with, where they type it apart', function () {
-    $first = new MethodAnalysis(
-        nestedResources: ['x' => 'App\\UserResource', 42 => 'App\\TagResource', 'App\\R' => 'App\\R'],
-        directEnumFqcns: ['s' => 'App\\Status'],
-        modelFqcns: ['who' => 'App\\User'],
-        inlineResourceFqcns: ['x' => ['App\\R']],
-    );
-    $second = new MethodAnalysis(
-        nestedResources: ['x' => 'App\\CategoryResource', 42 => 'App\\TagResource'],
-        directEnumFqcns: ['s' => 'App\\Status'],
-        modelFqcns: ['who' => 'App\\Category'],
-    );
-    $merged = new MethodAnalysis;
-    $merged->merge($first);
-    $merged->merge($second);
-
-    $merged->queueSplitClasses([$first, $second]);
-
-    expect($merged->nestedResources)->toBe([
-        42 => 'App\\TagResource',
-        'App\\R' => 'App\\R',
-        'App\\UserResource' => 'App\\UserResource',
-        'App\\CategoryResource' => 'App\\CategoryResource',
-    ])
-        ->and($merged->inlineResourceFqcns)->toBe(['x' => ['App\\UserResource', 'App\\R', 'App\\CategoryResource']])
-        ->and($merged->directEnumFqcns)->toBe(['s' => 'App\\Status'])
-        ->and($merged->inlineEnumFqcns)->toBe([])
-        ->and($merged->modelFqcns)->toBe(['App\\User' => 'App\\User', 'App\\Category' => 'App\\Category'])
-        ->and($merged->inlineModelFqcns)->toBe(['who' => ['App\\User', 'App\\Category']]);
-});
-
-it('queues nothing for a merge of no branches', function () {
-    $analysis = new MethodAnalysis(directEnumFqcns: ['s' => 'App\\Status'], inlineEnumFqcns: ['s' => ['App\\Role']]);
-
-    $analysis->queueSplitClasses([]);
-
-    expect($analysis->directEnumFqcns)->toBe(['s' => 'App\\Status'])
-        ->and($analysis->inlineEnumFqcns)->toBe(['s' => ['App\\Role']]);
 });
 
 describe('MethodAnalysis::addProperty()', function () {
@@ -681,8 +550,6 @@ it('moves every per-key map with its key, through every method that moves, slice
     $appended->appendSlice($slice, keepsHeldObjects: true);
     $merged = new MethodAnalysis;
     $merged->appendSlice($slice, keepsHeldObjects: false);
-    $replaced = new MethodAnalysis;
-    $replaced->replaceWith($filled());
     $forgotten = $filled();
     $forgotten->forgetChannels('k');
     $dropped = $filled();
@@ -697,7 +564,6 @@ it('moves every per-key map with its key, through every method that moves, slice
             ->and($renamed->{$map})->toBe(['n' => ['K'], 'other' => ['O']], $map)
             ->and($appended->{$map})->toBe(['k' => ['K']], $map)
             ->and($merged->{$map})->toBe($map === 'heldObjectKeys' ? [] : ['k' => ['K']], $map)
-            ->and($replaced->{$map})->toBe(['k' => ['K'], 'other' => ['O']], $map)
             ->and($forgotten->{$map})->toBe(in_array($map, $keptByForget, true) ? ['k' => ['K'], 'other' => ['O']] : ['other' => ['O']], $map)
             ->and($dropped->{$map})->toBe(['other' => ['O']], $map);
     }
