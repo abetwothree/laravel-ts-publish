@@ -142,8 +142,8 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 
 In the [gap mode](#the-gap-mode), the branch a spread helper's join drops beside a typed one stays as a gap arm on the
 key (`merge-branch-join`): held with the warning of the untyped write the branch names (`recordedMergeJoin()`), or,
-where no branch names one, with the warning `DroppedUnionArms::leftBeside()` gives the return
-(`warnOfDroppedReturns()`), which out of the mode prints at once. A fill another branch spells unalike reads as a gap
+where the branch names none for that key, with the warning `DroppedUnionArms::leftBeside()` gives its return
+(`recordJoinDrops()`), which out of the mode prints at once. A fill another branch spells unalike reads as a gap
 there rather than `unknown` (`ShapeJoin::exclusive()`), warned of the same way beside a typed value. The helper's own
 `@return`, or the host's where the helper's frame is read in the host's mode, then types each dropped branch in place.
 A key every branch left `unknown`, or only a `null` beside them, still reads `unknown`, which a member fills whole. A

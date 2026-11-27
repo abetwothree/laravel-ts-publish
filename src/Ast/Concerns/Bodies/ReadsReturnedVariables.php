@@ -1072,7 +1072,7 @@ trait ReadsReturnedVariables
 
     /**
      * Record each branch value a join left out beside a typed one, naming the last untyped write of its key the branch
-     * saw, and warn of each: it still reaches the read.
+     * saw, or else the method return that sent it, and warn of each: it still reaches the read.
      *
      * @param  list<TAnalysis>  $branches
      * @param  list<list<UntypedKeyWrite>>  $notes  the untyped writes each branch saw
@@ -1081,55 +1081,6 @@ trait ReadsReturnedVariables
      */
     private function recordJoinDrops(MethodAnalysis $joined, array $branches, array $notes, Closure $leftOut, array $returns = []): void
     {
-        if (array_merge(...$notes) === []) {
-            $this->warnOfDroppedReturns($joined, $branches, $returns);
-
-            return;
-        }
-
-        $types = array_map(
-            fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'),
-            $branches,
-        );
-
-        foreach ($joined->properties as $at => $property) {
-            if ($property['type'] === 'unknown') {
-                continue;
-            }
-
-            $left = [];
-
-            foreach ($types as $index => $branchTypes) {
-                $write = ($branchTypes[$property['name']] ?? null) === 'unknown'
-                    ? $this->lastUntypedWrite($property['name'], $notes[$index])
-                    : null;
-
-                if ($write !== null) {
-                    $left[] = $leftOut($write);
-                }
-            }
-
-            if ($left !== []) {
-                $union = [...ValueResult::unknown(), 'type' => $property['type']];
-                $union = DroppedUnionArms::leftOutOfJoin($union, $left, $this->analysisScope());
-                $joined->properties[$at]['type'] = $union['type'];
-            }
-        }
-    }
-
-    /**
-     * Warn of each method return whose branch left a key untyped beside a typed one, a drop no untyped write names,
-     * through DroppedUnionArms::leftBeside(); in the gap mode the key takes the gap arm it leaves.
-     *
-     * @param  list<TAnalysis>  $branches
-     * @param  list<Node>  $returns  each branch's returned value
-     */
-    private function warnOfDroppedReturns(MethodAnalysis $joined, array $branches, array $returns): void
-    {
-        if ($returns === []) {
-            return;
-        }
-
         $types = array_map(
             fn (MethodAnalysis $branch): array => array_column($branch->properties, 'type', 'name'),
             $branches,
@@ -1141,13 +1092,32 @@ trait ReadsReturnedVariables
                 continue;
             }
 
+            $left = [];
+            $unnamed = [];
+
             foreach ($types as $index => $branchTypes) {
-                if (! isset($returns[$index]) || ($branchTypes[$property['name']] ?? null) !== 'unknown') {
+                if (($branchTypes[$property['name']] ?? null) !== 'unknown') {
                     continue;
                 }
 
+                $write = $this->lastUntypedWrite($property['name'], $notes[$index]);
+
+                if ($write !== null) {
+                    $left[] = $leftOut($write);
+                } elseif (isset($returns[$index])) {
+                    $unnamed[] = $returns[$index];
+                }
+            }
+
+            if ($left !== []) {
+                $union = [...ValueResult::unknown(), 'type' => $property['type']];
+                $union = DroppedUnionArms::leftOutOfJoin($union, $left, $this->analysisScope());
+                $joined->properties[$at]['type'] = $union['type'];
+            }
+
+            foreach ($unnamed as $returned) {
                 $id = DroppedUnionArms::leftBeside(
-                    $this->analysisScope(), 'merge-branch-join', $returns[$index], $property['type'], $property['name'],
+                    $this->analysisScope(), 'merge-branch-join', $returned, $property['type'], $property['name'],
                 );
 
                 if ($id !== null) {

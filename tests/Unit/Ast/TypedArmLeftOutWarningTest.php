@@ -7,6 +7,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DroppedArmsCorpus\UnreachedSitesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperArmSelfReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeftOutNamesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MixedNoteJoinResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedKeyLeftBesideResource;
 use Workbench\App\Http\Resources\DroppedArms\ArmBesideDropResource;
 use Workbench\App\Http\Resources\DroppedArms\ArmBesideTypedKeyResource;
@@ -77,6 +78,17 @@ test('a spread helper\'s return whose keys no write names warns once per return,
     expect(typedArmLeftOutReading(ReturnedKeyLeftBesideResource::class))->toBe([
         ['relayed' => '{ k?: string }', 'again' => '{ k?: string }', 'pair' => '{ a?: string; b?: string }'],
         [returnedKeyLeftOutMessage('k', '$row', 60), returnedKeyLeftOutMessage('a', '$row', 38)],
+    ]);
+});
+
+// The literal's item names its own drop, so the other return, whose key no write names, still warns at the return.
+test('a spread helper\'s return whose key no write names warns beside another return\'s untyped item', function () {
+    expect(typedArmLeftOutReading(MixedNoteJoinResource::class))->toBe([
+        ['mixed' => '{ a: string; b: string }'],
+        [
+            typedArmLeftOutMessage(32, '\\Workbench\\App\\Support\\Opaque::value($this->resource->tags)'),
+            returnedKeyLeftOutMessage('b', '$row', 37),
+        ],
     ]);
 });
 
