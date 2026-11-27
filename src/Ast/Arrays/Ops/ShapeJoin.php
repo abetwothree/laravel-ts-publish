@@ -51,10 +51,17 @@ final class ShapeJoin
         $signatures = [];
 
         foreach ($branches as $index => $branch) {
+            $queued = [];
+
             foreach (self::written($branch) as $entry) {
                 $name = $entry->writtenName();
-                $values[$name][] = $entry->value;
+                // Every entry of a pattern carries the queues the whole pattern shares, so only its first brings them.
+                $values[$name][] = isset($queued[$name]) ? self::unqueued($entry->value) : $entry->value;
                 $holders[$name][] = $index;
+
+                if ($entry instanceof ShapeSignature) {
+                    $queued[$name] = true;
+                }
                 $signatures[$name] = $entry instanceof ShapeSignature;
 
                 if ($entry instanceof ShapeKey) {
@@ -125,6 +132,20 @@ final class ShapeJoin
         }
 
         return array_values($written);
+    }
+
+    /**
+     * A value without the queues its key appends classes to, all else kept.
+     */
+    private static function unqueued(KeyValue $value): KeyValue
+    {
+        $channels = $value->channels;
+
+        foreach (KeyValue::QUEUES as $queue) {
+            unset($channels[$queue]);
+        }
+
+        return new KeyValue($value->row, $channels, $value->embedded);
     }
 
     /**

@@ -22,6 +22,7 @@ use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use PhpParser\Node\Expr\Variable;
 use Workbench\App\Http\Resources\PostResource;
+use Workbench\App\Models\Category;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Models\User as CrmUser;
@@ -262,6 +263,29 @@ it('warns of a fill a method return spells unalike only where the join keeps a t
     'a spread helper\'s join, which reads the lone null as unknown' => [false, 'unknown', 0],
     'a join that keeps the lone null' => [true, 'null', 2],
 ]);
+
+// Each entry of a pattern carries the queue the whole pattern shares, so a branch adds it to the join once.
+it('queues a signature\'s classes once per branch, however many entries of it the branch holds', function () {
+    $pattern = '[key: `${string}_x`]';
+    $branch = static function (array $types, array $queue) use ($pattern): ArrayShape {
+        $analysis = new ResourceAnalysis(properties: array_map(
+            static fn (string $type): array => ['name' => $pattern, 'type' => $type, 'optional' => false, 'description' => ''],
+            $types,
+        ));
+        $analysis->inlineModelFqcns = [$pattern => $queue];
+
+        return ArrayShapes::ofAnalysis($analysis);
+    };
+
+    $joined = ShapeJoin::exclusive([
+        $branch(['{ owner: User }', '{ cat: Category }'], [User::class, Category::class]),
+        $branch(['{ owner: User }', '{ cat: Category }', '{ post: Post }'], [User::class, Category::class, Post::class]),
+    ], new JoinOptions);
+
+    expect($joined->entries)->toHaveCount(1)
+        ->and($joined->entries[0]->value->channels['inlineModelFqcns'] ?? null)
+        ->toBe([User::class, Category::class, User::class, Category::class, Post::class]);
+});
 
 it('orders each channel map as its branches first hold a key, and keeps an entry no key owns where no joined key names it', function () {
     $branch = static fn (array $keys, array $order, array $loose): ArrayShape => joinShape($keys, wide: new ShapeWide(
