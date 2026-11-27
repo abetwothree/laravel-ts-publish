@@ -15,8 +15,9 @@ use Workbench\App\Support\Opaque;
  *
  * @mixin Post
  */
-final class ReturnedKeyLeftBesideResource extends JsonResource
+class ReturnedKeyLeftBesideResource extends JsonResource
 {
+    /** Each helper spread into a key of its own, one of them twice. */
     public function toArray(Request $request): array
     {
         return [
@@ -24,6 +25,28 @@ final class ReturnedKeyLeftBesideResource extends JsonResource
             'again' => [...$this->relayed()],
             'pair' => [...$this->pair()],
         ];
+    }
+
+    /**
+     * Two keys from a helper that cannot type them, or the title twice.
+     */
+    protected function pair(): array
+    {
+        if ($this->id > 1) {
+            $row = $this->opaquePair();
+
+            return $row;
+        }
+
+        return ['a' => $this->title, 'b' => $this->title];
+    }
+
+    /**
+     * A row whose `a` and `b` no rule types.
+     */
+    protected function opaquePair(): array
+    {
+        return ['a' => Opaque::value($this->resource->tags), 'b' => Opaque::value($this->resource->tags)];
     }
 
     /**
@@ -41,32 +64,10 @@ final class ReturnedKeyLeftBesideResource extends JsonResource
     }
 
     /**
-     * Two keys from a helper that cannot type them, or the title twice.
-     */
-    private function pair(): array
-    {
-        if ($this->id > 1) {
-            $row = $this->opaquePair();
-
-            return $row;
-        }
-
-        return ['a' => $this->title, 'b' => $this->title];
-    }
-
-    /**
      * A row whose `k` no rule types.
      */
     private function opaqueRow(): array
     {
         return ['k' => Opaque::value($this->resource->tags)];
-    }
-
-    /**
-     * A row whose `a` and `b` no rule types.
-     */
-    private function opaquePair(): array
-    {
-        return ['a' => Opaque::value($this->resource->tags), 'b' => Opaque::value($this->resource->tags)];
     }
 }

@@ -75,14 +75,14 @@ test('an arm no rule types beside a typed one warns, naming the arm, and the pub
 test('a spread helper\'s return whose keys no write names warns once per return, a second spread of it included', function () {
     expect(typedArmLeftOutReading(ReturnedKeyLeftBesideResource::class))->toBe([
         ['relayed' => '{ k?: string }', 'again' => '{ k?: string }', 'pair' => '{ a?: string; b?: string }'],
-        [returnedKeyLeftOutMessage('k', '$row', 37), returnedKeyLeftOutMessage('a', '$row', 51)],
+        [returnedKeyLeftOutMessage('k', '$row', 60), returnedKeyLeftOutMessage('a', '$row', 38)],
     ]);
 });
 
 test('a declared fill another return spells unalike, and a += default no rule types, each warn once, naming the key', function () {
     expect(typedArmLeftOutReading(UnreachedSitesResource::class))->toBe([
         ['row' => '{ u?: User }', 'again' => '{ u?: User }', 'plus' => '{ id: number; k: string }'],
-        [returnedKeyLeftOutMessage('u', '$declared', 33), returnedKeyLeftOutMessage('k', '$this->defaults()', 60)],
+        [returnedKeyLeftOutMessage('u', '$declared', 34), returnedKeyLeftOutMessage('k', '$this->defaults()', 61)],
     ]);
 });
 
@@ -99,6 +99,6 @@ test('a return\'s drop the @return types in place prints no warning', function (
 test('a warning names the value as the source spells it, and the key the @return leaves untyped', function () {
     expect(typedArmLeftOutReading(LeftOutNamesResource::class))->toBe([
         ['own_default' => '{ k: string }', 'pair' => '{ a?: string; b?: string }'],
-        [typedArmLeftOutMessage(32, "\$o['k']"), returnedKeyLeftOutMessage('b', '$row', 45)],
+        [typedArmLeftOutMessage(34, "\$o['k']"), returnedKeyLeftOutMessage('b', '$row', 38)],
     ]);
 });

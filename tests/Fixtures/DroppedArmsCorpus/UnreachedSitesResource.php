@@ -17,6 +17,7 @@ use Workbench\Crm\Models\User as CrmUser;
  */
 final class UnreachedSitesResource extends JsonResource
 {
+    /** The unalike pair spread twice, and the `+=` default. */
     public function toArray(Request $request): array
     {
         return ['row' => [...$this->picked()], 'again' => [...$this->picked()], 'plus' => $this->defaulted()];

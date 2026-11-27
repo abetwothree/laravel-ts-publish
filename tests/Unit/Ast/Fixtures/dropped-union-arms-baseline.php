@@ -79,6 +79,6 @@ return [
     ['subject' => 'Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource', 'line' => 245, 'expression' => '$d[\'by\']', 'site' => 'coalesce-left'],
     // The corpus beside the workbench (tests/Fixtures/DroppedArmsCorpus/): a declared CRM `User` beside the author's
     // `User`, one name for two classes, and a `+=` default no rule types, which no workbench key drops.
-    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnreachedSitesResource', 'line' => 33, 'expression' => '$declared', 'site' => 'unalike-fill'],
-    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnreachedSitesResource', 'line' => 60, 'expression' => '$this->defaults()', 'site' => 'plus-union'],
+    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnreachedSitesResource', 'line' => 34, 'expression' => '$declared', 'site' => 'unalike-fill'],
+    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnreachedSitesResource', 'line' => 61, 'expression' => '$this->defaults()', 'site' => 'plus-union'],
 ];
