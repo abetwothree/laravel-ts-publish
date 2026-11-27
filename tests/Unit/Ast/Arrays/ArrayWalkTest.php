@@ -18,7 +18,7 @@ use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
 
-// Each row's expectation is what ReadsReturnedVariables left for the same writes before the walk moved here.
+// Each row's expectation is what the returned-variable walk publishes for the same writes.
 
 /**
  * A walk of `$d` whose host sends each value as it is, from a seed's keys or none.

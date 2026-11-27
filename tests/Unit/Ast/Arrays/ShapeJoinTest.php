@@ -90,27 +90,27 @@ it('makes a key a sealed branch lacks optional and absent there', function () {
         ->and($b instanceof ShapeKey ? [$b->presence->absent, $b->presence->removed] : null)->toBe([true, false]);
 });
 
-it('joins a key a branch with extras lacks with those extras, optional and absent (X31-shaped)', function () {
+it('joins a key a branch with extras lacks with those extras, optional and absent, as a typed map beside a literal', function () {
     $joined = ShapeJoin::exclusive([joinShape(['by' => 'string']), joinShape([], 'number')], new JoinOptions);
 
     expect(joinedKeys($joined))->toBe(['?by' => 'string | number'])
         ->and($joined->extras?->type())->toBe('number');
 });
 
-it('keeps a key both branches send required beside one branch\'s extras (X22-shaped)', function () {
+it('keeps a key both branches send required beside one branch\'s extras, as a typed map holding the key', function () {
     $joined = ShapeJoin::exclusive([joinShape(['by' => 'string'], 'string'), joinShape(['by' => 'string'])], new JoinOptions);
 
     expect(joinedKeys($joined))->toBe(['by' => 'string'])
         ->and($joined->extras?->type())->toBe('string');
 });
 
-it('keeps a seed\'s sure key required and joins a literal\'s own key with the seed\'s extras (Y33-shaped)', function () {
+it('keeps a seed\'s sure key required and joins a literal\'s own key with the seed\'s extras, as a seeded walk', function () {
     $joined = ShapeJoin::exclusive([joinShape(['by' => 'string'], 'string'), joinShape(['by' => "'x'", 'z' => 'number'])], new JoinOptions);
 
     expect(joinedKeys($joined))->toBe(['by' => "string | 'x'", '?z' => 'string | number']);
 });
 
-it('never absorbs a named key into the extras (AR-5)', function (ArrayShape $literal, array $keys) {
+it('never absorbs a named key into the extras, as PHPStan keeps a constant array\'s keys', function (ArrayShape $literal, array $keys) {
     $x = joinShape(['a' => 'number'], 'string');
     $joined = ShapeJoin::exclusive([$literal, $x], new JoinOptions);
 

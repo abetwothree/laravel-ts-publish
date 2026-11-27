@@ -47,11 +47,11 @@ function returnedKeyLeftOutMessage(string $key, string $at, int $line): string
         .'or a `@return` docblock.';
 }
 
-// Box 5 (GH-161): `cache()` sends `null` beside each typed arm, which the published type rejects, so the run says so.
+// `cache()` sends `null` beside each typed arm, which the published type rejects, so the run says so (GH-161).
 test('an arm no rule types beside a typed one warns, naming the arm, and the published type stays', function (string $class, array $types, array $warnings) {
     expect(typedArmLeftOutReading($class))->toBe([$types, $warnings]);
 })->with([
-    'T8A1, T8A3 and T8B1 under array<string, mixed>' => [
+    'a closure, a list of closures and same-named users, under array<string, mixed>' => [
         ArmBesideDropResource::class,
         ['cb' => '() => string', 'cbs' => '(() => string)[]', 'users' => 'WorkbenchUser[] | CrmUser[]'],
         [
@@ -60,12 +60,12 @@ test('an arm no rule types beside a typed one warns, naming the arm, and the pub
             typedArmLeftOutMessage(29, "cache('u')"),
         ],
     ],
-    'T8B3, a key the @return does not name' => [
+    'same-named users under a key the @return does not name' => [
         ArmBesideTypedKeyResource::class,
         ['n' => 'number', 'users' => 'WorkbenchUser[] | CrmUser[]'],
         [typedArmLeftOutMessage(27, "cache('u')")],
     ],
-    'T8B2, a returned variable\'s branches' => [
+    'same-named users a returned variable\'s branches join' => [
         WalkedArmDropResource::class,
         ['users' => 'WorkbenchUser[] | CrmUser[]'],
         [typedArmLeftOutMessage(28, "cache('u')")],
@@ -94,8 +94,8 @@ test('a return\'s drop the @return types in place prints no warning', function (
         ->and($warnings)->toBe([]);
 });
 
-// The walk also reads `$o['k']` under an alias no PHP variable can take; the warning names the local, once. The `@return`
-// types `a`, so the return's warning names `b`, the key it leaves out.
+// The walk also reads `$o['k']` under an alias no PHP variable can take; the warning names the local, once. The
+// `@return` types `a`, so the return's warning names `b`, the key it leaves out.
 test('a warning names the value as the source spells it, and the key the @return leaves untyped', function () {
     expect(typedArmLeftOutReading(LeftOutNamesResource::class))->toBe([
         ['own_default' => '{ k: string }', 'pair' => '{ a?: string; b?: string }'],
