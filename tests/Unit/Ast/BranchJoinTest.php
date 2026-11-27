@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\Variable;
 use Workbench\App\Enums\Status;
 use Workbench\App\Http\Resources\AddressResource;
 use Workbench\App\Models\Address;
+use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
 use Workbench\Crm\Enums\Status as CrmStatus;
 use Workbench\Crm\Models\User as CrmUser;
@@ -51,7 +52,7 @@ test('declaredBranches() reads a declared text unalike where another branch spel
         ->toBe([[[$fill[0], [User::class, User::class]]], []]);
 });
 
-test('castsEveryBranchAgrees() keeps a cast only where every branch setting its key casts it alike', function () {
+test('joinInto() keeps a cast only where every branch setting its key casts it alike', function () {
     $branch = static fn (array $casts): MethodAnalysis => new MethodAnalysis(
         properties: [
             ['name' => 'a', 'type' => 'string', 'optional' => false, 'description' => ''],
@@ -60,11 +61,13 @@ test('castsEveryBranchAgrees() keeps a cast only where every branch setting its 
         casts: $casts,
     );
     $cast = ['type' => 'Money', 'import' => '@/money'];
-
-    expect(BranchJoin::castsEveryBranchAgrees([
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [
         $branch(['a' => $cast, 'b' => $cast]),
         $branch(['a' => [...$cast, 'optional' => true], 'b' => ['type' => 'Cents', 'import' => '@/money']]),
-    ], ['a', 'b']))->toBe(['a' => [...$cast, 'optional' => true]]);
+    ]);
+
+    expect($joined->casts)->toBe(['a' => [...$cast, 'optional' => true]]);
 });
 
 /**
@@ -79,19 +82,6 @@ function joinBranch(string $type, ?string $model = null): MethodAnalysis
 
     return $branch;
 }
-
-test('joinInto() keeps a key the first branch leaves untyped untyped only where told to', function () {
-    $kept = new MethodAnalysis;
-    BranchJoin::joinInto($kept, [joinBranch('unknown'), joinBranch('string')], dropsUntypedBranches: true, keepsFirstUntyped: true);
-    $dropped = new MethodAnalysis;
-    BranchJoin::joinInto($dropped, [joinBranch('unknown'), joinBranch('string')], dropsUntypedBranches: true);
-    $later = new MethodAnalysis;
-    BranchJoin::joinInto($later, [joinBranch('string'), joinBranch('unknown')], dropsUntypedBranches: true, keepsFirstUntyped: true);
-
-    expect(array_column($kept->properties, 'type'))->toBe(['unknown'])
-        ->and(array_column($dropped->properties, 'type'))->toBe(['string'])
-        ->and(array_column($later->properties, 'type'))->toBe(['string']);
-});
 
 test('joinInto() keeps two models one name spells as two arms, each queued', function () {
     $apart = new MethodAnalysis;
@@ -264,4 +254,79 @@ test('joinInto() keeps the groups of the one analysis it joins, and none of two'
 
     expect($one->variants)->toBe($sole->variants)
         ->and($two->variants)->toBeNull();
+});
+
+/**
+ * One required row of a key, typed as given.
+ *
+ * @return array{name: string, type: string, optional: false, description: string}
+ */
+function joinRow(string $name, string $type = 'string'): array
+{
+    return ['name' => $name, 'type' => $type, 'optional' => false, 'description' => ''];
+}
+
+// A merge of the branches leaves each key where a branch first set it, moves an alike record a later branch drops to
+// where one sets it again, and loses an entry under a key the join leaves without one.
+test('joinInto() lays each channel map in the order a merge of its branches lays it', function () {
+    $first = new MethodAnalysis(properties: [joinRow('k'), joinRow('j'), joinRow('m'), joinRow('n')]);
+    $first->modelFqcns = ['m' => Post::class, 'k' => User::class];
+    $first->alikeClassFqcns = ['k' => [User::class], 'j' => [Post::class]];
+    $second = new MethodAnalysis(properties: [joinRow('k')]);
+    $second->modelFqcns = ['n' => Address::class, 'k' => User::class];
+    $third = new MethodAnalysis(properties: [joinRow('k')]);
+    $third->modelFqcns = ['k' => User::class];
+    $third->alikeClassFqcns = ['k' => [User::class]];
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [$first, $second, $third]);
+
+    expect($joined->modelFqcns)->toBe(['m' => Post::class, 'k' => User::class])
+        ->and($joined->alikeClassFqcns)->toBe(['j' => [Post::class], 'k' => [User::class]]);
+});
+
+test('joinInto() keys a split key\'s classes by themselves after every key its branches hold', function () {
+    $first = new MethodAnalysis(properties: [joinRow('k', 'User'), joinRow('z', 'Address')]);
+    $first->modelFqcns = ['k' => User::class, 'z' => Address::class];
+    $second = new MethodAnalysis(properties: [joinRow('k', 'Post')]);
+    $second->modelFqcns = ['k' => Post::class];
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [$first, $second]);
+
+    expect($joined->modelFqcns)->toBe(['z' => Address::class, User::class => User::class, Post::class => Post::class])
+        ->and($joined->inlineModelFqcns)->toBe(['k' => [User::class, Post::class]]);
+});
+
+test('joinInto() reads a fill another branch spells unalike as untyped, its classes and the imports only it spelled gone', function () {
+    $fill = new MethodAnalysis(properties: [joinRow('k', 'User | User'), joinRow('m', 'Post')], customImports: ['@/user' => ['User']]);
+    $fill->modelFqcns = ['k' => User::class, 'm' => Post::class];
+    $fill->declaredTokenFqcns = ['k' => [null, User::class]];
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [$fill, joinBranch('User', CrmUser::class)], dropsUntypedBranches: true);
+
+    expect(array_column($joined->properties, 'type', 'name'))->toBe(['k' => 'User', 'm' => 'Post'])
+        ->and($joined->modelFqcns)->toBe(['m' => Post::class, 'k' => CrmUser::class])
+        ->and($joined->customImports)->toBe([]);
+});
+
+// A write a branch overwrote still spells the key's declared names, so the write it sends reads unalike beside it.
+test('joinInto() reads a declared key unalike against every write of it, one its branch overwrote too', function () {
+    $fill = new MethodAnalysis(properties: [joinRow('k', 'User | User'), joinRow('k', 'Foo')]);
+    $fill->declaredTokenFqcns = ['k' => [null, User::class]];
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [$fill, new MethodAnalysis(properties: [joinRow('k', 'Bar')])], dropsUntypedBranches: true);
+
+    expect(array_column($joined->properties, 'type'))->toBe(['Bar']);
+});
+
+test('joinInto() merges what branches hold beside their keys: the first type alias, each import once, an unowned queue whole', function () {
+    $first = new MethodAnalysis(properties: [joinRow('a')], customImports: ['@/x' => ['X', 'Y']], flatTypeAlias: 'As');
+    $first->inlineModelFqcns = ['u' => [User::class]];
+    $second = new MethodAnalysis(properties: [joinRow('a')], customImports: ['@/x' => ['Y', 'Z']], flatTypeAlias: 'Bs');
+    $second->inlineModelFqcns = ['u' => [Post::class]];
+    $joined = new MethodAnalysis;
+    BranchJoin::joinInto($joined, [$first, $second]);
+
+    expect($joined->flatTypeAlias)->toBe('As')
+        ->and($joined->customImports)->toBe(['@/x' => ['X', 'Y', 'Z']])
+        ->and($joined->inlineModelFqcns)->toBe(['u' => [User::class, Post::class]]);
 });

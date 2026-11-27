@@ -204,6 +204,22 @@ _Avoid_: hard arm, body null
 How inference reads a value under an outer declaration, marking each declared arm so the declaration can replace it. The gap mode brings it.
 _Avoid_: soft mode, softening
 
+**Array shape**:
+One array as inference reads it: its named keys and index signatures in first-write order, each with its value and presence, beside its extras and opaque parts. An analysis lifts into one, and the analysis publishers read is its lowering: [Array model](docs/components/array-model.md).
+_Avoid_: array type, shape object
+
+**Extras**:
+The typed string keys an array shape may hold beside the keys it names, as a typed map's spread brings them.
+_Avoid_: rest keys, extra keys
+
+**Opaque part**:
+Keys an array shape may hold that no name inference reads names, beside the site that brings them, such as an unread spread or a key write it cannot name. A shape with one, extras or a signature is not sealed.
+_Avoid_: unread keys, unknown part
+
+**Presence**:
+Whether a key is sent, split by cause: absent, missing on some path, where a value held before it survives; or removed, its value may be removed, as a `when()` MissingValue is, which no held value survives. The printed `?` may stand for either, or for neither where a cast or a docblock sets it.
+_Avoid_: optionality, required flag
+
 **Re-index**:
 What an API resource does to an array whose keys all pass `is_numeric()`: Laravel sends its values as a JSON list.
 _Avoid_: reindex, renumber (renumbering is what `array_merge()` does to int keys)

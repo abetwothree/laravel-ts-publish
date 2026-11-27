@@ -416,13 +416,13 @@ it('reads a props local through its writes', function (string $action, string $t
     ],
     'a write reading the local itself' => [
         'coalesceSelfRead',
-        '{ heading: string, a?: number | string }',
+        '{ heading: string, a: number | string }',
         [['x' => 1], []],
         [['heading' => 'x', 'a' => 1], ['heading' => 'x', 'a' => 'none']],
     ],
     'a whole write reading the local it replaces' => [
         'selfReplaced',
-        '{ a?: number | string }',
+        '{ a: number | string }',
         [['x' => 1], []],
         [['a' => 1], ['a' => 'none']],
     ],

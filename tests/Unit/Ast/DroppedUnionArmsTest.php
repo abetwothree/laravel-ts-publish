@@ -11,9 +11,14 @@ use AbeTwoThree\LaravelTsPublish\Ast\Values\ValueResult;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Support\TypeStrings\VisibleGaps;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\GapModeKeysResource;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrayDimFetch;
+use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PhpParser\NodeFinder;
 
 /**
@@ -57,6 +62,19 @@ function droppedArmPlaceholderMessage(string $arm, string $published = '`null`, 
 function droppedArmLeftOutMessage(string $arm): string
 {
     return "The value on line 7 leaves out `{$arm}`, which could not be typed, so its published type may not admit every "
+        .'value it sends. Give what it reads a return type or a `@return` docblock.';
+}
+
+/**
+ * The run-output message for the value at a node on line 7 a join left out beside typed ones, under the key it names.
+ */
+function droppedArmLeftBesideMessage(string $at, ?string $key = null): string
+{
+    $left = $key === null
+        ? "The value on line 7 leaves out `{$at}`"
+        : "Key `{$key}` leaves out what `{$at}` on line 7 holds there";
+
+    return $left.', which could not be typed beside the typed values it joins, so its published type may not admit every '
         .'value it sends. Give what it reads a return type or a `@return` docblock.';
 }
 
@@ -123,7 +141,7 @@ test('leftOut() records and counts each arm under its site, and warns of its pla
         ->and(droppedArmsRunMessages())->toBe([droppedArmPlaceholderMessage('$first'), droppedArmPlaceholderMessage('$second')]);
 })->with('gap modes');
 
-test('leftOut() warns of nothing where a typed arm stands, and records nothing with no arm left out', function (bool $shows) {
+test('leftOut() warns that a typed arm stands beside one it left out, and records nothing with no arm left out', function (bool $shows) {
     $union = droppedArmsUnion('string | null');
     $dropped = DroppedUnionArms::dropped();
     DroppedUnionArms::start();
@@ -142,7 +160,7 @@ test('leftOut() warns of nothing where a typed arm stands, and records nothing w
         ->and($returned[1])->toBe(droppedArmsUnion('null'))
         ->and(DroppedUnionArms::dropped() - $dropped)->toBe(1)
         ->and(array_column($audit, 'site'))->toBe(['ternary-narrowed'])
-        ->and(droppedArmsRunMessages())->toBe([]);
+        ->and(droppedArmsRunMessages())->toBe($shows ? [] : [droppedArmLeftOutMessage('$arm')]);
 })->with('gap modes');
 
 test('leftOutOfJoin() records each arm and warns of a placeholder as leftOut() does, of a typed union as left out', function (bool $shows) {
@@ -172,6 +190,161 @@ test('leftOutOfJoin() records each arm and warns of a placeholder as leftOut() d
             droppedArmLeftOutMessage('$typed'),
         ]);
 })->with('gap modes');
+
+test('leftBeside() audits its site and counts no arm, warning at once, or in the gap mode on the gap it returns', function (bool $shows) {
+    $at = droppedArm('d');
+    $dropped = DroppedUnionArms::dropped();
+    DroppedUnionArms::start();
+
+    try {
+        $id = inGapMode($shows, fn (): ?int => DroppedUnionArms::leftBeside(droppedArmsScope(), 'merge-branch-join', $at, 'string', 'k'));
+    } finally {
+        $audit = DroppedUnionArms::stop();
+    }
+
+    $held = droppedArmsRunMessages();
+    DroppedUnionArms::stripped($id === null ? [] : [$id]);
+
+    expect($id)->toBe($shows ? DroppedUnionArms::gap(droppedArmsScope(), "merge-branch-join\0k", $at, 'string') : null)
+        ->and(DroppedUnionArms::dropped())->toBe($dropped)
+        ->and($audit)->toBe([['subject' => stdClass::class, 'line' => 7, 'expression' => '$d', 'site' => 'merge-branch-join']])
+        ->and($held)->toBe($shows ? [] : [droppedArmLeftBesideMessage('$d', 'k')])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$d', 'k')]);
+})->with('gap modes');
+
+test('leftBeside() leaves a gap per key at one node, so a merge that fills one key leaves the other key warned of', function () {
+    $at = droppedArm('row');
+    $scope = droppedArmsScope();
+    $ids = resolve(AnalysisMemo::class)->showingGaps(fn (): array => [
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'a'),
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'b'),
+    ]);
+    DroppedUnionArms::filled([(int) $ids[0]]);
+    DroppedUnionArms::stripped([(int) $ids[1]]);
+
+    expect($ids[0])->not->toBe($ids[1])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$row', 'b')]);
+});
+
+test('a warning names a walk alias as the variable it reads, so the walk\'s read and the source\'s warn as one', function () {
+    $read = static fn (string $name): ArrayDimFetch => new ArrayDimFetch(
+        new Variable($name, ['startLine' => 7]),
+        new String_('k'),
+        ['startLine' => 7],
+    );
+    $alias = $read(AnalysisScope::walkAlias('o'));
+    $scope = droppedArmsScope();
+
+    DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[$alias, 'coalesce-left']], $scope);
+    DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[$read('o'), 'coalesce-left']], $scope);
+    DroppedUnionArms::leftOut(droppedArmsUnion('null'), [[$alias, 'coalesce-left']], $scope);
+    DroppedUnionArms::leftBeside($scope, 'merge-branch-join', new Variable(AnalysisScope::walkAlias('d'), ['startLine' => 7]), 'string', 'k');
+    DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[new FuncCall(new Name('cache'), [new Arg(new String_('$@o'))], ['startLine' => 7]), 'closure-union']], $scope);
+
+    expect(droppedArmsRunMessages())->toBe([
+        droppedArmLeftOutMessage("\$o['k']"),
+        droppedArmPlaceholderMessage("\$o['k']"),
+        droppedArmLeftBesideMessage('$d', 'k'),
+        droppedArmLeftOutMessage("cache('\$@o')"),
+    ])->and(AnalysisScope::isWalkAlias($alias->var))->toBeTrue();
+});
+
+test('leftBeside() names the value alone where it is given no key', function () {
+    DroppedUnionArms::leftBeside(droppedArmsScope(), 'unalike-fill', droppedArm('fill'), 'User');
+
+    expect(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$fill')]);
+});
+
+test('leftBeside() words a join it leaves a placeholder as the placeholder, naming the key where it is given one', function () {
+    DroppedUnionArms::leftBeside(droppedArmsScope(), 'plus-union', droppedArm('alone'), 'null');
+    DroppedUnionArms::leftBeside(droppedArmsScope(), 'plus-union', droppedArm('keyed'), 'never[]', 'k');
+
+    expect(droppedArmsRunMessages())->toBe([
+        droppedArmPlaceholderMessage('$alone'),
+        'Key `k` publishes `never[]`, an array that is always empty, because what `$keyed` on line 7 holds there could '
+            .'not be typed and was left out of its union. Give what it reads a return type or a `@return` docblock.',
+    ]);
+});
+
+test('leftBeside() warns once per site and node, for two keys or two readings, whatever a gap holds', function (bool $shows) {
+    [$at, $other] = [droppedArm('d'), droppedArm('e')];
+    $scope = droppedArmsScope();
+    $ids = inGapMode($shows, fn (): array => [
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'a'),
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'number', 'b'),
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'a'),
+        DroppedUnionArms::leftBeside($scope, 'unalike-fill', $at, 'string', 'c'),
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $other, 'string', 'a'),
+    ]);
+    DroppedUnionArms::stripped(array_values(array_filter($ids, is_int(...))));
+
+    expect(droppedArmsRunMessages())->toBe([
+        droppedArmLeftBesideMessage('$d', 'a'),
+        droppedArmLeftBesideMessage('$d', 'c'),
+        droppedArmLeftBesideMessage('$e', 'a'),
+    ])->and(array_column(AnalysisWarnings::all(), 'subject'))->toBe([stdClass::class, stdClass::class, stdClass::class]);
+})->with('gap modes');
+
+test('a leftBeside() warning keeps its once-key through a read that stands, and through a read that consumes its gap', function () {
+    $at = droppedArm('d');
+    $scope = droppedArmsScope();
+    DroppedUnionArms::replaceable(fn (): array => [
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'a'),
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'b'),
+    ], static fn (): bool => true);
+    $stood = droppedArmsRunMessages();
+    AnalysisWarnings::reset();
+    $mark = DroppedUnionArms::gapMark();
+    resolve(AnalysisMemo::class)->showingGaps(fn (): array => [
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'string', 'a'),
+        DroppedUnionArms::leftBeside($scope, 'merge-branch-join', $at, 'number', 'b'),
+    ]);
+    DroppedUnionArms::consumed($mark, 'string');
+
+    expect($stood)->toBe([droppedArmLeftBesideMessage('$d', 'a')])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$d', 'a')]);
+});
+
+test('a read that does not stand spends no leftBeside() warning and keeps none of its audit, so a later one warns', function (bool $shows) {
+    $at = droppedArm('d');
+    $warn = fn (): ?int => DroppedUnionArms::leftBeside(droppedArmsScope(), 'merge-branch-join', $at, 'string', 'k');
+    DroppedUnionArms::start();
+
+    try {
+        inGapMode($shows, fn (): ?int => DroppedUnionArms::extent(
+            fn (): ?int => DroppedUnionArms::provisional($warn, static fn (): bool => false),
+        ));
+        $discarded = [droppedArmsRunMessages(), DroppedUnionArms::stop()];
+        DroppedUnionArms::start();
+        inGapMode($shows, fn (): ?int => DroppedUnionArms::extent($warn));
+    } finally {
+        $audit = DroppedUnionArms::stop();
+    }
+
+    expect($discarded)->toBe([[], []])
+        ->and(array_column($audit, 'expression'))->toBe(['$d'])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$d', 'k')]);
+})->with('gap modes');
+
+test('a leftBeside() warning held on a gap a merge fills never prints, and one left unfilled prints as its extent ends', function () {
+    $scope = droppedArmsScope();
+    $memo = resolve(AnalysisMemo::class);
+
+    $filled = DroppedUnionArms::extent(function () use ($memo, $scope): array {
+        $id = $memo->showingGaps(fn (): ?int => DroppedUnionArms::leftBeside($scope, 'merge-branch-join', droppedArm('filled'), 'string', 'k'));
+        DroppedUnionArms::filled([(int) $id]);
+
+        return droppedArmsRunMessages();
+    });
+    $afterFill = droppedArmsRunMessages();
+    DroppedUnionArms::extent(fn (): ?int => $memo->showingGaps(
+        fn (): ?int => DroppedUnionArms::leftBeside($scope, 'merge-branch-join', droppedArm('open'), 'string', 'k'),
+    ));
+
+    expect($filled)->toBe([])
+        ->and($afterFill)->toBe([])
+        ->and(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$open', 'k')]);
+});
 
 test('one arm node, site, union and subject give one gap id for the run, and changing any gives another', function () {
     $scope = droppedArmsScope();
@@ -206,6 +379,22 @@ test('an arm keeps its gap id when its file is parsed again, as once the parser 
         ->and(DroppedUnionArms::gap($scope, 'match-arm', $second, 'string'))->not->toBe($id)
         ->and(DroppedUnionArms::gap($scope, 'match-arm', $elsewhere, 'string'))->not->toBe($id);
 });
+
+test('the warning log reads each warning raised or held since a mark, less one a read thrown away withdrew', function (bool $shows) {
+    $mark = DroppedUnionArms::warningMark();
+
+    inGapMode($shows, function (): void {
+        DroppedUnionArms::replaceable(
+            fn (): array => DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[droppedArm('gone'), 'closure-union']], droppedArmsScope()),
+            fn (): bool => false,
+        );
+        DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[droppedArm('kept'), 'closure-union']], droppedArmsScope());
+    });
+    $logged = DroppedUnionArms::warningsSince($mark);
+
+    expect(array_column($logged, 'message'))->toBe([droppedArmLeftOutMessage('$kept')])
+        ->and($logged[0]['gap'] !== null)->toBe($shows);
+})->with(['gaps hidden' => [false], 'gaps shown' => [true]]);
 
 test('the gap log gives each gap made or replayed since a mark, each once, and a replay counts its dropped arms', function () {
     $scope = droppedArmsScope();
@@ -537,13 +726,17 @@ test('a gap arm beside the null a drop left still reads as that null', function 
 test('a placeholder beside gap arms warns as the placeholder alone', function (string $type, ?string $published) {
     DroppedUnionArms::leftOut(droppedArmsUnion($type), [[droppedArm('arm'), 'closure-union']], droppedArmsScope());
 
-    expect(droppedArmsRunMessages())->toBe($published === null ? [] : [droppedArmPlaceholderMessage('$arm', $published)]);
+    expect(droppedArmsRunMessages())->toBe(match ($published) {
+        null => [],
+        'left out' => [droppedArmLeftOutMessage('$arm')],
+        default => [droppedArmPlaceholderMessage('$arm', $published)],
+    });
 })->with([
     'null' => ['null | $gap1', '`null`, as if it were always null'],
     'never[]' => ['never[] | $gap1 | $gap2', '`never[]`, an array that is always empty'],
     'both' => ['$gap3 | null | never[]', '`null | never[]`, as if it were always null or an empty array'],
     'only gaps' => ['$gap1', null],
-    'a type' => ['string | $gap1', null],
+    'a type' => ['string | $gap1', 'left out'],
 ]);
 
 test('a receiver\'s join leaves a gap per write it warns of in the gap mode, each warning held until a strip (PJ4b-d)', function (bool $shows) {

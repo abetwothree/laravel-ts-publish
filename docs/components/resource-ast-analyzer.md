@@ -68,12 +68,12 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   (`ReadsReturnedVariables::variableBranch()`): `analyzeAllReturnBranches()` merges them through
   `mergeReturnBranches()`, so a key one branch lacks publishes optional, and a guard's `return []` is an empty branch.
   A key the branches type with different classes queues each branch's class in branch order, and lists the enums they
-  wrap it in per token, so each keeps its import (`MethodAnalysis::queueSplitClasses()`). The walk joins the bodies of
-  an `if` chain or a loop the same way (`joinedBranches()`), the keys held before them one more branch where none need
-  run, dropping an untypable value beside a typed one and keeping a lone `null`, as a ternary's arms do.
-  `MethodAnalysis::dropRepeatsOf()` first drops what a branch repeats from an earlier one, so a key's queue grows by one
-  entry per write of it, not per join. A body that ends in a `throw`, or a `return` of anything but the variable, stays
-  out of the join, and a whole write that always runs in a branch replaces its keys, as at the top level.
+  wrap it in per token, so each keeps its import (`KeyValue::joined()`). The walk joins the bodies of an `if` chain or
+  a loop the same way (`ArrayWalk::branches()`), the keys held before them one more branch where none need run,
+  dropping an untypable value beside a typed one and keeping a lone `null`, as a ternary's arms do. `ShapeJoin` first
+  drops what a branch repeats from an earlier one, so a key's queue grows by one entry per write of it, not per join.
+  A body that ends in a `throw`, or a `return` of anything but the variable, stays out of the join, and a whole write
+  that always runs in a branch replaces its keys, as at the top level.
   A variable the walk does not read completely is skipped, unless no branch read completely has a key and every
   `return` is a literal or a variable, none inside a `try`, a `switch` or a bare block: then it is read leniently as a
   branch, as a lone variable is. A variable skipped only for a lenient read still adds, optional, each key and signature
@@ -85,9 +85,10 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   their flag onto it and onto the document `resolve()` wraps it in.
 - **Any other body falls back to its own first `return`** (`analyzeFirstReturn()`), never a closure's, shaped by the
   method's own `@return` and `#[TsCasts]` as a branch is. `analyzeArrayExpression()` lists the forms it reads, which
-  are also the base of a variable `ReadsReturnedVariables` walks; that trait holds the write rules, such as a key first
-  written in a branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=`
-  included. A parameter that no top-level write replaces, whether an assignment, one inside another expression,
+  are also the base of a variable `ReadsReturnedVariables` walks;
+  [`ArrayWalk`](../../src/Ast/Arrays/Build/ArrayWalk.php) holds the write rules, such as a key first written in a
+  branch publishing optional. The walk starts at the last top-level whole write it reads, a chained `=` included. A
+  parameter that no top-level write replaces, whether an assignment, one inside another expression,
   destructuring, a `foreach` target, `unset()` or a by-reference call that can drop a key, starts from the keys of the
   object its bound value spells (`parameterSeed()`), unless `ObjectMembers::seed()` finds a member would lose its text.
   A local whose read sees one write reads as its value (`writtenLocal()`), and the walk names a key such a local holds
@@ -98,7 +99,7 @@ answers; see [AST engine § Handler ordering](ast-engine.md#handler-ordering).
   are set and not null where `??=` runs, so it leaves them, and the `null` a closure or prop resolves to; a ternary,
   `??` or `match` with only some such arms (`mayHoldObject`) keeps the null its objects resolve to, and joins the
   default only past its plain arms' null; the default joins only past a plain `null`, or where a path may leave the key
-  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`keyPaths`); a seed's or a non-literal
+  unset, as a branch, a `switch` case or a keyless `mergeWhen()` item can (`WalkKeyState`); a seed's or a non-literal
   write's keys count as set. A written value that reads the variable itself reads the keys the walk holds there
   (`readAgainstWalk()`), or, where the walk cannot spell them, reads as the body's other reads do, which a page
   declines. A merge closure's body is seeded as `ClosureHandler` seeds a closure's, so a local it assigns shadows the
@@ -140,12 +141,13 @@ about the dropped value; a merge call keeps that `null` (`keepsLoneNull`), as a 
 `unknown`, because `unknown` absorbs whatever it joins.
 
 In the [gap mode](#the-gap-mode), the branch a spread helper's join drops beside a typed one stays as a gap arm on the
-key (`merge-branch-join`): held with the warning of the untyped write the branch names (`recordedMergeJoin()`), or
-silent where no branch names one (`gapDroppedReturns()`). A fill another branch spells unalike reads as a gap there
-rather than `unknown` (`BranchJoin::withUnalikeFillsUntyped()`). The helper's own `@return`, or the host's where the
-helper's frame is read in the host's mode, then types each dropped branch in place. A key every branch left `unknown`,
-or only a `null` beside them, still reads `unknown`, which a member fills whole. A merge call names no returns, so only
-a named untyped write leaves a gap there.
+key (`merge-branch-join`): held with the warning of the untyped write the branch names (`recordedMergeJoin()`), or,
+where the branch names none for that key, with the warning `DroppedUnionArms::leftBeside()` gives its return
+(`recordJoinDrops()`), which out of the mode prints at once. A fill another branch spells unalike reads as a gap
+there rather than `unknown` (`ShapeJoin::exclusive()`), warned of the same way beside a typed value. The helper's own
+`@return`, or the host's where the helper's frame is read in the host's mode, then types each dropped branch in place.
+A key every branch left `unknown`, or only a `null` beside them, still reads `unknown`, which a member fills whole. A
+merge call names no returns, so only a named untyped write leaves a gap there, and only such a drop warns.
 
 ### What the method's `@return` may fill
 
@@ -218,7 +220,7 @@ slots against the whole text's own names (`declaredArms()`), since the share may
 `{ a: User; p: Post }`'s `[null, Post]` beside `| User`. Where another branch spells those names outside a literal, with
 other slots or none, no join can bind them (`BranchJoin::declaredBranches()`): a strict join publishes the key `unknown`
 with no class, and a dropping one first reads that fill as the untyped value it stood in for
-(`MethodAnalysis::untype()`), so it drops the fill and publishes the other branches, as before the fill.
+(`KeyValue::untyped()`), so it drops the fill and publishes the other branches, as before the fill.
 `ResourceTransformer` reads a key's tokens from its slots where one holds an override's null, so `either: Person|User`
 publishes `User | WorkbenchUser`, each with its import, as an Inertia page does through `FileImportNames`; a per-name
 queue cannot hold that null.
@@ -524,8 +526,8 @@ Its rules follow Laravel's `ConditionallyLoadsAttributes` and the global `transf
   a whole array `analyzeArrayExpression()` reads, such as `$this->method()`. The same values passed without a closure
   merge alike, since Laravel merges `value($value)`. A side read as no array is an empty branch; one the analysis cannot
   read leaves the merge, and a variable holding it, not read completely. A key set before a merge keeps its value and
-  presence, as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule and
-  PHP's `+` alike, keeping each signature entry.
+  presence, as `mergeData()` unions the merged keys after it; `MethodAnalysis::dropKeysHeldBy()` applies that rule,
+  keeping each signature entry.
 - **A `whenLoaded()` value arm takes `| null`** unless `ModelAttributeResolver::relationLoadsNull()` rules it out:
   Laravel returns `null` for a relation loaded as `null` before it reads the value. A to-many never loads `null`; a
   relation the model does not declare can, under `nullable_relations`, unless the value hands it to a resource's
@@ -715,8 +717,8 @@ come out as the runtime sends them. Otherwise it is `[...$b, ...$a]`. An operand
 is spread as the value it resolves to, so an object joins as an object arm, and an untyped one as
 `Record<string, unknown>`, since PHP throws on `+` unless both sides are arrays. For the same reason a nullable list
 operand is spread without its `null`, and two nullable lists add `number`, as PHP adds `null + null` as `0`. With no
-array on either side, `+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and merges them
-as `+=` does.
+array on either side, `+` stays `number`. As a whole return, `analyzeArrayExpression()` reads each side and joins them
+through `ArrayUnion::plus()`, as `+=` does: the right's value lands only on a key the left may leave unset.
 
 A model arm names the bare model interface, which is a floor, not an exact match. It matches `attributesToArray()`,
 since the `model-split` template renders columns and appended accessors into that interface. It omits the relations
@@ -730,7 +732,7 @@ set. Only this collector reads `$var->toArray()` as a model, so a model's `toArr
 writes a value Laravel may remove (`removed`), and whether a merge call wrote it. At the end of the literal, before the
 reconcile, [`LiteralFold`](../../src/Ast/Analysis/Fold/LiteralFold.php) decides each key once as PHP builds the literal
 and, where `Reading::filtersBodyOf()` holds, as `filter()` lifts each merge over the keys after it; `applyTo()` writes
-the key from every value it can send, joined by `BranchJoin::joinInto()` with every class kept, beside the arms its
+the key from every value it can send, joined by `ShapeJoin::value()` with every class kept, beside the arms its
 print keeps. The last map's arm takes in every earlier map's value, a map that may be `[]` prints only so joined, and a
 map's arm after another item stays only where every key fits its value. A merged literal is read through the same loop.
 A key's slot sits where its first write landed on each path, so a first write that may not land lets a merge before the
@@ -1070,10 +1072,10 @@ up unused; see
 ### `mergeReturnBranches()` carries every `MethodAnalysis::merge()` channel, plus two flat scalars
 
 `mergeReturnBranches()` is public for `InertiaPageAnalyzer`, which merges one component's renders through it, and
-delegates to `BranchJoin::joinInto()`, which a literal's fold also joins a key's sources with. The join needs a
-per-branch property map to union a key that several branches set, which a field-by-field merge cannot express. It takes
-every channel from `MethodAnalysis::merge()` on a scratch analysis, so the two cannot drift, and a channel added to
-`merge()` reaches branch merging too.
+delegates to `BranchJoin::joinInto()`, which joins the branches' shapes with `ShapeJoin::exclusive()`; a literal's fold
+joins a key's sources with `ShapeJoin::value()`. A key several branches set joins by `KeyValue::joined()`, which a
+field-by-field merge cannot express. The rest joins by `MethodAnalysis::merge()`'s rules, restated over shapes in
+`ShapeJoin`, so a channel added to `merge()` is added there too, beside the lift and the lowering.
 
 The inline queues are never deduped, in `merge()` as in `addProperty()`, for the reason
 [AST engine § `addProperty()` is the only way a value becomes a property](ast-engine.md#addproperty-is-the-only-way-a-value-becomes-a-property)
@@ -1094,7 +1096,7 @@ each kind through its own
 [`ClassTokenQueue`](../../src/Support/ClassTokenQueue.php), by the rule in
 [Import name registry](import-name-registry.md#rewriting-aliased-type-references).
 `CoalesceHandler`, `ConditionalMethodHandler::applyConditionalDefault()` and the two receiver sites enter through
-`unionResults()`. `BranchJoin::joinInto()` reads a key's branches by class the same way, over all four kinds, wherever
+`unionResults()`. `KeyValue::joined()` reads a key's branches by class the same way, over all four kinds, wherever
 the join kept a type with no declared slots (`keepsClassesApart()`): a method's returns, a merge call's value and
 default, a returned variable's branches and a literal's fold alike. A queue a branch only repeats of an earlier one is
 dropped inside the join, so repeats do not pile up.

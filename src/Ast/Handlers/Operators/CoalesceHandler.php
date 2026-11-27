@@ -46,7 +46,9 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
     public function resolve(Expr $expr, AnalysisScope $scope, ExpressionEngine $engine): ?array
     {
         if ($expr instanceof BinaryOp\Coalesce) {
-            $leftResult = ValueResult::checkedOperand($engine->resolve($expr->left));
+            $checked = $engine->resolve($expr->left);
+            $mayLack = $checked['absentReadsNull'] ?? false;
+            $leftResult = ValueResult::checkedOperand($checked);
 
             // A collection read through no null object is never null, so `??` hands it back and never runs its right.
             if ($this->holdsCollection($expr->left, $leftResult, $scope, $engine)) {
@@ -65,9 +67,10 @@ final class CoalesceHandler implements ExpressionHandler, KeepsHeldObjects
             }
 
             $rightResult = $engine->resolve($expr->right);
-            // A MissingValue is not null, so `??` returns it; the right operand is reached only past a left null.
-            $optional = $leftResult['optional']
-                || ($rightResult['optional'] && ($leftResult['type'] === 'unknown' || TsTypeString::hasNullArm($leftResult['type'])));
+            // A MissingValue is not null, so `??` returns it; the right operand is reached only past a left null or a
+            // key it lacks.
+            $optional = $leftResult['optional'] || ($rightResult['optional'] && ($mayLack
+                || $leftResult['type'] === 'unknown' || TsTypeString::hasNullArm($leftResult['type'])));
 
             // With a non-null fallback only an object's call can still return null, so any other left null goes.
             if ($held === null || ! $held['objectNull']) {

@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalGapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalScopesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalValueResource;
@@ -19,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocal
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureShadowedValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureUnimportedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PlusThenCoalesceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadLocalHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchLocalKeyUnsetResource;
@@ -573,6 +575,161 @@ test('a value a branch cannot type drops beside a typed one, and a lone null sta
     'beside a value held before' => ['$d = ["a" => 1]; if ($x) { $d["a"] = $nowhere; }', 'a: number'],
     'beside a lone null' => ['$d = []; if ($x) { $d["b"] = null; } else { $d["b"] = $nowhere; }', 'b: null'],
     'in every branch' => ['$d = []; if ($x) { $d["c"] = $nowhere; } else { $d["c"] = $nowhere; }', 'c: unknown'],
+]);
+
+// PHP's `+` keeps a key that exists, a held null included, and `??` reads past an unset or null one, so a default lands
+// where a branch skipped the key; a when() value is set and stays.
+test('a + or ?? lays its default on a key the walk may lack, and leaves a key it always holds', function (string $body, string $members) {
+    expect(walkedMembers($body))->toBe($members);
+})->with([
+    'a ?? self-read over an if-built base' => [
+        '$d = ["id" => 0]; if ($x) { $d["by"] = $this->resource->title; } $d["by"] = $d["by"] ?? "z";',
+        'id: number; by: string',
+    ],
+    'a ?? self-read over an empty base' => [
+        '$d = []; if ($x) { $d["by"] = $this->resource->title; } $d["by"] = $d["by"] ?? "z";',
+        'by: string',
+    ],
+    'a += over a branch-set key' => ['$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => "z"];', 'id: number; k: number | string'],
+    'a += of an untypable value, which drops beside the typed one' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => $this->resource->nowhere];',
+        'id: number; k: number',
+    ],
+    'a += over an untypable value a branch set' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = $this->resource->nowhere; } $d += ["k" => "none"];',
+        'id: number; k: unknown',
+    ],
+    'a += over an untypable value a loop set' => [
+        '$d = ["id" => 0]; foreach ($rows as $i) { if ($i > 1) { $d["k"] = $i; } } $d += ["k" => "none"];',
+        'id: number; k: unknown',
+    ],
+    'a + base over an untypable value a mergeWhen() sets' => [
+        '$d = ["id" => 0, $this->mergeWhen($x, ["k" => $this->resource->nowhere])] + ["k" => "z"];',
+        'id: number; k: unknown',
+    ],
+    'a += that may not run' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } if ($y) { $d += ["k" => "z"]; }',
+        'id: number; k?: number | string',
+    ],
+    'a ??= past a += that laid a when() value where a branch skipped the key' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => $this->when($y, 2)]; $d["k"] ??= "z";',
+        'id: number; k?: number',
+    ],
+    'a ??= past a += over a when() value a branch set' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = $this->when($y, 1); } $d += ["k" => 2]; $d["k"] ??= "z";',
+        'id: number; k?: number',
+    ],
+    'a ??= past a += that may not run' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } if ($y) { $d += ["k" => $this->when($z, 2)]; } $d["k"] ??= "z";',
+        'id: number; k?: number | string',
+    ],
+    'a + over a when() key' => ['$d = ["by" => $this->when($x, 1)] + ["by" => "z"];', 'by?: number'],
+    'a += over a when() key' => ['$d = ["by" => $this->when($x, 1)]; $d += ["by" => "z"];', 'by?: number'],
+    'a ?? self-read over a when() key' => ['$d = ["by" => $this->when($x, "a")]; $d["by"] = $d["by"] ?? "z";', 'by?: string'],
+    'a ?? self-read whose default a when() may remove, over an if-built base' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d["k"] = $d["k"] ?? $this->when($y, 2);',
+        'id: number; k?: number',
+    ],
+    'a ?? self-read whose default a when() may remove, over an empty base' => [
+        '$d = []; if ($x) { $d["k"] = 1; } $d["k"] = $d["k"] ?? $this->when($y, 2);',
+        'k?: number',
+    ],
+    'a ?? self-read over a ternary base' => [
+        '$d = $x ? ["by" => $this->resource->title] : []; $d["by"] = $d["by"] ?? "z";',
+        'by: string',
+    ],
+    'a + over a local the read sees two writes of' => ['$a = []; if ($x) { $a["k"] = 1; } $d = $a + ["k" => "x"];', ''],
+]);
+
+// A `+=` that always runs sets the key where the branch skipped it, unless its right may lack the key too, so the `??=`
+// default lands only past a right that may.
+test('a ??= past a += lands its default only where the += may leave the key unset', function () {
+    $sent = [];
+
+    foreach ([0, 1, 2, 3, 4, 5] as $id) {
+        $post = new Post;
+        $post->forceFill(['id' => $id]);
+        $payload = new PlusThenCoalesceResource($post)->resolve(Request::create('/'));
+        $sent[] = [$payload['laid']['k'] ?? null, $payload['maybe_laid']['k'] ?? null];
+    }
+
+    expect(returnedVariableMembers(PlusThenCoalesceResource::class))
+        ->toBe('laid: { id: number; k?: number }; maybe_laid: { id: number; k?: number | string }')
+        ->and($sent)->toBe([[2, 'z'], [2, 'z'], [null, null], [1, 1], [1, 1], [1, 1]]);
+});
+
+/**
+ * The warning that a `+` on line 1 left out an untypable value its right laid beside a typed one.
+ */
+function plusLeftOutMessage(string $value): string
+{
+    return "The value on line 1 leaves out `{$value}`, which could not be typed beside the typed values it joins, so its "
+        .'published type may not admit every value it sends. Give what it reads a return type or a `@return` docblock.';
+}
+
+// The union keeps the left's typed value alone, so the run names the untypable value the right laid there.
+test('a + or += that leaves out the untypable value its right lays beside a typed one warns, naming it', function (string $body, string $members, array $warned) {
+    AnalysisWarnings::reset();
+    DroppedUnionArms::start();
+
+    try {
+        $published = walkedMembers($body);
+    } finally {
+        $recorded = DroppedUnionArms::stop();
+    }
+
+    expect($published)->toBe($members)
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe(array_column($warned, 0))
+        ->and(array_map(fn (array $arm): string => $arm['expression'].' '.$arm['site'], $recorded))->toBe(array_column($warned, 1));
+})->with([
+    'a += of a literal' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => cache("k")];',
+        'id: number; k: number',
+        [[plusLeftOutMessage('\\cache("k")'), '\\cache("k") plus-union']],
+    ],
+    'a + base' => [
+        '$d = ["id" => 0, $this->mergeWhen($x, ["k" => 1])] + ["k" => cache("k")];',
+        'id: number; k: number',
+        [[plusLeftOutMessage('\\cache("k")'), '\\cache("k") plus-union']],
+    ],
+    'a += over a key a branch sets only to null, which the default leaves the placeholder' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = null; } $d += ["k" => cache("k")];',
+        'id: number; k: null',
+        [[
+            'The value on line 1 publishes `null`, as if it were always null, because `\\cache("k")` could not be typed and '
+                .'was left out of its union. Give what it reads a return type or a `@return` docblock.',
+            '\\cache("k") plus-union',
+        ]],
+    ],
+    'a += over a when() key, which the left holds on every path' => [
+        '$d = ["by" => $this->when($x, 1)]; $d += ["by" => cache("k")];',
+        'by?: number',
+        [],
+    ],
+    'a += whose left holds the key on every path' => [
+        '$d = ["id" => 0, "k" => 1]; $d += ["k" => cache("k")];',
+        'id: number; k: number',
+        [],
+    ],
+    'a += over an untypable value a branch set' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = cache("k"); } $d += ["k" => cache("j")];',
+        'id: number; k: unknown',
+        [],
+    ],
+]);
+
+// The walk first reads the default against what it holds, and throws that read away where it drops an arm.
+test('a ?? self-read whose default no rule types publishes unknown and warns of nothing', function (string $body, string $members) {
+    AnalysisWarnings::reset();
+
+    expect(walkedMembers($body))->toBe($members)
+        ->and(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'over a key a branch sets' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d["k"] = $d["k"] ?? cache("k");',
+        'id: number; k: unknown',
+    ],
+    'over a typed key' => ['$d = ["k" => $this->resource->title]; $d["k"] = $d["k"] ?? cache("k");', 'k: unknown'],
 ]);
 
 // The arm left out is the last write of its key in the branch, or before the branches for the keys held before them.

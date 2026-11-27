@@ -18,7 +18,6 @@ use AbeTwoThree\LaravelTsPublish\Dtos\Contracts\Datable;
 use AbeTwoThree\LaravelTsPublish\Facades\JsEmitter;
 use AbeTwoThree\LaravelTsPublish\Facades\LaravelTsPublish;
 use AbeTwoThree\LaravelTsPublish\Facades\TsNaming;
-use AbeTwoThree\LaravelTsPublish\Facades\TsTypeString;
 use AbeTwoThree\LaravelTsPublish\Support\ClassTokenQueue;
 use AbeTwoThree\LaravelTsPublish\Support\ImportMaps;
 use AbeTwoThree\LaravelTsPublish\Support\TopLevelRenumbering;
@@ -252,6 +251,40 @@ class MethodAnalysis
     }
 
     /**
+     * Carried classes with more of them, once each per kind; a kind more brings none of stays as it was.
+     *
+     * @param  CarriedMap  $carried
+     * @param  CarriedMap  $more
+     * @return CarriedMap
+     */
+    public static function carriedWith(array $carried, array $more): array
+    {
+        foreach ($more as $kind => $fqcns) {
+            if ($fqcns !== []) {
+                $carried[$kind] = array_values(array_unique([...$carried[$kind] ?? [], ...$fqcns]));
+            }
+        }
+
+        return $carried;
+    }
+
+    /**
+     * Custom imports with more of them appended, path by path, each repeat kept.
+     *
+     * @param  ImportMapType  $imports
+     * @param  ImportMapType  $more
+     * @return ImportMapType
+     */
+    public static function importsWith(array $imports, array $more): array
+    {
+        foreach ($more as $path => $types) {
+            $imports[$path] = [...$imports[$path] ?? [], ...$types];
+        }
+
+        return $imports;
+    }
+
+    /**
      * Record one resolved value as a property and route every FQCN channel it carries.
      *
      * The one place a value becomes a property: a channel added here reaches every collector,
@@ -305,10 +338,7 @@ class MethodAnalysis
 
         $this->queueChannels($name, $result);
 
-        foreach ($result['customImports'] ?? [] as $path => $types) {
-            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
-        }
-
+        $this->customImports = self::importsWith($this->customImports, $result['customImports'] ?? []);
         $this->carry($result['carriedFqcns'] ?? []);
     }
 
@@ -382,10 +412,7 @@ class MethodAnalysis
         $this->alikeClassFqcns = array_replace($this->alikeClassFqcns, $source->alikeClassFqcns);
         $this->closedToDottedKeys = array_replace($this->closedToDottedKeys, $source->closedToDottedKeys);
         $this->carry($source->carried);
-
-        foreach ($source->customImports as $path => $types) {
-            $this->customImports[$path] = [...($this->customImports[$path] ?? []), ...$types];
-        }
+        $this->customImports = self::importsWith($this->customImports, $source->customImports);
 
         foreach ($source->inlineEnumFqcns as $propName => $fqcns) {
             $this->inlineEnumFqcns[$propName] = [...($this->inlineEnumFqcns[$propName] ?? []), ...$fqcns];
@@ -408,100 +435,6 @@ class MethodAnalysis
         foreach ($source->wrappedEnums as $propName => $fqcns) {
             $this->wrappedEnums[$propName] = [...($this->wrappedEnums[$propName] ?? []), ...$fqcns];
         }
-    }
-
-    /**
-     * Take over every key, channel, cast and flag of another analysis, as a returned variable's walk does where
-     * exclusive branches join. A nested literal's spread arms stay behind, as they print beside that literal alone.
-     */
-    public function replaceWith(self $source): void
-    {
-        $this->properties = $source->properties;
-        $this->readsCompletely = $source->readsCompletely;
-        $this->holdsUnreadKeys = $source->holdsUnreadKeys;
-        $this->holdsUnnamedKeys = $source->holdsUnnamedKeys;
-        $this->nestedResources = $source->nestedResources;
-        $this->customImports = $source->customImports;
-        $this->directEnumFqcns = $source->directEnumFqcns;
-        $this->modelFqcns = $source->modelFqcns;
-        $this->inlineEnumFqcns = $source->inlineEnumFqcns;
-        $this->inlineModelFqcns = $source->inlineModelFqcns;
-        $this->inlineResourceFqcns = $source->inlineResourceFqcns;
-        $this->inlineEnumResourceFqcns = $source->inlineEnumResourceFqcns;
-        $this->wrappedEnums = $source->wrappedEnums;
-        $this->casts = $source->casts;
-        $this->carried = $source->carried;
-        $this->declaredTokenFqcns = $source->declaredTokenFqcns;
-        $this->alikeClassFqcns = $source->alikeClassFqcns;
-        $this->heldObjectKeys = $source->heldObjectKeys;
-        $this->closedToDottedKeys = $source->closedToDottedKeys;
-        $this->flatTypeAlias = $source->flatTypeAlias;
-        $this->flatTypeAliasFqcn = $source->flatTypeAliasFqcn;
-        $this->variants = $source->variants;
-    }
-
-    /**
-     * Drop what this branch of a join only repeats from another, which would pile up per join: the queue of a key
-     * both hold with the same entries and queue, whose type the join spells once, and each custom import both bring.
-     */
-    public function dropRepeatsOf(self $other): void
-    {
-        $theirs = [];
-
-        foreach ($other->properties as $property) {
-            $theirs[$property['name']][] = $property;
-        }
-
-        $mine = [];
-
-        foreach ($this->properties as $property) {
-            $mine[$property['name']][] = $property;
-        }
-
-        foreach ($mine as $name => $entries) {
-            if ($entries !== ($theirs[$name] ?? null)) {
-                continue;
-            }
-
-            $this->inlineEnumFqcns = self::withoutRepeat($this->inlineEnumFqcns, $other->inlineEnumFqcns, $name);
-            $this->inlineModelFqcns = self::withoutRepeat($this->inlineModelFqcns, $other->inlineModelFqcns, $name);
-            $this->inlineResourceFqcns = self::withoutRepeat(
-                $this->inlineResourceFqcns, $other->inlineResourceFqcns, $name,
-            );
-            $this->inlineEnumResourceFqcns = self::withoutRepeat(
-                $this->inlineEnumResourceFqcns, $other->inlineEnumResourceFqcns, $name,
-            );
-            $this->wrappedEnums = self::withoutRepeat($this->wrappedEnums, $other->wrappedEnums, $name);
-        }
-
-        foreach ($this->customImports as $path => $types) {
-            $this->customImports[$path] = array_values(array_diff($types, $other->customImports[$path] ?? []));
-        }
-    }
-
-    /**
-     * Queue, in branch order, the class each branch of a merge types a key with where two branches type it apart, as a
-     * union's arms are: merge() keeps only the last branch's, leaving the others' tokens with no import.
-     *
-     * @param  list<self>  $branches
-     */
-    public function queueSplitClasses(array $branches): void
-    {
-        [$this->nestedResources, $this->inlineResourceFqcns] = self::queuedSplitClasses(
-            $this->nestedResources,
-            $this->inlineResourceFqcns,
-            array_map(fn (self $branch): array => [$branch->nestedResources, $branch->inlineResourceFqcns], $branches),
-        );
-        [$this->directEnumFqcns, $this->inlineEnumFqcns] = self::queuedSplitClasses(
-            $this->directEnumFqcns,
-            $this->inlineEnumFqcns,
-            array_map(fn (self $branch): array => [$branch->directEnumFqcns, $branch->inlineEnumFqcns], $branches),
-        );
-        [$this->modelFqcns, $this->inlineModelFqcns] = self::queuedSplitClasses(
-            $this->modelFqcns,
-            $this->inlineModelFqcns,
-            array_map(fn (self $branch): array => [$branch->modelFqcns, $branch->inlineModelFqcns], $branches),
-        );
     }
 
     /**
@@ -565,11 +498,7 @@ class MethodAnalysis
      */
     public function carry(array $carried): void
     {
-        foreach ($carried as $kind => $fqcns) {
-            if ($fqcns !== []) {
-                $this->carried[$kind] = array_values(array_unique([...($this->carried[$kind] ?? []), ...$fqcns]));
-            }
-        }
+        $this->carried = self::carriedWith($this->carried, $carried);
     }
 
     /**
@@ -772,16 +701,6 @@ class MethodAnalysis
     }
 
     /**
-     * Read a key as an untyped value: `unknown`, with no import channel, and without each custom import its text
-     * spelled that no other key reads outside a literal. Whether the value may be left out stays, since an untyped
-     * value may be too.
-     */
-    public function untype(string $name): void
-    {
-        $this->retypeClassLess($name, 'unknown');
-    }
-
-    /**
      * Retype a key with a text naming no class, as TokenSlots::classLess() reads one: with no import channel, and
      * without each custom import its old text spelled that neither the new text nor another key reads outside a
      * literal. Whether the value may be left out stays.
@@ -804,20 +723,7 @@ class MethodAnalysis
         }
 
         $this->forgetChannels($name);
-
-        // A literal's spelling binds no import, so only a read token elsewhere keeps one.
-        $onlyItsOwn = static fn (string $import): bool => TsTypeString::typeNameOccursIn(ImportMaps::localName($import), ...$spelled)
-            && ! TokenSlots::readsName(ImportMaps::localName($import), ...$others);
-
-        foreach ($this->customImports as $path => $names) {
-            $kept = array_values(array_filter($names, static fn (string $import): bool => ! $onlyItsOwn($import)));
-
-            if ($kept === []) {
-                unset($this->customImports[$path]);
-            } else {
-                $this->customImports[$path] = $kept;
-            }
-        }
+        $this->customImports = TokenSlots::keptImports($this->customImports, $spelled, $others);
     }
 
     /**
@@ -1041,68 +947,6 @@ class MethodAnalysis
             },
             fn (array $property): bool => ! isset($this->casts[$property['name']]),
         );
-    }
-
-    /**
-     * A class map and its queue map with each key the branches type with different classes moved onto its queue: every
-     * branch's class there in branch order, each kept for its import under its own FQCN, as an embedded class is.
-     *
-     * @param  ClassMapType  $classes
-     * @param  FqcnQueueMap  $queues
-     * @param  list<array{ClassMapType, FqcnQueueMap}>  $branches
-     * @return array{ClassMapType, FqcnQueueMap}
-     */
-    private static function queuedSplitClasses(array $classes, array $queues, array $branches): array
-    {
-        $byKey = [];
-
-        foreach ($branches as [$branchClasses]) {
-            foreach ($branchClasses as $name => $fqcn) {
-                $byKey[$name][$fqcn] = true;
-            }
-        }
-
-        foreach ($byKey as $name => $fqcns) {
-            if (count($fqcns) < 2) {
-                continue;
-            }
-
-            $queue = [];
-
-            foreach ($branches as [$branchClasses, $branchQueues]) {
-                if (isset($branchClasses[$name])) {
-                    $queue[] = $branchClasses[$name];
-                }
-
-                array_push($queue, ...$branchQueues[$name] ?? []);
-            }
-
-            unset($classes[$name]);
-
-            foreach (array_keys($fqcns) as $fqcn) {
-                $classes[$fqcn] = $fqcn;
-            }
-
-            $queues[$name] = $queue;
-        }
-
-        return [$classes, $queues];
-    }
-
-    /**
-     * A queue map without one key's queue, where the other map queues the same classes for that key.
-     *
-     * @param  FqcnQueueMap  $queues
-     * @param  FqcnQueueMap  $other
-     * @return FqcnQueueMap
-     */
-    private static function withoutRepeat(array $queues, array $other, int|string $name): array
-    {
-        if (isset($queues[$name]) && $queues[$name] === ($other[$name] ?? null)) {
-            unset($queues[$name]);
-        }
-
-        return $queues;
     }
 
     /**

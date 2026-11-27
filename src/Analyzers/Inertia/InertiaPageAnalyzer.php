@@ -12,6 +12,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\RuntimeClass;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\UnreadSpreads;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ArrayUnion;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\CastChannels;
 use AbeTwoThree\LaravelTsPublish\Ast\Composition\FileImportNames;
@@ -836,7 +837,7 @@ class InertiaPageAnalyzer
 
         $right = $this->operandProps($propsArg->right, $context, $analyzer, $scope);
 
-        return $right === null ? null : $this->plusProps($left, $right, $analyzer);
+        return $right === null ? null : ArrayUnion::plusAnalyses($left, $right, new ResourceAnalysis);
     }
 
     /**
@@ -857,46 +858,6 @@ class InertiaPageAnalyzer
         $analyses = $this->literalProps($literals, $analyzer);
 
         return count($analyses) === 1 ? $analyses[0] : $analyzer->mergeReturnBranches($analyses);
-    }
-
-    /**
-     * The props `$left + $right` holds: on the path where the left lacks each key it may lack, the right's value lands.
-     */
-    private function plusProps(ResourceAnalysis $left, ResourceAnalysis $right, ResourceAstAnalyzer $analyzer): ResourceAnalysis
-    {
-        // With no key the left may lack, both paths are one.
-        if (! array_any($left->properties, fn (array $prop): bool => $prop['optional'])) {
-            $right->dropKeysHeldBy($left);
-            $left->merge($right);
-
-            return $left;
-        }
-
-        $present = clone $left;
-        $present->properties = array_map(
-            fn (array $prop): array => MethodAnalysis::withPresence(
-                $prop, optional: false, absent: false, removed: $prop['removed'] ?? false,
-            ),
-            $left->properties,
-        );
-        $absent = clone $left;
-        $absent->properties = [];
-
-        foreach ($left->properties as $prop) {
-            if ($prop['optional']) {
-                $absent->forgetChannels($prop['name']);
-            } else {
-                $absent->properties[] = $prop;
-            }
-        }
-
-        foreach ([$present, $absent] as $branch) {
-            $added = clone $right;
-            $added->dropKeysHeldBy($branch);
-            $branch->merge($added);
-        }
-
-        return $analyzer->mergeReturnBranches([$present, $absent]);
     }
 
     /**

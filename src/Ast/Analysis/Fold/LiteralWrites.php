@@ -8,7 +8,12 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
-use AbeTwoThree\LaravelTsPublish\Ast\Composition\BranchJoin;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ShapeJoin;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Print\ShapeLowering;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyValue;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ShapeObserver;
 use AbeTwoThree\LaravelTsPublish\Ast\Contracts\ExpressionHandler;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\InlineObjectResult;
 use AbeTwoThree\LaravelTsPublish\Ast\Values\ObjectMembers;
@@ -31,7 +36,6 @@ use PhpParser\Node;
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type KeyedValues from ObjectMembers
- * @phpstan-import-type AnalyzedProperty from MethodAnalysis
  * @phpstan-import-type PrintedArm from LiteralArms
  * @phpstan-import-type MapArm from LiteralArms
  * @phpstan-import-type InlineSpreadArm from InlineObjectResult
@@ -117,8 +121,8 @@ final class LiteralWrites
                 continue;
             }
 
-            [$absent, $removed] = self::rowFacts($row);
-            $this->addWrite($row['name'], $position, $fromMerge, $absent, $removed, $index);
+            $presence = KeyPresence::fromRow($row);
+            $this->addWrite($row['name'], $position, $fromMerge, $presence->absent, $presence->removed, $index);
         }
     }
 
@@ -131,10 +135,10 @@ final class LiteralWrites
     public function recordKey(string $name, array $result, int $position): void
     {
         $this->carryWide($result['customImports'] ?? [], $result['carriedFqcns'] ?? []);
-        [$absent, $removed] = self::valueFacts($result);
+        $presence = KeyPresence::fromValue($result);
         $source = $this->addSource(['value' => $result]);
         $this->keyedSources[$source] = true;
-        $this->addWrite($name, $position, false, $absent, $removed, $source);
+        $this->addWrite($name, $position, false, $presence->absent, $presence->removed, $source);
     }
 
     /**
@@ -161,8 +165,8 @@ final class LiteralWrites
 
         foreach ($keys as [$name, $result]) {
             $index = $this->addSource(['value' => $result]);
-            [$absent, $removed] = self::valueFacts($result);
-            $this->addWrite($name, $position, false, $absent, $removed, $index);
+            $presence = KeyPresence::fromValue($result);
+            $this->addWrite($name, $position, false, $presence->absent, $presence->removed, $index);
 
             if ($printedArm) {
                 $this->armSources[$index] = true;
@@ -249,11 +253,11 @@ final class LiteralWrites
         foreach ($values as $name => $value) {
             $at = $this->soleWrite((string) $name) ?? throw new LogicException("No keyed item alone writes `{$name}`.");
             $value ??= ValueResult::removed();
-            [$absent, $removed] = self::valueFacts($value);
+            $presence = KeyPresence::fromValue($value);
             $write = $this->writes[$at];
             $copy->sources[$write->source] = ['value' => $value];
             $replayed[$at] = new KeyWrite(
-                $write->name, $write->position, $write->fromMerge, $absent, $removed, $write->source,
+                $write->name, $write->position, $write->fromMerge, $presence->absent, $presence->removed, $write->source,
             );
         }
 
@@ -315,41 +319,8 @@ final class LiteralWrites
                     || self::keysFitMapValue($target, $arm['map']['value']['type']),
             ),
         )));
-    }
 
-    /**
-     * The presence facts a row's write carries: none where it is required, as a cast that keeps it says; else its
-     * own, a `?` with neither (a declaration's) read as a key its writer may leave unset.
-     *
-     * @param  AnalyzedProperty  $row
-     * @return array{bool, bool}
-     */
-    private static function rowFacts(array $row): array
-    {
-        if (! $row['optional']) {
-            return [false, false];
-        }
-
-        $removed = $row['removed'] ?? false;
-
-        return [($row['absent'] ?? false) || ! $removed, $removed];
-    }
-
-    /**
-     * The presence facts a written value carries, as addProperty() reads them.
-     *
-     * @param  ValueExpressionResult  $result
-     * @return array{bool, bool}
-     */
-    private static function valueFacts(array $result): array
-    {
-        if (! $result['optional']) {
-            return [false, false];
-        }
-
-        $absent = $result['absent'] ?? false;
-
-        return [$absent, ! $absent || ($result['removed'] ?? false)];
+        resolve(ShapeObserver::class)->observed($target);
     }
 
     /**
@@ -597,41 +568,47 @@ final class LiteralWrites
     }
 
     /**
-     * One key's row and maps, joined from each source's slice as a branch join joins them (BranchJoin::joinInto()):
-     * the first source's untyped value kept, as PHP may still send it, and every class kept apart and imported. The
-     * caller sets the fold's presence.
+     * One key's row and maps, joined from each source's value as a branch join joins them (ShapeJoin::value()): the
+     * first source's untyped value kept, as PHP may still send it, and every class kept apart and imported. The caller
+     * sets the fold's presence.
      *
      * @param  list<int>  $sources
      */
     private function joinedSlice(string $name, array $sources): MethodAnalysis
     {
-        $slices = [];
+        $values = [];
 
         foreach ($sources as $index) {
             $source = $this->sources[$index];
 
             if (isset($source['value'])) {
-                $slice = new MethodAnalysis;
-                $slice->addProperty($name, self::withoutWide($source['value']));
-                $slices[] = $slice;
+                $values[] = KeyValue::ofResult($name, self::withoutWide($source['value']));
             } else {
-                $slices[] = $source['analysis']->sliceOf($name);
+                $slice = $source['analysis']->sliceOf($name);
+                $values[] = KeyValue::of($slice, $slice->properties[0]);
             }
         }
 
-        $joined = new MethodAnalysis;
-        BranchJoin::joinInto($joined, $slices, dropsUntypedBranches: true, keepsFirstUntyped: true);
+        if ($values === []) {
+            throw new LogicException('A joined key has a source.');
+        }
 
-        return $this->withDroppedGap($joined, $slices);
+        $joined = new MethodAnalysis;
+        $value = ShapeJoin::value($values, new JoinOptions(dropsUntypedBranches: true, keepsFirstUntyped: true));
+        $joined->properties = [['name' => $name, ...$value->row]];
+        ShapeLowering::layChannels($joined, $name, $value);
+        resolve(ShapeObserver::class)->observed($joined);
+
+        return $this->withDroppedGap($joined, $values);
     }
 
     /**
      * In the gap mode, a joined key the join typed without a later source's untyped value, which may not be written,
      * with a gap arm in that value's place; out of it, the key as it is.
      *
-     * @param  list<MethodAnalysis>  $slices
+     * @param  list<KeyValue>  $values
      */
-    private function withDroppedGap(MethodAnalysis $joined, array $slices): MethodAnalysis
+    private function withDroppedGap(MethodAnalysis $joined, array $values): MethodAnalysis
     {
         $property = $joined->properties[0] ?? null;
 
@@ -640,10 +617,7 @@ final class LiteralWrites
             return $joined;
         }
 
-        $dropped = array_any(
-            array_slice($slices, 1),
-            static fn (MethodAnalysis $slice): bool => in_array('unknown', array_column($slice->properties, 'type'), true),
-        );
+        $dropped = array_any(array_slice($values, 1), static fn (KeyValue $value): bool => $value->type() === 'unknown');
 
         if ($dropped) {
             $id = DroppedUnionArms::gap($this->scope, 'fold-join', $this->literal, $property['type']);

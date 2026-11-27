@@ -32,7 +32,7 @@ export const exitingNestedWhole = /* @__PURE__ */ annotatePageProps<ExitingNeste
     component: 'PropsWalk/ExitingNestedWhole',
 }));
 
-export type CoalescedSelfReadPageProps = Inertia.SharedData & { heading: string, total?: number | string };
+export type CoalescedSelfReadPageProps = Inertia.SharedData & { heading: string, total: number | string };
 
 /** A key a branch may skip, given a default by reading itself with `??`. */
 export const coalescedSelfRead = /* @__PURE__ */ annotatePageProps<CoalescedSelfReadPageProps>()(/* @__PURE__ */ defineRoute({

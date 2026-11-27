@@ -161,7 +161,7 @@ test('a join that leaves out a value it cannot type warns that the published typ
             'parameter_kept?' => 'string',
             'walked_kept?' => '{ id: number; title: string }',
         ])
-        ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(4)
+        ->and(joinDropWarnings(UnionHonestyResource::class))->toHaveCount(8)
         ->and(implode("\n", joinDropWarnings(UnionHonestyResource::class)))->not->toContain('line 29 ');
 });
 

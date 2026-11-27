@@ -12,12 +12,11 @@ use Closure;
 use LogicException;
 
 /**
- * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
- * computing it again could not differ, and a reuse replays the cache dependencies, dropped arms, gaps, fills and unread
- * spreads it recorded, so the generation cache, the accessor `null` rule and a `parent::` spread see a fresh run's.
+ * Cycle guards and a memo for one publish run, with the read modes that key its answers apart: enum cases read as
+ * enums, the gap mode and the declaration mode. An answer is reused only where computing it again could not differ, and
+ * a reuse replays the dependencies, dropped arms, gaps, fills, drop warnings and unread spreads it recorded.
  *
- * It also holds whether a read under way needs each enum case as its enum, whether it shows gaps (the gap mode), and
- * whether it marks each arm only a declaration produced (the declaration mode), keeping the answers of each apart.
+ * @phpstan-import-type EmittedWarning from DroppedUnionArms
  *
  * @phpstan-type MemoFrame = array{
  *     footprint: array<string, true>,
@@ -25,6 +24,7 @@ use LogicException;
  *     pathMark: int,
  *     recording: bool,
  *     dropped: int,
+ *     warningMark: int,
  *     gapMark: int,
  *     unreadSpreads: int,
  *     reentries: int,
@@ -40,6 +40,7 @@ use LogicException;
  *     paths: list<string>,
  *     recording: bool,
  *     dropped: int,
+ *     warnings: list<EmittedWarning>,
  *     gaps: list<int>,
  *     fills: list<int>,
  *     unreadSpreads: int,
@@ -402,6 +403,7 @@ final class AnalysisMemo
             'pathMark' => DependencyRecorder::mark(),
             'recording' => DependencyRecorder::isRecording(),
             'dropped' => DroppedUnionArms::dropped(),
+            'warningMark' => DroppedUnionArms::warningMark(),
             'gapMark' => DroppedUnionArms::gapMark(),
             'unreadSpreads' => UnreadSpreads::count(),
             'reentries' => $this->reentries,
@@ -541,7 +543,7 @@ final class AnalysisMemo
             DependencyRecorder::record($path);
         }
 
-        DroppedUnionArms::replay($entry['dropped'], $entry['gaps'], $entry['fills']);
+        DroppedUnionArms::replay($entry['dropped'], $entry['gaps'], $entry['fills'], $entry['warnings']);
         UnreadSpreads::replay($entry['unreadSpreads']);
         $this->reentries += $entry['reentries'] ?? count(array_intersect_key($entry['footprint'], $this->lifted));
         foreach ($entry['cuts'] as $guard => $count) {
@@ -615,6 +617,7 @@ final class AnalysisMemo
             'paths' => array_values(array_unique($paths)),
             'recording' => $frame['recording'],
             'dropped' => DroppedUnionArms::dropped() - $frame['dropped'],
+            'warnings' => DroppedUnionArms::warningsSince($frame['warningMark']),
             'gaps' => DroppedUnionArms::gapsSince($frame['gapMark']),
             'fills' => DroppedUnionArms::filledSince($frame['gapMark']),
             'unreadSpreads' => UnreadSpreads::count() - $frame['unreadSpreads'],

@@ -38,6 +38,28 @@ it('records a warning once through addOnce(), however often it is raised', funct
     ]);
 });
 
+it('records a warning once per once-key through addOnce(), whatever its text, and a keyless one by its text', function () {
+    AnalysisWarnings::addOnce('Foo', 'first', 'site');
+    AnalysisWarnings::addOnce('Foo', 'second', 'site');
+    AnalysisWarnings::addOnce('Foo', 'first', 'other');
+    AnalysisWarnings::addOnce('Foo', 'first');
+    AnalysisWarnings::addOnce('Foo', 'third');
+
+    expect(AnalysisWarnings::all())->toBe([
+        ['subject' => 'Foo', 'message' => 'first'],
+        ['subject' => 'Foo', 'message' => 'first'],
+        ['subject' => 'Foo', 'message' => 'third'],
+    ]);
+});
+
+it('forgets the once-keys on reset()', function () {
+    AnalysisWarnings::addOnce('Foo', 'first', 'site');
+    AnalysisWarnings::reset();
+    AnalysisWarnings::addOnce('Foo', 'again', 'site');
+
+    expect(AnalysisWarnings::all())->toBe([['subject' => 'Foo', 'message' => 'again']]);
+});
+
 it('returns to empty on reset()', function () {
     AnalysisWarnings::add('Foo@bar', 'first');
     AnalysisWarnings::reset();
