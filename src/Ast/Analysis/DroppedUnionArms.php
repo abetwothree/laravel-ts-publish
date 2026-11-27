@@ -23,8 +23,8 @@ use WeakMap;
 
 /**
  * Audit trail for union arms the engine could not type and left out: recorded once a test calls start(), always
- * counted, and warned of where the drop leaves only `null` or `never[]` or a typed arm beside it. It numbers each gap a
- * drop leaves and holds its warnings until a strip, a read that consumes it or the end of its extent raises them.
+ * counted, and warned where the drop leaves only `null` or `never[]` or a typed arm beside it. Each gap a drop leaves
+ * holds its warnings until a strip or a consuming read raises them, or its extent ends with no merge filling it.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type LeftOutWrite from ReceiverType

@@ -61,9 +61,10 @@ branch spells outside a literal, such as `k: Person|User` beside `'k' => $this->
 `k: array{a: Person, p: Post}|User` beside `'k' => $this->post`: no join can say which class each of those tokens is, so
 the key publishes the other branch's type alone, as it did before the fill, and the fill's arms, the documented
 override's among them, are left out. A spread helper's join warns of it, naming the key and the return it left out; a
-merge call's prints nothing. In a spread helper, a `@return` that types the key, the helper's own or `toArray()`'s,
-types the dropped branch in place instead. A join that keeps such a fill, beside branches sending two same-named models
-or enums of other names, such as the app's and the CRM's `User`, keeps one arm for that pair.
+merge call's prints nothing, and so does a `+` or `+=` whose default is such a fill over a key the left may lack (#162).
+In a spread helper, a `@return` that types the key, the helper's own or `toArray()`'s, types the dropped branch in place
+instead. A join that keeps such a fill, beside branches sending two same-named models or enums of other names, such as
+the app's and the CRM's `User`, keeps one arm for that pair.
 
 ### An outer declaration keeps some `null`s only a declaration produced
 
