@@ -79,11 +79,15 @@ test('a spread helper\'s return whose keys no write names warns once per return,
     ]);
 });
 
+// The gap mode holds the unalike fill's warning on the gap it spells until the strip, so only the set is pinned.
 test('a declared fill another return spells unalike, and a += default no rule types, each warn once, naming the key', function () {
-    expect(typedArmLeftOutReading(UnreachedSitesResource::class))->toBe([
-        ['row' => '{ u?: User }', 'again' => '{ u?: User }', 'plus' => '{ id: number; k: string }'],
-        [returnedKeyLeftOutMessage('u', '$declared', 34), returnedKeyLeftOutMessage('k', '$this->defaults()', 61)],
-    ]);
+    [$types, $warnings] = typedArmLeftOutReading(UnreachedSitesResource::class);
+
+    expect($types)->toBe(['row' => '{ u?: User }', 'again' => '{ u?: User }', 'plus' => '{ id: number; k: string }'])
+        ->and($warnings)->toEqualCanonicalizing([
+            returnedKeyLeftOutMessage('u', '$declared', 34),
+            returnedKeyLeftOutMessage('k', '$this->defaults()', 61),
+        ]);
 });
 
 // relay()'s `$d` drops at merge-branch-join (the audit baseline's line 95), held on a gap its `@return` member fills.
