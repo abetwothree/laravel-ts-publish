@@ -46,7 +46,7 @@ final class ShapeJoin
         /** @var array<array-key, non-empty-list<int>> $holders the branch of each of those values */
         $holders = [];
 
-        /** @var array<array-key, non-empty-list<KeyPresence>> $presences each named key's presence, as its entry states it */
+        /** @var array<array-key, non-empty-list<KeyPresence>> $presences each named key's presence, as stated */
         $presences = [];
         $signatures = [];
 

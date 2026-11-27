@@ -12,6 +12,8 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape;
 final readonly class ShapeKey
 {
     /**
+     * Hold a key's name, value and presence.
+     *
      * @param  bool  $armOnly  whether only a spread its literal prints as an arm writes it
      */
     public function __construct(

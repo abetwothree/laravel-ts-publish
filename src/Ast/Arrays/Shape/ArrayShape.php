@@ -7,18 +7,17 @@ namespace AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape;
 use AbeTwoThree\LaravelTsPublish\Support\PhpArrayKey;
 
 /**
- * One array as the engine reads it, after PHPStan's constant array: its named keys and index signatures in
- * first-write order, the typed string keys it may hold beside them (`extras`), the parts that bring keys no name names,
- * a proof that it is never empty where its keys cannot give one, and what it holds beside its keys.
- *
- * A shape is sealed when it has no extras, no opaque part and no signature, and its wide data holds no unread or
- * unnamed key: a lifted analysis keeps those two flags where a builder would record an opaque part.
+ * One array as the engine reads it, after PHPStan's constant array: named keys and index signatures in first-write
+ * order, the typed string keys beside them (`extras`), the parts that bring keys no name names, a proof that it is
+ * never empty where its keys give none, and what it holds beside its keys.
  *
  * @internal
  */
 final readonly class ArrayShape
 {
     /**
+     * Hold an array's entries, extras, opaque parts, never-empty proof and wide data.
+     *
      * @param  list<ShapeKey|ShapeSignature>  $entries  in first-write order
      * @param  list<OpaquePart>  $opaque
      * @param  bool  $nonEmptyProof  whether a guard or a join proves a key is held where no entry is sure
@@ -49,7 +48,8 @@ final readonly class ArrayShape
     }
 
     /**
-     * Whether every key the array may hold is an entry it names.
+     * Whether every key the array may hold is an entry it names: no extras, opaque part or signature, and no unread or
+     * unnamed key, the two flags a lifted analysis keeps where a builder would record an opaque part.
      */
     public function isSealed(): bool
     {

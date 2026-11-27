@@ -365,9 +365,8 @@ final class ArrayWalk
 
     /**
      * Join the walks of exclusive bodies, each a copy of this walk that wrote one body, where one runs, or none where
-     * $mayRunNone: this walk's keys are one more branch then, and lead each union. A key a body writes takes that
-     * body's value there, never another's, and each body's untyped writes stay its own. $recordDrops records each
-     * value the join leaves out, beside the untyped writes each branch saw, and may retype a key it names.
+     * $mayRunNone, this walk's keys then one more branch leading each union. A key takes each body's own value, and
+     * $recordDrops records each value the join leaves out, beside each body's own untyped writes, and may retype a key.
      *
      * @param  non-empty-list<self<TAnalysis>>  $bodies
      * @param  Closure(TAnalysis, non-empty-list<TAnalysis>, list<list<UntypedKeyWrite>>): void  $recordDrops
@@ -644,11 +643,9 @@ final class ArrayWalk
     }
 
     /**
-     * Merge a whole-array write into the keys the walk holds, noting what each written key holds on each path.
-     *
-     * A new key or a signature entry is appended, optional when the write is conditional or its value can vanish; a
-     * named key set again keeps its first position and takes the last value, optional when that value can vanish or a
-     * conditional write leaves an optional old one.
+     * Merge a whole-array write into the keys the walk holds, noting what each written key holds on each path: a new
+     * key or signature entry is appended, and a key set again keeps its first position and takes the last value, each
+     * optional where its value can vanish or a conditional write leaves it, or an old optional one, unset.
      */
     private function merge(ArrayShape $write, bool $conditional, Expr $value): void
     {

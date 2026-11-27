@@ -13,10 +13,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * What an array shape holds beside its keys: the custom imports and carried classes its values spell, the three read
- * flags, the flat type alias a collection publishes, the variants its fold read, the spreads a nested literal prints
- * as arms, and each channel map's insertion order with the entries no key of the shape owns, such as the classes an
- * embedded queue keys by themselves.
+ * What an array shape holds beside its keys: the custom imports and carried classes its values spell, the read flags,
+ * the flat type alias, the fold's variants, a nested literal's spread arms, and each channel map's insertion order with
+ * the entries no key owns, such as the classes an embedded queue keys by themselves.
  *
  * @phpstan-import-type ImportMapType from MethodAnalysis
  * @phpstan-import-type CarriedMap from MethodAnalysis
@@ -50,6 +49,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final readonly class ShapeWide
 {
     /**
+     * Hold what an array shape holds beside its keys.
+     *
      * @param  ImportMapType  $customImports
      * @param  CarriedMap  $carried
      * @param  class-string<JsonResource|Model>|null  $flatTypeAliasFqcn

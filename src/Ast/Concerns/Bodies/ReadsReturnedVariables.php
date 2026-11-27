@@ -357,11 +357,9 @@ trait ReadsReturnedVariables
     }
 
     /**
-     * Recursively collect array assignments to a variable from method statements.
-     *
-     * The bodies of an `if` chain and of a `foreach`, `for` or `while` join as branches. Assignments inside a `try`
-     * body, a `catch`, a `case`, or a `do` body after its first `break` or `continue`, are marked as optional. A
-     * whole-array write that analyzes as nothing, or a key write the walk cannot name, leaves unread keys.
+     * Recursively collect array assignments to a variable from method statements: the bodies of an `if` chain or a loop
+     * join as branches, a write in a `try`, a `catch`, a `case` or a `do` body past its first exit is optional, and a
+     * whole write that analyzes as nothing, or a key write the walk cannot name, leaves unread keys.
      *
      * @param  array<Node\Stmt>  $stmts
      * @param  bool  $nested  whether the statements sit in a block the walk's top level holds, where a whole write

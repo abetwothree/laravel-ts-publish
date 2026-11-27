@@ -1,6 +1,7 @@
 # ADR: One array model for spreads, walks and maps
 
-**Status:** accepted 2026-11-22; Phase 1 under way in #161.
+**Status:** accepted 2026-11-22. The returned-variable walk, the branch join and `+` read on the model; the other
+readers follow in #161.
 
 ## Context
 
@@ -22,7 +23,7 @@ round-trip guard the tests bind (`ShapeObserver`), and each domain then takes it
 ## Fallbacks that remain
 
 Where a component cannot reach parity, it keeps today's representation behind the new API. The prototype built before
-Phase 1 recorded two; the returned-variable walk reached parity on an `ArrayShape` in Phase 1, so one remains:
+the walk moved recorded two; the returned-variable walk reached parity on an `ArrayShape`, so one remains:
 
 - **A signature's raw value.** `ShapeSignature` holds its value as the row prints it, `| undefined` included. The print
   adds no `undefined` where the value already held one, so a lifted row cannot give the raw value back; a builder that

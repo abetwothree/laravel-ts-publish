@@ -22,18 +22,9 @@ use Throwable;
 use WeakMap;
 
 /**
- * Audit trail for union arms the engine could not type and therefore left out of the union.
- *
- * Recording is off until a test calls start(), so a publish run pays one count and one null check per dropped arm.
- * The count is always kept, so leftNullSince() tells a `null` a dropped arm left from a literal one. A drop that
- * leaves a value only `null` or `never[]`, or a typed arm beside the one it drops, also warns in the run output,
- * whether recording or not.
- *
- * It also numbers the gap a dropped arm leaves, the same arm the same gap for the run, a file parsed again included,
- * and holds each gap's warnings by its id: a strip or a read that consumes the gap raises them, as does the end of the
- * extent the gap was made in unless a merge filled it.
- *
- * A read consumes a gap that reached it and that its result no longer spells, unless a merge inside it filled the gap.
+ * Audit trail for union arms the engine could not type and left out: recorded once a test calls start(), always
+ * counted, and warned of where the drop leaves only `null` or `never[]` or a typed arm beside it. It numbers each gap a
+ * drop leaves and holds its warnings until a strip, a read that consumes it or the end of its extent raises them.
  *
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type LeftOutWrite from ReceiverType

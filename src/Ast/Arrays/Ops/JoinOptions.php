@@ -15,6 +15,8 @@ use PhpParser\Node;
 final readonly class JoinOptions
 {
     /**
+     * Hold which untyped values a join drops, and where a dropped one leaves a gap.
+     *
      * @param  bool  $dropsUntypedBranches  a spread helper's, a merge call's and a literal key's join drops an untyped
      *                                      branch beside a typed one
      * @param  bool  $keepsLoneNull  a merge call keeps the `null` left alone once the untyped branches are gone

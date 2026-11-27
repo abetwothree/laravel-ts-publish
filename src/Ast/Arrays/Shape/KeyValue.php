@@ -62,7 +62,7 @@ final readonly class KeyValue
     /** The class maps a value names its key's class on, the later value's winning. */
     public const array CLASS_MAPS = ['nestedResources', 'directEnumFqcns', 'modelFqcns'];
 
-    /** The queues a value appends its key's classes to; a branch join keeps one copy where two branches hold it alike. */
+    /** The queues a value appends its key's classes to; a join keeps one copy where two branches hold it alike. */
     public const array QUEUES = [
         'inlineEnumFqcns', 'inlineModelFqcns', 'inlineResourceFqcns', 'inlineEnumResourceFqcns', 'wrappedEnums',
     ];
@@ -75,6 +75,8 @@ final readonly class KeyValue
     ];
 
     /**
+     * Hold a key's row, channels and embedded classes.
+     *
      * @param  KeyRow  $row  the row's fields but its name, in the order the row holds them
      * @param  KeyChannels  $channels  each channel map's entry under the key's name, where it holds one
      * @param  EmbeddedClasses  $embedded  the classes the key's queues hold that a class map keys by themselves
@@ -169,17 +171,14 @@ final readonly class KeyValue
     }
 
     /**
-     * One key's values across exclusive branches joined, as a branch join joins them: the value typed as the
-     * branches' union, or `unknown` where they spell a declared name unalike, every class each branch types it with
-     * queued in branch order, and a cast only where every branch casts it alike. Its presence is KeyPresence::join()'s
-     * as if every branch held the key; a caller with branches that lack it joins their presence again.
-     *
-     * A spread helper, a merge call and a literal's key with several sources drop an untyped branch
-     * ($dropsUntypedBranches), each value another branch spells unalike already read as untyped (ShapeJoin); only a
-     * merge call keeps the `null` left alone ($keepsLoneNull). A literal's key keeps `unknown` where its first branch
-     * is untyped ($keepsFirstUntyped).
+     * One key's values across exclusive branches joined: their union, or `unknown` where they spell a declared name
+     * unalike, each branch's classes queued in order, the cast all agree on, and KeyPresence::join()'s presence as if
+     * every branch held the key, which a caller whose branches lack it joins again.
      *
      * @param  non-empty-list<self>  $values  each branch's value, in branch order
+     * @param  bool  $dropsUntypedBranches  drop an untyped value beside a typed one, an unalike fill already untyped
+     * @param  bool  $keepsLoneNull  keep the `null` left alone once the untyped values are gone, as a merge call does
+     * @param  bool  $keepsFirstUntyped  keep `unknown` where the first value is untyped, as a literal's key does
      */
     public static function joined(
         array $values,
@@ -294,15 +293,14 @@ final readonly class KeyValue
      * Whether a key's branch values, joined into $type, are joined again by class: where two classes of any token kind
      * print one name, and the join kept a type with no declared slots from fills that each repeat their branch's value.
      *
-     * A strict join's `unknown` stands, as a union by class would drop the branch it stands for. Declared slots say
-     * whose each token is themselves, and a fill another branch's value stands beside would lose its arm.
-     *
      * @param  Slots  $slots
      * @param  list<KeyRow>  $rows
      * @param  list<ValueExpressionResult>  $classed
      */
     private static function keepsClassesApart(string $type, array $slots, array $rows, array $classed): bool
     {
+        // A strict join's `unknown` stands for a branch a union by class would drop, declared slots name each token's
+        // class themselves, and a fill another branch's value stands beside would lose its arm.
         return $type !== 'unknown' && $slots === []
             && array_all($rows, static fn (array $row): bool => ($row['fillType'] ?? $row['type']) === $row['type'])
             && ClassIdentity::spellsTwoClassesAlike($classed);
