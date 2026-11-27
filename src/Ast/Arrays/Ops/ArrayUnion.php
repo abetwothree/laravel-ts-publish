@@ -18,6 +18,8 @@ use Closure;
 /**
  * PHP's `+` of two arrays: every key the left holds stays, and the right's lands only where the left lacks it.
  *
+ * @phpstan-type PlusLeftOut = Closure(string, string): void
+ *
  * @internal
  */
 final class ArrayUnion
@@ -27,7 +29,7 @@ final class ArrayUnion
      * key the left may leave unset joins the right's value on that path, as $options joins a key's values; one it holds
      * on every path, a `when()` key's removable value included, keeps its own.
      *
-     * @param  (Closure(string, string): void)|null  $leftOut  hears each key and type a right value was left out of
+     * @param  PlusLeftOut|null  $leftOut  hears each key and type a right value was left out of
      */
     public static function plus(
         ArrayShape $left,
@@ -61,7 +63,7 @@ final class ArrayUnion
      * @param  T  $left
      * @param  T  $right
      * @param  T  $into
-     * @param  (Closure(string, string): void)|null  $leftOut
+     * @param  PlusLeftOut|null  $leftOut
      * @return T
      */
     public static function plusAnalyses(
@@ -100,7 +102,7 @@ final class ArrayUnion
      * Tell $leftOut of each key the left may leave unset where the right lays a value no rule types and the join kept
      * a typed value: the right's was left out beside the left's.
      *
-     * @param  Closure(string, string): void  $leftOut
+     * @param  PlusLeftOut  $leftOut
      */
     private static function tellLeftOut(ArrayShape $left, ArrayShape $right, ArrayShape $sum, Closure $leftOut): void
     {

@@ -10,6 +10,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\Reading;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\VariableWrites;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Build\ArrayWalk;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ArrayUnion;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\ArrayShapes;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\KeyPresence;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\OpaqueKind;
@@ -87,6 +88,7 @@ use WeakMap;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type LeftOutArm from DroppedUnionArms
  * @phpstan-import-type UntypedKeyWrite from ArrayWalk
+ * @phpstan-import-type PlusLeftOut from ArrayUnion
  *
  * @internal
  */
@@ -167,7 +169,7 @@ trait ReadsReturnedVariables
     /**
      * What warns of each value a `+=`'s right lays on a key the walk may lack that the union leaves out.
      *
-     * @return Closure(string, string): void
+     * @return PlusLeftOut
      */
     abstract private function plusLeftOut(Expr $right): Closure;
 

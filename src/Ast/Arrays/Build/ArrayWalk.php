@@ -39,6 +39,7 @@ use PhpParser\Node\Expr\Variable;
  * @phpstan-import-type ValueExpressionResult from ExpressionHandler
  * @phpstan-import-type HeldNulls from ExpressionHandler
  * @phpstan-import-type Entry from ShapeWrites
+ * @phpstan-import-type PlusLeftOut from ArrayUnion
  *
  * @phpstan-type UntypedKeyWrite = array{string, Expr}
  *
@@ -186,7 +187,7 @@ final class ArrayWalk
      * the value only where some path left it unset, as ArrayUnion::plus() lays it, and the new keys and each signature
      * entry join. A key every path holds drops the value's channels along with its value.
      *
-     * @param  (Closure(string, string): void)|null  $leftOut  hears of each value ArrayUnion::plus() leaves out
+     * @param  PlusLeftOut|null  $leftOut  hears of each value ArrayUnion::plus() leaves out
      */
     public function plus(ArrayShape $added, bool $conditional, Expr $value, ?Closure $leftOut = null): void
     {
@@ -563,7 +564,7 @@ final class ArrayWalk
      * Lay a `+=` value on each held key some path may have left unset, as ArrayUnion::plus() lays it there, noting
      * what the key holds on each path; where the statement may not run, the keys before it stay a branch.
      *
-     * @param  (Closure(string, string): void)|null  $leftOut
+     * @param  PlusLeftOut|null  $leftOut
      */
     private function layOnUnset(ArrayShape $added, bool $conditional, Expr $value, ?Closure $leftOut): void
     {

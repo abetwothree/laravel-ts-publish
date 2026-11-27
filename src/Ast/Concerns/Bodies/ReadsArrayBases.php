@@ -27,6 +27,8 @@ use PhpParser\Node\Expr\Variable;
  *
  * @template TAnalysis of MethodAnalysis
  *
+ * @phpstan-import-type PlusLeftOut from ArrayUnion
+ *
  * @phpstan-type WrittenLocal array{string, Expr}
  *
  * @internal
@@ -162,7 +164,7 @@ trait ReadsArrayBases
      * What warns of each untypable value a `+`'s right lays on a key the left may lack, left out beside the left's
      * typed one: it names the item's value where the right is a literal naming the key, else the right and the key.
      *
-     * @return Closure(string, string): void
+     * @return PlusLeftOut
      */
     private function plusLeftOut(Expr $right): Closure
     {
