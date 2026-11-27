@@ -949,8 +949,9 @@ a class, recorded once a read through it publishes a type), `ReceiverMemberReade
 `ReceiverMethodReturnResolver`'s read of each class (`binding-join` as well: the write of a `tagOnly` class that cannot
 answer), the walk's branch join (`walk-branch-join`, naming the last key write or array item the branch saw, never a
 sibling's, that it reads as `unknown`) and the join of a merge call's sides or a spread helper's returns
-(`merge-branch-join`, naming the same for each walked, literal or joined branch). `analyzeClosureUnion()` records
-because `unionResults()` receives only resolved results and cannot name the expression it drops. `CoalesceHandler`
+(`merge-branch-join`, naming the same for each walked, literal or joined branch), and `ArrayUnion::plus()`'s join of a
+`+` or `+=` default (`plus-union`). `analyzeClosureUnion()` records because `unionResults()` receives only resolved
+results and cannot name the expression it drops. `CoalesceHandler`
 strips its left operand's `null` with `TsTypeString::withoutNullArm()`, because `??` never returns that `null`, which
 the ternary union would keep. Under an Inertia reading a left with held-object flags is the exception: `??` returns a
 closure or prop object whole, so the `null` its call resolves to stays, and only a plain arm's `null` is replaced. In
@@ -1017,16 +1018,19 @@ return or write, a helper's bound arguments or a `merge()` closure's defaults. A
 strips.
 
 In the mode, a drop entry appends a `$gapN` arm to a union it leaves typed and holds its warning; a union it leaves
-`unknown` takes no gap and warns at once. Two sites that drop with no entry warn through
-`DroppedUnionArms::leftBeside()`, both at a spread helper's returns: a branch that leaves a key untyped where no branch
-names an untyped write (`merge-branch-join`), and a fill another branch spells unalike, beside a typed value another
-branch keeps (`unalike-fill`). It audits the drop without counting an arm, holds its warning in the mode on a gap of its
-own per key, so a fill of one key leaves another's warning standing, and warns at once out of it, once per site and
-returned value: `AnalysisWarnings::addOnce()` spends that once-key only as it adds the warning, so a read that does not
-stand spends none. Two sites add a silent gap, which holds no warning: a literal's fold (`fold-join`) and a key of a
-union spread (`union-spread-key`). `InlineObjectResult::of()` marks an object that may hold unnamed keys with the open
-marker, `#$open: unknown`. [`VisibleGaps`] spells both, and every reader decides on the text with both set aside
-(`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The merge fills a gap from the declared type
+`unknown` takes no gap and warns at once. Three sites that drop with no entry warn through
+`DroppedUnionArms::leftBeside()`. Two are at a spread helper's returns: a branch that leaves a key untyped where no
+branch names an untyped write (`merge-branch-join`), and a fill another branch spells unalike, beside a typed value
+another branch keeps (`unalike-fill`). The third is a `+` or `+=` whose right lays an untypable value on a key the left
+may lack, left out beside the left's typed one (`plus-union`); it names the right's item for the key, or the right, and
+spells no gap in the type, so its warning rises where a read consumes the gap or its extent ends. `leftBeside()` audits
+the drop without counting an arm, holds its warning in the mode on a gap of its own per key, so a fill of one key leaves
+another's warning standing, and warns at once out of it, once per site and node: `AnalysisWarnings::addOnce()` spends
+that once-key only as it adds the warning, so a read that does not stand spends none. Two sites add a silent gap, which
+holds no warning: a literal's fold (`fold-join`) and a key of a union spread (`union-spread-key`).
+`InlineObjectResult::of()` marks an object that may hold unnamed keys with the open marker, `#$open: unknown`.
+[`VisibleGaps`] spells both, and every reader decides on the text with both set aside (`VisibleGaps::aside()`,
+`members()`, `stripped()`) and carries them on. The merge fills a gap from the declared type
 (`DeclaredTypeMerge::merge()`), as [ResourceAstAnalyzer § What the method's `@return` may fill][return-fill] lists, and
 `ReturnShapeRefiner` marks each gap a fill took out as filled. What the merge leaves, the frame that turned the mode on
 strips (`MethodAnalysis::stripGaps()`) before the type publishes.

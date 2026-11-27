@@ -6,6 +6,7 @@ use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAnalysis;
 use AbeTwoThree\LaravelTsPublish\Analyzers\ResourceAstAnalyzer;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ArrayUnion;
+use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Print\ShapeLowering;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\ArrayShapes;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Shape\ArrayShape;
@@ -247,6 +248,30 @@ it('keeps PHP\'s key order and lays the right\'s value only where the left may l
         [['k', 'string', false, []]],
         [['name' => 'k', 'type' => 'number | string', 'optional' => true, 'description' => '', 'removed' => true]],
     ],
+]);
+
+it('tells of each untypable value the right lays beside a typed one the union keeps alone', function (array $left, array $right, array $told) {
+    $heard = [];
+    ArrayUnion::plus(
+        ArrayShapes::ofAnalysis(plusOperand($left)),
+        ArrayShapes::ofAnalysis(plusOperand($right)),
+        JoinOptions::union(),
+        function (string $key, string $type) use (&$heard): void {
+            $heard[] = [$key, $type];
+        },
+    );
+
+    expect($heard)->toBe($told);
+})->with([
+    'a key the left may lack' => [[['k', 'number', true, ['absent' => true]]], [['k', 'unknown', false, []]], [['k', 'number']]],
+    'a key the left holds on every path' => [[['k', 'number', false, []]], [['k', 'unknown', false, []]], []],
+    'a key the left may lack, holding a value no rule types' => [
+        [['k', 'unknown', true, ['absent' => true]]],
+        [['k', 'unknown', false, []]],
+        [],
+    ],
+    'a typed value the right lays' => [[['k', 'number', true, ['absent' => true]]], [['k', 'string', false, []]], []],
+    'a key only the right holds' => [[['a', 'number', false, []]], [['k', 'unknown', false, []]], []],
 ]);
 
 // PHP's `+` keeps a key the left holds as one of its extras, and lays the right's extras where the left lacks them.

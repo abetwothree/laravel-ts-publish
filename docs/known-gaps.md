@@ -43,7 +43,10 @@ A `@return` that types the key, on `toArray()` or a spread helper, types the arm
 body proves is sent: `DeclaredGapsResource`'s `score`, which holds `null`, a length or an untypable value, publishes
 `number | null | string` under `int|string|null`. A drop that warned no longer does: `count` in the same resource's
 `summary`, `null` or an untypable value, publishes `number | null` under `int|null` with no warning. Only what the
-docblock leaves untyped, such as a `mixed` member or a key it does not name, is left out and warned of as above.
+docblock leaves untyped, such as a `mixed` member or a key it does not name, is left out and warned of as above. A `+`
+or `+=` default is left out and warned of even under such a `@return`: `if ($c) { $d['k'] = 5; }` then
+`$d += ['k' => cache('k')];` publishes `k: number` under `@return array{k: int|string}`, while Inertia's `$props + […]`
+publishes that key `unknown` (#162).
 
 The exception is a key that a spread of a local or of a ternary writes into the literal `toArray()` returns, or into
 the one a spread helper returns under its own `@return` where `toArray()` has none: such a literal writes its keys out

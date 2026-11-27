@@ -10,16 +10,16 @@ use Workbench\App\Models\Post;
 use Workbench\Crm\Models\User as CrmUser;
 
 /**
- * A spread helper whose returns give `u` a declared CRM `User` and the post's author, a `User` of the app: one name
- * for two classes, so the join leaves the declared one out at the `unalike-fill` site, which no workbench key reaches.
+ * A key for each drop site no workbench key reaches: a declared CRM `User` beside the author's, one name for two
+ * classes (`unalike-fill`), and a `+=` default no rule types on a key a branch may skip (`plus-union`).
  *
  * @property-read Post $resource
  */
-final class UnalikeFillDropResource extends JsonResource
+final class UnreachedSitesResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        return ['row' => [...$this->picked()], 'again' => [...$this->picked()]];
+        return ['row' => [...$this->picked()], 'again' => [...$this->picked()], 'plus' => $this->defaulted()];
     }
 
     /**
@@ -44,5 +44,29 @@ final class UnalikeFillDropResource extends JsonResource
     private function declared(): array
     {
         return ['u' => app('author')];
+    }
+
+    /**
+     * A `k` only a branch sets, then defaulted by a `+=` of a helper that cannot type it.
+     */
+    private function defaulted(): array
+    {
+        $d = ['id' => $this->resource->id];
+
+        if ($this->resource->is_published) {
+            $d['k'] = $this->resource->title;
+        }
+
+        $d += $this->defaults();
+
+        return $d;
+    }
+
+    /**
+     * Defaults whose `k` no rule types.
+     */
+    private function defaults(): array
+    {
+        return ['k' => cache('k')];
     }
 }

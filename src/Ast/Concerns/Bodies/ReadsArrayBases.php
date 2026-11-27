@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace AbeTwoThree\LaravelTsPublish\Ast\Concerns\Bodies;
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisScope;
+use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\MethodAnalysis;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\ArrayUnion;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Ops\JoinOptions;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\BaseForm;
 use AbeTwoThree\LaravelTsPublish\Ast\Arrays\Read\BaseForms;
 use AbeTwoThree\LaravelTsPublish\Ast\Concerns\InspectsAstNodes;
+use Closure;
+use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\BinaryOp\Plus;
@@ -152,6 +155,27 @@ trait ReadsArrayBases
 
         return $left === null || $right === null
             ? null
-            : ArrayUnion::plusAnalyses($left, $right, $left, JoinOptions::union());
+            : ArrayUnion::plusAnalyses($left, $right, $left, JoinOptions::union(), $this->plusLeftOut($expr->right));
+    }
+
+    /**
+     * What warns of each untypable value a `+`'s right lays on a key the left may lack, left out beside the left's
+     * typed one: it names the item's value where the right is a literal naming the key, else the right and the key.
+     *
+     * @return Closure(string, string): void
+     */
+    private function plusLeftOut(Expr $right): Closure
+    {
+        return function (string $key, string $union) use ($right): void {
+            $scope = $this->analysisScope();
+            $item = $right instanceof Array_ ? array_find(
+                array_reverse($right->items),
+                fn (ArrayItem $item): bool => ! $item->unpack && $item->key !== null
+                    && $this->resolveKeyName($item->key, $scope) === $key,
+            ) : null;
+
+            $at = $item->value ?? $right;
+            DroppedUnionArms::leftBeside($scope, 'plus-union', $at, $union, $item === null ? $key : null);
+        };
     }
 }

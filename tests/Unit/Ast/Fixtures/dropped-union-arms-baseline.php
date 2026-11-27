@@ -78,6 +78,7 @@ return [
     // stands alone, and the title it drops is a string too, so `by: string` holds (YD1, a guard B1 and B2a keep).
     ['subject' => 'Workbench\\App\\Http\\Resources\\Spreads\\BaseFormsSpreadResource', 'line' => 245, 'expression' => '$d[\'by\']', 'site' => 'coalesce-left'],
     // The corpus beside the workbench (tests/Fixtures/DroppedArmsCorpus/): a declared CRM `User` beside the author's
-    // `User`, one name for two classes, which no workbench key drops.
-    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnalikeFillDropResource', 'line' => 33, 'expression' => '$declared', 'site' => 'unalike-fill'],
+    // `User`, one name for two classes, and a `+=` default no rule types, which no workbench key drops.
+    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnreachedSitesResource', 'line' => 33, 'expression' => '$declared', 'site' => 'unalike-fill'],
+    ['subject' => 'AbeTwoThree\\LaravelTsPublish\\Tests\\Fixtures\\DroppedArmsCorpus\\UnreachedSitesResource', 'line' => 60, 'expression' => '$this->defaults()', 'site' => 'plus-union'],
 ];

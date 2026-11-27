@@ -165,6 +165,13 @@ trait ReadsReturnedVariables
     abstract private function mergedValueAnalysis(Expr $expr): ?MethodAnalysis;
 
     /**
+     * What warns of each value a `+=`'s right lays on a key the walk may lack that the union leaves out.
+     *
+     * @return Closure(string, string): void
+     */
+    abstract private function plusLeftOut(Expr $right): Closure;
+
+    /**
      * Resolve what a body returns, a returned variable the scope cannot type, or a seeded parameter the body writes,
      * read through the walk over its writes.
      *
@@ -471,7 +478,9 @@ trait ReadsReturnedVariables
                     continue;
                 }
 
-                $walk->plus(ArrayShapes::ofAnalysis($addedAnalysis), $isConditional, $added);
+                $walk->plus(
+                    ArrayShapes::ofAnalysis($addedAnalysis), $isConditional, $added, $this->plusLeftOut($added),
+                );
 
                 continue;
             }

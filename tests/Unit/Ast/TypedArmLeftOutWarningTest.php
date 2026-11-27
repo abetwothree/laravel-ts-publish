@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
-use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DroppedArmsCorpus\UnalikeFillDropResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DroppedArmsCorpus\UnreachedSitesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeftOutNamesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedKeyLeftBesideResource;
 use Workbench\App\Http\Resources\DroppedArms\ArmBesideDropResource;
@@ -79,10 +79,10 @@ test('a spread helper\'s return whose keys no write names warns once per return,
     ]);
 });
 
-test('a declared fill another return spells unalike warns once, naming the key and the return', function () {
-    expect(typedArmLeftOutReading(UnalikeFillDropResource::class))->toBe([
-        ['row' => '{ u?: User }', 'again' => '{ u?: User }'],
-        [returnedKeyLeftOutMessage('u', '$declared', 33)],
+test('a declared fill another return spells unalike, and a += default no rule types, each warn once, naming the key', function () {
+    expect(typedArmLeftOutReading(UnreachedSitesResource::class))->toBe([
+        ['row' => '{ u?: User }', 'again' => '{ u?: User }', 'plus' => '{ id: number; k: string }'],
+        [returnedKeyLeftOutMessage('u', '$declared', 33), returnedKeyLeftOutMessage('k', '$this->defaults()', 60)],
     ]);
 });
 

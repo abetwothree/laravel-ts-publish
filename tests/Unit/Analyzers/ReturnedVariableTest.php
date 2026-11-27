@@ -620,6 +620,52 @@ test('a + or ?? lays its default on a key the walk may lack, and leaves a key it
     'a + over a local the read sees two writes of' => ['$a = []; if ($x) { $a["k"] = 1; } $d = $a + ["k" => "x"];', ''],
 ]);
 
+/**
+ * The warning that a `+` on line 1 left out an untypable value its right laid beside a typed one.
+ */
+function plusLeftOutMessage(string $value): string
+{
+    return "The value on line 1 leaves out `{$value}`, which could not be typed beside the typed values it joins, so its "
+        .'published type may not admit every value it sends. Give what it reads a return type or a `@return` docblock.';
+}
+
+// The union keeps the left's typed value alone, so the run names the untypable value the right laid there.
+test('a + or += that leaves out the untypable value its right lays beside a typed one warns, naming it', function (string $body, string $members, array $warned) {
+    AnalysisWarnings::reset();
+    DroppedUnionArms::start();
+
+    try {
+        $published = walkedMembers($body);
+    } finally {
+        $recorded = DroppedUnionArms::stop();
+    }
+
+    expect($published)->toBe($members)
+        ->and(array_column(AnalysisWarnings::all(), 'message'))->toBe(array_column($warned, 0))
+        ->and(array_map(fn (array $arm): string => $arm['expression'].' '.$arm['site'], $recorded))->toBe(array_column($warned, 1));
+})->with([
+    'a += of a literal' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => cache("k")];',
+        'id: number; k: number',
+        [[plusLeftOutMessage('\\cache("k")'), '\\cache("k") plus-union']],
+    ],
+    'a + base' => [
+        '$d = ["id" => 0, $this->mergeWhen($x, ["k" => 1])] + ["k" => cache("k")];',
+        'id: number; k: number',
+        [[plusLeftOutMessage('\\cache("k")'), '\\cache("k") plus-union']],
+    ],
+    'a += whose left holds the key on every path' => [
+        '$d = ["id" => 0, "k" => 1]; $d += ["k" => cache("k")];',
+        'id: number; k: number',
+        [],
+    ],
+    'a += over an untypable value a branch set' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = cache("k"); } $d += ["k" => cache("j")];',
+        'id: number; k: unknown',
+        [],
+    ],
+]);
+
 // The walk first reads the default against what it holds, and throws that read away where it drops an arm.
 test('a ?? self-read whose default no rule types publishes unknown and warns of nothing', function (string $body, string $members) {
     AnalysisWarnings::reset();
