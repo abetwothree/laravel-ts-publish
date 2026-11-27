@@ -663,6 +663,11 @@ test('a + or += that leaves out the untypable value its right lays beside a type
             '\\cache("k") plus-union',
         ]],
     ],
+    'a += over a when() key, which the left holds on every path' => [
+        '$d = ["by" => $this->when($x, 1)]; $d += ["by" => cache("k")];',
+        'by?: number',
+        [],
+    ],
     'a += whose left holds the key on every path' => [
         '$d = ["id" => 0, "k" => 1]; $d += ["k" => cache("k")];',
         'id: number; k: number',

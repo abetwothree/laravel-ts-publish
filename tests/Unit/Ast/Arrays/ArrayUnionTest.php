@@ -265,6 +265,7 @@ it('tells of each untypable value the right lays beside a typed one the union ke
 })->with([
     'a key the left may lack' => [[['k', 'number', true, ['absent' => true]]], [['k', 'unknown', false, []]], [['k', 'number']]],
     'a key the left holds on every path' => [[['k', 'number', false, []]], [['k', 'unknown', false, []]], []],
+    'a when() key, held on every path' => [[['k', 'number', true, ['removed' => true]]], [['k', 'unknown', false, []]], []],
     'a key the left may lack, holding a value no rule types' => [
         [['k', 'unknown', true, ['absent' => true]]],
         [['k', 'unknown', false, []]],
