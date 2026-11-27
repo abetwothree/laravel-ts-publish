@@ -55,7 +55,12 @@ final class OffsetReadHandler implements ExpressionHandler
         $holder = ValueResult::unsplit($engine->resolve($expr->var));
         $read = $this->keyRead($holder, (string) $expr->dim->value);
 
-        return $read !== null && ($holder['absentKeys'] ?? false) ? [...$read, 'optional' => false] : $read;
+        if ($read === null || ! ($holder['absentKeys'] ?? false) || ! $read['optional']) {
+            return $read;
+        }
+
+        // `??` reads the key a path left unset as null, so its fallback may still be removed.
+        return [...$read, 'optional' => false, 'absentReadsNull' => true];
     }
 
     /**

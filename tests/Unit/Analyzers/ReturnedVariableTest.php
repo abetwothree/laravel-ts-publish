@@ -613,6 +613,14 @@ test('a + or ?? lays its default on a key the walk may lack, and leaves a key it
     'a + over a when() key' => ['$d = ["by" => $this->when($x, 1)] + ["by" => "z"];', 'by?: number'],
     'a += over a when() key' => ['$d = ["by" => $this->when($x, 1)]; $d += ["by" => "z"];', 'by?: number'],
     'a ?? self-read over a when() key' => ['$d = ["by" => $this->when($x, "a")]; $d["by"] = $d["by"] ?? "z";', 'by?: string'],
+    'a ?? self-read whose default a when() may remove, over an if-built base' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d["k"] = $d["k"] ?? $this->when($y, 2);',
+        'id: number; k?: number',
+    ],
+    'a ?? self-read whose default a when() may remove, over an empty base' => [
+        '$d = []; if ($x) { $d["k"] = 1; } $d["k"] = $d["k"] ?? $this->when($y, 2);',
+        'k?: number',
+    ],
     'a ?? self-read over a ternary base' => [
         '$d = $x ? ["by" => $this->resource->title] : []; $d["by"] = $d["by"] ?? "z";',
         'by: string',
