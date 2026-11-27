@@ -824,24 +824,25 @@ A body read for Inertia adds `Reading::memoKey()`'s `@inertia` to its `analysis:
 `@filtered` after it under a resource's filter; a response's extras read adds `@unfiltered`. So a helper read for a page
 never shares the answer a read for anything else gets ([Inertia profile](#inertia-profile)).
 
-A stored answer keeps the dependency paths, the dropped-arm count, the `UnreadSpreads` count, and the ids of the gaps it
-made, replayed or spelled and of the ones a merge filled, all recorded while it was computed, and every reuse records
-them again (`DroppedUnionArms::replay()` for the gaps). The generation cache, the accessor `null` rule, a `parent::`
-spread's read and the gap warnings therefore see what a fresh computation would have shown them. A cycle can cut an
-answer short, so each answer is
-stored with the guards it found held, and `AnalysisMemo::reproducible()` reuses it only where nothing it read has
-changed and exactly those guards are held again. No answer depends on which entry point read it first.
-`AnalysisMemo::reenterOnce()` lifts each guard entered before the one its caller holds, so a property write's value
-enters a method already under way once more, and the `typing-property:` guard bounds the cycle. It never nests, and
-throws if a call would: `cut()` holds the lifted guards again for a property typed inside, and records a marker for
-each, so an answer it shaped is reused only where the same guards are lifted. A lifted guard counts as not held, so an
-answer computed under the lift is never reused where that guard is held. `reentries()` counts each entry into a lifted
-guard, and each reuse of an answer that entered one, so a caller can tell a read that went through an analysis under way
-whatever was read first. `cuts()` counts, the same way and by guard key prefix, each read that met a guard already on
-the stack, which `LaravelTsPublish` compares around a caster's `get()` read; `reset()` keeps both counts. `seeding()`
-marks a guard that answers a seed in place of its cut: no answer that met it outside the check is reused there, and one
-computed there is reused only until the check ends. `computations()` counts the answers a run computes, which a test
-bounds.
+A stored answer keeps the dependency paths, the dropped-arm count, the `UnreadSpreads` count, the ids of the gaps it
+made, replayed or spelled and of the ones a merge filled, and the drop warnings it raised or held, all recorded while it
+was computed, and every reuse records them again (`DroppedUnionArms::replay()` for the gaps and warnings). A warning a
+read thrown away withdrew after the answer was stored is raised again where a read that stands reuses it, and
+`AnalysisWarnings::addOnce()` keeps a replay from printing a line twice. The generation cache, the accessor `null` rule,
+a `parent::` spread's read and the run output therefore see what a fresh computation would have shown them. A cycle can
+cut an answer short, so each answer is stored with the guards it found held, and `AnalysisMemo::reproducible()` reuses
+it only where nothing it read has changed and exactly those guards are held again. No answer depends on which entry
+point read it first. `AnalysisMemo::reenterOnce()` lifts each guard entered before the one its caller holds, so a
+property write's value enters a method already under way once more, and the `typing-property:` guard bounds the cycle.
+It never nests, and throws if a call would: `cut()` holds the lifted guards again for a property typed inside, and
+records a marker for each, so an answer it shaped is reused only where the same guards are lifted. A lifted guard counts
+as not held, so an answer computed under the lift is never reused where that guard is held. `reentries()` counts each
+entry into a lifted guard, and each reuse of an answer that entered one, so a caller can tell a read that went through
+an analysis under way whatever was read first. `cuts()` counts, the same way and by guard key prefix, each read that met
+a guard already on the stack, which `LaravelTsPublish` compares around a caster's `get()` read; `reset()` keeps both
+counts. `seeding()` marks a guard that answers a seed in place of its cut: no answer that met it outside the check is
+reused there, and one computed there is reused only until the check ends. `computations()` counts the answers a run
+computes, which a test bounds.
 
 `AnalysisMemo::reset()` drops every answer. `BaseRunner::resetRunState()` calls it when a run starts, and
 `ModelAttributeResolver::buildMorphTargetMap()` calls it too, so no answer outlives a run or a morph map. A guard
@@ -979,22 +980,23 @@ sites call `leftOutOfJoin()` instead, which words a typed union's warning the sa
 alias (`AnalysisScope::walkAlias()`) as the variable it stands for, so a local's key that defaults to itself, which the
 walk also reads under the alias, warns once; the audit keeps the alias. A read under the alias that drops an arm is
 thrown away for a read of the source, and raises no warning of its own (`replaceable()`); its count and audit entries
-stay. A receiver's join publishes no type of its own, so a read through it warns through
-`ReceiverClassResolver::warnOfLeftOut()` once it publishes one: `ReceiverPropertyFetchHandler`'s and
-`ReceiverMethodCallHandler`'s read of any receiver holding `leftOut`, and `VariableHandler`'s read of a bound
-parameter's attribute only where the parameter is in `AnalysisScope::$leftOutParameters`, bound from a joined
-collection's element by a receiver's `map()` or a `collect()` pipeline's callback. Each warns of a left-out write no
-rule types, and through `warnOfUnnamedObject()` of one typed as an object no class names. A scalar, an array literal or
-cast, a list or `null` holds no object a member read could answer, and past a write naming no class where
-`receiversKeep` holds, a member read keeps the old class, so neither warns. `$this` is typed, so where a read leaves out
-a `tagOnly` class over it, `warnOfDeclined()` warns instead that the class it is read as does not declare the member,
-or, where it declares it, that the member could not be typed. `replaceable()` holds the warnings of a read whose
-placeholder its caller may replace, a declared local's `@var` or a getter body that gives way to the model's declared
-type, and lets each through only where nothing replaces the placeholder it names: a filled member withdraws its own
-warning and keeps the others. `provisional()` does the same and, for a read thrown away, as a property's fixpoint check
-is, restores the count and the audit entries too. A class the generation cache serves prints none, since the cache
-stores no analysis warnings, until `--fresh` analyzes it again. The warning names a return type or a `@return` as the
-remedy, not `#[TsCasts]`, because a cast on the key leaves the reading, and so the warning, as it is.
+stay, and a helper it read first still warns where the source read reuses the helper's answer. A receiver's join
+publishes no type of its own, so a read through it warns through `ReceiverClassResolver::warnOfLeftOut()` once it
+publishes one: `ReceiverPropertyFetchHandler`'s and `ReceiverMethodCallHandler`'s read of any receiver holding
+`leftOut`, and `VariableHandler`'s read of a bound parameter's attribute only where the parameter is in
+`AnalysisScope::$leftOutParameters`, bound from a joined collection's element by a receiver's `map()` or a `collect()`
+pipeline's callback. Each warns of a left-out write no rule types, and through `warnOfUnnamedObject()` of one typed as
+an object no class names. A scalar, an array literal or cast, a list or `null` holds no object a member read could
+answer, and past a write naming no class where `receiversKeep` holds, a member read keeps the old class, so neither
+warns. `$this` is typed, so where a read leaves out a `tagOnly` class over it, `warnOfDeclined()` warns instead that the
+class it is read as does not declare the member, or, where it declares it, that the member could not be typed.
+`replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
+getter body that gives way to the model's declared type, and lets each through only where nothing replaces the
+placeholder it names: a filled member withdraws its own warning and keeps the others. `provisional()` does the same and,
+for a read thrown away, as a property's fixpoint check is, restores the count and the audit entries too. A class the
+generation cache serves prints none, since the cache stores no analysis warnings, until `--fresh` analyzes it again. The
+warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a cast on the key leaves the
+reading, and so the warning, as it is.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AbeTwoThree\LaravelTsPublish\Ast\Analysis\AnalysisMemo;
 use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\DroppedArmsCorpus\UnreachedSitesResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\HelperArmSelfReadResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\LeftOutNamesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedKeyLeftBesideResource;
 use Workbench\App\Http\Resources\DroppedArms\ArmBesideDropResource;
@@ -104,5 +105,27 @@ test('a warning names the value as the source spells it, and the key the @return
     expect(typedArmLeftOutReading(LeftOutNamesResource::class))->toBe([
         ['own_default' => '{ k: string }', 'pair' => '{ a?: string; b?: string }'],
         [typedArmLeftOutMessage(34, "\$o['k']"), returnedKeyLeftOutMessage('b', '$row', 38)],
+    ]);
+});
+
+// The walk's read of a self-read under its alias is thrown away where it drops, and the read of the source reuses the
+// helper's answer, whose warning the memo then raises again.
+test('a helper\'s left-out arm warns beside a self-read, whichever read reaches the helper first', function () {
+    expect(typedArmLeftOutReading(HelperArmSelfReadResource::class))->toBe([
+        [
+            'coalesced' => '{ id: number; k: string }',
+            'spread_self' => '{ id: number; k: string }',
+            'key_reads_other' => '{ id: number; k: string }',
+            'read_first' => 'string',
+            'reread' => '{ id: number; k: string }',
+        ],
+        [
+            typedArmLeftOutMessage(85, "cache('fallback')"),
+            typedArmLeftOutMessage(42, "\$d['k']"),
+            typedArmLeftOutMessage(93, "cache('picked')"),
+            typedArmLeftOutMessage(101, "cache('chosen')"),
+            typedArmLeftOutMessage(109, "cache('first')"),
+            typedArmLeftOutMessage(75, "\$d['k']"),
+        ],
     ]);
 });

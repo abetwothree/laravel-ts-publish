@@ -31,7 +31,21 @@ use WeakMap;
  *
  * @phpstan-type DroppedUnionArm array{subject: string, line: int, expression: string, site: string}
  * @phpstan-type LeftOutArm array{Expr, string}
- * @phpstan-type HeldWarning array{subject: string, message: string, arm?: Expr, gap?: int, onceKey?: string}
+ * @phpstan-type HeldWarning array{
+ *     subject: string,
+ *     message: string,
+ *     arm?: Expr,
+ *     gap?: int,
+ *     onceKey?: string,
+ *     log?: int,
+ * }
+ * @phpstan-type EmittedWarning array{
+ *     subject: string,
+ *     message: string,
+ *     arm: Expr|null,
+ *     onceKey: string|null,
+ *     gap: int|null,
+ * }
  * @phpstan-type GapWarning array{subject: string, message: string, arm: Expr|null, holds: int, onceKey: string|null}
  * @phpstan-type DropWarning array{string, Expr|null}
  * @phpstan-type Drop array{Node, string, list<DropWarning>}
@@ -51,6 +65,9 @@ final class DroppedUnionArms
     private static ?array $arms = null;
 
     private static int $dropped = 0;
+
+    /** @var array<int, EmittedWarning|null> each warning a drop raised or held this run, null once withdrawn */
+    private static array $emitted = [];
 
     /** @var list<list<HeldWarning>> the warnings each replaceable() read under way holds, innermost last */
     private static array $held = [];
@@ -112,6 +129,7 @@ final class DroppedUnionArms
         self::$gapWarnings = [];
         self::$filled = [];
         self::$extents = 0;
+        self::$emitted = [];
     }
 
     /** How many arms this process has dropped, recording or not; a caller compares two readings. */
@@ -142,17 +160,49 @@ final class DroppedUnionArms
     }
 
     /**
-     * Count the arms a reused analysis dropped when it was first computed, as computing it again would, and announce
-     * the gaps it made and filled again, so the extent and the reads under way see them as they see their own.
+     * Where the log of warnings drops raised or held stands, so warningsSince() reads only what was logged after it.
+     */
+    public static function warningMark(): int
+    {
+        return count(self::$emitted);
+    }
+
+    /**
+     * Each warning a drop raised or held since warningMark() gave $mark that no read under way withdrew, in order, for
+     * an answer reused in its place to raise again.
+     *
+     * @return list<EmittedWarning>
+     */
+    public static function warningsSince(int $mark): array
+    {
+        return array_values(array_filter(array_slice(self::$emitted, $mark)));
+    }
+
+    /**
+     * Count the arms a reused analysis dropped when it was first computed, as computing it again would, announce the
+     * gaps it made and filled again, so the extent and the reads under way see them as they see their own, and raise or
+     * hold again each warning it raised or held, which a read thrown away since may have withdrawn.
      *
      * @param  list<int>  $gaps
      * @param  list<int>  $fills
+     * @param  list<EmittedWarning>  $warnings
      */
-    public static function replay(int $dropped, array $gaps = [], array $fills = []): void
+    public static function replay(int $dropped, array $gaps = [], array $fills = [], array $warnings = []): void
     {
         self::$dropped += $dropped;
         array_push(self::$gapLog, ...$gaps);
         self::filled($fills);
+
+        foreach ($warnings as $warning) {
+            ['subject' => $subject, 'message' => $message, 'arm' => $arm, 'onceKey' => $onceKey, 'gap' => $gap] = $warning;
+            $log = self::logged($subject, $message, $arm, $onceKey, $gap);
+
+            if ($gap === null) {
+                self::warn($subject, $message, $arm, $onceKey, $log);
+            } else {
+                self::hold($gap, $message, $arm, $subject, $onceKey, $log);
+            }
+        }
     }
 
     /** Record one union arm that was left out because it resolved to unknown, naming the site that dropped it. */
@@ -200,14 +250,14 @@ final class DroppedUnionArms
         self::audit($at, $scope, $site);
 
         if (! resolve(AnalysisMemo::class)->showsGaps()) {
-            self::warn($subject, $message, null, $onceKey);
+            self::warn($subject, $message, null, $onceKey, self::logged($subject, $message, null, $onceKey, null));
 
             return null;
         }
 
         // One gap per key, so a fill of one key at this node leaves another key's warning standing.
         $id = self::gap($scope, $key === null ? $site : $site."\0".$key, $at, $union);
-        self::hold($id, $message, null, $subject, $onceKey);
+        self::hold($id, $message, null, $subject, $onceKey, self::logged($subject, $message, null, $onceKey, $id));
 
         return $id;
     }
@@ -324,17 +374,24 @@ final class DroppedUnionArms
 
     /**
      * Hold a warning a gap's drop raises, to be raised by a strip or its extent, or settled by a replaceable() read
-     * under way, which is asked with the arm whose placeholder it names, if it names one.
+     * under way, which is asked with the arm whose placeholder it names, if it names one; $log is its place in the log.
      */
-    public static function hold(int $id, string $warning, ?Expr $arm, string $subject, ?string $onceKey = null): void
-    {
+    public static function hold(
+        int $id,
+        string $warning,
+        ?Expr $arm,
+        string $subject,
+        ?string $onceKey = null,
+        ?int $log = null,
+    ): void {
         $key = $subject."\0".$warning;
         self::$gapWarnings[$id][$key] ??= [
             'subject' => $subject, 'message' => $warning, 'arm' => $arm, 'holds' => 0, 'onceKey' => $onceKey,
         ];
         self::$gapWarnings[$id][$key]['holds']++;
         $held = ['subject' => $subject, 'message' => $warning, 'gap' => $id];
-        self::holdInRead($arm === null ? $held : [...$held, 'arm' => $arm]);
+        $held = $arm === null ? $held : [...$held, 'arm' => $arm];
+        self::holdInRead($log === null ? $held : [...$held, 'log' => $log]);
     }
 
     /**
@@ -444,7 +501,8 @@ final class DroppedUnionArms
             } elseif (isset($warning['gap'])) {
                 self::holdInRead($warning);
             } else {
-                self::warn($warning['subject'], $warning['message'], $warning['arm'] ?? null, $warning['onceKey'] ?? null);
+                ['subject' => $subject, 'message' => $message] = $warning;
+                self::warn($subject, $message, $warning['arm'] ?? null, $warning['onceKey'] ?? null, $warning['log'] ?? null);
             }
         }
 
@@ -599,7 +657,7 @@ final class DroppedUnionArms
         if ($drops === [] || $union['type'] === 'unknown' || ! resolve(AnalysisMemo::class)->showsGaps()) {
             foreach ($drops as [, , $warnings]) {
                 foreach ($warnings as [$message, $arm]) {
-                    self::warn($subject, $message, $arm);
+                    self::warn($subject, $message, $arm, null, self::logged($subject, $message, $arm, null, null));
                 }
             }
 
@@ -613,7 +671,7 @@ final class DroppedUnionArms
             $type = VisibleGaps::withArm($type, $id);
 
             foreach ($warnings as [$message, $arm]) {
-                self::hold($id, $message, $arm, $subject);
+                self::hold($id, $message, $arm, $subject, null, self::logged($subject, $message, $arm, null, $id));
             }
         }
 
@@ -723,13 +781,17 @@ final class DroppedUnionArms
     }
 
     /**
-     * Let go of the gap warnings among warnings a read held that no longer stand, each held once fewer.
+     * Let go of warnings a read held that no longer stand: each withdrawn from the log, and a gap's held once fewer.
      *
      * @param  list<HeldWarning>  $held
      */
     private static function settle(array $held): void
     {
         foreach ($held as $warning) {
+            if (isset($warning['log'])) {
+                self::$emitted[$warning['log']] = null;
+            }
+
             $id = $warning['gap'] ?? null;
             $key = $warning['subject']."\0".$warning['message'];
 
@@ -763,16 +825,35 @@ final class DroppedUnionArms
     }
 
     /**
-     * Hold a warning for the innermost replaceable() read under way, with the arm whose placeholder it names, or add it
-     * to the run's warnings, once per once-key where it has one: a read that does not stand spends no key.
+     * Hold a warning for the innermost replaceable() read under way, with the arm whose placeholder it names and its
+     * place in the log, or add it to the run's warnings, once per once-key where it has one: a read that does not stand
+     * spends no key.
      */
-    private static function warn(string $subject, string $message, ?Expr $placeholderArm = null, ?string $onceKey = null): void
-    {
+    private static function warn(
+        string $subject,
+        string $message,
+        ?Expr $placeholderArm = null,
+        ?string $onceKey = null,
+        ?int $log = null,
+    ): void {
         $warning = ['subject' => $subject, 'message' => $message];
         $warning = $onceKey === null ? $warning : [...$warning, 'onceKey' => $onceKey];
+        $warning = $placeholderArm === null ? $warning : [...$warning, 'arm' => $placeholderArm];
 
-        if (! self::holdInRead($placeholderArm === null ? $warning : [...$warning, 'arm' => $placeholderArm])) {
+        if (! self::holdInRead($log === null ? $warning : [...$warning, 'log' => $log])) {
             AnalysisWarnings::addOnce($subject, $message, $onceKey);
         }
+    }
+
+    /**
+     * Log a warning a drop raises or holds, the gap that holds it if any, giving the place a read that withdraws it
+     * clears.
+     */
+    private static function logged(string $subject, string $message, ?Expr $arm, ?string $onceKey, ?int $gap): int
+    {
+        $log = count(self::$emitted);
+        self::$emitted[$log] = ['subject' => $subject, 'message' => $message, 'arm' => $arm, 'onceKey' => $onceKey, 'gap' => $gap];
+
+        return $log;
     }
 }

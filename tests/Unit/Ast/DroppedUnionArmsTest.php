@@ -369,6 +369,22 @@ test('an arm keeps its gap id when its file is parsed again, as once the parser 
         ->and(DroppedUnionArms::gap($scope, 'match-arm', $elsewhere, 'string'))->not->toBe($id);
 });
 
+test('the warning log reads each warning raised or held since a mark, less one a read thrown away withdrew', function (bool $shows) {
+    $mark = DroppedUnionArms::warningMark();
+
+    inGapMode($shows, function (): void {
+        DroppedUnionArms::replaceable(
+            fn (): array => DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[droppedArm('gone'), 'closure-union']], droppedArmsScope()),
+            fn (): bool => false,
+        );
+        DroppedUnionArms::leftOut(droppedArmsUnion('string'), [[droppedArm('kept'), 'closure-union']], droppedArmsScope());
+    });
+    $logged = DroppedUnionArms::warningsSince($mark);
+
+    expect(array_column($logged, 'message'))->toBe([droppedArmLeftOutMessage('$kept')])
+        ->and($logged[0]['gap'] !== null)->toBe($shows);
+})->with(['gaps hidden' => [false], 'gaps shown' => [true]]);
+
 test('the gap log gives each gap made or replayed since a mark, each once, and a replay counts its dropped arms', function () {
     $scope = droppedArmsScope();
     $arm = new Variable('arm');
