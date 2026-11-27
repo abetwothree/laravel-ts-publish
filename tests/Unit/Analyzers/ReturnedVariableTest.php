@@ -20,6 +20,7 @@ use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureLocal
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureShadowedValueResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergeClosureUnimportedLocalResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\MergedLocalResource;
+use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\PlusThenCoalesceResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReadLocalHelperLocalsResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBodylessParentChildResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\ReturnedBranchLocalKeyUnsetResource;
@@ -639,6 +640,23 @@ test('a + or ?? lays its default on a key the walk may lack, and leaves a key it
     ],
     'a + over a local the read sees two writes of' => ['$a = []; if ($x) { $a["k"] = 1; } $d = $a + ["k" => "x"];', ''],
 ]);
+
+// A `+=` that always runs sets the key where the branch skipped it, unless its right may lack the key too, so the `??=`
+// default lands only past a right that may.
+test('a ??= past a += lands its default only where the += may leave the key unset', function () {
+    $sent = [];
+
+    foreach ([0, 1, 2, 3, 4, 5] as $id) {
+        $post = new Post;
+        $post->forceFill(['id' => $id]);
+        $payload = new PlusThenCoalesceResource($post)->resolve(Request::create('/'));
+        $sent[] = [$payload['laid']['k'] ?? null, $payload['maybe_laid']['k'] ?? null];
+    }
+
+    expect(returnedVariableMembers(PlusThenCoalesceResource::class))
+        ->toBe('laid: { id: number; k?: number }; maybe_laid: { id: number; k?: number | string }')
+        ->and($sent)->toBe([[2, 'z'], [2, 'z'], [null, null], [1, 1], [1, 1], [1, 1]]);
+});
 
 /**
  * The warning that a `+` on line 1 left out an untypable value its right laid beside a typed one.

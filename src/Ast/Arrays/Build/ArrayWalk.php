@@ -596,11 +596,12 @@ final class ArrayWalk
         foreach ($laid as $entry) {
             $name = $entry->writtenName();
             $before = isset($types[$name]) ? self::pathsIn($this->paths, $name, $types[$name]) : WalkKeyState::neverSet();
-            // A path that held the key keeps its value, and one that lacked it now holds the right's.
+            // A path that held the key keeps its value, and one that lacked it holds the right's, unless the right lacks
+            // it too.
             $paths = WalkKeyState::ofValue(
                 $entry->value->channels['heldObjectKeys'] ?? null,
                 $entry->value->type(),
-                isset($leftUnset[$name]),
+                isset($leftUnset[$name]) || $entry->presence->mayBeUnset(),
             )->either($before->withoutUnset());
             $this->paths[$name] = $conditional ? $paths->either($before) : $paths;
         }
