@@ -610,6 +610,18 @@ test('a + or ?? lays its default on a key the walk may lack, and leaves a key it
         '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } if ($y) { $d += ["k" => "z"]; }',
         'id: number; k?: number | string',
     ],
+    'a ??= past a += that laid a when() value where a branch skipped the key' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d += ["k" => $this->when($y, 2)]; $d["k"] ??= "z";',
+        'id: number; k?: number',
+    ],
+    'a ??= past a += over a when() value a branch set' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = $this->when($y, 1); } $d += ["k" => 2]; $d["k"] ??= "z";',
+        'id: number; k?: number',
+    ],
+    'a ??= past a += that may not run' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } if ($y) { $d += ["k" => $this->when($z, 2)]; } $d["k"] ??= "z";',
+        'id: number; k?: number | string',
+    ],
     'a + over a when() key' => ['$d = ["by" => $this->when($x, 1)] + ["by" => "z"];', 'by?: number'],
     'a += over a when() key' => ['$d = ["by" => $this->when($x, 1)]; $d += ["by" => "z"];', 'by?: number'],
     'a ?? self-read over a when() key' => ['$d = ["by" => $this->when($x, "a")]; $d["by"] = $d["by"] ?? "z";', 'by?: string'],

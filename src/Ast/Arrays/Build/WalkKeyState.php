@@ -79,4 +79,12 @@ final readonly class WalkKeyState
     {
         return new self(true, $this->object, $this->objectNull, $this->plainNull);
     }
+
+    /**
+     * These paths, past a write that sets the key on each that left it with no value, as a `+` lays the right's there.
+     */
+    public function withoutUnset(): self
+    {
+        return new self(false, $this->object, $this->objectNull, $this->plainNull);
+    }
 }
