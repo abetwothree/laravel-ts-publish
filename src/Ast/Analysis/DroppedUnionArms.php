@@ -238,14 +238,17 @@ final class DroppedUnionArms
     }
 
     /**
-     * Warn, once per site, that a join with no union entry left out the value at $at beside typed ones: in the gap mode
-     * the warning waits on the gap it leaves, whose id is returned; outside it, it is raised at once. The drop is
-     * audited under $site but never counted, as no union arm was dropped.
+     * Warn, once per site, that a join with no union entry left out the value at $at beside typed ones, or of the
+     * placeholder $union is: in the gap mode the warning waits on the gap it leaves, whose id is returned; outside it,
+     * it is raised at once. The drop is audited under $site but never counted, as no union arm was dropped.
      */
     public static function leftBeside(AnalysisScope $scope, string $site, Node $at, string $union, ?string $key = null): ?int
     {
         $subject = $scope->subjectReflection->getName();
-        $message = self::leftBesideMessage($at, $key);
+        $placeholder = self::placeholder($union);
+        $message = $placeholder === null
+            ? self::leftBesideMessage($at, $key)
+            : self::placeholderMessage($at, $placeholder, $key);
         $onceKey = implode("\0", [$subject, $site, self::place($at)]);
         self::audit($at, $scope, $site);
 
@@ -679,17 +682,20 @@ final class DroppedUnionArms
     }
 
     /**
-     * The warning that a dropped arm left a value only a placeholder, which claims it is always null or always empty.
+     * The warning that a dropped arm left a value only a placeholder, which claims it is always null or always empty;
+     * with a key, the arm is what the value at the node holds under it.
      */
-    private static function placeholderMessage(Expr $arm, string $placeholder): string
+    private static function placeholderMessage(Node $arm, string $placeholder, ?string $key = null): string
     {
-        return sprintf(
-            'The value on line %d publishes %s, because `%s` could not be typed and was left out of its union. Give '
-            .'what it reads a return type or a `@return` docblock.',
-            $arm->getStartLine(),
-            $placeholder,
-            self::spelled($arm),
-        );
+        $dropped = $key === null
+            ? sprintf('The value on line %d publishes %s, because `%s`', $arm->getStartLine(), $placeholder, self::spelled($arm))
+            : sprintf(
+                'Key `%s` publishes %s, because what `%s` on line %d holds there',
+                $key, $placeholder, self::spelled($arm), $arm->getStartLine(),
+            );
+
+        return $dropped.' could not be typed and was left out of its union. Give what it reads a return type or a '
+            .'`@return` docblock.';
     }
 
     /**

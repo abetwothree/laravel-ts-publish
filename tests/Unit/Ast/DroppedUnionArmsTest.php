@@ -255,6 +255,17 @@ test('leftBeside() names the value alone where it is given no key', function () 
     expect(droppedArmsRunMessages())->toBe([droppedArmLeftBesideMessage('$fill')]);
 });
 
+test('leftBeside() words a join it leaves a placeholder as the placeholder, naming the key where it is given one', function () {
+    DroppedUnionArms::leftBeside(droppedArmsScope(), 'plus-union', droppedArm('alone'), 'null');
+    DroppedUnionArms::leftBeside(droppedArmsScope(), 'plus-union', droppedArm('keyed'), 'never[]', 'k');
+
+    expect(droppedArmsRunMessages())->toBe([
+        droppedArmPlaceholderMessage('$alone'),
+        'Key `k` publishes `never[]`, an array that is always empty, because what `$keyed` on line 7 holds there could '
+            .'not be typed and was left out of its union. Give what it reads a return type or a `@return` docblock.',
+    ]);
+});
+
 test('leftBeside() warns once per site and node, for two keys or two readings, whatever a gap holds', function (bool $shows) {
     [$at, $other] = [droppedArm('d'), droppedArm('e')];
     $scope = droppedArmsScope();

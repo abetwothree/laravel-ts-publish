@@ -654,6 +654,15 @@ test('a + or += that leaves out the untypable value its right lays beside a type
         'id: number; k: number',
         [[plusLeftOutMessage('\\cache("k")'), '\\cache("k") plus-union']],
     ],
+    'a += over a key a branch sets only to null, which the default leaves the placeholder' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = null; } $d += ["k" => cache("k")];',
+        'id: number; k: null',
+        [[
+            'The value on line 1 publishes `null`, as if it were always null, because `\\cache("k")` could not be typed and '
+                .'was left out of its union. Give what it reads a return type or a `@return` docblock.',
+            '\\cache("k") plus-union',
+        ]],
+    ],
     'a += whose left holds the key on every path' => [
         '$d = ["id" => 0, "k" => 1]; $d += ["k" => cache("k")];',
         'id: number; k: number',
