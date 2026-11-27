@@ -24,6 +24,7 @@ use PhpParser\Node\Expr\Variable;
 use Workbench\App\Http\Resources\PostResource;
 use Workbench\App\Models\Post;
 use Workbench\App\Models\User;
+use Workbench\Crm\Models\User as CrmUser;
 
 /**
  * A value of the given type, with the given presence in its row.
@@ -236,6 +237,31 @@ it('warns that a fill a method return spells unalike is left out beside a typed 
             .'`@return` docblock.',
         ]);
 })->with(['gaps hidden' => [false], 'gaps shown' => [true]]);
+
+// A spread helper's join reads a `null` left alone as `unknown`, so no typed value stands beside the fills it drops.
+it('warns of a fill a method return spells unalike only where the join keeps a typed value beside it', function (bool $keepsLoneNull, string $joined, int $warned) {
+    $branch = static function (string $type, array $slots): ResourceAnalysis {
+        $analysis = new ResourceAnalysis(properties: [['name' => 'k', 'type' => $type, 'optional' => false, 'description' => '']]);
+        $analysis->declaredTokenFqcns = $slots === [] ? [] : ['k' => $slots];
+
+        return $analysis;
+    };
+    $branches = [$branch('User | User', [null, User::class]), $branch('User', [CrmUser::class]), $branch('null', [])];
+    $options = new JoinOptions(
+        dropsUntypedBranches: true,
+        keepsLoneNull: $keepsLoneNull,
+        returns: [new Variable('app'), new Variable('crm'), new Variable('none')],
+        scope: new AnalysisScope(new ReflectionClass(PostResource::class)),
+    );
+
+    $type = ShapeJoin::exclusive(array_map(ArrayShapes::ofAnalysis(...), $branches), $options)->entries[0]->value->type();
+
+    expect($type)->toBe($joined)
+        ->and(AnalysisWarnings::all())->toHaveCount($warned);
+})->with([
+    'a spread helper\'s join, which reads the lone null as unknown' => [false, 'unknown', 0],
+    'a join that keeps the lone null' => [true, 'null', 2],
+]);
 
 it('orders each channel map as its branches first hold a key, and keeps an entry no key owns where no joined key names it', function () {
     $branch = static fn (array $keys, array $order, array $loose): ArrayShape => joinShape($keys, wide: new ShapeWide(

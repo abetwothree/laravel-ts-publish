@@ -309,7 +309,7 @@ final class ShapeJoin
             }
         }
 
-        $typed = array_any(array_merge([], ...array_values(array_diff_key($rows, $fills))), self::typed(...));
+        $typed = self::keepsTyped(array_merge([], ...array_values(array_diff_key($rows, $fills))), $options);
         $showsGaps = resolve(AnalysisMemo::class)->showsGaps();
         $scope = $options->scope;
         $retypes = [];
@@ -329,11 +329,19 @@ final class ShapeJoin
     }
 
     /**
-     * Whether a value is typed, its gaps set aside.
+     * Whether a join of values keeps a typed one once it drops the untyped: one beside `null`, or a `null` left alone
+     * where the options keep it, as BranchJoin::slottedBranchUnion() reads them.
+     *
+     * @param  list<KeyValue>  $values
      */
-    private static function typed(KeyValue $value): bool
+    private static function keepsTyped(array $values, JoinOptions $options): bool
     {
-        return VisibleGaps::aside($value->type())[0] !== 'unknown';
+        $typed = array_values(array_diff(
+            array_unique(array_map(static fn (KeyValue $value): string => VisibleGaps::stripped($value->type())[0], $values)),
+            ['unknown'],
+        ));
+
+        return $typed !== [] && ($options->keepsLoneNull || $typed !== ['null']);
     }
 
     /**
