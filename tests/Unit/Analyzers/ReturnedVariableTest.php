@@ -9,6 +9,7 @@ use AbeTwoThree\LaravelTsPublish\Ast\Analysis\DroppedUnionArms;
 use AbeTwoThree\LaravelTsPublish\Ast\AstEngine;
 use AbeTwoThree\LaravelTsPublish\Ast\Members\MethodReturnTypeResolver;
 use AbeTwoThree\LaravelTsPublish\Ast\Parsing\AstParser;
+use AbeTwoThree\LaravelTsPublish\Support\AnalysisWarnings;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalGapResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalScopesResource;
 use AbeTwoThree\LaravelTsPublish\Tests\Fixtures\Http\Resources\KeyBuiltLocalValueResource;
@@ -617,6 +618,20 @@ test('a + or ?? lays its default on a key the walk may lack, and leaves a key it
         'by: string',
     ],
     'a + over a local the read sees two writes of' => ['$a = []; if ($x) { $a["k"] = 1; } $d = $a + ["k" => "x"];', ''],
+]);
+
+// The walk first reads the default against what it holds, and throws that read away where it drops an arm.
+test('a ?? self-read whose default no rule types publishes unknown and warns of nothing', function (string $body, string $members) {
+    AnalysisWarnings::reset();
+
+    expect(walkedMembers($body))->toBe($members)
+        ->and(AnalysisWarnings::all())->toBe([]);
+})->with([
+    'over a key a branch sets' => [
+        '$d = ["id" => 0]; if ($x) { $d["k"] = 1; } $d["k"] = $d["k"] ?? cache("k");',
+        'id: number; k: unknown',
+    ],
+    'over a typed key' => ['$d = ["k" => $this->resource->title]; $d["k"] = $d["k"] ?? cache("k");', 'k: unknown'],
 ]);
 
 // The arm left out is the last write of its key in the branch, or before the branches for the keys held before them.

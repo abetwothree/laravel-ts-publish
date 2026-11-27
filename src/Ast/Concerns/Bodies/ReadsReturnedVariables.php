@@ -1313,12 +1313,13 @@ trait ReadsReturnedVariables
         }
 
         $dropped = DroppedUnionArms::dropped();
-        $result = $this->analysisScope()->within(
+        // A read thrown away below raises no warning; the read of the source that replaces it warns of its own drops.
+        $result = DroppedUnionArms::replaceable(fn (): mixed => $this->analysisScope()->within(
             function (AnalysisScope $scope) use ($alias, $bound): void {
                 $scope->varValueBindings[$alias] = $bound;
             },
             fn (): mixed => $read($copy),
-        );
+        ), static fn (): bool => DroppedUnionArms::dropped() === $dropped);
 
         if (DroppedUnionArms::dropped() === $dropped) {
             return $result;

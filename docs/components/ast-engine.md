@@ -971,28 +971,29 @@ answer, and `VariantReader` declines a group whose arm reads grew it
 ([Variants § Where a group declines](variants.md#where-a-group-declines)).
 
 Each site hands its union and each arm it left out, paired with its site, to `DroppedUnionArms::leftOut()`, which
-records each arm and adds one run-output warning per arm left out, naming its line and expression: where the drop
-leaves the union only `null` and/or `never[]`, of that placeholder, and beside a typed arm, that the published type may
-not admit every value the read sends. A union left `unknown` admits every value, so it warns of nothing. The three join
+records each arm and adds one run-output warning per arm left out, naming its line and expression: where the drop leaves
+the union only `null` and/or `never[]`, of that placeholder, and beside a typed arm, that the published type may not
+admit every value the read sends. A union left `unknown` admits every value, so it warns of nothing. The three join
 sites call `leftOutOfJoin()` instead, which words a typed union's warning the same way. Every drop message names a walk
 alias (`AnalysisScope::walkAlias()`) as the variable it stands for, so a local's key that defaults to itself, which the
-walk also reads under the alias, warns once; the audit keeps the alias. A receiver's
-join publishes no type of its own, so a read through it warns through `ReceiverClassResolver::warnOfLeftOut()` once it
-publishes one: `ReceiverPropertyFetchHandler`'s and `ReceiverMethodCallHandler`'s read of any receiver holding
-`leftOut`, and `VariableHandler`'s read of a bound parameter's attribute only where the parameter is in
-`AnalysisScope::$leftOutParameters`, bound from a joined collection's element by a receiver's `map()` or a `collect()`
-pipeline's callback. Each warns of a left-out write no rule types, and through `warnOfUnnamedObject()` of one typed as
-an object no class names. A scalar, an array literal or cast, a list or `null` holds no object a member read could
-answer, and past a write naming no class where `receiversKeep` holds, a member read keeps the old class, so neither
-warns. `$this` is typed, so where a read leaves out a `tagOnly` class over it, `warnOfDeclined()` warns instead that
-the class it is read as does not declare the member, or, where it declares it, that the member could not be typed.
-`replaceable()` holds the warnings of a read whose placeholder its caller may replace, a declared local's `@var` or a
-getter body that gives way to the model's declared type, and lets each through only where nothing replaces the
-placeholder it names: a filled member withdraws its own warning and keeps the others.
-`provisional()` does the same and, for a read thrown away, as a property's fixpoint check is, restores the count and the
-audit entries too. A class the generation cache serves prints none, since the cache stores no analysis warnings, until
-`--fresh` analyzes it again. The warning names a return type or a `@return` as the remedy, not `#[TsCasts]`, because a
-cast on the key leaves the reading, and so the warning, as it is.
+walk also reads under the alias, warns once; the audit keeps the alias. A read under the alias that drops an arm is
+thrown away for a read of the source, and raises no warning of its own (`replaceable()`); its count and audit entries
+stay. A receiver's join publishes no type of its own, so a read through it warns through
+`ReceiverClassResolver::warnOfLeftOut()` once it publishes one: `ReceiverPropertyFetchHandler`'s and
+`ReceiverMethodCallHandler`'s read of any receiver holding `leftOut`, and `VariableHandler`'s read of a bound
+parameter's attribute only where the parameter is in `AnalysisScope::$leftOutParameters`, bound from a joined
+collection's element by a receiver's `map()` or a `collect()` pipeline's callback. Each warns of a left-out write no
+rule types, and through `warnOfUnnamedObject()` of one typed as an object no class names. A scalar, an array literal or
+cast, a list or `null` holds no object a member read could answer, and past a write naming no class where
+`receiversKeep` holds, a member read keeps the old class, so neither warns. `$this` is typed, so where a read leaves out
+a `tagOnly` class over it, `warnOfDeclined()` warns instead that the class it is read as does not declare the member,
+or, where it declares it, that the member could not be typed. `replaceable()` holds the warnings of a read whose
+placeholder its caller may replace, a declared local's `@var` or a getter body that gives way to the model's declared
+type, and lets each through only where nothing replaces the placeholder it names: a filled member withdraws its own
+warning and keeps the others. `provisional()` does the same and, for a read thrown away, as a property's fixpoint check
+is, restores the count and the audit entries too. A class the generation cache serves prints none, since the cache
+stores no analysis warnings, until `--fresh` analyzes it again. The warning names a return type or a `@return` as the
+remedy, not `#[TsCasts]`, because a cast on the key leaves the reading, and so the warning, as it is.
 
 `DroppedUnionArmsAuditTest` fails on a workbench arm missing from
 `tests/Unit/Ast/Fixtures/dropped-union-arms-baseline.php`, and on a baseline entry the corpus no longer drops. It also
@@ -1022,14 +1023,13 @@ names an untyped write (`merge-branch-join`), and a fill another branch spells u
 branch keeps (`unalike-fill`). It audits the drop without counting an arm, holds its warning in the mode on a gap of its
 own per key, so a fill of one key leaves another's warning standing, and warns at once out of it, once per site and
 returned value: `AnalysisWarnings::addOnce()` spends that once-key only as it adds the warning, so a read that does not
-stand spends none. Two sites add a silent gap, which holds no
-warning: a literal's fold (`fold-join`) and a key of a union spread (`union-spread-key`). `InlineObjectResult::of()`
-marks an object that may hold unnamed keys with the open marker, `#$open: unknown`. [`VisibleGaps`] spells both, and
-every reader decides on the text with both set aside (`VisibleGaps::aside()`, `members()`, `stripped()`) and carries
-them on. The merge fills a gap from the declared type (`DeclaredTypeMerge::merge()`), as
-[ResourceAstAnalyzer § What the method's `@return` may fill][return-fill] lists, and `ReturnShapeRefiner` marks each
-gap a fill took out as filled. What the merge leaves, the frame that turned the mode on strips
-(`MethodAnalysis::stripGaps()`) before the type publishes.
+stand spends none. Two sites add a silent gap, which holds no warning: a literal's fold (`fold-join`) and a key of a
+union spread (`union-spread-key`). `InlineObjectResult::of()` marks an object that may hold unnamed keys with the open
+marker, `#$open: unknown`. [`VisibleGaps`] spells both, and every reader decides on the text with both set aside
+(`VisibleGaps::aside()`, `members()`, `stripped()`) and carries them on. The merge fills a gap from the declared type
+(`DeclaredTypeMerge::merge()`), as [ResourceAstAnalyzer § What the method's `@return` may fill][return-fill] lists, and
+`ReturnShapeRefiner` marks each gap a fill took out as filled. What the merge leaves, the frame that turned the mode on
+strips (`MethodAnalysis::stripGaps()`) before the type publishes.
 
 `DroppedUnionArms` holds the mode's state. `gap()` gives each gap an id stable for the run, a file parsed again
 included, and the gap's warnings wait under it, the same text the drop raises out of the mode. A strip raises them,
