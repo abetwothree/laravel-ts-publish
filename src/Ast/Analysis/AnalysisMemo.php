@@ -12,12 +12,9 @@ use Closure;
 use LogicException;
 
 /**
- * Cycle guards and a memo for one publish run, for the analyses that repeat within it. An answer is reused only where
- * computing it again could not differ, and a reuse replays the cache dependencies, dropped arms, gaps, fills, drop
- * warnings and unread spreads it recorded, as computing it again would, a warning a discarded read withdrew included.
- *
- * It also holds whether a read under way needs each enum case as its enum, whether it shows gaps (the gap mode), and
- * whether it marks each arm only a declaration produced (the declaration mode), keeping the answers of each apart.
+ * Cycle guards and a memo for one publish run, with the read modes that key its answers apart: enum cases read as
+ * enums, the gap mode and the declaration mode. An answer is reused only where computing it again could not differ, and
+ * a reuse replays the dependencies, dropped arms, gaps, fills, drop warnings and unread spreads it recorded.
  *
  * @phpstan-import-type EmittedWarning from DroppedUnionArms
  *
